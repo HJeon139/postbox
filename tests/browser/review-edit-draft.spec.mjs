@@ -22,16 +22,21 @@ failOnPageErrors(test);
 const sent = (blockId) => room.calls.find((m) => m.kind === 'event' && m.event.blockId === blockId)?.event.values.comments;
 
 /** Opens a draft comment for editing, replaces its text, and saves it with Ctrl+Enter. */
-async function edit(block, from, to) {
+async function edit(block, from, to, place) {
   const draft = block.locator('.rv-thread', { hasText: from });
-  await draft.getByRole('button', { name: 'Edit', exact: true }).click();
-  const box = block.getByRole('textbox', { name: 'Edit your draft comment' });
+  // Its buttons and its box name its place, so a screen reader tells one draft from another.
+  await expect(draft.getByRole('button', { name: `Delete your comment on ${place}`, exact: true })).toBeVisible();
+  await draft.getByRole('button', { name: `Edit your comment on ${place}`, exact: true }).click();
+  const box = block.getByRole('textbox', { name: `Edit your comment on ${place}`, exact: true });
   await expect(box, 'it opens with focus in it').toBeFocused();
   await expect(box, 'and its text').toHaveValue(from);
   await box.fill(to);
   await box.press('Control+Enter');
   await expect(box).toHaveCount(0);
-  await expect(block.locator('.rv-thread', { hasText: to }).getByRole('button', { name: 'Edit', exact: true }), 'focus goes back to its Edit').toBeFocused();
+  await expect(
+    block.locator('.rv-thread', { hasText: to }).getByRole('button', { name: /^Edit your comment on / }),
+    'focus goes back to its Edit',
+  ).toBeFocused();
   await expect(block.locator('.rv-thread', { hasText: from }), 'the old text is gone').toHaveCount(0);
 }
 
@@ -42,12 +47,15 @@ test('#858 a draft comment on a line is edited in place, and the agent gets the 
   await block.getByRole('textbox', { name: 'Comment on line 3' }).fill('first draft');
   await block.getByRole('button', { name: 'Add draft comment', exact: true }).click();
   // Escape leaves it as it was.
-  await block.locator('.rv-thread', { hasText: 'first draft' }).getByRole('button', { name: 'Edit', exact: true }).click();
-  const box = block.getByRole('textbox', { name: 'Edit your draft comment' });
+  await block
+    .locator('.rv-thread', { hasText: 'first draft' })
+    .getByRole('button', { name: /^Edit your comment on / })
+    .click();
+  const box = block.getByRole('textbox', { name: /^Edit your comment on / });
   await box.fill('not this');
   await box.press('Escape');
   await expect(block.locator('.rv-thread', { hasText: 'first draft' }), 'Escape keeps the comment as it was').toHaveCount(1);
-  await edit(block, 'first draft', 'second draft');
+  await edit(block, 'first draft', 'second draft', 'line 3');
   await block.getByRole('button', { name: 'Submit review', exact: true }).click();
   await expect
     .poll(() => sent(blockId), { message: 'the agent gets the edited comment once' })
@@ -67,8 +75,11 @@ async function twoDrafts(page, title) {
     await r.block.getByRole('button', { name: 'Add draft comment', exact: true }).click();
   }
   const open = async (text) => {
-    await r.block.locator('.rv-thread', { hasText: text }).getByRole('button', { name: 'Edit', exact: true }).click();
-    return r.block.getByRole('textbox', { name: 'Edit your draft comment' });
+    await r.block
+      .locator('.rv-thread', { hasText: text })
+      .getByRole('button', { name: /^Edit your comment on / })
+      .click();
+    return r.block.getByRole('textbox', { name: /^Edit your comment on / });
   };
   return { ...r, open };
 }
@@ -81,7 +92,7 @@ test('#858 one box at a time, and what was typed in an edit is never dropped', a
   await expect(block.locator('.rv-thread', { hasText: 'three, edited' }), 'the first edit is kept').toHaveCount(1);
   await expect(block.getByRole('textbox'), 'one box open').toHaveCount(1);
   // Opening a new comment’s box closes the edit, keeping it too.
-  await block.getByRole('textbox', { name: 'Edit your draft comment' }).fill('five, edited');
+  await block.getByRole('textbox', { name: /^Edit your comment on / }).fill('five, edited');
   await block.locator('.g-mark[data-line="7"]').click();
   await expect(block.getByRole('textbox'), 'only the new comment’s box').toHaveCount(1);
   await expect(block.getByRole('textbox', { name: 'Comment on line 7' })).toBeFocused();
@@ -100,8 +111,11 @@ test('#858 deleting a draft before the one being edited leaves the edit on its o
   await block.getByRole('button', { name: 'Add draft comment', exact: true }).click();
   const box = await open('on five');
   await box.fill('five, edited');
-  await block.locator('.rv-thread', { hasText: 'on three' }).getByRole('button', { name: 'Delete', exact: true }).click();
-  const still = block.getByRole('textbox', { name: 'Edit your draft comment' });
+  await block
+    .locator('.rv-thread', { hasText: 'on three' })
+    .getByRole('button', { name: /^Delete your comment on / })
+    .click();
+  const still = block.getByRole('textbox', { name: /^Edit your comment on / });
   await expect(still, 'the edit is still open, with what was typed').toHaveValue('five, edited');
   await still.press('Control+Enter');
   await expect(block.locator('.rv-thread', { hasText: 'on seven' }), 'the comment after it is untouched').toHaveCount(1);
@@ -152,7 +166,7 @@ test('#858 a repaint leaves focus in the message box when the person moved there
   await synced(page, room.app);
   await expect(page.locator('.rv-thread', { hasText: 'Another review.' })).toBeVisible();
   await expect(message, 'the repaint leaves focus in the message box').toBeFocused();
-  await expect(page.getByRole('textbox', { name: 'Edit your draft comment' }), 'and the edit stays open, with its text').toHaveValue('five, being edited');
+  await expect(page.getByRole('textbox', { name: /^Edit your comment on / }), 'and the edit stays open, with its text').toHaveValue('five, being edited');
 });
 
 test('#858 a repaint leaves focus in the message box when the person moved there from a new comment’s box', async ({ page }) => {
@@ -215,7 +229,7 @@ test('#858 a new comment’s text set aside for an edit follows its line when th
   const revised = rt.toolsFor(drafter.id).update_block({ block: { ...review(drafter.threadId), content: `New first line.\n${DRAFT}`, previous: DRAFT } });
   expect(revised.ok, revised.message).toBe(true);
   await synced(page, room.app);
-  await block.getByRole('textbox', { name: 'Edit your draft comment' }).press('Escape');
+  await block.getByRole('textbox', { name: /^Edit your comment on / }).press('Escape');
   await block.locator('.g-mark[data-line="8"]').click();
   await expect(block.getByRole('textbox', { name: 'Comment on line 8' }), 'its text is on the line it moved to').toHaveValue('half a thought');
 });
@@ -224,7 +238,7 @@ test('#858 a draft comment on a selection in Preview keeps its quote and columns
   const { block, blockId } = await room.withReview(page, 'Edit a selection');
   await drawn(block, 'Preview');
   await commentOn(page, block, 'low', 'Say how low.');
-  await edit(block, 'Say how low.', 'Say how much lower.');
+  await edit(block, 'Say how low.', 'Say how much lower.', '“low”');
   await expect(block.locator('.rv-preview .rv-thread q.rv-quote'), 'it still quotes its text').toHaveText('low');
   await block.getByRole('button', { name: 'Submit review', exact: true }).click();
   await expect
@@ -253,7 +267,7 @@ test('#858 a draft comment on an app’s part keeps its part when edited', async
   await synced(page, room.app);
   const block = page.locator(`[data-block-item="${item.id}"]`);
   await expect(block.locator('.rv-thread', { hasText: 'Too small.' })).toBeVisible();
-  await edit(block, 'Too small.', 'Make the legend bigger.');
+  await edit(block, 'Too small.', 'Make the legend bigger.', 'legend');
   await block.getByRole('button', { name: 'Submit review', exact: true }).click();
   await expect
     .poll(() => store.item(t.id, item.id).answer?.values?.comments)

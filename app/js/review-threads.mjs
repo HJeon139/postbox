@@ -10,6 +10,19 @@ import { revisionOf } from './review-view.mjs';
 
 /** Whether a thread or a comment is on key: an app’s part, or a line. */
 const on = (b, x, key) => (b.format === 'app' ? x.anchor === key : x.line === key);
+/**
+ * Where a comment is, as its box and buttons name it (#858): “line 3”, an app’s part, or the text a selection quotes.
+ * @param {any} at  a line, a part, or a selection with its quote @param {any} b
+ */
+function placeOf(at, b) {
+  if (typeof at === 'object') return `“${at.quote.length > 60 ? `${at.quote.slice(0, 59)}…` : at.quote}”`;
+  return b.format === 'app' ? at : `line ${at}`;
+}
+/** A draft comment’s place, as placeOf takes it. @param {any} c @param {any} b */
+function placeKey(c, b) {
+  if (typeof c.quote === 'string') return c;
+  return b.format === 'app' ? c.anchor : c.line;
+}
 /** The text a comment on a selection is about, as its meta line shows it. */
 const quoted = (q) => (typeof q === 'string' ? h('q.rv-quote', q.length > 80 ? `${q.slice(0, 79)}…` : q) : null);
 
@@ -54,7 +67,7 @@ function threadOf(t) {
  * @param {any} c @param {any} env
  */
 function draftOf(c, env) {
-  const { d, done, rerender } = env;
+  const { b, d, done, rerender } = env;
   const at = d.comments.indexOf(c);
   if (!done && d.editing === at) return editorOf(c, at, env);
   const remove = () => {
@@ -83,8 +96,23 @@ function draftOf(c, env) {
         // Its quote is gone from the text the agent revised (#179), or its line changed (#123).
         c.gone !== undefined ? h('span.status-tag', 'Its text changed') : c.moved ? h('span.status-tag', 'Its line changed') : null,
         quoted(c.quote ?? c.gone),
-        done ? null : h('button.btn.sm.ghost', { type: 'button', style: { marginLeft: 'auto' }, 'data-draft': String(at), onclick: edit }, 'Edit'),
-        done ? null : h('button.btn.sm.ghost', { type: 'button', onclick: remove }, 'Delete'),
+        // Each names its comment’s place, so a screen reader tells one draft’s buttons from another’s.
+        done
+          ? null
+          : h(
+              'button.btn.sm.ghost',
+              {
+                type: 'button',
+                style: { marginLeft: 'auto' },
+                'aria-label': `Edit your comment on ${placeOf(placeKey(c, b), b)}`,
+                'data-draft': String(at),
+                onclick: edit,
+              },
+              'Edit',
+            ),
+        done
+          ? null
+          : h('button.btn.sm.ghost', { type: 'button', 'aria-label': `Delete your comment on ${placeOf(placeKey(c, b), b)}`, onclick: remove }, 'Delete'),
       ),
       h('div', c.text),
     ),
@@ -96,7 +124,7 @@ function draftOf(c, env) {
  * keeps where it is; Cancel or Escape leaves it as it was. Either way focus goes back to its Edit button.
  * @param {any} c @param {number} at  its place in the draft @param {any} env
  */
-function editorOf(c, at, { d, rerender }) {
+function editorOf(c, at, { b, d, rerender }) {
   const close = (/** @type {string | null} */ value) => {
     if (value !== null && !value.trim()) return;
     d.editingText = value ?? '';
@@ -104,7 +132,7 @@ function editorOf(c, at, { d, rerender }) {
     /** @type {HTMLElement | null} */ (rerender().querySelector(`[data-draft="${at}"]`))?.focus();
   };
   return commentBox(d, {
-    label: 'Edit your draft comment',
+    label: `Edit your comment on ${placeOf(placeKey(c, b), b)}`,
     mark: 'data-edit-draft',
     opened: 'editFocus',
     fields: ['editingText', 'editingSelection'],
@@ -215,12 +243,6 @@ function commentBox(d, box) {
 
 /** The box a new comment is written in, focused as it opens. @param {any} key @param {any} env */
 function composer(key, { b, d, closeComposer }) {
-  const label =
-    typeof key === 'object'
-      ? `Comment on “${key.quote.length > 60 ? `${key.quote.slice(0, 59)}…` : key.quote}”`
-      : b.format === 'app'
-        ? `Comment on ${key}`
-        : `Comment on line ${key}`;
   const add = (/** @type {string} */ value) => {
     const text = value.trim();
     if (!text) return;
@@ -228,7 +250,7 @@ function composer(key, { b, d, closeComposer }) {
     closeComposer(key);
   };
   return commentBox(d, {
-    label,
+    label: `Comment on ${placeOf(key, b)}`,
     mark: 'data-new-comment',
     opened: 'composeFocus',
     fields: ['composingText', 'composingSelection'],
