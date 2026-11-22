@@ -139,6 +139,7 @@ stateDiagram-v2
 
 When a review’s finding is a few lines and the review already spells out the fix (one test, one assert, a line dropped), the integrator makes it on the batch branch instead of asking for another round. In 9 of the 15 rounds past the second on code PRs from 20 to 22 November, the item was that size.
 
+- When the integrator starts a fix, it comments on the PR: “The integrator is making <finding> in batch N; please don’t push a fix for it.” Otherwise the author races it: while batch 4 was built, #1602’s and #1615’s authors pushed the same fixes, and their heads moved under the batch.
 - It’s its own commit, right after that PR’s merge commit, and its body starts “Integrator fix for #n’s review” and names the finding.
 - A test or a mutant fails without it, as for any fix.
 - The batch PR’s body lists the fix commits, and an independent review checks only those before the batch merges.
