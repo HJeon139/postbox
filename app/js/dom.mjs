@@ -107,12 +107,16 @@ export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 // One formatter each, made once: a toLocale*String call builds its formatter every time, which cost about 1.2 s of a
-// switch into a 10,000-item room (#866). Each gives the same text as the toLocale*String call it replaces. They keep
-// the time zone the page loaded with, until it reloads.
-const TIME = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+// switch into a 10,000-item room (#866). They keep the time zone the page loaded with, until it reloads.
+// A time follows the browser’s locale and clock, “12:30 AM” or “00:30”, not a 24-hour clock for everyone (#535). A
+// 24-hour clock keeps its leading zero, as “00:30” is written; a 12-hour one has none, as “9:05 AM” is.
+const CYCLE = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle;
+/** The hour and minute of a time on the browser’s clock, for any formatter of a time of day. */
+export const CLOCK = /** @type {const} */ ({ hour: CYCLE === 'h23' || CYCLE === 'h24' ? '2-digit' : 'numeric', minute: '2-digit' });
+const TIME = new Intl.DateTimeFormat(undefined, CLOCK);
 const DAY = new Intl.DateTimeFormat('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
 
-/** A time as 14:05. @param {number} ms */
+/** A time on the browser’s clock: 2:05 PM, or 14:05. @param {number} ms */
 export function timeOf(ms) {
   return TIME.format(ms);
 }

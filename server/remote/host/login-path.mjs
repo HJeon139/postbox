@@ -4,7 +4,7 @@
 // on one host found none of them that way, only some with `zsh -lc`, and all of them with `zsh -lic`.
 //
 // So the daemon asks the person’s login shell, as a login, interactive shell, for its PATH: once per daemon start,
-// and once more when a turn’s harness isn’t found (daemon-login.mjs). The shell runs from an argument array with stdin
+// and again when a turn’s harness isn’t found, at most every 30 s (daemon-login.mjs, #1084). The shell runs from an argument array with stdin
 // closed, in its own process group, for at most PROBE_MS; past it the whole group is killed. Its rc files may print
 // anything, so only the text between this probe’s own markers, each with a fresh random token, is read, and only
 // absolute entries without control characters are kept, at most MAX_ENTRIES of them and MAX_BYTES together.
