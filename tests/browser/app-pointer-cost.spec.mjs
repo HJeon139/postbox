@@ -156,6 +156,18 @@ async function reviewGoesLive(page, width) {
  * IntersectionObserver reporting the body in view can make the frame live.
  */
 async function backUnderPointer(page, width) {
+  // The page’s unload of a far app (apps.mjs, 1.5 s after it leaves the near margin) is held, so this case doesn’t
+  // race it: on a loaded runner the steps between the two scrolls took longer, and the app was gone (#1270). The
+  // count shows the app did leave the margin. The far app case above runs the real timer.
+  await page.addInitScript(() => {
+    const later = window.setTimeout;
+    /** @type {any} */ (window).pbHeldUnloads = 0;
+    /** @type {any} */ (window).setTimeout = (/** @type {TimerHandler} */ fn, /** @type {number} */ ms, /** @type {any[]} */ ...args) => {
+      if (ms !== 1500 || !String(new Error().stack).includes('/apps.mjs')) return later(fn, ms, ...args);
+      /** @type {any} */ (window).pbHeldUnloads++;
+      return later(() => {}, 2 ** 31 - 1);
+    };
+  });
   const r = await room(page, `Back under ${width}`);
   await r.lines(4, 'Before');
   const title = `Back ${width}`;
@@ -169,10 +181,12 @@ async function backUnderPointer(page, width) {
   const rest = { x: b.x + b.width / 2, y: b.y + Math.min(40, b.height / 2) };
   await page.mouse.move(rest.x, rest.y);
   await expect(f, 'live under the pointer').toHaveClass(/\blive\b/);
-  // Far away in one scroll, and back in another, well within the 1.5 s before a far app unloads.
+  // Far away in one scroll, and back in another, before the far app unloads.
+  const held = () => page.evaluate(() => /** @type {any} */ (window).pbHeldUnloads);
+  const before = await held();
   await page.evaluate(() => scrollBy(0, 4 * innerHeight));
-  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
   await expect(f, 'not live while far away').not.toHaveClass(/\blive\b/);
+  await expect.poll(held, { message: 'the app left the near margin, so its unload was due' }).toBeGreaterThan(before);
   // Back by where the frame now is, not by the same distance: with the transcript’s items off screen skipped (#712a),
   // the items passed on the way draw at their real sizes, so the same scroll back can leave the frame off the pointer.
   await f.evaluate((n, top) => scrollBy(0, n.getBoundingClientRect().top - top), b.y);
