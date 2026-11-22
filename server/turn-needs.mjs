@@ -42,9 +42,10 @@ export function needsAfter(rt, se, turn, items) {
     unread: topic ? se.unread : viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
     stopAsk: null,
   }));
-  // The block the turn kept was already the need, and the person was told when it became one: a turn that didn’t
-  // change it raises no new alert, and falls through to the notices below (designs/developing.md, “Design habits”, 12).
-  const changed = needs && needs.itemId !== se.keptId;
+  // The block the turn kept was already the need before this turn: a turn that didn’t change it raises no new alert,
+  // and falls through to the notices below (designs/developing.md, “Design habits”, 12). Asking it again gives it this
+  // turn’s id (block-update.mjs, #69), which is a change the person hears of.
+  const changed = needs && (needs.itemId !== se.keptId || waiting?.turnId === turn.id);
   if (changed && (needs.kind === 'block' || needs.kind === 'toolask')) rt.threads.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
   else if (mentionsYou && !viewing) rt.threads.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
   else if (turn.said && !viewing) rt.threads.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);

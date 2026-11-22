@@ -72,3 +72,19 @@ test('#647: the wake’s end raises no new “needs you” alert for the block i
     [],
   );
 });
+
+test('#647: a kept block the agent asks again during the wake is a change, and raises “needs you”', async () => {
+  // Pre-review of the repeat-alert fix: asking again gives the block this turn’s id (block-update.mjs, #69), so the
+  // person hears of the new question even though it’s the same item the turn kept.
+  const r = await keptInTopic();
+  /** @type {any[]} */
+  const heard = [];
+  r.rt.store.subscribe((/** @type {any} */ ev) => ev.type === 'notify' && heard.push(ev.data));
+  const turnId = r.rt.turns.get(r.alpha.id)?.id;
+  assert.ok(turnId, 'the wake’s turn runs');
+  r.rt.threads.patchItem(r.topic, r.b.id, { revision: 2, turnId, answered: false });
+  r.work.release();
+  await settle(r.rt);
+  assert.equal(r.needs()?.itemId, r.b.id);
+  assert.equal(heard.filter((n) => n.level === 'blocking').length, 1);
+});
