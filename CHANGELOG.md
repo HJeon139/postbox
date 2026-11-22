@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.16 (2026-11-22)
+
+### Fixes
+
+- **remote:** find a claude installed on a host after Postbox connected
+
 ## 4.35.15 (2026-11-22)
 
 ### Fixes
