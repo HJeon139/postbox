@@ -88,3 +88,30 @@ test('#855 an app that names its parts only after an await gets the hint for its
   await expect(block.locator('.rv-pins p'), 'once it names its title').toHaveText('Or click a highlighted part of the app to comment on it.');
   await expect(block.frameLocator('iframe.app-iframe').locator('.pb-anchor-tag'), 'its tag').toHaveText(['title']);
 });
+
+test('#855 a part an app names “the whole app” gets no tag, so it and the whole app never share a target', async ({ page }) => {
+  const CLASH = `<main style="padding:12px;color:var(--text)"><h2 id="t">Corpus summary</h2><div id="c" style="height:80px">Chart</div></main>
+<script>postbox.anchors({ 'the whole app': document.getElementById('t'), chart: document.getElementById('c') });</script>`;
+  const { block, blockId } = await review(page, 'clash', CLASH);
+  const frame = block.frameLocator('iframe.app-iframe');
+  await expect(frame.locator('.pb-anchor-tag'), 'only the real part is tagged').toHaveText(['chart']);
+  // A comment on the chart, by its tag, as a person does: the pointer moves onto the app, which then takes it.
+  const tag = await frame.getByRole('button', { name: 'Comment on chart' }).boundingBox();
+  if (!tag) throw new Error('The chart’s tag has no box.');
+  await page.mouse.move(tag.x + tag.width / 2, tag.y + tag.height / 2, { steps: 4 });
+  await expect(block.locator('iframe.app-iframe')).toHaveCSS('pointer-events', 'auto');
+  await page.mouse.click(tag.x + tag.width / 2, tag.y + tag.height / 2);
+  await page.getByRole('textbox', { name: 'Comment on chart' }).fill('Label the axis.');
+  await block.getByRole('button', { name: 'Add draft comment' }).click();
+  // And one on the whole app.
+  await block.getByRole('button', { name: 'Comment on the whole app' }).click();
+  await page.getByRole('textbox', { name: 'Comment on the whole app' }).fill('Too dense overall.');
+  await block.getByRole('button', { name: 'Add draft comment' }).click();
+  await block.getByRole('button', { name: 'Submit review', exact: true }).click();
+  await expect
+    .poll(() => calls.find((m) => m.kind === 'event' && m.event.blockId === blockId)?.event.values.comments, { message: 'the agent gets both comments' })
+    .toEqual([
+      expect.objectContaining({ anchor: 'chart', text: 'Label the axis.' }),
+      expect.objectContaining({ anchor: 'the whole app', text: 'Too dense overall.' }),
+    ]);
+});

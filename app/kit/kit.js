@@ -164,7 +164,9 @@
     },
     restoreState: () => ready.then((r) => r.state),
     anchors(map) {
-      anchorMap = Object.assign({}, map);
+      // “the whole app” is a review’s comment on the app as a whole, so no part can take that name (#855).
+      const { 'the whole app': _whole, ...parts } = map || {};
+      anchorMap = parts;
       post({ type: 'anchors', names: Object.keys(anchorMap).filter((k) => anchorMap[k]) });
       if (reviewing) paintAnchors();
     },
