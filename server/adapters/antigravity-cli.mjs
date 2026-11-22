@@ -64,6 +64,7 @@ import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, probeAgyHook } from './agy-hook-check.mjs';
+import { modelIds } from './agy-model-ids.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
 import { hookPromptCard } from './agy-prompt-card.mjs';
 import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
@@ -130,19 +131,7 @@ export function agyModels(bin = findAgy(), { spawnImpl = spawn } = {}) {
   });
 }
 
-/**
- * The model ids in an `agy models` answer, bounded: one per line, the id, then a tab and its name
- * (“gemini-3.8-flash-high	Gemini 3.8 Flash (High)”). The “Fetching available models...” line and a sign-in
- * error aren’t ids.
- */
-export function modelIds(text) {
-  const ids = String(text ?? '')
-    .split('\n')
-    .map((l) => /^([a-z0-9][\w.:-]{0,79})\t/i.exec(l)?.[1])
-    .filter((id) => typeof id === 'string');
-  return [...new Set(ids)].slice(0, 60);
-}
-
+export { modelIds } from './agy-model-ids.mjs';
 export { AGY_CAPABILITIES, AGY_DEFAULT_MODEL };
 
 /**
