@@ -2,6 +2,24 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.15 (2026-11-22)
+
+### Fixes
+
+- **blocks:** keep the own import that a form's submit and table cells use
+- **blocks:** write the table sort's two cell reads as two declarations
+- **app:** mark a term no one defined, whatever its key
+- **blocks:** read a table's cells and a field's error by own keys only
+- **blocks:** read only answered values wherever a block's answer is shown
+- **blocks:** name only fields the person answered in a form's receipt
+- **blocks:** list every sent field in a form's receipt
+
+## 4.35.14 (2026-11-22)
+
+### Fixes
+
+- **kiro:** turn memory off in the Kiro home Postbox owns
+
 ## 4.35.13 (2026-11-22)
 
 ### Fixes
