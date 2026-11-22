@@ -118,7 +118,8 @@ test('every production commit in server/ is placed, with the lists it touches', 
 });
 
 test('no server file reaches the store’s reads through a form the guard can’t follow', () => {
-  const ALIAS = /\{[^}]*\b(pending|items|work|apps|schedules)\b[^}]*\}\s*=\s*[\w.]*\b(store|s|state)\b\s*[;,)]|[\w$\])]\s*\[\s*['"`](pending|items|work|apps|schedules)['"`]\s*\]/;
+  const ALIAS =
+    /\{[^}]*\b(pending|items|work|apps|schedules)\b[^}]*\}\s*=\s*[\w.]*\b(store|s|state)\b\s*[;,)]|[\w$\])]\s*\[\s*['"`](pending|items|work|apps|schedules)['"`]\s*\]/;
   const found = sources().flatMap(([path, text]) =>
     text
       .split('\n')
