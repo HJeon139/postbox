@@ -52,12 +52,27 @@ function stateNotes(text) {
     .join('\n');
 }
 const JOINED = '$1\u2060';
+/**
+ * The diagram’s type, as Mermaid reads it: the first word of its first line after any frontmatter, blank lines and
+ * “%%” comments. Never a word further down, such as a class member named “stateDiagram”.
+ * @param {string} src
+ */
+function diagramType(src) {
+  const body = src.replace(/^\s*---\n[\s\S]*?\n---[ \t]*(?:\n|$)/, '');
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (t && !t.startsWith('%%')) return t.split(/[\s{]/)[0];
+  }
+  return '';
+}
+
 /** The source with every label that starts like a block kept as text. @param {string} src */
 function asWritten(src) {
   const strings = src.replace(MARKDOWN_STRING, (_m, body) => '"`' + body.replace(LINE_START, '$1$2\u2060') + '`"');
   // Only a state diagram has these notes: in a class diagram, “- field” after such a line is a private member.
-  const text = /^\s*stateDiagram\b/m.test(strings) ? stateNotes(strings) : strings;
-  if (!/^\s*classDiagram\b/m.test(text)) return text.replace(LABEL_START, JOINED);
+  const type = diagramType(src);
+  const text = type.startsWith('stateDiagram') ? stateNotes(strings) : strings;
+  if (!type.startsWith('classDiagram')) return text.replace(LABEL_START, JOINED);
   return text
     .split('\n')
     .map((line) => line.replace(RELATION.test(line) ? RELATION_START : CLASS_START, JOINED))

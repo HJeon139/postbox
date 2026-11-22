@@ -53,9 +53,11 @@ const STATE_NOTE = `stateDiagram-v2
   Note left of s2
     3. capital
   End note`;
-// Members that read like a state note in a class diagram stay members: its “- String field” is private.
+// Members that read like a state note in a class diagram stay members: its “- String field” is private. A member named
+// “stateDiagram” doesn’t make it one: the type is the diagram’s first word.
 const CLASS_NOTE_LIKE = `classDiagram
   class Build {
+    stateDiagram
     note right of s1
     - String field
     end note
