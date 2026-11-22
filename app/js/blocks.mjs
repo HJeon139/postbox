@@ -5,6 +5,7 @@
 import './md-images.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { own } from '/shared/state-assets.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
 import { asDrawn, closing } from './block-close.mjs';
 import { fitChoiceOptions } from './choice-layout.mjs';
