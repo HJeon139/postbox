@@ -72,3 +72,23 @@ for (const width of [375, 1280])
     await approve('keyboard');
     await expect(receipt, 'answering revision 2 clears the receipt').toHaveCount(0);
   });
+
+test('#518 a receipt whose saved verdict is a name every object inherits says “answered”, not what it inherits', async ({ page }) => {
+  const { rt, store } = app;
+  const t = rt.createThread({
+    projectId: Object.values(store.state.projects)[0].id,
+    title: 'Receipt inherited',
+    personaIds: [arrange.persona(rt, 'researcher').id],
+  });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
+  tools.show_block({ block: { ...DRAFT, id: 'inherited' } });
+  const item = store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'inherited');
+  const at = Date.now();
+  rt.threads.patchItem(t.id, item.id, { revision: 2, priorAnswer: { action: 'submit', verdict: 'constructor', revision: 1, at } });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const time = await page.evaluate(async (ms) => (await import('/app/js/dom.mjs')).timeOf(ms), at);
+  await expect(page.locator(`#main [data-key="${item.id}"] .rv-receipt`)).toHaveText(
+    `You answered revision 1 at ${time}. The agent revised it since: answer revision 2.`,
+  );
+});

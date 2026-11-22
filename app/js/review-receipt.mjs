@@ -5,6 +5,8 @@
 import { h, timeOf } from './dom.mjs';
 
 const VERDICT_WORDS = { approve: 'approved', request_changes: 'asked for changes to', comment: 'commented on' };
+/** What the person did, by the verdict saved with the answer: an own key only, never one an object inherits. */
+const verdictWord = (v) => (Object.hasOwn(VERDICT_WORDS, v) ? VERDICT_WORDS[v] : 'answered');
 
 /**
  * The receipt, or null when the block has no earlier answer or is answered again.
@@ -13,7 +15,7 @@ const VERDICT_WORDS = { approve: 'approved', request_changes: 'asked for changes
 export function answerReceipt(item) {
   const prior = item.priorAnswer;
   if (!prior || item.answered) return null;
-  const did = prior.action === 'dismiss' ? 'dismissed' : (VERDICT_WORDS[prior.verdict] ?? 'answered');
+  const did = prior.action === 'dismiss' ? 'dismissed' : verdictWord(prior.verdict);
   const now = item.revision ?? 1;
   return h(
     // Quiet, not an alarm: it reports what happened, and the review below is how to act on it.
