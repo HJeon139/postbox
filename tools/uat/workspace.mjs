@@ -1,12 +1,12 @@
 // The run’s project folder (the workspace): where it lives, outside the checkout (runPaths, #885), made before Postbox
 // starts as a git repository of its own with what the scenario’s `- seed:` plants in it (tools/uat/scenario.mjs), and
-// kept in the run’s folder once the run has stopped (retainWorkspace). Moved from run-files.mjs, with the run’s folders.
+// kept in the run’s folder once the run has stopped (retainWorkspace).
 
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, sep } from 'node:path';
+import { join, sep } from 'node:path';
 import { seedFakeEnv } from './allowonce-triggers.mjs';
 import { seedFiles } from './fixtures.mjs';
 import { seedGitRemote } from './git-remote.mjs';
@@ -37,13 +37,13 @@ export function makeWorkspace(scenario, paths, dir) {
  * workspace would be under the checkout again. The run’s own folders come first, so a run that can’t make them leaves no
  * temp folder; one that fails after it removes it.
  * @param {string} dir
- * @param {{ root: string, tmp?: string }} o  the checkout, and where the workspace’s folder goes (the system temp folder)
+ * @param {{ root: string, main?: string, tmp?: string }} o  the checkout, its main clone when it’s a worktree, and where the
+ *   workspace’s folder goes (the system temp folder)
  */
-export async function runPaths(dir, { root, tmp = tmpdir() }) {
+export async function runPaths(dir, { root, main = root, tmp = tmpdir() }) {
   const base = await realpath(tmp);
-  // The checkout the run is from, and the one its folder is in: from a worktree, runs go in the main clone’s uat-runs/.
-  const runsIn = basename(dirname(dir)) === 'uat-runs' ? [dirname(dirname(dir))] : [];
-  for (const folder of [root, ...runsIn]) {
+  // The checkout the run is from, and the main clone a worktree shares (runs.mjs, mainCheckout).
+  for (const folder of new Set([root, main])) {
     const checkout = await realpath(folder).catch(() => folder);
     if (base === checkout || base.startsWith(checkout + sep))
       throw new Error(

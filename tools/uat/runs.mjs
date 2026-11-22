@@ -23,6 +23,15 @@ export function runsRoot({ root, env = process.env, git = gitOut }) {
   return join(root, 'uat-runs');
 }
 
+/**
+ * The checkout’s main clone: itself, or for a worktree the clone it shares its repository with, from git’s common dir,
+ * as runsRoot finds it. @param {{ root: string, git?: typeof gitOut }} o
+ */
+export function mainCheckout({ root, git = gitOut }) {
+  const common = git(['rev-parse', '--path-format=absolute', '--git-common-dir'], root);
+  return common && isAbsolute(common) ? dirname(common) : root;
+}
+
 /** A git command’s output, trimmed, or null if it failed. */
 function gitOut(args, cwd) {
   const r = spawnSync('git', args, { cwd, encoding: 'utf8' });

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { test } from 'node:test';
+import { mainCheckout } from '../tools/uat/runs.mjs';
 import { runPaths } from '../tools/uat/workspace.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -70,6 +71,20 @@ test('#885 a temp folder inside the main clone is refused too, where a worktree�
   mkdirSync(dir, { recursive: true });
   const inMain = join(main, 'tmp');
   mkdirSync(inMain);
-  await assert.rejects(runPaths(dir, { root: worktree, tmp: inMain }), /is inside the Postbox checkout/);
-  assert.ok((await runPaths(dir, { root: worktree, tmp: tempDir('pb-uat-tmp-') })).workspace, 'and a temp folder outside both is used');
+  await assert.rejects(runPaths(dir, { root: worktree, main, tmp: inMain }), /is inside the Postbox checkout/);
+  assert.ok((await runPaths(dir, { root: worktree, main, tmp: tempDir('pb-uat-tmp-') })).workspace, 'and a temp folder outside both is used');
+});
+
+test('#885 a runs folder of its own (POSTBOX_UAT_RUNS), named uat-runs, isn’t taken for a checkout', async () => {
+  // As POSTBOX_UAT_RUNS=/tmp/uat-runs with TMPDIR=/tmp on Linux: the runs folder’s parent is the temp folder, not Postbox.
+  const tmp = realpathSync(tempDir('pb-uat-runs-home-'));
+  const dir = join(tmp, 'uat-runs', '2026-11-22T00-00-00-visualskill-bill');
+  mkdirSync(dir, { recursive: true });
+  const { checkout } = layout();
+  assert.ok((await runPaths(dir, { root: checkout, main: checkout, tmp })).workspace.startsWith(`${tmp}/postbox-uat-workspace-`));
+});
+
+test('#885 the main clone is the one git’s common dir names, or the checkout itself', () => {
+  assert.equal(mainCheckout({ root: '/w/lane5', git: () => '/w/postbox/.git' }), '/w/postbox', 'a worktree’s main clone');
+  assert.equal(mainCheckout({ root: '/w/postbox', git: () => null }), '/w/postbox', 'no git: the checkout itself');
 });

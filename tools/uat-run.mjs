@@ -60,7 +60,7 @@ import { runEnv } from './uat/run-env.mjs';
 import { runFacts } from './uat/run-facts.mjs';
 import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
-import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
+import { gitInfo, mainCheckout, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
@@ -122,7 +122,7 @@ async function main() {
   const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
-  const paths = await runPaths(dir, { root: ROOT });
+  const paths = await runPaths(dir, { root: ROOT, main: mainCheckout({ root: ROOT }) });
   keepOnExit(paths);
   makeWorkspace(scenario, paths, dir);
   // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
