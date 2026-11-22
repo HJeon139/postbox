@@ -68,7 +68,7 @@ function segments(/** @type {string[]} */ words) {
 }
 
 /** A word that names a place on disk by more than a name inside the folder the command runs in. */
-const LOOKS_OUT = /^(\/|~(\/|$)|\$HOME(\/|$)|\$\{HOME\}(\/|$)|\.\.(\/|$))|\/\.\.(\/|$)/;
+const LOOKS_OUT = /^(\/|~(\/|$)|\$HOME(\/|$)|\$\{HOME\}(\/|$)|\$TMPDIR(\/|$)|\$\{TMPDIR\}(\/|$)|\.\.(\/|$))|\/\.\.(\/|$)/;
 
 /** The words of one command that may be paths: none of an echo’s, and not the pattern of a search. */
 function pathWords(/** @type {string[]} */ [name, ...args]) {
@@ -82,15 +82,32 @@ function pathWords(/** @type {string[]} */ [name, ...args]) {
 const RUN_FOLDER = /^postbox-uat-workspace-[^/]+$/;
 
 /**
+ * The temp folder a run’s workspace is in (#885), or null for a workspace laid out otherwise: the folder that holds its
+ * postbox-uat-workspace-* folder. @param {string} workspace
+ */
+function tempBase(workspace) {
+  const run = dirname(workspace);
+  return RUN_FOLDER.test(basename(run)) ? dirname(run) : null;
+}
+
+/**
+ * A path as runPaths writes the workspace’s, its temp folder’s real path: on macOS, agents get TMPDIR in its /var
+ * form, which is the same folder under /private/var, and /tmp is /private/tmp. @param {string} path @param {string} base
+ */
+function asReal(path, base) {
+  if (!base.startsWith('/private/')) return path;
+  return /^\/(var|tmp)(\/|$)/.test(path) ? `/private${path}` : path;
+}
+
+/**
  * Whether a path is where the runs’ workspaces live, when the workspace is in a temp folder of its own (#885): the
  * temp folder itself, or inside any run’s folder there, its own included. Anywhere else in the temp folder is the
  * agent’s scratch space. A workspace laid out otherwise has none.
  * @param {string} workspace @returns {(path: string) => boolean}
  */
 function runsFolder(workspace) {
-  const run = dirname(workspace);
-  if (!RUN_FOLDER.test(basename(run))) return () => false;
-  const base = dirname(run);
+  const base = tempBase(workspace);
+  if (base === null) return () => false;
   return (path) => {
     if (path === base) return true;
     if (!path.startsWith(`${base}/`)) return false;
@@ -101,7 +118,8 @@ function runsFolder(workspace) {
 /**
  * The paths a command names that lie outside the run’s workspace. Each is resolved from where the command runs, a
  * `cd` before it included, so `cd src && cat ../package.json` stays inside and `cat ../data/x` doesn’t. Only a path
- * in the person’s home folder counts, or where the runs’ workspaces live in the temp folder (runsFolder): `/bin/zsh`,
+ * in the person’s home folder counts, or where the runs’ workspaces live in the temp folder (runsFolder), however it’s
+ * spelled: `$TMPDIR`, or macOS’s /var form of a /private/var folder. `/bin/zsh`,
  * `/dev/null` and the rest of `/tmp` aren’t the person’s. What an `echo` prints
  * and what a search looks for are text, not paths, and Claude Code’s own folder of long tool results, which it tells
  * the agent to read, isn’t the agent stepping out.
@@ -109,7 +127,13 @@ function runsFolder(workspace) {
  * @returns {string[]}  the paths, as the command wrote them
  */
 export function pathsOutside(command, { workspace, home, cwd = workspace }) {
-  const full = (/** @type {string} */ word, /** @type {string} */ from) => resolve(from, word.replace(/^(~|\$HOME|\$\{HOME\})(?=\/|$)/, home));
+  // $TMPDIR is the runs’ temp folder, as the agents’ environment names it (#885); with none, it’s left as written.
+  const base = tempBase(workspace);
+  const expand = (/** @type {string} */ word) => {
+    const homed = word.replace(/^(~|\$HOME|\$\{HOME\})(?=\/|$)/, home);
+    return base === null ? homed : homed.replace(/^(\$TMPDIR|\$\{TMPDIR\})(?=\/|$)/, base);
+  };
+  const full = (/** @type {string} */ word, /** @type {string} */ from) => asReal(resolve(from, expand(word)), base ?? '');
   const within = (/** @type {string} */ path, /** @type {string} */ folder) => path === folder || path.startsWith(`${folder}/`);
   const runs = runsFolder(workspace);
   const outside = (/** @type {string} */ path) =>

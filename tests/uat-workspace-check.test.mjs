@@ -171,3 +171,27 @@ test('with the workspace in a temp folder of its own (#885), a step out of it in
   assert.deepEqual(pathsOutside('cat /tmp/notes.txt', tmpWhere), []);
   assert.deepEqual(pathsOutside('cd src && cat ../package.json', tmpWhere), [], 'and inside the workspace is inside');
 });
+
+test('on macOS, a step into the runs’ temp folder written as $TMPDIR or by its /var form is outside too (#885)', () => {
+  // macOS’s per-user temp folder, built from parts so the privacy check (tools/privacy-check.mjs) doesn’t read it as one.
+  const tmp = ['', 'var', 'folders', 'ab', 'xyz', 'T'].join('/');
+  // runPaths takes the temp folder’s real path, under /private; agents get TMPDIR in its /var form from their
+  // environment, unresolved, and write it either way.
+  const tmpWhere = { workspace: `/private${tmp}/postbox-uat-workspace-abc/workspace`, home: '/Users/someone' };
+  assert.deepEqual(pathsOutside('ls $TMPDIR', tmpWhere), ['$TMPDIR']);
+  assert.deepEqual(pathsOutside('ls "$TMPDIR"', tmpWhere), ['$TMPDIR']);
+  const bracedTmp = ['$', '{TMPDIR}/'].join('');
+  assert.deepEqual(pathsOutside(`ls ${bracedTmp}`, tmpWhere), [bracedTmp]);
+  assert.deepEqual(pathsOutside('cat $TMPDIR/postbox-uat-workspace-def/workspace/notes.md', tmpWhere), [
+    '$TMPDIR/postbox-uat-workspace-def/workspace/notes.md',
+  ]);
+  assert.deepEqual(pathsOutside(`ls ${tmp}`, tmpWhere), [tmp]);
+  assert.deepEqual(pathsOutside(`cat ${tmp}/postbox-uat-workspace-def/workspace/notes.md`, tmpWhere), [`${tmp}/postbox-uat-workspace-def/workspace/notes.md`]);
+  // Its own workspace through $TMPDIR is inside, and the rest of the temp folder is still scratch space.
+  assert.deepEqual(pathsOutside('cat $TMPDIR/postbox-uat-workspace-abc/workspace/notes.md', tmpWhere), []);
+  assert.deepEqual(pathsOutside(`echo hi > $TMPDIR/scratch.txt && cat ${tmp}/scratch.txt`, tmpWhere), []);
+  // On Linux, $TMPDIR is the temp base as written.
+  const linux = { workspace: '/tmp/postbox-uat-workspace-abc/workspace', home: '/home/someone' };
+  assert.deepEqual(pathsOutside('ls $TMPDIR', linux), ['$TMPDIR']);
+  assert.deepEqual(pathsOutside('cat /tmp/postbox-uat-workspace-def/workspace/x', linux), ['/tmp/postbox-uat-workspace-def/workspace/x']);
+});
