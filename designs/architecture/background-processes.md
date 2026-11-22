@@ -66,7 +66,7 @@ Postbox binds a task the harness reported to exactly one live process group. Eve
 - **That shell started inside the task’s own call.** Its leader’s start time (`lstart`, to the second) falls between two moments: when Postbox read the call’s `tool_use` line, and when it read that call’s result. Each end is widened by one second. These are Postbox’s receive times, because the stream carries no timestamp of its own.
 - **No other call could account for it.** No other tool call in the turn ran the same command, foreground or background, including calls by the turn’s subagents. The stream records every call’s input, so this reads the harness’s own record. It covers a task that exited before its notification arrived, while another call’s shell runs the same command.
 
-A bound job is recorded with its task id, its group id, each member’s pid and start time, the owning session and the owning turn.
+A bound job is recorded as section 6, “What’s recorded”, lists.
 
 ### 2. When the turn ends early, and when it waits
 
@@ -91,9 +91,9 @@ The strict mode is apart from Send now’s lenient keep, which stays as it is, b
 **Kiro and Antigravity end at the terminal event and `exit`, not at a held `close`.** Waiting for `close` would keep #1614’s wait wherever `cmd &` holds the CLI’s pipes.
 - **When the turn ends:** once two things have happened:
   - the CLI has exited;
-  - its stream has given its terminal event: Kiro’s `runFinished`, which sets the mapper’s `finished` (`kiro-cli.mjs`), or Antigravity’s `result` event, which sets its `finished` (`antigravity-cli.mjs`).
-- **When the terminal event lags `exit`:** stdout may still hold unread lines after `exit`, so Postbox keeps reading for up to 2 s. If the event arrives, the turn ends as usual. If not, the turn ends as `main` ends a CLI that exited without its final event: the reply read so far is kept, and the turn fails with the exit error. That error is built from the stderr read up to that point, with the same 2 s bound.
-- **The pipes stay drained.** Postbox doesn’t close its ends of the CLI’s stdio, because a job writing to a pipe with no reader gets SIGPIPE and dies. Critic’s probe killed a backgrounded `echo` that way, status 141. Postbox keeps reading each pipe until EOF. Bytes after the turn’s end go into the bound job’s output tail, if the job has one, kept to its 8 KB and 50-line bound. Otherwise they’re discarded. So the job runs to its end exactly as it does on `main`, where the turn would have waited for it. The same holds for a job that didn’t bind.
+  - its stream has given its terminal event: Kiro’s `runFinished` or `runError` (`kiro-cli.mjs`; `runError` sets no `finished` today, so the implementation treats it as terminal too), or Antigravity’s `result` event, which sets its `finished` (`antigravity-cli.mjs`).
+- **When the terminal event lags `exit`:** stdout may still hold unread lines after `exit`, so Postbox keeps reading for up to 2 s. If the event arrives, the turn’s outcome follows `main`’s order for a closed CLI: a non-zero exit fails the turn even with the terminal event, and a zero exit with it succeeds. If not, the turn ends as `main` ends a CLI that exited without its final event: the reply read so far is kept, and the turn fails with the exit error. That error is built from the stderr read up to that point, with the same 2 s bound.
+- **The pipes stay drained.** Postbox doesn’t close its ends of the CLI’s stdio, because a job writing to a pipe with no reader gets SIGPIPE and dies. Critic’s probe killed a backgrounded `echo` that way, status 141. Postbox keeps reading each pipe until EOF. Bytes after the turn’s end are always discarded: a job fed through the CLI’s pipes has no tail, and its wake says its output wasn’t kept. So the job runs to its end exactly as it does on `main`, where the turn would have waited for it, and the same holds for a job that didn’t bind. The cost is the CLI’s stdout and stderr descriptors, one pair held per finished CLI until the last job holding its pipes ends. A job that never ends holds its pair until it’s stopped.
 - **The live checks** include whether `close` fires while an unredirected `cmd &` runs.
 
 **How many wakes a turn can cause.** A wake counts as no hop, so it needs a bound of its own:
@@ -231,14 +231,14 @@ sequenceDiagram
 - its output file’s device and inode, when it has one;
 - when it was bound.
 
-**A clean shutdown keeps bound jobs.** On `main`, a clean shutdown stops every kept job (`stopKeptJobs` in `server/turn-stop.mjs`). This design changes that for records of kind `bound`: those jobs keep running and their records stay, so a long run survives an upgrade, as the owner asked. Records of kind `sendNow` keep `main`’s stop at shutdown, since the kind is what shutdown reads to tell them apart.
+**A clean shutdown keeps bound jobs whose output doesn’t depend on Postbox.** On `main`, a clean shutdown stops every kept job (`stopKeptJobs` in `server/turn-stop.mjs`). When Postbox exits, its read ends of a CLI’s pipes close, so a job still writing to them dies of SIGPIPE at its next write, as critic’s probe showed. So at a clean shutdown, a `bound` job keeps running and its record stays only when its output goes elsewhere: a redirect, `nohup`, or a harness output file such as Claude Code’s. That lets a long run survive an upgrade, as the owner asked. A bound job still fed through a CLI’s pipes is stopped at shutdown, as on `main`, and its wake says Postbox stopped it as it shut down. The guide line says so too: “Background work is fine: you’re woken when it ends. Redirect its output to a file if it should outlive a Postbox restart.” Whether a job writes to a held pipe is read from its members’ file descriptors (`lsof -p`) at shutdown. If that can’t be read, the job is treated as pipe-fed. Records of kind `sendNow` keep `main`’s stop at shutdown, since the kind is what shutdown reads to tell them apart.
 
 **Startup reconciliation.** After a Postbox restart, whether clean or after a crash, and after a daemon restart, each kept job is adopted again only if a member of its recorded group still has its recorded start time. A job that doesn’t match is recorded as ended, with “Postbox restarted while it ran: exit status unknown”, and wakes its agent once. Nothing is adopted that wasn’t bound before the restart.
 
 ## The guide
 
 `TURN_ENDS` (`server/adapters/guide.mjs`) is Codex-only on `main`.
-- **A harness with this design on** gets one line: “Background work is fine: you’re woken when it ends.” For Codex it replaces `TURN_ENDS`; for the others it’s the only addition.
+- **A harness with this design on** gets one line: “Background work is fine: you’re woken when it ends. Redirect its output to a file if it should outlive a Postbox restart.” For Codex it replaces `TURN_ENDS`; for the others it’s the only addition.
 - **A harness without it** keeps what its guide says today. Codex keeps `TURN_ENDS`, and Kiro and Antigravity get nothing new.
 - **`intent.md`:** the “Attention and wakes” row adds a kept job’s end to what wakes an agent.
 
@@ -255,6 +255,7 @@ What each check answers:
 - **Codex:** does the app-server end a turn while a backgrounded child runs, and what does it do to that child? Does the marker reach its tool shells?
 - **Kiro and Antigravity:** at a normal end, does the CLI exit with `&` and `nohup` work left in its group, and does that work bind and wake once? Does `close` fire while an unredirected `cmd &` runs, or only when it ends? Does the turn end at `exit` either way? Does the marker reach their tool shells?
 - **Each Linux host:** is `/proc/<pid>/environ` readable for the agent’s processes?
+- **Every harness:** across a clean Postbox restart, does a redirected bound job survive and get adopted, and is an unredirected one stopped with its wake saying why?
 
 ## How it’s tested
 
@@ -276,7 +277,7 @@ What each check answers:
     - a process in the harness’s group that doesn’t bind is still stopped at Codex’s turn end;
     - **A Stop after the CLI has exited, before `close`:** Stop kills the group as `main` does, and nothing binds;
     - **A helper that outlives its CLI by milliseconds:** it’s gone at the second read, so it doesn’t bind and no wake comes;
-    - **A clean shutdown:** a bound job keeps running and is adopted at the next start;
+    - **A clean shutdown:** a redirected bound job keeps running and is adopted at the next start. An unredirected one, still writing to a CLI’s pipe, is stopped with a wake that says so, and is never left to die of SIGPIPE and read as “exit status unknown”;
     - a marked process outside the group that doesn’t bind isn’t signaled, and its exit queues no wake;
     - one whose marker names session B, inside B’s turn, binds to B and never to the session whose turn is ending. It wakes only B’s agent, once;
     - one owned by another user isn’t bound, whatever its marker;
