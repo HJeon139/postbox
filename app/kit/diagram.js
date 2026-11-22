@@ -66,11 +66,17 @@ function diagramType(src) {
     if (k === 0) return '';
   }
   // Then directives (“%%{init: …}%%”, which can run over lines), comments and blank lines, in one pass.
+  // A directive’s close can share its line with the header (“%%{init: {}}%% classDiagram”): reading goes on after it.
   let directive = false;
   for (; k < lines.length; k++) {
-    const t = lines[k].trim();
-    if (directive || t.startsWith('%%{')) directive = !t.includes('}%%');
-    else if (t && !t.startsWith('%%')) return t.split(/[\s{]/)[0];
+    let t = lines[k].trim();
+    // Each pass either closes a directive, taking what’s after it, or ends the line, so the loop always stops.
+    while (t && (directive || t.startsWith('%%{'))) {
+      const close = t.indexOf('}%%');
+      directive = close < 0;
+      t = directive ? '' : t.slice(close + 3).trim();
+    }
+    if (t && !t.startsWith('%%')) return t.split(/[\s{]/)[0];
   }
   return '';
 }

@@ -60,6 +60,10 @@ const CLASS_DIRECTIVE = `%%{init: {
 classDiagram
   Shape --|> Base : Inheritance
   Build --> Test : 1. uses`;
+// Nor does one whose close shares its line with the header.
+const CLASS_SAME_LINE = `%%{init: {}}%% classDiagram
+  Shape --|> Base : Inheritance
+  Build --> Test : 1. uses`;
 // Members that read like a state note in a class diagram stay members: its “- String field” is private. A member named
 // “stateDiagram” doesn’t make it one: the type is the diagram’s first word.
 const CLASS_NOTE_LIKE = `classDiagram
@@ -140,6 +144,7 @@ for (const [kind, source, labels, plain = []] of /** @type {[string, string, str
   ['a class diagram’s notes', CLASS_NOTES, ['1. note', '- general', '2. tight']],
   ['a state diagram’s note', STATE_NOTE, ['1. first', '- second', '3. capital']],
   ['a class diagram’s, after a directive over lines,', CLASS_DIRECTIVE, ['Inheritance', '1. uses']],
+  ['a class diagram’s, after a directive on its header’s line,', CLASS_SAME_LINE, ['Inheritance', '1. uses']],
   ['a class diagram’s note-like members, around its', CLASS_NOTE_LIKE, ['String field'], ['- String field']],
   ['a slanted shape’s', SLANTED, ['1. Plan', '- Check', '---']],
   ['a class diagram’s arrows and annotations, around its', CLASS_SYNTAX, ['Inheritance', 'interface', '- decrement()'], ['- decrement()']],
