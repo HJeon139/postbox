@@ -88,12 +88,17 @@ The strict mode is apart from Send now’s lenient keep, which stays as it is, b
 - **The harness is still alive, as Codex’s app-server is when Postbox stops it:** case (a)’s foreground test in section 3 applies. A group with no bound job gets the group signal `main` sends there. A group holding a bound job is signaled member by member, as below.
 - **The harness has exited, as a Kiro or Antigravity CLI has at a normal end:** every member left has init as its parent, so the foreground test can’t tell a leftover helper from `cmd &`. Postbox doesn’t guess, and adds no kill that `main` doesn’t send. Every member that passes section 3’s other rules binds, and nothing is signaled. Those rules are a start time inside the turn, the same user, and still alive at the second read.
 
-**Kiro and Antigravity end at `exit`, not at a held `close`.** Waiting for `close` would keep #1614’s wait wherever `cmd &` holds the CLI’s pipes. So once the CLI has exited, and its stream has given its last event, Postbox takes the snapshot, closes its own ends of the CLI’s stdio, and ends the turn. Output that a bound job goes on writing to those pipes is then dropped, like any job whose output wasn’t kept. The wake says so. Whether `close` fires while an unredirected `cmd &` runs is one of these harnesses’ live checks.
+**Kiro and Antigravity end at the terminal event and `exit`, not at a held `close`.** Waiting for `close` would keep #1614’s wait wherever `cmd &` holds the CLI’s pipes.
+- **When the turn ends:** once two things have happened:
+  - the CLI has exited;
+  - its stream has given its terminal event: Kiro’s `runFinished`, which sets the mapper’s `finished` (`kiro-cli.mjs`), or Antigravity’s `result` event, which sets its `finished` (`antigravity-cli.mjs`).
+- **When the terminal event lags `exit`:** stdout may still hold unread lines after `exit`, so Postbox keeps reading for up to 2 s. If the event arrives, the turn ends as usual. If not, the turn ends as `main` ends a CLI that exited without its final event: the reply read so far is kept, and the turn fails with the exit error. That error is built from the stderr read up to that point, with the same 2 s bound.
+- **The pipes stay drained.** Postbox doesn’t close its ends of the CLI’s stdio, because a job writing to a pipe with no reader gets SIGPIPE and dies. Critic’s probe killed a backgrounded `echo` that way, status 141. Postbox keeps reading each pipe until EOF. Bytes after the turn’s end go into the bound job’s output tail, if the job has one, kept to its 8 KB and 50-line bound. Otherwise they’re discarded. So the job runs to its end exactly as it does on `main`, where the turn would have waited for it. The same holds for a job that didn’t bind.
+- **The live checks** include whether `close` fires while an unredirected `cmd &` runs.
 
 **How many wakes a turn can cause.** A wake counts as no hop, so it needs a bound of its own:
-- **A job must outlive the turn by more than a moment.** It binds only if it’s still alive at a second read, 1 s after the snapshot. A helper that outlives its CLI by milliseconds doesn’t bind.
-- **A session holds at most 4 bound jobs** (`shared/limits.mjs`, as the kept-job limit). A job past that isn’t bound, and runs on as on `main`.
-- **One wake per bound job, when it ends.** So a chain of wakes needs every turn in it to leave new work running for at least a second, which is background work the agent chose to start, as a scheduled wake is. The live check for each harness includes a turn with no background command, which must bind nothing.
+- **A job must outlive the turn by more than a moment.** It binds only if it’s still alive at a second read, 1 s after the snapshot. A helper that outlives its CLI by milliseconds doesn’t bind. The turn’s end doesn’t wait for this read. The turn ends at the snapshot, and the second read runs afterward, only when the snapshot found candidates. A turn with none does no second read.
+- **One wake per bound job, when it ends.** That is a bound on the rate, not on a chain. An agent that runs `sleep 2 &` in every turn is woken after every turn, for as long as it keeps doing so. Each such wake is one the agent chose, as a scheduled wake is, and the chain limit doesn’t count either kind. The room shows every job and its Stop, and the person can stop the agent. The live check for each harness includes a turn with no background command, which must bind nothing.
 
 **Identity is checked again before every pid signal.** Once Postbox signals by pid, a reused pid is the risk, so no pid is signaled on an old reading. Before each signal, Postbox reads that pid’s start time in a fresh `ps` read and signals only if it still matches the one recorded. That covers the first SIGINT, the SIGKILL `GRACE_MS` later, a job’s own Stop, and the startup reconciliation in section 6. A pid whose start time changed, or that is gone, is skipped and recorded as ended. The window left is between that read and the signal itself: milliseconds, and not zero.
 
@@ -119,7 +124,7 @@ Postbox starts every harness process with two variables in its environment: `POS
 
 The owner chose coverage for `setsid` jobs and the orphans of tool shells that led their own groups, on Codex, Kiro and Antigravity, over that concern. A process that binds this way wakes its agent and has a Stop, like any bound job. A Claude Code task that section 1 handled is left to section 1.
 
-**Nothing leaks that `main` reaps, and a kept job isn’t signaled with the rest.** A group signal (`signalPgid`) reaches every member, so it can’t be used on a group that holds a bound job. At a turn’s end that uses pid signals:
+**Nothing leaks that `main` reaps, and a kept job isn’t signaled with the rest.** A group signal (`signalPgid`) reaches every member, so it can’t be used on a group that holds a bound job. At Codex’s turn end, the one end where the harness is still alive and `main` signals its group:
 - **A harness group with no bound job** gets that harness’s group signal where `main` sends one: at Codex’s turn end. At a normal Kiro or Antigravity end, `main` sends none, and neither does this design. Stop is section 2’s `main` Stop.
 - **A harness group that holds a bound job:** the first SIGINT goes to each member that didn’t bind, by its own pid, after the identity check in section 2. It spares the same members the delayed sweep below spares: the bound jobs and their descendants, meaning any member whose parent chain reaches a bound job’s pid with that pid’s recorded start time. The members it signals include the harness, its foreground children, and a marked process inside the turn that fails a rule above.
 - **The delayed SIGKILL sweeps the group again, not the old list.** A foreground process can start a child in the group during `GRACE_MS`, which the first list doesn’t name. So at SIGKILL time, Postbox reads the group’s members again in a fresh `ps` read. It sends SIGKILL to every member, by pid and after its identity check, except two kinds:
@@ -183,7 +188,7 @@ When a kept job ends, the agent that started it gets one wake, sent the way a sc
 
 A host gets the turn-end path only with both of these. Until then it keeps today’s behavior.
 - **A stream reader in `shared/`.** Section 1’s binding needs `task_started`, `task_notification`, each tool call with its input and result, and the `result`. On `main`, the parser is `server/adapters/claude-stream.mjs`, and `hostFiles` (`server/remote/install-bundle.mjs`) ships only `shared/` and `server/remote/host/`. A small reader of just those events moves to `shared/`, and both the server and the daemon load it. Then the daemon can bind a result that arrives while the laptop sleeps.
-- **A stop that keeps.** `daemon-kill.mjs` gains the strict keep: it stops the runner and its other shells, and keeps the bound groups. For Codex, Kiro and Antigravity on a host, it also gains section 2’s pid signal, gated by the same live check. On `main` it signals the runner’s group. The binding rule, the marker scan, the poll and the job record live in one `shared/` module.
+- **A stop that keeps.** `daemon-kill.mjs` gains the strict keep: it stops the runner and its other shells, and keeps the bound groups. For Codex on a host, it also gains section 2’s per-member signal at the turn’s end, gated by the same live check. At a normal Kiro or Antigravity end it sends nothing, and Stop is `main`’s Stop, as locally. On `main` the daemon signals the runner’s group. The binding rule, the marker scan, the poll and the job record live in one `shared/` module.
 
 The daemon keeps polling, and keeps each job’s record, tail and status in its own data folder, never in the workspace. It does this while the laptop sleeps or the link is down. On reconnect, a job that ended while the two were apart wakes its agent once, from the stored record, in one commit. Jobs still running reappear as they are.
 
@@ -217,7 +222,16 @@ sequenceDiagram
 
 ### 6. Restart
 
-**A clean shutdown keeps bound jobs.** On `main`, a clean shutdown stops every kept job (`stopKeptJobs` in `server/turn-stop.mjs`). This design changes that for jobs it bound: they keep running, and their records stay in the store, so a long run survives an upgrade, as the owner asked. Send now’s kept jobs keep `main`’s stop at shutdown.
+**What’s recorded.** Each job record in the store, or in the daemon’s data folder on a host, holds:
+- its kind, `bound` for a job this design bound and `sendNow` for one Send now kept;
+- its session and the turn that bound it;
+- the harness’s task id, for a Claude Code task;
+- its command line, as shown;
+- its group id, and each member’s pid, `ruid` and start time at binding;
+- its output file’s device and inode, when it has one;
+- when it was bound.
+
+**A clean shutdown keeps bound jobs.** On `main`, a clean shutdown stops every kept job (`stopKeptJobs` in `server/turn-stop.mjs`). This design changes that for records of kind `bound`: those jobs keep running and their records stay, so a long run survives an upgrade, as the owner asked. Records of kind `sendNow` keep `main`’s stop at shutdown, since the kind is what shutdown reads to tell them apart.
 
 **Startup reconciliation.** After a Postbox restart, whether clean or after a crash, and after a daemon restart, each kept job is adopted again only if a member of its recorded group still has its recorded start time. A job that doesn’t match is recorded as ended, with “Postbox restarted while it ran: exit status unknown”, and wakes its agent once. Nothing is adopted that wasn’t bound before the restart.
 
@@ -262,7 +276,6 @@ What each check answers:
     - a process in the harness’s group that doesn’t bind is still stopped at Codex’s turn end;
     - **A Stop after the CLI has exited, before `close`:** Stop kills the group as `main` does, and nothing binds;
     - **A helper that outlives its CLI by milliseconds:** it’s gone at the second read, so it doesn’t bind and no wake comes;
-    - **A fifth job in a session** isn’t bound;
     - **A clean shutdown:** a bound job keeps running and is adopted at the next start;
     - a marked process outside the group that doesn’t bind isn’t signaled, and its exit queues no wake;
     - one whose marker names session B, inside B’s turn, binds to B and never to the session whose turn is ending. It wakes only B’s agent, once;
@@ -272,8 +285,10 @@ What each check answers:
       - With `cmd` unredirected, `cmd` holds the pipes, and the turn ends at `exit` anyway.
 
       Either way both processes bind, nothing is signaled, and the turn ends before `cmd` does.
-  - **Codex, Kiro and Antigravity by pid:** the harness and its children stop, and a bound marked process survives.
-  - **A reused pid is skipped:** a pid whose start time changes between the first SIGINT and the delayed SIGKILL, or before a Stop, isn’t signaled.
+  - **Codex by pid:** at Codex’s turn end, the harness and its children stop, and a bound marked process survives;
+  - **A job that writes after the turn’s end:** on a Kiro-style harness whose `cmd &` holds the pipes and writes a line every half second, the turn ends at the terminal event and `exit`. The job keeps writing, isn’t killed by SIGPIPE, runs to its end, and wakes its agent once;
+  - **A terminal event that never comes:** a CLI exits without its final event. After 2 s, the turn fails with the exit error and keeps the reply read so far;
+  - **A reused pid is skipped:** a pid whose start time changes between the first SIGINT and the delayed SIGKILL, or before a job’s own Stop, isn’t signaled.
   - **The output file:**
     - swapping the path for a link after binding, or replacing the file, changes nothing read;
     - a file outside the folder, a link, or a file with a second link gives no tail;
