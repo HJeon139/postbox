@@ -8,6 +8,8 @@
 // void when Postbox couldn’t confirm a stopped turn ended (a forced `clock.stopped`), when Postbox started again with
 // the clock running (`clock.restored`), or when the clock’s state says so (`voided`, which a snapshot keeps).
 
+import { iso } from './atif-time.mjs';
+
 /** Whether a stop is of a turn on this computer, which the clock names `turn:` and its id; else a host’s turn id. */
 const isLocalStop = (/** @type {string} */ stop) => stop.startsWith('turn:');
 
@@ -71,7 +73,7 @@ export function clockStops(clocks) {
   return [...stops.values()];
 }
 
-/** What a trajectory says of one stop. @param {ClockStop} s @param {(ms: number) => string} iso */
+/** What a trajectory says of one stop. @param {ClockStop} s @param {(ms: unknown) => string | undefined} iso */
 function stopSaid(s, iso) {
   const from = s.asked_at === null ? 'from a stop the clock didn’t make' : `from ${iso(s.asked_at)} (${s.asked_by})`;
   const since = (/** @type {number} */ end) => (s.asked_at === null ? '' : ` ${((end - s.asked_at) / 1000).toFixed(3)}s later`);
@@ -103,8 +105,7 @@ function lead(stops) {
  */
 export function stopsScope(stops) {
   if (!stops.length) return { note: null, extra: {} };
-  const iso = (/** @type {number} */ ms) => new Date(ms).toISOString();
-  const at = (/** @type {number | null | undefined} */ ms) => (typeof ms === 'number' ? iso(ms) : null);
+  const at = (/** @type {number | null | undefined} */ ms) => iso(ms) ?? null;
   return {
     note: `Partial: ${lead(stops)}: ${stops.map((s) => stopSaid(s, iso)).join('; ')}.`,
     extra: {
@@ -147,13 +148,13 @@ export function clockVoid(clocks) {
  */
 export function clockScope(clocks) {
   if (!clocks.length) return { note: null, extra: {} };
-  const iso = (/** @type {number | null} */ ms) => (typeof ms === 'number' ? new Date(ms).toISOString() : null);
+  const when = (/** @type {number | null | undefined} */ ms) => iso(ms) ?? null;
   const stops = stopsScope(clockStops(clocks));
   const voided = clockVoid(clocks);
   const said = voided ? `Void as a timed run: ${VOID_WORDS[voided.why] ?? `the clock says so (${voided.why})`}, and Postbox ended the run.` : null;
-  const events = clocks.map((c) => ({ event: c.type, said: CLOCK_WORDS[c.type](c.data), ...c.data, at: iso(c.data.at) }));
+  const events = clocks.map((c) => ({ event: c.type, said: CLOCK_WORDS[c.type](c.data), ...c.data, at: when(c.data.at) }));
   return {
     note: [said, stops.note].filter(Boolean).join(' ') || null,
-    extra: { clock_events: events, ...stops.extra, ...(voided ? { clock_void: { why: voided.why, at: iso(voided.at) } } : {}) },
+    extra: { clock_events: events, ...stops.extra, ...(voided ? { clock_void: { why: voided.why, at: when(voided.at) } } : {}) },
   };
 }

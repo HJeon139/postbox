@@ -4,8 +4,7 @@
 // and what the trajectory still leaves out, in its notes and extra.scope. The file isn’t in the store, so its rows
 // have no place among the events: each prompt goes where its turn first shows in them (placePrompts).
 
-// A step with no time keeps none, rather than losing every trajectory of the run: ATIF’s timestamp is optional.
-const iso = (/** @type {unknown} */ ms) => (typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : undefined);
+import { iso } from './atif-time.mjs';
 
 /**
  * What a trajectory leaves out when its recording has the turns’ prompts: what Postbox never sees, which the backend

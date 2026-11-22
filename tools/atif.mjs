@@ -18,13 +18,12 @@ import { CALL_KINDS, callsOf, questionsOf, WORK_KINDS } from './atif-calls.mjs';
 import { CLOCK_WORDS, clockScope } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { placePrompts, promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
+import { iso } from './atif-time.mjs';
 
 export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
 
 /** @typedef {{ seq: number, type: string, data: any }} Event */
 
-// A step with no time keeps none, rather than losing every trajectory of the run: ATIF’s timestamp is optional.
-const iso = (/** @type {unknown} */ ms) => (typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : undefined);
 /** The items an agent session shows: each is one of its steps. */
 const OWN_KINDS = new Set(['agent', 'block', 'app']);
 
