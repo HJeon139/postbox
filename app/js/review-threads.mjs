@@ -137,6 +137,8 @@ function composer(key, { b, d, closeComposer }) {
 }
 
 const VERDICTS = { comment: 'Comment', approve: 'Approve', request_changes: 'Request changes' };
+/** A verdict’s label, by an own key only: a name every object inherits shows as given. */
+const verdictLabel = (v) => (Object.hasOwn(VERDICTS, v) ? VERDICTS[v] : v);
 /**
  * Who else reviewed the draft (#133), for its review bar: “2 comments from @critic (Request changes)”. Their comments
  * are threads on it; their verdict doesn’t answer it. @param {any} item @param {any} b
@@ -152,7 +154,7 @@ export function reviewersOf(item, b) {
   }
   const said = [...by].map(([handle, r]) => {
     const on = r.revision !== revisionOf(item, b) ? `, on v${r.revision}` : '';
-    return `${plural(r.n, 'comment')} from ${handle}${r.verdict ? ` (${VERDICTS[r.verdict] ?? r.verdict})` : ''}${on}`;
+    return `${plural(r.n, 'comment')} from ${handle}${r.verdict ? ` (${verdictLabel(r.verdict)})` : ''}${on}`;
   });
   return said.length ? h('span.rv-reviewers', ' · ', said.join(' · ')) : null;
 }

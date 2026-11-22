@@ -25,6 +25,8 @@ test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
+// Times read in the page’s locale (#535), so the words checked here are en-US’s: clock.spec.mjs covers other locales.
+test.use({ locale: 'en-US' });
 
 /** An agent’s button in its row, which `agent-row-` names, and its state’s words. */
 const button = (page, se) => page.locator(`#agent-row-${se.id}`);

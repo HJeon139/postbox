@@ -310,7 +310,7 @@ const RENDER = {
   },
 
   table(b, item, ctx) {
-    const d = draft(item.id, () => ({ sort: null, dir: 1, expanded: false }));
+    const d = draft(item.id, () => ({ sort: null, dir: 1, expanded: false, left: 0, top: 0 }));
     const [hd, titleId] = head(b, [
       h('span.small.dim', plural(b.rows.length, 'row')),
       h(
@@ -379,7 +379,7 @@ const RENDER = {
       { tabindex: '0', role: 'region', 'aria-label': `${b.title ?? 'Table'}, scrolls`, style: d.expanded ? { maxHeight: 'none' } : {} },
       table,
     );
-    const node = h('div', { 'aria-labelledby': titleId }, hd, scrollFrame(wrap), status);
+    const node = h('div', { 'aria-labelledby': titleId }, hd, scrollFrame(wrap, d), status);
     return node;
   },
 

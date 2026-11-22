@@ -92,7 +92,8 @@ async function shoot(page, t, key) {
   return moved;
 }
 
-test('a shot of an item far above, with a reply streaming in meanwhile, leaves a following view following', async ({ page }) => {
+test('a shot of an item far above, with a reply streaming in meanwhile, leaves a following view following', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
   const { t } = roomIn(app, 'Runner view: following');
   await openIn(app, page, t);
   expect((await holds(page, t, 'opened')).mode).toBe('following');
@@ -102,7 +103,8 @@ test('a shot of an item far above, with a reply streaming in meanwhile, leaves a
   expect(moved, 'nothing recorded as the runner’s').toEqual([]);
 });
 
-test('a shot of an item far above, with a reply streaming in meanwhile, puts a reading view back at its anchor', async ({ page }) => {
+test('a shot of an item far above, with a reply streaming in meanwhile, puts a reading view back at its anchor', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
   const { t } = roomIn(app, 'Runner view: reading');
   await openIn(app, page, t);
   await page.mouse.move(640, 400);
@@ -118,7 +120,11 @@ test('a shot of an item far above, with a reply streaming in meanwhile, puts a r
   expect(moved).toEqual([]);
 });
 
-test('scroll up reaches the page as PageUp from the composer: focusing the conversation moves nothing, the key moves the view', async ({ page }) => {
+test('scroll up reaches the page as PageUp from the composer: focusing the conversation moves nothing, the key moves the view', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
   const { t } = roomIn(app, 'Runner view: scroll');
   await openIn(app, page, t);
   await page.locator('#composer-input').click();
@@ -174,7 +180,8 @@ async function observeStep(page, d, facts) {
   expect(step.items.join('\n'), 'the app was shot and read').toMatch(/Screenshot: .*\n.*Inside the app: Inside the app: 3 votes/s);
 }
 
-test('a step that shots an app far above and reads inside it leaves a following view following, and records nothing', async ({ page }) => {
+test('a step that shots an app far above and reads inside it leaves a following view following, and records nothing', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
   const { t, d, facts } = await appRoom(page, 'Runner view: app, following');
   expect((await holds(page, t, 'opened')).mode).toBe('following');
   await observeStep(page, d, facts);
@@ -182,7 +189,8 @@ test('a step that shots an app far above and reads inside it leaves a following 
   expect(facts.probes.inputs, 'a read is kept, not recorded').toEqual([]);
 });
 
-test('a step that shots an app far above and reads inside it puts a reading view back at its anchor', async ({ page }) => {
+test('a step that shots an app far above and reads inside it puts a reading view back at its anchor', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
   const { t, d, facts } = await appRoom(page, 'Runner view: app, reading');
   await page.mouse.move(640, 400);
   await page.mouse.wheel(0, -1200);
@@ -196,7 +204,8 @@ test('a step that shots an app far above and reads inside it puts a reading view
   expect(facts.probes.inputs).toEqual([]);
 });
 
-test('a runner click on a control already on screen leaves a reading view’s anchor where it was', async ({ page }) => {
+test('a runner click on a control already on screen leaves a reading view’s anchor where it was', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
   const { t } = roomIn(app, 'Runner view: click');
   await openIn(app, page, t);
   await page.mouse.move(640, 400);
@@ -224,7 +233,8 @@ test('a runner click on a control already on screen leaves a reading view’s an
   ).toEqual(['runner-click']);
 });
 
-test('a runner click on a control off screen still brings it to the middle of the view, and clicks it', async ({ page }) => {
+test('a runner click on a control off screen still brings it to the middle of the view, and clicks it', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
   const { t } = roomIn(app, 'Runner view: click off screen');
   await openIn(app, page, t);
   const key = app.store.state.items[t.id][10].id;

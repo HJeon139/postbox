@@ -102,7 +102,8 @@ test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
-test.use({ colorScheme: 'light' });
+// Times read in the page’s locale (#535), so the words checked here are en-US’s: clock.spec.mjs covers other locales.
+test.use({ colorScheme: 'light', locale: 'en-US' });
 
 /** A conversation of its own with @drawer, open in the page, sent that message. lints() are its lint turns. */
 async function conversation(page, title, text) {
@@ -123,8 +124,8 @@ test('a finished progress block says when it last moved, and the clock leaves it
   await expect(live).toBeVisible();
   // A finished block says the time it last moved, which needs no tick, with the day on hover.
   const updated = finished.locator('.block-head [data-since]');
-  await expect(updated).toHaveText(/^Updated \d\d:\d\d$/);
-  await expect(updated).toHaveAttribute('title', /\w+day, \w+ \d+ \d\d:\d\d$/);
+  await expect(updated).toHaveText(/^Updated \d{1,2}:\d\d\s[AP]M$/);
+  await expect(updated).toHaveAttribute('title', /\w+day, \w+ \d+ \d{1,2}:\d\d\s[AP]M$/);
   // Count every change to the finished block while the running one’s time goes up at least once.
   await finished.evaluate((node) => {
     const w = /** @type {any} */ (window);
@@ -196,9 +197,11 @@ test('#53 apps too small to read, or showing only an error, are shown with notes
   await idle();
   await synced(page, app);
   expect(lints().length, 'one lint turn for the turn that showed the apps').toBe(1);
-  await expect(page.locator('.app-note', { hasText: /marks are under 4 px/ }), 'the person sees the app with notes, not as a failure').toContainText(
-    /^Shown with notes for drawer/,
+  // The check’s own words (“marks are under 4 px”) went to drawer; the person sees a plain note (#981).
+  await expect(page.locator('.app-note', { hasText: 'Some text or marks' }), 'the person sees the app with notes, not as a failure').toHaveText(
+    'Some text or marks here may be hard to read or use. drawer has the details.',
   );
+  await expect(page.locator('.app-note', { hasText: /\bpx\b/ }), 'no pixel sizes for the person').toHaveCount(0);
 });
 
 test('#58 a progress step counts with a bar, says when it moved, its time goes up and its glyph turns; left running, it looks stalled', async ({ page }) => {

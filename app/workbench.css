@@ -932,6 +932,15 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .rp-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 @media (max-width: 767px) { .rp-handle { display: none; } }
 .sidepanel .sp-head, .workpane .wp-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
+/* Its title and the conversation it’s in, each one line cut with an ellipsis, as the top bar cuts a name (#551). Their
+   column keeps room for “Thread” and a few words, and the buttons wrap under it, kept right, when the head is too narrow
+   for both. A button whose label changes (Summarize back, Copy link) keeps the width of its widest one, a hidden line
+   under its label, so the change moves no button across rows under the pointer. */
+.sidepanel .sp-line { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidepanel .sp-head { flex-wrap: wrap; justify-content: flex-end; }
+.sidepanel .sp-head > .grow { min-width: 4.5em; }
+.sidepanel .sp-head .btn[data-widest] { display: inline-grid; justify-items: center; align-content: center; row-gap: 0; }
+.sidepanel .sp-head .btn[data-widest]::after { content: attr(data-widest); height: 0; overflow: hidden; visibility: hidden; }
 .sidepanel .sp-body { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
 /* The composer brings its own padding, the same as the conversation’s, so the two line up (#116). The foot is the
    scroll box’s last child, at its end when the thread is short, and held at its bottom over the thread as it scrolls,
@@ -1128,7 +1137,7 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 /* Diagrams render in their own sandbox frame */
 .diagram { border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); overflow: hidden; }
 .diagram .d-bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--line); }
-.diagram iframe { display: block; width: 100%; border: 0; height: 160px; background: var(--sunk); }
+.diagram iframe { display: block; width: 100%; border: 0; min-height: 160px; background: var(--sunk); }
 .diagram pre { margin: 0; padding: 10px 12px; border-top: 1px solid var(--line); overflow: auto; }
 
 /* App frames */

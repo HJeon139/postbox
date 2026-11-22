@@ -43,3 +43,89 @@ test('#1253: the block’s own agent still hears it as an event, and a line with
   const plain = arrange.post(f.rt, f.t.id, { kind: 'voice', text: 'Approved.' });
   assert.equal(arrange.describeItem(f.rt, plain, f.beta), 'The person: Approved.');
 });
+
+/** alpha’s review “Release plan”, answered with Request changes and two comments. @param {string} content */
+function reviewed(f, content) {
+  const block = { type: 'review', id: 'plan-draft-2', version: 1, title: 'Release plan', content, format: 'markdown' };
+  const voice = 'Submitted review: Request changes · 2 comments';
+  const values = {
+    verdict: 'request_changes',
+    comments: [
+      { line: 12, text: 'Cut the second rollout step.' },
+      { line: 40, text: 'Name the owner.' },
+    ],
+  };
+  const shown = arrange.post(f.rt, f.t.id, {
+    kind: 'block',
+    sessionId: f.alpha.id,
+    personaId: f.alpha.personaId,
+    handle: 'alpha',
+    valid: true,
+    block,
+    answered: true,
+    answer: { action: 'submit', values, voice },
+  });
+  // As server/blocks.mjs writes it: the line keeps the block it answered and this answer’s comments.
+  const answerTo = { id: block.id, type: block.type, handle: 'alpha', title: block.title };
+  const line = arrange.post(f.rt, f.t.id, { kind: 'voice', text: voice, blockItemId: shown.id, answerTo, comments: values.comments });
+  return { shown, line };
+}
+
+test('#1253: another agent reads the comments that came with the person’s review', () => {
+  const f = setup();
+  const { line } = reviewed(f, 'Ship it.');
+  const read = arrange.describeItem(f.rt, line, f.beta);
+  assert.match(read, /^The person answered @alpha’s review “Release plan” \(plan-draft-2\): Submitted review: Request changes · 2 comments/);
+  assert.match(read, /line 12: Cut the second rollout step\./);
+  assert.match(read, /line 40: Name the owner\./);
+});
+
+test('#1253: the comments of a review longer than the cut reach the room on the answer’s own line', () => {
+  // The block’s own line is cut at READING.item, and its answer comes last; the answer line carries the verdict and the
+  // comments, so they arrive whatever the block’s length.
+  const f = setup();
+  const { shown, line } = reviewed(f, `${'The plan, at length. '.repeat(400)}`);
+  assert.doesNotMatch(arrange.describeItem(f.rt, shown, f.beta), /Name the owner/, 'the block’s line is cut first');
+  const read = arrange.describeItem(f.rt, line, f.beta);
+  assert.match(read, /Request changes/);
+  assert.match(read, /line 12: Cut the second rollout step\./);
+  assert.match(read, /line 40: Name the owner\./);
+});
+
+test('#1253: comments cut on the answer line point at the line, which keeps this answer’s whole', () => {
+  // The block may since hold a newer answer; the line keeps this one’s comments, so a cut points back at it.
+  const f = setup();
+  const long = 'Rework this section. '.repeat(150);
+  const block = { type: 'review', id: 'plan-draft-3', version: 1, title: 'Release plan', content: 'Ship it.', format: 'markdown' };
+  const voice = 'Submitted review: Request changes · 1 comment';
+  const shown = arrange.post(f.rt, f.t.id, {
+    kind: 'block',
+    sessionId: f.alpha.id,
+    personaId: f.alpha.personaId,
+    handle: 'alpha',
+    valid: true,
+    block,
+    answered: true,
+    answer: { action: 'submit', values: { verdict: 'request_changes', comments: [{ line: 3, text: long }] }, voice },
+  });
+  const answerTo = { id: block.id, type: block.type, handle: 'alpha', title: block.title };
+  const comments = [{ line: 3, text: long }];
+  const line = arrange.post(f.rt, f.t.id, { kind: 'voice', text: voice, blockItemId: shown.id, answerTo, comments });
+  const read = arrange.describeItem(f.rt, line, f.beta);
+  assert.match(read, new RegExp(`read_message \\{ id: "${line.id}" \\} has the rest`));
+  // And that reading has the comment whole.
+  assert.ok(arrange.describeItem(f.rt, line, null, 100_000, f.beta).includes(long.trim()));
+});
+
+test('#1253: a read with no session leaves out the block’s own agent by the reader, and by the line’s own record', () => {
+  // Integrator review of #1600: describeItem’s reader stands in for se, and answerTo names the agent when the block
+  // can’t be found where the reader looks.
+  const f = setup();
+  const it = answered(f, { type: 'choice', id: 'pick-3', version: 1, title: 'Which?', options: [{ id: 'a', label: 'A' }] }, 'Chose: A');
+  assert.equal(arrange.describeItem(f.rt, it, null, Number.POSITIVE_INFINITY, f.alpha), null, 'the reader is the block’s agent');
+  assert.match(arrange.describeItem(f.rt, it, null, Number.POSITIVE_INFINITY, f.beta), /answered @alpha’s choice “Which\?” \(pick-3\)/);
+  const unfound = { type: 'choice', id: 'gone', handle: 'alpha', sessionId: f.alpha.id };
+  const kept = arrange.post(f.rt, f.t.id, { kind: 'voice', text: 'Chose: B', blockItemId: 'it_missing', answerTo: unfound });
+  assert.equal(arrange.describeItem(f.rt, kept, f.alpha), null, 'its own record names the agent when the block isn’t found');
+  assert.match(arrange.describeItem(f.rt, kept, f.beta), /answered @alpha’s choice \(gone\)/);
+});

@@ -23,3 +23,24 @@ test('the status-function check catches one in a step’s env', () => {
   const broken = ['    if: always()', '      - if: cancelled()', '        env:', `          CANCELLED: \${{ cancelled() }}`];
   assert.deepEqual(misplacedStatus(broken.join('\n')), [4]);
 });
+
+/** The workflows whose checks the protect-main ruleset requires. GitHub’s merge queue waits for each of them on every
+ * merge group, so a workflow that doesn’t run on merge_group holds the queue until its timeout. */
+const REQUIRED = ['check.yml', 'dependency-review.yml'];
+
+test('the workflows of the required checks run on merge groups', () => {
+  for (const name of REQUIRED) {
+    assert.match(readFileSync(new URL(name, DIR), 'utf8'), /^ {2}merge_group:/m, name);
+  }
+});
+
+test('a workflow that runs on merge groups gives each its own concurrency group', () => {
+  // A merge group has no pull request number: a group keyed on it alone is the same for every merge group, and
+  // cancel-in-progress would cancel one with the next.
+  for (const name of readdirSync(DIR).filter((f) => f.endsWith('.yml'))) {
+    const text = readFileSync(new URL(name, DIR), 'utf8');
+    if (!/^ {2}merge_group:/m.test(text)) continue;
+    const group = text.match(/^ {2}group: (.*)$/m)?.[1] ?? '';
+    assert.ok(!group.includes('pull_request.number') || group.includes('||'), `${name}: ${group}`);
+  }
+});

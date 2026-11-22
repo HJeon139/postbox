@@ -33,6 +33,8 @@ POSTBOX_STREAM_LAG=300 npx playwright test         # with the server’s events 
 
 CI runs every spec twice on each pull request, once normally and once with the server’s events late. There are no retries: one failure fails the run. Each pass is split into three shards by spec file (`npx playwright test --shard=1/3`), and the six run at once; the check “Demo in Chrome, with accessibility checks” passes only when all six did. A pull request that changes only docs (Markdown outside `server/personas/`, `designs/` and `LICENSE`) skips the browser specs, and that check passes.
 
+The required checks run on each merge group of GitHub’s merge queue too (`merge_group` in check.yml and dependency-review.yml): main’s tip with the pull requests ahead in the queue merged on top, so what reaches main is what was checked. A merge group skips the two commit checks, which read only the pull request’s own commits, and skips the browser specs when every pull request in it changes only docs. `tests/workflows.test.mjs` fails when a required check’s workflow doesn’t run on merge groups, or shares one concurrency group among them. A merge group’s run releases nothing: release.yml reads only check.yml’s runs on a push to main, which the queue’s merge makes.
+
 ## Node
 
 **Do**

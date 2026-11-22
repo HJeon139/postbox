@@ -208,3 +208,36 @@ test('#895: update_block’s refusal for a block that isn’t there cuts a 20,00
     assert.match(r.message, /^There’s no block with id b{40} to update\. Use show_block to add it\.$/);
   }
 });
+
+test('#518: a review revised after the person approved it keeps a receipt of that approval through later revisions', async () => {
+  const { rt, store, t, adapter } = setup();
+  await turn(rt, adapter, t, (tools) => tools.show_block({ block: review }));
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  rt.act(t.id, item.id, 'submit', { verdict: 'approve', comments: [] }, 1);
+  await settle(rt);
+  const at = store.item(t.id, item.id).answer.at;
+  // The agent read the approval in its turn, and revises the draft: the block asks again, for revision 2.
+  const said = await turn(rt, adapter, t, (tools) => tools.update_block({ block: { ...review, content: `${review.content}\n\nOne more line.` } }));
+  assert.equal(said.ok, true, said.message);
+  let it = store.item(t.id, item.id);
+  assert.deepEqual([it.answered, it.revision], [false, 2]);
+  assert.deepEqual(it.priorAnswer, { action: 'submit', verdict: 'approve', revision: 1, at }, 'what they approved, which revision, and when');
+  // A second revision before they answer keeps the same receipt; their answer to it is the one that counts.
+  await turn(rt, adapter, t, (tools) => tools.update_block({ block: { ...review, content: `${review.content}\n\nTwo more lines.` } }));
+  it = store.item(t.id, item.id);
+  assert.deepEqual([it.revision, it.priorAnswer?.revision], [3, 1]);
+  rt.act(t.id, item.id, 'submit', { verdict: 'request_changes', comments: [{ line: 1, text: 'Shorter, please.' }] }, 3);
+  assert.equal(store.item(t.id, item.id).answer.values.verdict, 'request_changes');
+});
+
+test('#518: a choice reopened after its answer keeps no receipt: only a review draws one', async () => {
+  const { rt, store, t, adapter } = setup();
+  await turn(rt, adapter, t, (tools) => tools.show_block({ block: choice }));
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  rt.act(t.id, item.id, 'choose', { selected: [choice.options[0].id] }, 1);
+  await settle(rt);
+  const said = await turn(rt, adapter, t, (tools) => tools.update_block({ block: { ...choice, title: 'Where now, again?' } }));
+  assert.equal(said.ok, true, said.message);
+  const it = store.item(t.id, item.id);
+  assert.deepEqual([it.answered, it.revision, it.priorAnswer], [false, 2, undefined]);
+});
