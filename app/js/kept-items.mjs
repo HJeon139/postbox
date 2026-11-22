@@ -7,6 +7,18 @@ import { apply } from '/shared/state.mjs';
 
 /** @typedef {import('./item-ranges.mjs').Range} Range */
 
+/** A page of the newest items, as a load’s head brings: what the tail is cut back to (#1260). */
+const TAIL_MOST = 200;
+
+/**
+ * The newest items a range keeps as its tail, at most two pages of them (#1260): past that it’s cut back to one, so the
+ * copy and the index it needs are made once every page of adds, not on each one. The tail is the newest items, so End
+ * starts it at total minus its length, and dropping from its front keeps that true. A new list when it cuts, not one cut
+ * in place: item-index.mjs indexes a list by its places, which only grow.
+ * @param {any[]} list
+ */
+export const keptTail = (list) => (list.length > 2 * TAIL_MOST ? list.slice(-TAIL_MOST) : list);
+
 /**
  * The conversation's first items, kept apart for Home (a load's head, place), current from their own events: a patch or text
  * applies, and a moved item leaves its stub in its place, as off a range's end. An add goes past them.
@@ -63,4 +75,6 @@ export function keepTail(r, type, d, moving) {
   else if (positionOf(r.tail, d.id) >= 0) apply(kept, type, d);
   else if (type === 'item.move' && moving) r.tail.push(Object.assign(moving, d.patch));
   else if (type === 'item.move') r.tail = undefined;
+  // Read at the top of a busy room, it grew by every item (#1260).
+  if (r.tail) r.tail = keptTail(r.tail);
 }

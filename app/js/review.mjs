@@ -6,12 +6,14 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { diffLines, followLines, splitLines } from '/shared/review-diff.mjs';
 import { reviewFileKeys } from '/shared/review-files.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
-import { enhanceMarkdown, mountApp } from './apps.mjs';
+import { enhanceMarkdown } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
+import { reviewApp } from './review-app.mjs';
 import { reviewDraft, startComment, stopComment } from './review-draft.mjs';
 import { keepReviewDraft } from './review-draft-store.mjs';
 import { inlineMd, itemWords, words } from './review-inline.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
+import { answerReceipt } from './review-receipt.mjs';
 import { withDelimiter } from './review-table.mjs';
 import { reviewersOf, threadBox as threadsFor } from './review-threads.mjs';
 import { fullScreen, revisionOf, seg, setView, viewOf } from './review-view.mjs';
@@ -103,7 +105,7 @@ export function renderReview(b, item, ctx, kit) {
   hd.querySelector('.title').classList.add('mono');
   hd.querySelector('.title').style.fontSize = '13px';
   // A review takes the transcript’s width (#179); box is what goes full screen.
-  const box = h('div.rv-box', hd);
+  const box = h('div.rv-box', hd, answerReceipt(item));
   const node = h('div.rv-wide', { 'aria-labelledby': titleId }, box);
   full?.fit(node, box, titleId);
 
@@ -111,25 +113,8 @@ export function renderReview(b, item, ctx, kit) {
   const draftsAt = (key) => d.comments.filter((c) => (b.format === 'app' ? c.anchor === key : c.line === key));
   const threadBox = (key) => threadsFor(key, { b, d, done, rerender, closeComposer });
 
-  if (b.format === 'app') {
-    const appEl = h('div');
-    const pins = h('div.rv-pins');
-    const anchors = new Set(
-      [...(b.threads ?? []).map((t) => t.anchor), ...d.comments.map((c) => c.anchor), ...(d.composing ? [d.composing] : [])].filter(Boolean),
-    );
-    for (const a of anchors) pins.append(h('div', h('span.small.dim', 'On ', h('b', a)), threadBox(a)));
-    if (!anchors.size) pins.append(h('p.small.dim', done ? 'No comments.' : 'Click a highlighted part of the app to comment on it.'));
-    mountApp(appEl, b.appId, {
-      review: !done,
-      onPin: (anchor) => {
-        if (!done) {
-          startComment(d, anchor);
-          rerender();
-        }
-      },
-    });
-    box.append(h('div.app-review-wrap', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' } }, appEl, pins));
-  } else if (mode === 'preview') {
+  if (b.format === 'app') box.append(reviewApp(b, { d, done, rerender, threadBox }));
+  else if (mode === 'preview') {
     const all = [...(b.threads ?? []), ...d.comments];
     // The lines with threads or drafts, and a line’s open comment box, which a revision can leave on a line (#123).
     const keys = [...new Set([...all.map((x) => x.line), d.composing].filter((n) => typeof n === 'number'))].sort((x, y) => x - y);
