@@ -1,6 +1,7 @@
 // #480: the persona sheet says, in one line under Backend, what each backend does with the agent’s memory: Claude Code
 // and the Agent SDK keep its own, Codex’s is off, Kiro’s is off when isolated and yours with your setup, and Antigravity
-// keeps none. At 1280 and 375 px, from the conversation’s ⋯, where its agents are named at either width.
+// keeps its own for your sign-in. At 1280 and 375 px, from the conversation’s ⋯, where its agents are named at either
+// width. A host’s lines, and an older Claude Code’s, are the unit test’s (tests/agent-memory.test.mjs).
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -31,7 +32,7 @@ const CASES = [
   ['codex', {}, 'Memory: off. Codex keeps one memory for everything it runs, so Postbox turns it off.'],
   ['kiro-cli', { usesHostSetup: false }, 'Memory: off. Isolated agents share one Kiro home, so Postbox turns it off there.'],
   ['kiro-cli', { usesHostSetup: true }, 'Memory: yours. With your setup, it reads and adds to your own Kiro memory.'],
-  ['antigravity-cli', {}, 'Memory: none on this backend.'],
+  ['antigravity-cli', {}, 'Memory: Antigravity’s own, kept for your sign-in and shared with every agent on it.'],
 ];
 let n = 0;
 
