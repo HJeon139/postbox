@@ -77,7 +77,8 @@ async function work(a, steps = []) {
  */
 export function appPath(folder, name) {
   if (typeof name !== 'string' || !name || !existsSync(folder)) return null;
-  const root = realpathSync(folder);
+  // The native call, as the kernel resolves a link target’s .. after another link, not lexically (#1215).
+  const root = realpathSync.native(folder);
   const inside = (/** @type {string} */ p) => {
     const rel = relative(root, p);
     return !!rel && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
@@ -86,7 +87,7 @@ export function appPath(folder, name) {
   if (!inside(path) || !existsSync(dirname(path))) return null;
   // A link whose target doesn't exist yet would be followed by the write, wherever it points.
   if (!existsSync(path) && lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) return null;
-  const real = existsSync(path) ? realpathSync(path) : join(realpathSync(dirname(path)), basename(path));
+  const real = existsSync(path) ? realpathSync.native(path) : join(realpathSync.native(dirname(path)), basename(path));
   // A folder isn't a file to write; and the path given back is the one under the room's folder as the room names it,
   // so the Work view counts the file as the project's.
   if (!inside(real) || statSync(real, { throwIfNoEntry: false })?.isDirectory()) return null;
