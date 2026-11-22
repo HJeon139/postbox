@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.36.1 (2026-11-22)
+
+### Fixes
+
+- **review:** read a legacy review’s authors in revisedReview, and pin the echo count
+- **review:** keep a stored comment echoed under another name beside the agent’s new reply
+- **review:** take an update echoing the person’s comments; hold the author rule on show_block
+
 ## 4.36.0 (2026-11-22)
 
 ### Features
