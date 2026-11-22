@@ -627,15 +627,15 @@ export class AntigravityCliAdapter {
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
       const unhooked = useHook && !hookConfirmed && !agyBypassWebOff(persona);
       if (unhooked) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
-      ctx.prompt?.({ guide: unhooked ? rulesWith(false) : rules }); // the rules file as agy reads it; each run records its prompt
+      const guide = unhooked ? rulesWith(false) : rules; // the rules file as agy reads it, recorded with each run’s prompt
       try {
-        let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
+        let done = await this.run({ ctx, cwd, addDirs, prompt, guide, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
         if (done.missingSession && !ctx.signal.aborted) {
           ctx.saveState({ agySessionId: null });
           ctx.state.agySessionId = null;
           const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
-          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null, hookConfirmed: await confirmed() });
+          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, guide, sessionId: null, hookConfirmed: await confirmed() });
         }
         // agy ends a turn at a refused call, before the agent says anything (the Gemini room UAT’s tester rated that
         // high: the person saw a refused step and silence). So the conversation goes on once, for the agent to say
@@ -643,7 +643,16 @@ export class AntigravityCliAdapter {
         if (done.endedOnRefusal && !ctx.signal.aborted && ctx.state.agySessionId) {
           ctx.status({ state: 'think', currentStep: 'Telling you about the refused call' });
           const followUp = refusalFollowUp(done.endedOnRefusal);
-          await this.run({ ctx, cwd, addDirs, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed: await confirmed() });
+          await this.run({
+            ctx,
+            cwd,
+            addDirs,
+            prompt: followUp,
+            guide,
+            sessionId: ctx.state.agySessionId,
+            wrote: done.wrote,
+            hookConfirmed: await confirmed(),
+          });
         }
       } finally {
         await rm(plugin, { recursive: true, force: true }).catch(() => {});
@@ -655,10 +664,10 @@ export class AntigravityCliAdapter {
   }
 
   /**
-   * @param {{ ctx: any, cwd: string, addDirs: string[], prompt: string, sessionId: string|null, wrote?: boolean, hookConfirmed?: boolean }} turn
+   * @param {{ ctx: any, cwd: string, addDirs: string[], prompt: string, guide?: string, sessionId: string|null, wrote?: boolean, hookConfirmed?: boolean }} turn
    * @returns {Promise<{ missingSession?: boolean, endedOnRefusal?: string|null, wrote?: boolean }>}
    */
-  run({ ctx, cwd, addDirs, prompt, sessionId, wrote = false, hookConfirmed = false }) {
+  run({ ctx, cwd, addDirs, prompt, guide, sessionId, wrote = false, hookConfirmed = false }) {
     const persona = ctx.persona;
     const model = agyModel(persona, this.capabilities.models);
     const effort = agyEffort(model, effortOf(persona));
@@ -675,7 +684,7 @@ export class AntigravityCliAdapter {
         reject(agyStartError(e, prompt, this.bin));
         return;
       }
-      recordOnceSpawned(ctx, child, { text: prompt });
+      recordOnceSpawned(ctx, child, { guide, text: prompt });
       let stderr = '';
       const c = child;
       const exited = new Promise((r) => {

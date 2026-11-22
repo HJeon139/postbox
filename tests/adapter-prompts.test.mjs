@@ -98,6 +98,23 @@ function agySpawn(lines, seen) {
   };
 }
 
+/** An Antigravity turn's context, recording what it's given to record. @param {any[]} recorded */
+const agyCtx = (recorded) => ({
+  signal: new AbortController().signal,
+  mcpUrl: 'http://127.0.0.1:4280/mcp?session=se_1',
+  persona: { handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode: 'ask', tools: [], description: '', instructions: '' },
+  project: null,
+  handles: ['gem'],
+  state: {},
+  saveState: () => {},
+  pathOf: () => null,
+  text: () => {},
+  activity: () => {},
+  status: () => {},
+  reported: () => {},
+  prompt: (/** @type {any} */ p) => recorded.push(p),
+});
+
 test('Antigravity records the rules file agy reads, with its tool and approval notes, and the prompt it passes', async () => {
   const root = tempDir('pb-prompt-agy-');
   const seen = [];
@@ -112,22 +129,7 @@ test('Antigravity records the rules file agy reads, with its tool and approval n
     env: {},
   });
   const recorded = [];
-  const abort = new AbortController();
-  const ctx = {
-    signal: abort.signal,
-    mcpUrl: 'http://127.0.0.1:4280/mcp?session=se_1',
-    persona: { handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode: 'ask', tools: [], description: '', instructions: '' },
-    project: null,
-    handles: ['gem'],
-    state: {},
-    saveState: () => {},
-    pathOf: () => null,
-    text: () => {},
-    activity: () => {},
-    status: () => {},
-    reported: () => {},
-    prompt: (p) => recorded.push(p),
-  };
+  const ctx = agyCtx(recorded);
   await adapter.deliver({}, { kind: 'user', text: 'Tea or coffee?' }, ctx);
   const guides = recorded.filter((p) => typeof p.guide === 'string');
   const texts = recorded.filter((p) => typeof p.text === 'string');
@@ -138,6 +140,19 @@ test('Antigravity records the rules file agy reads, with its tool and approval n
     texts.map((p) => `--print=${p.text}`),
     seen.map((s) => s.args.at(-1)),
   );
+});
+
+test('Antigravity records neither its rules nor its prompt when agy never started (ENOENT)', async () => {
+  const root = tempDir('pb-prompt-agy-');
+  const spawnImpl = () => {
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => {} });
+    setImmediate(() => child.emit('error', Object.assign(new Error('spawn agy ENOENT'), { code: 'ENOENT' })));
+    return child;
+  };
+  const adapter = new AntigravityCliAdapter({ workRoot: join(root, 'work'), settingsFile: join(root, 'settings.json'), spawnImpl, env: {} });
+  const recorded = [];
+  await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Tea or coffee?' }, agyCtx(recorded)));
+  assert.deepEqual(recorded, []);
 });
 
 test('Codex records the developer instructions its thread opens with, and the input turn/start sends', async () => {
