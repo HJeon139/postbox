@@ -7,7 +7,7 @@
 // Moved from tools/checks/side-summary.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, focused, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, focused, startPostbox, synced } from './postbox.mjs';
 import { heldBackend, sideRoom } from './side-threads.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -57,6 +57,33 @@ test('#225 Summarize back in a side thread: pick who writes it, and the summary 
   expect(store.state.threads[room.id].hops, 'the summary didn’t count against the wake limit').toBe(hops);
   await synced(page, app);
   await expect(page.locator('#main .shared-card', { hasText: '1908' })).toContainText(/^\s*Summary of the thread “indexer ↔ researcher” · indexer/);
+});
+
+test('#283 with one of the pair deleted, the menu offers only the one still here, and the deleted agent isn’t brought back', async ({ page }) => {
+  const { rt, store } = app;
+  const { room, indexer, button } = await sideThread(page, 'One deleted');
+  rt.deleteSession(indexer.id);
+  await synced(page, app);
+  await button.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.menu [role=menuitem]')).toHaveText(['researcher writes it']);
+  await page.keyboard.press('Escape');
+  const back = Object.values(store.state.sessions).filter((x) => x.threadId === room.id && x.personaId === indexer.personaId);
+  expect(back, 'no indexer session made').toEqual([]);
+});
+
+test('#283 with both of the pair deleted, Summarize back opens no empty menu: it says who’s gone', async ({ page }) => {
+  const { rt } = app;
+  const { room, indexer, researcher, button } = await sideThread(page, 'Both deleted');
+  // A third agent keeps the room, as deleting its last agent would erase it.
+  rt.ensureSession(room.id, Object.values(app.store.state.personas).find((p) => p.handle === 'librarian').id);
+  rt.deleteSession(indexer.id);
+  rt.deleteSession(researcher.id);
+  await synced(page, app);
+  allowPageError(page, /status of 409/);
+  await button.click();
+  await expect(page.locator('.menu')).toHaveCount(0);
+  await expect(page.getByText('@indexer and @researcher are no longer in this conversation.', { exact: false })).toBeVisible();
 });
 
 test('#225 Summarize back asked while its agent is busy in the side thread waits until the summary is posted', async ({ page }) => {

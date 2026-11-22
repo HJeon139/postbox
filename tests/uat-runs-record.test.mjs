@@ -57,12 +57,15 @@ test('a run’s record keeps every key the live run writes to run.json, as it wr
       tester: { spent: 0.05 },
       facts: { streams: [], timing: { total: 1 } },
       coverage: [{ phase: 1, trigger: 'x', hit: true }],
+      workspace: '/private/tmp/postbox-uat-workspace-abc/workspace',
       now: 120_000,
       git: () => null,
     }),
     // What tools/uat-run.mjs adds beside runRecord’s keys.
     budget: { cap: 15 },
   };
+  // Where the agents worked (#885), which a recheck reads their commands against.
+  assert.equal(written.workspace, '/private/tmp/postbox-uat-workspace-abc/workspace');
   writeFileSync(join(dir, 'run.json'), JSON.stringify(written));
   const record = /** @type {Record<string, unknown>} */ (readRun(dir));
   for (const [key, value] of Object.entries(written)) assert.deepEqual(record[key], value, `run.json’s ${key}`);

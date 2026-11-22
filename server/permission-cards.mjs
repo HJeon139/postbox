@@ -141,7 +141,8 @@ export function settlePermission(rt, itemId, status, message, answer = {}, patch
   if (w.question) {
     // No call waits on it now, so it isn’t what the running turn needs; once the turn ends it counts as an asking block.
     releaseNeed(rt, rt.s.sessions[w.sessionId], itemId, 'tool');
-    w.resolve({ message });
+    // The status says why: the host’s own limit (HOST_LIMIT) differs from a turn’s end, a Stop or a harness’s cancel (#1059).
+    w.resolve({ message, status });
     return true;
   }
   // The refusal below reaches a call nobody reads once the turn has ended, so an expiry also tells the agent (#721).

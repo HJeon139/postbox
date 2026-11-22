@@ -1,8 +1,12 @@
-# Runs Postbox’s checks on every pull request and every push to main. See designs/architecture/code-quality.md, “Code quality”.
+# Runs Postbox’s checks on every pull request, every merge group of GitHub’s merge queue, and every push to main. See
+# designs/architecture/code-quality.md, “Code quality”.
 name: check
 
 on:
   pull_request:
+  # The merge queue waits for the required checks on each merge group: main’s tip with the pull requests ahead in the
+  # queue and this one merged on top. No paths filter here, so every group reports every required check.
+  merge_group:
   push:
     branches: [main]
     # Not for a push that changes only these, which is what the release commit changes: the merge before it was
@@ -15,7 +19,8 @@ permissions:
   contents: read
 
 # A new push to a pull request replaces its run still in progress. Keyed on the pull request’s number, not its branch’s
-# name, so two forks' branches of the same name don't cancel each other. A push to main gets a group of its own.
+# name, so two forks' branches of the same name don't cancel each other. A push to main and each merge group get a
+# group of their own: the queue removes a group it no longer needs itself, and one group must never cancel another’s.
 concurrency:
   group: check-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -43,7 +48,8 @@ jobs:
       - name: Install Playwright’s headless Chromium
         run: npx playwright install --with-deps --only-shell chromium
       - run: npm run check
-      # Conventional Commits, from v0.2.0 on: older commits on long-running branches keep their plain messages.
+      # Conventional Commits, from v0.2.0 on: older commits on long-running branches keep their plain messages. These
+      # two read the pull request’s own commits, so a merge group, which adds only the queue’s merge commits, skips them.
       - name: Commit messages follow Conventional Commits
         if: github.event_name == 'pull_request'
         # Through the environment, not written into the script, as GitHub’s security guide says for context values.
@@ -70,9 +76,9 @@ jobs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         with:
-          # The base branch too, to tell what the pull request changed.
+          # The base branch too, to tell what the pull request or the merge group changed.
           fetch-depth: 0
       - name: Tell whether every changed file is a doc
         id: diff
@@ -80,11 +86,18 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
+          # The main commit a merge group is built on; it has no base_ref.
+          GROUP_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
-          # A push to main runs everything; so does a pull request that changes nothing git can name.
+          # A push to main runs everything; so does a change of nothing git can name.
           docs_only=false
-          if [ "$EVENT" = pull_request ]; then
-            files=$(git diff --name-only "origin/$BASE_REF...HEAD")
+          case "$EVENT" in
+            pull_request) range="origin/$BASE_REF...HEAD" ;;
+            merge_group) range="$GROUP_BASE...HEAD" ;;
+            *) range= ;;
+          esac
+          if [ -n "$range" ]; then
+            files=$(git diff --name-only "$range")
             if [ -n "$files" ]; then
               docs_only=true
               while IFS= read -r f; do

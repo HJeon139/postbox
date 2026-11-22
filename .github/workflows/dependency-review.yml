@@ -5,13 +5,16 @@ name: dependency-review
 
 on:
   pull_request:
+  # Its check is required, so it runs on each merge group of GitHub’s merge queue too (check.yml).
+  merge_group:
 
 permissions:
   contents: read
 
-# A new push to a pull request replaces its run still in progress, as in check.yml.
+# A new push to a pull request replaces its run still in progress, as in check.yml. A merge group has no pull request
+# number, so each gets a group of its own: keyed on the number alone, every group shared one and cancelled the last.
 concurrency:
-  group: dependency-review-${{ github.event.pull_request.number }}
+  group: dependency-review-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -28,3 +31,8 @@ jobs:
           # No OpenSSF Scorecard lookups: they call deps.dev for each new package, and an outage there would fail this check
           # on a clean pull request.
           show-openssf-scorecard: false
+          # A merge group compares its base on main with its head. The action takes these from a merge_group event by
+          # itself at this version (src/git-refs.ts), though its action.yml says they must be given; named here so an
+          # update that drops that stays correct. Empty on a pull request, where it takes the pull request’s own.
+          base-ref: ${{ github.event.merge_group.base_sha }}
+          head-ref: ${{ github.event.merge_group.head_sha }}

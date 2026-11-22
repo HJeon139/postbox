@@ -71,6 +71,9 @@ export function resolveViewAsk(rt, threadId, itemId, action) {
   }
   keepAnswer(view.dir, 'allowed');
   rt.threads.patchItem(threadId, it.id, { status: 'downloading', answeredAt: Date.now() });
+  // The person has answered, so the agent no longer needs them while the download runs (#954); it hears how it ends.
+  const se = rt.s.sessions[it.sessionId];
+  if (se) releaseNeed(rt, se, it.id);
   view.browser.install().then((r) => {
     if (r.ok) settle(rt, threadId, it, 'ready', 'The person allowed the download, and it finished. Call view_app now to see your app.');
     // Postbox is stopping: the card says so, and no agent is woken on the way out.
