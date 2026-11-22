@@ -105,8 +105,8 @@ const ISOLATED_NOTE =
 
 /**
  * The system prompt the agent file gives Kiro: Postbox’s guide, then what Postbox adds for Kiro (it runs headless, its
- * size limit, and, for an Isolated persona, which tools it may use). What a turn records as its guide
- * (server/turn-prompt.mjs), as Kiro is given it. @param {any} persona @param {string} guide
+ * MCP tools load on demand, its size limit, and, for an Isolated persona, which tools it may use). What a turn records
+ * as its guide (server/turn-prompt.mjs), as Kiro is given it. @param {any} persona @param {string} guide
  */
 export const kiroSystemPrompt = (persona, guide) =>
   `${guide}\n\n${HEADLESS_NOTE}\n\n${TOOL_LOAD_NOTE}\n\n${SIZE_LIMIT_NOTE}${setupOf(persona).usesHostSetup ? '' : `\n\n${ISOLATED_NOTE}`}`;
