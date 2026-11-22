@@ -16,11 +16,21 @@ function changed(at, closedAt) {
 }
 
 /**
- * Each process with a file open under dir, as “pid command”, from lsof’s field output (p and c lines); none when lsof
- * finds none, or isn’t there. @param {string} dir @returns {string[]}
+ * Each process with a file open under dir, as “pid command”, from lsof’s field output (p and c lines). An lsof that
+ * isn’t there, is stopped, exits past 1, or prints only an error is no answer, never “none”, which it would prove
+ * nothing about.
+ * @param {string} dir @param {{ lsof?: string }} [o]  the lsof to run, which a test replaces
+ * @returns {{ ok: true, found: string[] } | { ok: false, why: string }}
  */
-export function holders(dir) {
-  const out = spawnSync('lsof', ['-n', '-F', 'pc', '+D', dir], { encoding: 'utf8', timeout: 20_000 }).stdout ?? '';
+export function holders(dir, { lsof = 'lsof' } = {}) {
+  const r = spawnSync(lsof, ['-n', '-F', 'pc', '+D', dir], { encoding: 'utf8', timeout: 20_000 });
+  if (r.error) return { ok: false, why: `lsof couldn’t run (${r.error.message})` };
+  if (r.signal) return { ok: false, why: `lsof was stopped by ${r.signal}` };
+  const out = r.stdout ?? '';
+  // macOS’s lsof exits 1 even when it lists holders, so 1 is an answer unless it printed nothing but an error.
+  const said = (r.stderr ?? '').trim().split('\n')[0];
+  if (r.status !== 0 && r.status !== 1) return { ok: false, why: `lsof exited ${r.status}${said ? `: ${said}` : ''}` };
+  if (!out.trim() && said) return { ok: false, why: `lsof found nothing and said: ${said}` };
   /** @type {string[]} */
   const found = [];
   let pid = '';
@@ -28,11 +38,14 @@ export function holders(dir) {
     if (line.startsWith('p')) pid = line.slice(1);
     else if (line.startsWith('c') && pid && Number(pid) !== process.pid) found.push(`${pid} ${line.slice(1)}`);
   }
-  return found;
+  return { ok: true, found };
 }
 
-/** What’s in the folder: its files with their times, and the processes holding any of them. @param {string} dir @param {number | undefined} closedAt */
-export function writers(dir, closedAt) {
+/**
+ * What’s in the folder: its files with their times, and the processes holding any of them, or why that’s unknown.
+ * @param {string} dir @param {number | undefined} closedAt @param {{ lsof?: string }} [o]
+ */
+export function writers(dir, closedAt, o = {}) {
   const left = (/** @type {string} */ d) => {
     let entries;
     try {
@@ -46,22 +59,34 @@ export function writers(dir, closedAt) {
       return [`${relative(dir, p)} (${changed(statSync(p, { throwIfNoEntry: false })?.mtimeMs, closedAt)})`];
     });
   };
-  return `files: ${left(dir).join(', ') || 'none'}; processes: ${holders(dir).join(' | ') || 'none'}`;
+  const held = holders(dir, o);
+  const procs = held.ok ? held.found.join(' | ') || 'none' : `unknown: ${held.why}`;
+  return `files: ${left(dir).join(', ') || 'none'}; processes: ${procs}`;
+}
+
+/** writers, or why it couldn’t say, so a diagnostic that fails never stops the removal. @param {() => string} describe */
+function safely(describe) {
+  try {
+    return describe();
+  } catch (e) {
+    return `(couldn’t say what was there: ${/** @type {Error} */ (e).message})`;
+  }
 }
 
 /**
  * Removes the listing’s folder, retrying when the first try fails, and records what was there then as a diagnostic.
  * @param {import('node:test').TestContext} t @param {string} dir @param {number | undefined} closedAt
+ * @param {() => string} [describe]  what was there, writers by default, which a test replaces
  */
-export function removeListing(t, dir, closedAt) {
+export function removeListing(t, dir, closedAt, describe = () => writers(dir, closedAt)) {
   try {
     rmSync(dir, { recursive: true, force: true });
   } catch (e) {
-    t.diagnostic(`#1562: the listing’s folder was still being written after the CLI closed, so its removal retried. ${writers(dir, closedAt)}`);
+    t.diagnostic(`#1562: the listing’s folder was still being written after the CLI closed, so its removal retried. ${safely(describe)}`);
     try {
       rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
     } catch (again) {
-      throw new Error(`Couldn’t remove the listing’s folder: ${writers(dir, closedAt)}`, { cause: new AggregateError([e, again]) });
+      throw new Error(`Couldn’t remove the listing’s folder: ${safely(describe)}`, { cause: new AggregateError([e, again]) });
     }
   }
 }
