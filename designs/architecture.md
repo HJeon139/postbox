@@ -45,7 +45,7 @@ What each box holds is under “The main components”; what moves along the arr
 
 **Remote hosts** (`server/remote/`). An agent’s turns can run on another machine reached with the person’s own `ssh`. Only the agent’s process moves: the adapter stays on the laptop and drives a daemon on the host, which runs each turn detached and serves Postbox’s tools through a stdio shim. Nothing on the host can reach back. See [remote-hosts.md](architecture/remote-hosts.md), and [the person’s guide to hosts](remote-hosts.md).
 
-**Sandboxed apps** (`server/sandbox.mjs`, `app/kit/`). An agent’s app or diagram runs in a page sandboxed by its `Content-Security-Policy` header that loads nothing from a URL. The kit and libraries reach it inline or over the postMessage bridge, the only way it talks to the page. See [sandbox.md](architecture/sandbox.md) and [agent-apps.md](agent-apps.md).
+**Sandboxed apps** (`server/sandbox.mjs`, `app/kit/`). An agent’s app or diagram runs in a page sandboxed by its `Content-Security-Policy` header that loads nothing from a URL. The kit and libraries reach it inline or over the postMessage bridge, the only way it talks to the page. Through the bridge, Postbox’s server fetches the network and reads files from disk for it, so an app shows live data without its agent relaying it. See [sandbox.md](architecture/sandbox.md) and [agent-apps.md](agent-apps.md).
 
 **Side processes.** Work with native code runs outside the server that holds the conversations, started on first use and stopped when idle: narration’s local voice ([narration.md](architecture/narration.md)) and the pinned headless browser that shows an agent its app ([view-app.md](architecture/view-app.md)).
 
@@ -80,9 +80,10 @@ sequenceDiagram
 
 ## Security boundaries
 
-Postbox runs on the person’s computer, as them, for one person. These are the boundaries AGENTS.md, “Security boundaries”, lists as rules, one for one; a change to any of them is reviewed as a security change, and SECURITY.md says what a report may cross.
+Postbox runs on the person’s computer, as them, for one person, and function comes first (intent.md, “Function first”): a boundary stays because it costs no function or keeps out a real risk the agents’ harnesses don’t already carry. These are the boundaries AGENTS.md, “Security boundaries”, lists as rules, one for one; a change to any of them is reviewed as a security change, and SECURITY.md says what a report may cross.
 - **This computer alone.** Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1` or `localhost` on its port. It refuses other `Host` headers and cross-site `Origin`s, and every write needs the page’s token ([security-boundaries.md](architecture/security-boundaries.md)).
-- **Agent and app content is data.** It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()` wrapped in `trusted()`. Agent apps run only in CSP-sandboxed pages that load nothing ([sandbox.md](architecture/sandbox.md)).
+- **Agent and app content is data.** It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()` wrapped in `trusted()`. Agent apps run only in CSP-sandboxed pages that load nothing themselves ([sandbox.md](architecture/sandbox.md)).
+- **An app gets what its agent could get, and not Postbox itself.** `net.fetch` reaches any address this computer reaches but Postbox’s own port, with none of the person’s credentials, and `fs.read` reads files on disk but Postbox’s data folder; the agent’s activity shows each ([security-boundaries.md](architecture/security-boundaries.md), “What leaves through net.fetch” and “What an app reads from disk”).
 - **No shell strings.** Processes are spawned with an argument array, never a shell string.
 - **What reaches the browser** is decided by the `public` flag in `EVENTS` and the state-key lists in `shared/state.mjs`. `/api/state` and the event stream (the live and backlog frames) go through `server/public-state.mjs`. Every other route that answers with state may carry only data of public keys: review holds that until A2 adds the first private data, with a check that holds it ([security-boundaries.md](architecture/security-boundaries.md), “What reaches the browser”).
 
@@ -104,7 +105,8 @@ Each is one line: the decision, why, and where its detail is.
 - **The harness decides, in the mode the person set:** Postbox shows what agents did, and adds ask rules only for writes outside it, only in Ask me and Accept edits ([permissions.md](architecture/permissions.md), [agent-setup.md](architecture/agent-setup.md)).
 - **One session per agent per conversation:** agents never fork themselves, and the person chooses what an agent remembers by where they talk to it ([shared-memory.md](architecture/shared-memory.md)).
 - **Every agent reads the whole conversation:** an agent woken by a mention answered about a discussion it had never seen ([shared-memory.md](architecture/shared-memory.md)).
-- **Apps are sandboxed by header and load nothing:** the desktop app’s browser pane refuses a frame with the `sandbox` attribute, and a page that needs no requests can’t be broken by one ([sandbox.md](architecture/sandbox.md)).
+- **Function first:** an agent app reads the network and the disk through Postbox’s server, as its agent could, so the agent never relays data into it; a boundary that costs function needs a real risk ([intent.md](intent.md), “Function first”).
+- **Apps are sandboxed by header and load nothing themselves:** the desktop app’s browser pane refuses a frame with the `sandbox` attribute, and a page that needs no requests can’t be broken by one ([sandbox.md](architecture/sandbox.md)).
 - **Writes need the page’s token:** an agent’s casual `curl` can’t speak as the person ([security-boundaries.md](architecture/security-boundaries.md)).
 - **The page sees only what’s listed public:** one table, beside the reducer, fails closed ([security-boundaries.md](architecture/security-boundaries.md)).
 - **Only the agent’s process moves to a host:** the adapters, the store and the page stay local, so their assumptions hold ([remote-hosts.md](architecture/remote-hosts.md)).
