@@ -177,7 +177,7 @@ export function sideSession(rt, side, personaId, by) {
  * @param {any} rt @param {any} from @param {any} parent @param {any} p @param {any} card @param {boolean} prose
  */
 function wakeAbsent(rt, from, parent, p, card, prose) {
-  if (deletedFrom(rt, parent, p.handle))
+  if (deletedFrom(rt, parent, p))
     return { ok: false, message: `@${p.handle} was deleted from this conversation, so it didn’t get your message. Carry on without it.` };
   return askToAdd(rt, from, parent, p, card, { prose });
 }
@@ -192,7 +192,7 @@ export function threadPersona(rt, t) {
   const first = t.members?.[0] && rt.store.pending.session(t.members[0]);
   const picked =
     (last && rt.persona(last.personaId)) ?? rt.personas.byHandle(t.woke ?? t.pair?.split('|')[1] ?? '') ?? (first && rt.persona(first.personaId)) ?? null;
-  if (!picked || !deletedFrom(rt, t, picked.handle)) return picked;
+  if (!picked || !deletedFrom(rt, t, picked)) return picked;
   // An agent deleted from the conversation isn’t brought back to answer: another still in it does, or no one (#283).
   const here = rt.sessions.pendingIn(conversationOf(rt, t)).find((x) => !x.retiredFork);
   return (here && rt.persona(here.personaId)) ?? null;
@@ -217,12 +217,15 @@ export function presentIn(rt, t) {
 /**
  * Whether an agent was deleted from a thread’s conversation and hasn’t come back: it has no session there, and the
  * conversation says it left. An agent that was never in it, as one a topic thread was woken for, can still join (#874).
- * @param {any} rt @param {any} t  the topic or side thread @param {string} handle
+ * A line says which persona left, so a new agent given a deleted one’s handle wasn’t deleted; a line from before it
+ * said so names the handle only, and counts by that.
+ * @param {any} rt @param {any} t  the topic or side thread @param {{ id: string, handle: string }} p  the persona
  */
-export function deletedFrom(rt, t, handle) {
-  if (presentIn(rt, t).has(handle)) return false;
+export function deletedFrom(rt, t, p) {
+  if (presentIn(rt, t).has(p.handle)) return false;
   const conv = conversationOf(rt, t);
-  return rt.store.pending.items(conv).some((i) => i.kind === 'system' && i.variant === 'left' && i.to === handle);
+  const left = (i) => i.kind === 'system' && i.variant === 'left' && (i.personaId ? i.personaId === p.id : i.to === p.handle);
+  return rt.store.pending.items(conv).some(left);
 }
 
 /**

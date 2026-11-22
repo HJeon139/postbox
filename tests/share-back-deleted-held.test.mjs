@@ -23,8 +23,8 @@ test('an agent deleted from a conversation made behind a held commit reads as de
     const topic = arrange.putThread(rt, { id: 'th_heldtopic', projectId: 'p1', title: 'Thread', kind: 'topic', parentId: conv.id, woke: 'alpha', members: [] });
     rt.deleteSession(a.id);
     assert.equal(h.store.state.threads[conv.id], undefined, 'the conversation is still held');
-    assert.equal(deletedFrom(rt, topic, 'alpha'), true, 'alpha reads as deleted');
-    assert.equal(deletedFrom(rt, topic, 'beta'), false, 'beta is still here');
+    assert.equal(deletedFrom(rt, topic, alpha), true, 'alpha reads as deleted');
+    assert.equal(deletedFrom(rt, topic, beta), false, 'beta is still here');
     assert.equal(threadPersona(rt, topic)?.handle, 'beta', 'beta answers, not alpha brought back');
   } finally {
     h.release();
