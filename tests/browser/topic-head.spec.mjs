@@ -133,6 +133,9 @@ for (const [width, paneMin] of [
     const head = page.locator('aside.sidepanel .sp-head');
     await expect(head.locator('#sp-title')).toHaveText('Thread');
     const still = await layout(head);
+    // Wrapped or not, the buttons are kept right: Close ends at the head’s right edge, inside its padding.
+    const edge = await head.evaluate((el) => Math.round(el.getBoundingClientRect().right - parseFloat(getComputedStyle(el).paddingRight)));
+    expect(still.closeRight, 'Close kept right').toBe(edge);
     expect(await relabel(head, 'Summarize back', 'Summary requested…')).toBe(true);
     expect(await layout(head), 'with “Summary requested…”').toEqual(still);
     expect(await relabel(head, 'Copy link', 'Copied')).toBe(true);

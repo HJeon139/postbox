@@ -111,6 +111,8 @@ function summarizeButton(sideId, parent) {
       type: 'button',
       title: `Ask ${pair ? 'one of its agents' : 'the thread’s agent'} for a short summary, and post it in the conversation`,
       ...(pair ? { 'aria-haspopup': 'menu', 'aria-expanded': 'false' } : {}),
+      // Its width is its widest label’s, so “Summary requested…” moves nothing beside it (#551).
+      'data-widest': 'Summary requested…',
       onclick: () => (pair ? choose() : ask(null)),
     },
     'Summarize back',
@@ -153,6 +155,7 @@ function copyLink(threadId, topic) {
         }, 2000);
       },
       'aria-label': topic ? 'Copy link to this topic thread' : 'Copy link to this side thread',
+      'data-widest': 'Copy link',
     },
     'Copy link',
   );
