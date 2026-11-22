@@ -27,6 +27,7 @@ import { gated } from './store-outage.mjs';
 export const QUESTION_TOOL = 'AskUserQuestion';
 export const DISMISSED = 'The person dismissed the question.';
 const WAITED = `Nobody answered within ${Math.round(CARD_WAIT_MS / 3600000)} hours.`;
+const DELIVERED = 'The person answered this question while Postbox restarted, and their answer already reached you as a message.';
 export const STILL_OPEN = 'The question stays open in the conversation; their answer reaches you as a message, so don’t ask it again.';
 
 /**
@@ -94,11 +95,23 @@ export async function askQuestions(rt, sessionId, req, blocks, shown = []) {
 /** @typedef {{ hostId: string, turn: string, id: string, entry?: string | null }} HostPrompt */
 
 /**
+ * A block answered while nothing waited on it, after a restart: its answer went to the agent’s inbox as a message.
+ * The call takes it once (#1059): the message is withdrawn while it still waits, and the call hears it was already
+ * delivered once the agent has had it. @param {any} rt @param {string} sessionId @param {any} it
+ */
+function answeredMeanwhile(rt, sessionId, it) {
+  const sent = rt.delivery.entriesFrom(it.id).filter((/** @type {any} */ e) => e.source === 'answer' && e.state !== 'stopped');
+  if (sent.some((/** @type {any} */ e) => e.state !== 'waiting')) return { message: DELIVERED };
+  for (const e of sent) rt.delivery.cancel(sessionId, e.id);
+  return it.answer?.action === 'dismiss' ? { dismissed: true } : { values: it.answer?.values ?? {} };
+}
+
+/**
  * A block shown before a restart: its answer if it has one, else its answer once it comes, waited on again as askOne
  * waits. @param {any} rt @param {string} sessionId @param {{ threadId: string, it: any }} shown
  */
 function again(rt, sessionId, { threadId, it }) {
-  if (it.answered) return Promise.resolve(it.answer?.action === 'dismiss' ? { dismissed: true } : { values: it.answer?.values ?? {} });
+  if (it.answered) return Promise.resolve(answeredMeanwhile(rt, sessionId, it));
   const se = rt.s.sessions[sessionId];
   if (se) offerNeed(rt, se, { kind: 'block', itemId: it.id, text: it.block.title ?? it.block.prompt, ...rt.sessions.awayFrom(se, threadId) }, 'needs');
   return new Promise((resolve) => rt.permissionWaits.set(it.id, { resolve, threadId, sessionId, timer: null, question: true }));

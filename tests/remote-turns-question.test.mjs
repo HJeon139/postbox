@@ -66,10 +66,10 @@ test('#1059 at the host’s permissionWaitMax the question stays open, and a lat
 
 /**
  * Postbox stopped while a host turn asked `p`; its blocks, as `parts` says, were shown before. The daemon sends the
- * prompt again once the new Postbox connects. onHost false: the host no longer has the turn.
- * @param {any} p @param {Record<string, any>[]} parts @param {{ onHost?: boolean }} [o]
+ * prompt again once the new Postbox connects, unless resend is false. onHost false: the host no longer has the turn.
+ * @param {any} p @param {Record<string, any>[]} parts @param {{ onHost?: boolean, resend?: boolean }} [o]
  */
-function restartedAsking(p, parts, { onHost = true } = {}) {
+function restartedAsking(p, parts, { onHost = true, resend = true } = {}) {
   const d = createFakeDaemon({ autoEnd: false });
   const first = rig({ d });
   first.rt.remote.close();
@@ -99,7 +99,7 @@ function restartedAsking(p, parts, { onHost = true } = {}) {
   if (onHost) {
     d.addTurn('host-turn-1', { exit: null });
     d.append('host-turn-1', callLine(p));
-    d.prompt('host-turn-1', request(p), 'p-1');
+    if (resend) d.prompt('host-turn-1', request(p), 'p-1');
   }
   d.drop();
   d.connect();
@@ -153,4 +153,21 @@ test('#1059 a question whose host turn is gone after a restart stays asking, not
   const [q] = questions(r);
   assert.deepEqual({ answered: q.answered, status: q.status, closed: q.closed }, { answered: false, status: undefined, closed: undefined });
   r.rt.remote.close();
+});
+
+test('#1059 an answer given after a restart, before the prompt comes again, reaches the agent once', async () => {
+  const r = restartedAsking(ONE, [{}], { resend: false });
+  await until(() => r.d.received.some((m) => m.type === 'read' && m.turn === 'host-turn-1'), 'the attach');
+  // Nothing waits on the block yet: the pick goes to the agent’s inbox as a message.
+  const [q] = questions(r);
+  pick(r, q, 'Green');
+  const waiting = () => r.rt.delivery.entriesFrom(q.id).filter((e) => e.state === 'waiting');
+  await until(() => waiting().length === 1, 'the answer as a message');
+  // The prompt comes again: the call takes the answer, and the message is withdrawn.
+  r.d.prompt('host-turn-1', request(ONE), 'p-1');
+  await until(() => r.d.answers.length === 1, 'the answer');
+  assert.deepEqual(r.d.answers[0].result.updatedInput.answers, { 'Which color do you prefer?': 'Green' });
+  assert.equal(waiting().length, 0, 'not also as a message');
+  r.d.end('host-turn-1');
+  await settled(r);
 });
