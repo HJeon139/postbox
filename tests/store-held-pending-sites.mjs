@@ -7,7 +7,8 @@ export const PENDING = {
   // The agent's next need when a card is answered, the released card whose turn it may read, and the card it notifies:
   // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
-  'card-needs.mjs': ['keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed'],
+  // keptBlock: the block a turn kept, in any of the agent's threads, which decides the need its end writes (#647).
+  'card-needs.mjs': ['keptBlock', 'keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed'],
   // The mirrored reply a terminal line adds to, maybe held behind a commit; and the session attachClaudeSession just
   // made, whose transcript mirror starts following.
   'claude-mirror.mjs': ['mirror', 'pollMirror'],
