@@ -11,6 +11,7 @@ export const newReviewDraft = (content) => ({
   // The draft comment open for editing, by its place in comments, and its unsaved text (#858).
   editing: null,
   editingText: '',
+  editingSelection: null,
   verdict: 'request_changes',
   view: 'diff',
   error: null,
@@ -19,6 +20,8 @@ export const newReviewDraft = (content) => ({
 
 /** Opens one empty comment box. @param {any} draft @param {any} key */
 export function startComment(draft, key) {
+  // One box at a time: an edit open elsewhere keeps what was typed in it.
+  saveEdit(draft);
   draft.composing = key;
   draft.composingText = '';
   draft.composingSelection = null;
@@ -41,4 +44,17 @@ export function reviewDraft(item, content, draft) {
   const d = draft(item.id, () => restoreReviewDraft(item.id, item, newReviewDraft(content)));
   if (item.answer?.action === 'submit') d.comments = [];
   return d;
+}
+
+/**
+ * Closes the draft comment open for editing, keeping what was typed in it when it isn’t blank (#858), so opening
+ * another box or submitting never drops it. @param {any} draft
+ */
+export function saveEdit(draft) {
+  const at = draft.editing;
+  const text = typeof draft.editingText === 'string' ? draft.editingText.trim() : '';
+  if (typeof at === 'number' && text && draft.comments[at]) draft.comments = draft.comments.map((c, i) => (i === at ? { ...c, text } : c));
+  draft.editing = null;
+  draft.editingText = '';
+  draft.editingSelection = null;
 }

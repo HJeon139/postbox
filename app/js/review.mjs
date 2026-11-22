@@ -8,7 +8,7 @@ import { reviewFileKeys } from '/shared/review-files.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown, mountApp } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
-import { reviewDraft, startComment, stopComment } from './review-draft.mjs';
+import { reviewDraft, saveEdit, startComment, stopComment } from './review-draft.mjs';
 import { keepReviewDraft } from './review-draft-store.mjs';
 import { inlineMd, itemWords, words } from './review-inline.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
@@ -313,7 +313,9 @@ export function renderReview(b, item, ctx, kit) {
           'button.btn.send',
           {
             type: 'button',
-            onclick: () =>
+            onclick: () => {
+              // A comment open for editing goes as last typed.
+              saveEdit(d);
               submit(
                 item,
                 ctx,
@@ -321,7 +323,8 @@ export function renderReview(b, item, ctx, kit) {
                 // moved and gone are only for the person: the agent gets each comment where it is now.
                 { verdict: d.verdict, comments: d.comments.map(({ moved: _m, gone: _g, ...c }) => c) },
                 setError,
-              ),
+              );
+            },
           },
           'Submit review',
         ),

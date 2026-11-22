@@ -53,6 +53,59 @@ test('#858 a draft comment on a line is edited in place, and the agent gets the 
     .toEqual([{ line: 3, text: 'second draft', threadId: 'you-1-1' }]);
 });
 
+/** A review in Lines with draft comments on lines 3 and 5. */
+async function twoDrafts(page, title) {
+  const r = await room.withReview(page, title);
+  await viewRadio(r.block, 'Lines').click();
+  for (const [line, text] of [
+    [3, 'on three'],
+    [5, 'on five'],
+  ]) {
+    await r.block.locator(`.g-mark[data-line="${line}"]`).click();
+    await r.block.getByRole('textbox', { name: `Comment on line ${line}` }).fill(text);
+    await r.block.getByRole('button', { name: 'Add draft comment', exact: true }).click();
+  }
+  const open = async (text) => {
+    await r.block.locator('.rv-thread', { hasText: text }).getByRole('button', { name: 'Edit', exact: true }).click();
+    return r.block.getByRole('textbox', { name: 'Edit your draft comment' });
+  };
+  return { ...r, open };
+}
+
+test('#858 one box at a time, and what was typed in an edit is never dropped', async ({ page }) => {
+  const { block, blockId, open } = await twoDrafts(page, 'One box');
+  // Editing another draft keeps what was typed in the first.
+  await (await open('on three')).fill('three, edited');
+  await open('on five');
+  await expect(block.locator('.rv-thread', { hasText: 'three, edited' }), 'the first edit is kept').toHaveCount(1);
+  await expect(block.getByRole('textbox'), 'one box open').toHaveCount(1);
+  // Opening a new comment’s box closes the edit, keeping it too.
+  await block.getByRole('textbox', { name: 'Edit your draft comment' }).fill('five, edited');
+  await block.locator('.g-mark[data-line="7"]').click();
+  await expect(block.getByRole('textbox'), 'only the new comment’s box').toHaveCount(1);
+  await expect(block.getByRole('textbox', { name: 'Comment on line 7' })).toBeFocused();
+  await expect(block.locator('.rv-thread', { hasText: 'five, edited' })).toHaveCount(1);
+  await block.getByRole('textbox', { name: 'Comment on line 7' }).press('Escape');
+  // Submitting with an edit open sends it as last typed.
+  await (await open('three, edited')).fill('three, as sent');
+  await block.getByRole('button', { name: 'Submit review', exact: true }).click();
+  await expect.poll(() => sent(blockId)?.map((c) => c.text)).toEqual(['three, as sent', 'five, edited']);
+});
+
+test('#858 an edit keeps its text, caret and focus when another agent comments', async ({ page }) => {
+  const { rt } = room.app;
+  const { blockId, sessionOf, open } = await twoDrafts(page, 'Keep caret');
+  const box = await open('on five');
+  await box.fill('five, being edited');
+  for (let i = 0; i < 7; i++) await box.press('ArrowLeft');
+  const reviewed = rt.toolsFor(sessionOf('reader').id).review_block({ blockId, verdict: 'comment', comments: [{ line: 4, text: 'Another review.' }] });
+  expect(reviewed.ok, reviewed.message).toBe(true);
+  await synced(page, room.app);
+  await expect(box, 'its text').toHaveValue('five, being edited');
+  await expect(box, 'its focus').toBeFocused();
+  expect(await box.evaluate((x) => /** @type {HTMLTextAreaElement} */ (x).selectionStart), 'its caret').toBe(11);
+});
+
 test('#858 a draft comment on a selection in Preview keeps its quote and columns when edited', async ({ page }) => {
   const { block, blockId } = await room.withReview(page, 'Edit a selection');
   await drawn(block, 'Preview');

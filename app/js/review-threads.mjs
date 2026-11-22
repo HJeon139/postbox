@@ -5,6 +5,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { authorName } from '/shared/review-comments.mjs';
 import { h, icon, plural, trusted } from './dom.mjs';
+import { saveEdit, stopComment } from './review-draft.mjs';
 import { revisionOf } from './review-view.mjs';
 
 /** Whether a thread or a comment is on key: an app’s part, or a line. */
@@ -62,9 +63,12 @@ function draftOf(c, env) {
     if (typeof d.editing === 'number' && d.editing > at) d.editing--;
     rerender();
   };
+  // One box at a time: a new comment’s box closes, and another edit keeps what was typed in it.
   const edit = () => {
+    stopComment(d);
+    saveEdit(d);
     d.editing = at;
-    d.editingText = c.text;
+    d.editingText = d.comments[at].text;
     rerender();
   };
   return h(
@@ -93,21 +97,27 @@ function draftOf(c, env) {
  */
 function editorOf(c, at, { d, rerender }) {
   const close = (/** @type {boolean} */ save) => {
-    const text = ta.value.trim();
-    if (save && !text) return;
-    if (save) d.comments = d.comments.map((x, i) => (i === at ? { ...x, text } : x));
-    d.editing = null;
-    d.editingText = '';
+    if (save && !ta.value.trim()) return;
+    if (save) d.editingText = ta.value;
+    else d.editingText = '';
+    saveEdit(d);
     /** @type {HTMLElement | null} */ (rerender().querySelector(`[data-draft="${at}"]`))?.focus();
   };
   const text = typeof d.editingText === 'string' ? d.editingText : c.text;
+  const saved = Array.isArray(d.editingSelection) ? d.editingSelection : [text.length, text.length];
+  // Its text and caret are kept, so a repaint while it’s open (another agent’s comment, a revision) leaves both.
+  const remember = () => {
+    d.editingText = ta.value;
+    d.editingSelection = [ta.selectionStart, ta.selectionEnd];
+  };
   const ta = h('textarea.textarea', {
     'aria-label': 'Edit your draft comment',
     style: { minHeight: '56px' },
     value: text,
-    oninput: () => {
-      d.editingText = ta.value;
-    },
+    oninput: remember,
+    onselect: remember,
+    onkeyup: remember,
+    onmouseup: remember,
     onkeydown: (e) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -120,7 +130,7 @@ function editorOf(c, at, { d, rerender }) {
       }
     },
   });
-  queueMicrotask(() => restoreComposer(ta, [], text));
+  queueMicrotask(() => restoreComposer(ta, saved, text));
   const quote = quoted(c.quote ?? c.gone);
   return h(
     'div.rv-thread',
