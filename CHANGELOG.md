@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.10 (2026-11-22)
+
+### Fixes
+
+- **uat:** check the guard's git settings in the workspace, where the agents' git reads them
+- **uat:** pin git lfs's own transfer in the guard, and stop a run whose git picks a custom one
+- **uat:** point git lfs at nothing in every run's guard, not only git-remote runs
+- **server:** drop the wildcard CORS on /kit/, the stylesheet alias and bundled /media/
+- **antigravity:** hold the hook's permission prompt to the call its stream shows
+
+## 4.35.9 (2026-11-22)
+
+### Fixes
+
+- **antigravity:** compare a repeated error by a fingerprint of its whole text
+- **antigravity:** don't show an earlier turn's error again as a failed step
+
 ## 4.35.8 (2026-11-21)
 
 ### Fixes

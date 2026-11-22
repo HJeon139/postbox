@@ -431,6 +431,15 @@
   },
   "antigravity-cli/fail-before-output.jsonl": {},
   "antigravity-cli/first.jsonl": { "2": "hello there\n" },
+  "antigravity-cli/hook-stream.jsonl": {
+    "5": "The execution",
+    "6": " of the command was refu",
+    "7": "sed (tool call denied by",
+    "8": " pre-tool ho",
+    "9": "ok: Recording only",
+    "10": ": this call was not run)",
+    "11": ". Stopping as requested.\n"
+  },
   "antigravity-cli/ledger-edits.jsonl": {
     "14": "Added [`sub(a, b)`](file:///work/project/calc.py#L4-L5) to [calc.py](file:///work/project/calc.py) and created [TODO.md](file:///work/project/TODO.md).\n\nOutput of `git status --short`:\n\n```text\n M calc.py\n?? NOTES.md\n?? TODO.md\n```",
     "15": "\n"

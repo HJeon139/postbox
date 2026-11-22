@@ -31,6 +31,12 @@ const AS_CLAUDE = /** @type {Record<string, [string, (p: any) => any]>} */ ({
 });
 
 /**
+ * A tool step’s id in Postbox: its conversation and its index there, which grows across the conversation’s turns.
+ * The UAT’s checks match refused steps by it (tools/uat/checks.mjs), so two agents’ steps never share one.
+ */
+export const stepId = (s) => `agy-${String(s?.conversation_id ?? '').slice(0, 8)}-${s?.step_index}`;
+
+/**
  * The tool a step stands for, in Claude Code’s naming, so Postbox’s own tools get the same labels and stay quiet:
  * an MCP call is mcp__<server>__<tool>, and Postbox’s server, which agy names postbox_postbox, is postbox.
  * @returns {{ name: string, input: any, quiet: boolean }}
