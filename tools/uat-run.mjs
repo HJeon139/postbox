@@ -297,7 +297,7 @@ async function main() {
     const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
 
     // The bound, and with --max-cost the budget, watch the agents’ turns through the steps and the wait after them.
-    unwatch = watchRun({ bound, budget, api, threadsUnderTest, stop: stopThroughPage(page), log });
+    unwatch = watchRun({ bound, budget, api, events: history.events, threadsUnderTest, stop: stopThroughPage(page), log });
     for (let step = 1; step <= steps; step++) {
       if (signals.stopping) throw new Error('The run was stopped by a signal.');
       const timedOut = await settle(true);

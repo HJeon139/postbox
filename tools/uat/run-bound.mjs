@@ -5,12 +5,13 @@
 // loop between agents takes no steps: the real-q1 run of 8 November had 408 turn streams in 4 steps.
 //
 // Turns are counted where every harness’s turn starts, in Postbox: a session’s lastTurnId (server/turn-run.mjs,
-// atWork), read with the state every 1.5 s. Once --max-turns turns have started, the run takes no more steps, and any
+// atWork), from the run’s events, which keep each start in order, and from the state read every 1.5 s. Once --max-turns turns have started, the run takes no more steps, and any
 // turn that starts after is stopped. Past --max-minutes from the run’s start, it takes no more steps and stops the
 // turns at work. Either way it writes its report, findings.json and run.json as any run does, saying where it stopped.
 //
-// Where it can still be passed: a session whose turn starts and is followed by its next within one poll counts once,
-// and a turn that starts within a poll of the cap runs until that poll. The run’s report and verifier come after the
+// The wall time is checked on every poll before the state is read, so a Postbox that doesn’t answer can’t keep a run
+// going: the run takes no step after the one out, and its stop ends what’s left. Where the cap can still be passed: a
+// turn that starts within a poll of it runs until that poll. The run’s report and verifier come after the
 // wall time; the verifier is bounded by --max-cost and --budget, not by this.
 
 import { watchBudget } from './turns.mjs';
@@ -56,6 +57,8 @@ export class RunBound {
   /** @type {Set<string> | null} the turns that started before the cap was reached: those may finish */
   allowed = null;
   step = 0;
+  /** how many of the run’s events count() has read */
+  read = 0;
 
   /** @param {{ maxTurns: number, maxMinutes: number, now: () => number }} o */
   constructor({ maxTurns, maxMinutes, now }) {
@@ -76,6 +79,28 @@ export class RunBound {
   late() {
     const minutes = (this.now() - this.startedAt) / 60000;
     return minutes >= this.maxMinutes ? `it ran ${Math.floor(minutes)} minutes, past --max-minutes ${this.maxMinutes}.` : null;
+  }
+
+  /**
+   * Counts turn starts from the run’s events (tools/uat/history.mjs, followEvents), which keep every one in order, so
+   * two of a session’s turns between two polls both count: each start patches its session’s lastTurnId. A start past
+   * the cap stops the run. Reads only the events it hasn’t yet.
+   * @param {{ type: string, data?: { lastTurnId?: string | null } }[]} events
+   */
+  count(events) {
+    for (const e of events.slice(this.read)) {
+      const turn = e.type === 'session' ? e.data?.lastTurnId : null;
+      if (!turn || this.turns.has(turn)) continue;
+      if (this.turns.size < this.maxTurns) this.turns.add(turn);
+      else this.stop(capped(this.maxTurns), true);
+    }
+    this.read = events.length;
+  }
+
+  /** Stops the run once the wall time is up, whether or not Postbox answers: the watch asks before reading the state. */
+  tick() {
+    const late = this.late();
+    if (late) this.stop(late, true);
   }
 
   /**
@@ -142,20 +167,26 @@ function stoppedWhen({ step, during }) {
 /**
  * The run’s watches, every 1.5 s until ended, whatever the run is doing: the bound’s, on every harness, and the dollar
  * budget’s (tools/uat/turns.mjs, watchBudget), with --max-cost. Returns the function that ends both.
- * @param {{ bound: RunBound, budget: any, api: (path: string) => Promise<any>, threadsUnderTest: (st: any) => string[], stop: (id: string) => Promise<unknown>, log?: (line: string) => void, every?: number }} o
+ * @param {{ bound: RunBound, budget: any, api: (path: string) => Promise<any>, events?: () => any[], threadsUnderTest: (st: any) => string[], stop: (id: string) => Promise<unknown>, log?: (line: string) => void, every?: number }} o
  */
-export function watchRun({ bound, budget, api, threadsUnderTest, stop, log = () => {}, every = 1500 }) {
+export function watchRun({ bound, budget, api, events = () => [], threadsUnderTest, stop, log = () => {}, every = 1500 }) {
   const unbudget = watchBudget({ budget, api, threadsUnderTest, stop, log, every });
   let ended = false;
   let failed = false;
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
   const poll = async () => {
+    const was = bound.stopped;
+    const said = () => {
+      if (!was && bound.stopped) log(`Stopped at the run’s bound: ${bound.stopped.why}`);
+    };
+    bound.tick();
+    bound.count(events());
+    said();
     try {
       const st = (await api('/api/state')).state;
-      const was = bound.stopped;
       const ids = bound.see(Object.values(st.sessions ?? {}));
-      if (!was && bound.stopped) log(`Stopped at the run’s bound: ${bound.stopped.why}`);
+      said();
       for (const id of ids) {
         log(`bound: stopping @${st.sessions[id]?.handle ?? id}’s turn`);
         await stop(id);

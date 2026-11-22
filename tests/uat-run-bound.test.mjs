@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { keepEvent } from '../tools/uat/room-events.mjs';
 import { boundNote, DEFAULT_MAX_MINUTES, DEFAULT_MAX_TURNS, runBound, watchRun } from '../tools/uat/run-bound.mjs';
 
 const clock = () => {
@@ -124,4 +125,64 @@ test('the report says whether the bound stopped a step or the turns at work, and
   t.pass(20);
   assert.equal(d.summary().minutes, 30, 'minutes to the watch’s end');
   assert.equal(d.summary().stopped, null, 'and a run that didn’t stop doesn’t read as past its cap');
+});
+
+test('past --max-minutes the run stops though the state can’t be read, while a tester step is still out', async () => {
+  const t = clock();
+  const bound = runBound({ minutes: '5', now: t.now });
+  const api = async () => {
+    throw new Error('connect ECONNREFUSED');
+  };
+  const lines = [];
+  const end = watchRun({ bound, budget: { on: false }, api, threadsUnderTest: () => [], stop: async () => {}, log: (l) => lines.push(l), every: 1 });
+  try {
+    // The tester’s step is out, and Postbox doesn’t answer: the deadline passes all the same.
+    t.pass(6);
+    const until = Date.now() + 2000;
+    while (!bound.stopped && Date.now() < until) await new Promise((r) => setTimeout(r, 2));
+  } finally {
+    end();
+  }
+  assert.match(String(bound.stopped?.why), /past --max-minutes 5/, lines.join('\n'));
+  assert.ok(bound.beforeStep(7), 'and the step after the tester’s answer isn’t taken');
+});
+
+test('two turns of one session between polls both count, from the run’s events, not the state’s snapshot', async () => {
+  // Kept as the runner keeps them (tools/uat/room-events.mjs, keepEvent): each turn start is a session.patch of its
+  // session’s lastTurnId, as server/turn-run.mjs’s atWork writes it.
+  const events = [];
+  const known = new Map();
+  keepEvent(0, 'session', { id: 'a', state: 'idle' }, known);
+  const started = (id, turn, state = 'think') => {
+    const e = keepEvent(events.length + 1, 'session.patch', { id, patch: { state, lastTurnId: turn } }, known);
+    if (e) events.push(e);
+  };
+  const bound = runBound({ turns: '2' });
+  let st = { sessions: { a: se('a', 't1', 'think') } };
+  const stopped = [];
+  const end = watchRun({
+    bound,
+    budget: { on: false },
+    api: async () => ({ state: st }),
+    events: () => events,
+    threadsUnderTest: () => [],
+    stop: async (id) => stopped.push(id),
+    every: 1,
+  });
+  try {
+    started('a', 't1');
+    started('a', 't1', 'idle');
+    // Two more turns start and one ends between polls: the snapshot shows only the last.
+    started('a', 't2');
+    started('a', 't2', 'idle');
+    started('a', 't3');
+    st = { sessions: { a: se('a', 't3', 'think') } };
+    const until = Date.now() + 2000;
+    while (!stopped.length && Date.now() < until) await new Promise((r) => setTimeout(r, 2));
+  } finally {
+    end();
+  }
+  assert.deepEqual(stopped.slice(0, 1), ['a'], 'the third turn is past a cap of 2, though no poll saw t2');
+  assert.match(String(bound.stopped?.why), /--max-turns 2/);
+  assert.equal(bound.summary().turns, 2);
 });
