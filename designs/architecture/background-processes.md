@@ -103,7 +103,12 @@ If case (b) doesn’t bind, a `setsid` job, or the orphan of a tool shell that l
 
 **Nothing leaks that `main` reaps, and a kept job isn’t signaled with the rest.** A group signal (`signalPgid`) reaches every member, so it can’t be used on a group that holds a bound job. At a turn’s end that uses pid signals:
 - **A harness group with no bound job** gets that harness’s group signal, as today.
-- **A harness group that holds a bound job:** each member that didn’t bind is signaled by its own pid, after the identity check in section 2, and the bound jobs are left alone. That covers the harness, its foreground children, and a marked process inside the turn that fails a rule above. The delayed SIGKILL goes the same way, to the same pids, each checked again. A process outside the group that carries the marker but doesn’t bind stays informational: shown in the room with its pid as last seen, with no wake, no signal and no Stop. That’s the same as `main`, which never reached it either.
+- **A harness group that holds a bound job:** each member that didn’t bind is signaled by its own pid, after the identity check in section 2, and the bound jobs are left alone. That covers the harness, its foreground children, and a marked process inside the turn that fails a rule above.
+- **The delayed SIGKILL sweeps the group again, not the old list.** A foreground process can start a child in the group during `GRACE_MS`, which the first list doesn’t name. So at SIGKILL time, Postbox reads the group’s members again in a fresh `ps` read. It sends SIGKILL to every member, by pid and after its identity check, except two kinds:
+  - a bound job;
+  - a descendant of a bound job, meaning its parent chain reaches a bound job’s pid with that pid’s recorded start time.
+
+  A member that appeared during the grace period and descends from no bound job is reaped, as the old group signal would have reaped it. Postbox repeats the sweep once more, 100 ms later, for a child started during the first sweep. After that, anything left is what a `fork` loop keeps spawning. Postbox records it on the job as “still spawning at the turn’s end”, the same limit the group signal has on `main`. A process outside the group that carries the marker but doesn’t bind stays informational: shown in the room with its pid as last seen, with no wake, no signal and no Stop. That’s the same as `main`, which never reached it either.
 
 **The poll’s cost.** On `main`, `pollKept` runs `ps` only while a kept job exists (`server/kept-jobs.mjs`). This design adds the marker scan at each turn’s end, and at each 5-second tick only while kept jobs exist. One scan per tick serves every turn and job. The implementation PR measures the scan, `ps -Eww -ax`, whose output is larger than today’s read, against `main`’s poll, and holds it to a budget stated there.
 
@@ -229,6 +234,7 @@ What each check answers:
     - it survives `nohup` and `setsid` on a non-platform binary, and the scan finds it;
     - `sh -c 'cmd &'`, with the shell in the harness’s group: `cmd` binds by group membership and wakes the agent;
     - **A mixed group:** a bound background job and a foreground child of a live tool shell in the same harness group. The job survives, and the foreground child stops, each signaled by its own pid;
+    - **A child started during the grace period:** the foreground child starts a new child in the group after the first SIGINT. The delayed sweep reaps it, while the bound job and a child of the bound job survive;
     - `sh -c 'cmd &'`, with the shell leading its own group: `cmd`, reparented to init, binds by its marker and wakes the agent;
     - a process in the harness’s group that doesn’t bind is still stopped at the turn’s end;
     - a marked process outside the group that doesn’t bind isn’t signaled, and its exit queues no wake;
