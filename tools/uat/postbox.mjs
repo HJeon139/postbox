@@ -90,8 +90,25 @@ export async function readJson(origin, path, ms = READ_MS) {
     return await res.json();
   } catch (e) {
     if (/** @type {Error} */ (e).name !== 'TimeoutError') throw e;
-    throw new Error(`Postbox didn’t answer GET ${path} within ${ms / 1000} s, so the run is stopping.`, { cause: e });
+    throw new Error(`Postbox didn’t answer GET ${path} within ${ms / 1000} s.`, { cause: e });
   }
+}
+
+/**
+ * How the runner reads its Postbox: each read limited by readJson, refused once Postbox has exited, and the state with
+ * its items, which /api/state no longer carries (#1155): the checks and triggers read them there.
+ * @param {{ origin: string, exited: number | null }} pb  the run’s Postbox, read as it is at each call
+ * @param {number} [ms]  each read’s limit
+ */
+export function postboxReader(pb, ms = READ_MS) {
+  const get = async (/** @type {string} */ p) => {
+    if (pb.exited !== null) throw new Error(`Postbox exited (code ${pb.exited}); see run.log.`);
+    return readJson(pb.origin, p, ms);
+  };
+  return async (/** @type {string} */ p) => {
+    const body = await get(p);
+    return p === '/api/state' && body?.state ? { ...body, state: await withItems(body.state, get) } : body;
+  };
 }
 
 /**
@@ -112,15 +129,7 @@ export async function startPostbox({ root, port, data, env, log, tries = 80, ste
   process.once('exit', () => {
     if (pb.exited === null) pb.server?.kill('SIGTERM');
   });
-  const get = async (p) => {
-    if (pb.exited !== null) throw new Error(`Postbox exited (code ${pb.exited}); see run.log.`);
-    return readJson(pb.origin, p);
-  };
-  // The state with its items, which /api/state no longer carries (#1155): the checks and triggers read them there.
-  const api = async (p) => {
-    const body = await get(p);
-    return p === '/api/state' && body?.state ? { ...body, state: await withItems(body.state, get) } : body;
-  };
+  const api = postboxReader(pb);
   const stop = async () => {
     pb.stopping = true;
     if (pb.server) await untilGone(pb.server);
