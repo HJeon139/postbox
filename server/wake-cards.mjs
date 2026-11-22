@@ -156,21 +156,13 @@ export function resolveHop(rt, threadId, itemId, allow) {
     rt.ensureSession(threadId, p.id, { brief: `@${it.from} woke you, and the person added you to this conversation.`, joined: { by: it.from, in: threadId } });
     rt.threads.addItem(threadId, { kind: 'system', variant: 'joined', to: p.handle });
   }
-  // A request stored before #108 kept only the preview.
-  // Its agent hears that it went, as it hears of a decline (#517): else it tells the person it’s still waiting.
-  const r =
-    allow &&
-    rt.agentWake(it.fromSessionId, it.to, it.text ?? it.reason, {
-      confirmed: true,
-      replyIn: it.replyIn ?? null,
-      fromTurnId: it.fromTurnId ?? null,
-      itemId: it.itemId ?? null,
-      bounce: it.bounce === true,
-    });
-  // A target removed meanwhile is told of by dropHeld, which closes the card first.
-  if (r?.ok && from && !from.retiredFork) rt.sessions.tell(from.id, `The person allowed ${cardName(it)}: your message went to @${it.to}.`);
-  settleHeld(rt, it, allow);
-  if (allow) return { ok: true };
+  if (allow) {
+    // Its own wake and those held on it go together (#439). A request stored before #108 kept only the preview.
+    const own = { ...ownWake(it), text: it.text ?? it.reason ?? '', own: true };
+    release(rt, it, threadId, [own, ...(it.held ?? [])], true);
+    return { ok: true };
+  }
+  settleHeld(rt, it);
   if (from && !from.retiredFork) {
     const text = it.join
       ? `The person chose not to add @${it.to} to this conversation, so it didn’t get your message. Carry on without it.`
@@ -180,13 +172,9 @@ export function resolveHop(rt, threadId, itemId, allow) {
   return { ok: true };
 }
 
-/** The wakes held on a card go with it (#439): Allow delivers each as its agent sent it; otherwise each agent is told. */
-function settleHeld(rt, card, allow) {
+/** The wakes held on a card a decline settles (#439): each agent is told its message didn’t go. */
+function settleHeld(rt, card) {
   for (const w of card.held ?? []) {
-    if (allow) {
-      sendHeld(rt, card, w, true);
-      continue;
-    }
     const se = rt.s.sessions[w.fromSessionId];
     if (se && !se.retiredFork)
       answerWaker(
@@ -227,32 +215,48 @@ export function retireStale(rt, threadId, target, why, { byPerson = false } = {}
   const from = rt.s.sessions[card.fromSessionId];
   releaseNeed(rt, from, card.id);
   // A request stored before #108 kept only the preview.
-  const own = {
-    fromSessionId: card.fromSessionId,
-    to: card.to,
-    text: card.text ?? card.reason ?? '',
-    replyIn: card.replyIn ?? null,
-    fromTurnId: card.fromTurnId ?? null,
-    itemId: card.itemId ?? null,
-    bounce: card.bounce === true,
-  };
-  for (const w of [own, ...(card.held ?? [])]) sendHeld(rt, card, w, byPerson);
+  release(rt, card, conv, [{ ...ownWake(card), text: card.text ?? card.reason ?? '' }, ...(card.held ?? [])], byPerson);
 }
 
-/** A held wake goes on as its agent sent it; one that can’t go (its target was removed meanwhile) tells its agent why. */
-function sendHeld(rt, card, w, confirmed) {
-  const r = rt.agentWake(w.fromSessionId, w.to, w.text, {
-    confirmed,
-    replyIn: w.replyIn,
-    fromTurnId: w.fromTurnId,
-    itemId: w.itemId,
-    bounce: w.bounce === true,
-  });
+/** A card’s own wake, as its agent sent it. @param {any} card */
+const ownWake = (card) => ({
+  fromSessionId: card.fromSessionId,
+  to: card.to,
+  replyIn: card.replyIn ?? null,
+  fromTurnId: card.fromTurnId ?? null,
+  itemId: card.itemId ?? null,
+  bounce: card.bounce === true,
+});
+
+/**
+ * The wakes a card releases go on as their agents sent them (#439), and each agent is told whether its message went
+ * (#517). Every one is stored and every note written before any target starts its turn: an agent that is both a target
+ * and a sender reads, in that first turn, that its own message went. A target removed meanwhile was told of by
+ * dropHeld, which closes the card first. @param {any} rt @param {any} card @param {string} conv  the card’s conversation
+ * @param {any[]} wakes @param {boolean} confirmed
+ */
+function release(rt, card, conv, wakes, confirmed) {
+  const went = new Set();
+  for (const w of wakes) {
+    const opts = { confirmed, replyIn: w.replyIn, fromTurnId: w.fromTurnId, itemId: w.itemId, bounce: w.bounce === true, wake: false };
+    const r = rt.agentWake(w.fromSessionId, w.to, w.text, opts);
+    if (r.ok) went.add(w.to);
+    tellSender(rt, card, w, r);
+  }
+  for (const handle of went) {
+    const p = rt.personas.byHandle(handle);
+    const target = p && rt.sessions.pendingIn(conv).find((x) => x.personaId === p.id && !x.retiredFork);
+    if (target) rt.delivery.wake(target.id);
+  }
+}
+
+/** Whether a released wake went, told to its agent: so it stops saying it waits, or learns why it didn’t go. */
+function tellSender(rt, card, w, r) {
   const se = rt.s.sessions[w.fromSessionId];
   if (!se || se.retiredFork) return;
-  // Told either way (#517): one that went, so its agent stops saying it waits; one that didn’t, with why.
-  if (r.ok) rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, went to @${w.to}.`);
-  else if (!r.waiting) rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${r.message}`);
+  const what = `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)},`;
+  if (r.ok) rt.sessions.tell(se.id, w.own ? `The person allowed ${cardName(card)}: your message went to @${w.to}.` : `${what} went to @${w.to}.`);
+  else if (!r.waiting) rt.sessions.tell(se.id, `${what} didn’t go: ${r.message}`);
 }
 
 /**

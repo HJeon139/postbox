@@ -84,3 +84,27 @@ test('#517: the note starts no turn of its own', async () => {
     'no entry for it',
   );
 });
+
+test('#517: an agent the Allow wakes reads, in that first turn, that its own held message went', async () => {
+  // Critic’s review of PR #1594: Allow sent alpha’s wake of beta, which started beta’s turn, before beta’s held message
+  // to gamma went and its note was written, so beta’s first turn could still read that the message waited.
+  const f = setup();
+  f.rt.ensureSession(f.t.id, f.c.id);
+  arrange.setThread(f.rt, f.t.id, { chainLimit: 3 });
+  for (let i = 0; i < 3; i++) f.rt.agentWake(...(i % 2 ? [f.beta.id, 'alpha'] : [f.alpha.id, 'beta']), `hand-off ${i + 1}`);
+  assert.equal(f.rt.agentWake(f.alpha.id, 'beta', 'alpha to beta').waiting, true, 'the card is up');
+  assert.equal(f.rt.agentWake(f.beta.id, 'gamma', 'beta to gamma').waiting, true, 'beta’s wake of gamma is held on it');
+  await settle(f.rt);
+  const card = f.store.items(f.t.id).find((x) => x.kind === 'hop' && x.status === 'open');
+  assert.equal(card.to, 'beta');
+  assert.ok(
+    (card.held ?? []).some((w) => w.from === 'beta' && w.to === 'gamma'),
+    'still held after the turns settle',
+  );
+  const before = f.adapter.calls.filter((c) => c.handle === 'beta').length;
+  f.rt.resolveHop(f.t.id, card.id, true);
+  await settle(f.rt);
+  const first = f.adapter.calls.filter((c) => c.handle === 'beta')[before];
+  assert.ok(first, 'the Allow woke beta');
+  assert.ok(JSON.stringify(first.message).includes('went to @gamma'), JSON.stringify(first.message).slice(0, 800));
+});
