@@ -47,10 +47,24 @@ function threadOf(t) {
   );
 }
 
-/** One of the person’s draft comments, until the review is sent. @param {any} c @param {any} env */
-function draftOf(c, { d, done, rerender }) {
+/**
+ * One of the person’s draft comments, until the review is sent: Edit opens it in place (#858), Delete drops it. Which
+ * one is open is kept by its place in the draft, which revising the text under it (followLines) keeps.
+ * @param {any} c @param {any} env
+ */
+function draftOf(c, env) {
+  const { d, done, rerender } = env;
+  const at = d.comments.indexOf(c);
+  if (!done && d.editing === at) return editorOf(c, at, env);
   const remove = () => {
     d.comments = d.comments.filter((x) => x !== c);
+    // The one open for editing keeps its place when one before it goes.
+    if (typeof d.editing === 'number' && d.editing > at) d.editing--;
+    rerender();
+  };
+  const edit = () => {
+    d.editing = at;
+    d.editingText = c.text;
     rerender();
   };
   return h(
@@ -64,9 +78,63 @@ function draftOf(c, { d, done, rerender }) {
         // Its quote is gone from the text the agent revised (#179), or its line changed (#123).
         c.gone !== undefined ? h('span.status-tag', 'Its text changed') : c.moved ? h('span.status-tag', 'Its line changed') : null,
         quoted(c.quote ?? c.gone),
-        done ? null : h('button.btn.sm.ghost', { type: 'button', style: { marginLeft: 'auto' }, onclick: remove }, 'Delete'),
+        done ? null : h('button.btn.sm.ghost', { type: 'button', style: { marginLeft: 'auto' }, 'data-draft': String(at), onclick: edit }, 'Edit'),
+        done ? null : h('button.btn.sm.ghost', { type: 'button', onclick: remove }, 'Delete'),
       ),
       h('div', c.text),
+    ),
+  );
+}
+
+/**
+ * A draft comment open for editing, with its text, on the same line, selection or part: saving replaces its text and
+ * keeps where it is; Cancel or Escape leaves it as it was. Either way focus goes back to its Edit button.
+ * @param {any} c @param {number} at  its place in the draft @param {any} env
+ */
+function editorOf(c, at, { d, rerender }) {
+  const close = (/** @type {boolean} */ save) => {
+    const text = ta.value.trim();
+    if (save && !text) return;
+    if (save) d.comments = d.comments.map((x, i) => (i === at ? { ...x, text } : x));
+    d.editing = null;
+    d.editingText = '';
+    /** @type {HTMLElement | null} */ (rerender().querySelector(`[data-draft="${at}"]`))?.focus();
+  };
+  const text = typeof d.editingText === 'string' ? d.editingText : c.text;
+  const ta = h('textarea.textarea', {
+    'aria-label': 'Edit your draft comment',
+    style: { minHeight: '56px' },
+    value: text,
+    oninput: () => {
+      d.editingText = ta.value;
+    },
+    onkeydown: (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        close(true);
+      }
+      // Escape closes the box, and only the box: not a full-screen review around it too.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close(false);
+      }
+    },
+  });
+  queueMicrotask(() => restoreComposer(ta, [], text));
+  const quote = quoted(c.quote ?? c.gone);
+  return h(
+    'div.rv-thread',
+    h(
+      'div.reply',
+      { style: { flexDirection: 'column' } },
+      quote ? h('span.small.dim', 'On ', quote) : null,
+      ta,
+      h(
+        'div.row-flex',
+        h('button.btn.sm.send', { type: 'button', onclick: () => close(true) }, 'Save comment'),
+        h('button.btn.sm.ghost', { type: 'button', onclick: () => close(false) }, 'Cancel'),
+        h('span.small.dim', 'Ctrl+Enter saves it'),
+      ),
     ),
   );
 }

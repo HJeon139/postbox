@@ -8,6 +8,9 @@ export const newReviewDraft = (content) => ({
   composing: null,
   composingText: '',
   composingSelection: null,
+  // The draft comment open for editing, by its place in comments, and its unsaved text (#858).
+  editing: null,
+  editingText: '',
   verdict: 'request_changes',
   view: 'diff',
   error: null,
