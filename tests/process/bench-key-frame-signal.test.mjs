@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tempDir } from '../temp-dirs.mjs';
-import { childrenOf, chromiumMissing, running } from './chrome.mjs';
+import { childrenOf, chromiumMissing, isChromium, running } from './chrome.mjs';
 
 const skip = await chromiumMissing();
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -98,5 +98,31 @@ test('SIGINT while its Postbox starts stops that Postbox at once, removes the si
   assert.deepEqual(end, { code: 130, signal: null }, `exited after ${Date.now() - t0} ms:\n${run.said()}`);
   assert.ok(Date.now() - t0 < 5_000, `it exited within 5 s of Ctrl-C, not after ${Date.now() - t0} ms`);
   assert.deepEqual(sizeFolders(run.tmp), [], 'the size’s data folder is gone');
+  assert.ok(await until(() => !tree.some(running), 5_000), `its Postbox and Chromium exited: ${tree.filter(running).join(', ')}`);
+});
+
+// On a loaded runner Chromium can be slow to close, and the Ctrl-C above outlived the test’s 10 s once Chromium’s close
+// took its own 10 s to give up. Here Chromium is stopped (SIGSTOP), so it answers nothing, as a starved one doesn’t:
+// the bench still exits within 5 s, killing Chromium rather than waiting on it.
+test('SIGINT exits within 5 s while Chromium is too slow to close, and Chromium is gone after', { skip, timeout: START_MS + 20_000 }, async () => {
+  const run = bench({ NODE_OPTIONS: `--import=${pathToFileURL(join(ROOT, 'tests/process/hold-postbox.mjs')).href}` });
+  const pid = /** @type {number} */ (run.child.pid);
+  assert.ok(await until(() => sizeFolders(run.tmp).length > 0 && postboxOf(pid) !== undefined, START_MS), `its Postbox started:\n${run.said()}`);
+  const tree = treeOf(pid);
+  const chromium = tree.filter(isChromium);
+  assert.ok(chromium.length > 0, 'the bench’s Chromium was found');
+  // One that exited since the tree was read can’t be stopped, and needn’t be.
+  for (const p of chromium.filter(running)) process.kill(p, 'SIGSTOP');
+  try {
+    const t0 = Date.now();
+    run.child.kill('SIGINT');
+    const timer = setTimeout(() => run.child.kill('SIGKILL'), 10_000);
+    const end = await run.exited;
+    clearTimeout(timer);
+    assert.deepEqual(end, { code: 130, signal: null }, `exited after ${Date.now() - t0} ms:\n${run.said()}`);
+    assert.ok(Date.now() - t0 < 5_000, `it exited within 5 s of Ctrl-C, not after ${Date.now() - t0} ms`);
+  } finally {
+    for (const p of chromium.filter(running)) process.kill(p, 'SIGCONT');
+  }
   assert.ok(await until(() => !tree.some(running), 5_000), `its Postbox and Chromium exited: ${tree.filter(running).join(', ')}`);
 });
