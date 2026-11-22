@@ -16,7 +16,8 @@ const diagrams = new Map();
 // The height each diagram’s source last drew at. A review draws its diagrams again each time it redraws (a comment
 // box opened or closed, a view switched), and a new frame starts at the stylesheet’s 160 px until Mermaid measures it.
 // Growing then moved what’s below it, the review’s Submit included, between a press and its release, and the press
-// was lost (#1631). So a frame drawn again starts at its diagram’s height, as an app’s frame does (apps.mjs, rec.height).
+// was lost (#1631). So a frame drawn again starts at its diagram’s height. An app’s frame in a review has the same
+// risk: it starts at 200 px each time it’s drawn (#1632).
 /** @type {Map<string, number>} */
 const drawnHeight = new Map();
 
