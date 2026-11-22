@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { dirname, posix } from 'node:path';
+import { claudeMissing, claudeVersionProblem } from '../../../shared/claude-version-check.mjs';
 import { ATTACHMENTS_DIR, DIR_MODE, FILE_MODE, lookedText, socketPathFits, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
 import { RUNNER_START_POLL_MS } from './daemon-constants.mjs';
 import { exists, runnerAlive, writeAtomic } from './daemon-files.mjs';
@@ -108,8 +109,16 @@ async function startTurn(d, c, m) {
  * @param {Daemon} d @param {any} m @param {FailStart} failStart
  */
 async function checkStart(d, m, failStart) {
-  const harness = await findHarness(d, m.harness);
-  if (!harness?.path) return failStart('no-harness', `${m.harness} isn’t installed on this host. The daemon looked in ${lookedText(harness)}.`);
+  const harness = await findHarness(d, m.harness, m.claudeCheck);
+  // The laptop let a claude start through on the daemon’s word that it checks the claude it finds now (#1084), so
+  // this says what the laptop would have, in its words.
+  if (!harness?.path)
+    return failStart(
+      'no-harness',
+      m.claudeCheck ? claudeMissing(harness) : `${m.harness} isn’t installed on this host. The daemon looked in ${lookedText(harness)}.`,
+    );
+  const tooOld = m.claudeCheck ? claudeVersionProblem(harness, m.claudeCheck.denyPrompts) : null;
+  if (tooOld) return failStart('start-failed', tooOld);
   const node = d.programs?.node.path ?? process.execPath;
   const dir = d.p.turn(m.turn);
   if (!socketPathFits(d.p.turn(m.turn, TURN_FILES.socket)))
@@ -126,12 +135,14 @@ async function checkStart(d, m, failStart) {
 }
 
 /**
- * The harness the last hello found, else the one found once the login shell is asked again (daemon-login.mjs).
- * @param {Daemon} d @param {string} name
+ * The harness the last hello found, else the one found once the login shell is asked again (daemon-login.mjs). With a
+ * claudeCheck, a claude older than its floor is looked for again too: the person may have run claude update (#1084).
+ * @param {Daemon} d @param {string} name @param {{ denyPrompts: boolean }} [claudeCheck]
  */
-async function findHarness(d, name) {
+async function findHarness(d, name, claudeCheck) {
   const found = () => d.programs?.harnesses.find((h) => h.name === name);
-  if (found()?.path) return found();
+  const usable = (/** @type {any} */ h) => h?.path && !(claudeCheck && claudeVersionProblem(h, claudeCheck.denyPrompts));
+  if (usable(found())) return found();
   await reprobe(d);
   return found();
 }
