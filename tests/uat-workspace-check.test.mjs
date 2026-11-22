@@ -190,8 +190,22 @@ test('on macOS, a step into the runs’ temp folder written as $TMPDIR or by its
   // Its own workspace through $TMPDIR is inside, and the rest of the temp folder is still scratch space.
   assert.deepEqual(pathsOutside('cat $TMPDIR/postbox-uat-workspace-abc/workspace/notes.md', tmpWhere), []);
   assert.deepEqual(pathsOutside(`echo hi > $TMPDIR/scratch.txt && cat ${tmp}/scratch.txt`, tmpWhere), []);
-  // On Linux, $TMPDIR is the temp base as written.
+  // On Linux, $TMPDIR, when it’s set, is the temp base as written.
   const linux = { workspace: '/tmp/postbox-uat-workspace-abc/workspace', home: '/home/someone' };
   assert.deepEqual(pathsOutside('ls $TMPDIR', linux), ['$TMPDIR']);
   assert.deepEqual(pathsOutside('cat /tmp/postbox-uat-workspace-def/workspace/x', linux), ['/tmp/postbox-uat-workspace-def/workspace/x']);
+});
+
+test('a word in quoted and unquoted parts is one word, as the shell reads it, so "$TMPDIR"/x is scratch, not the temp folder', () => {
+  const tmp = ['', 'var', 'folders', 'ab', 'xyz', 'T'].join('/');
+  const tmpWhere = { workspace: `/private${tmp}/postbox-uat-workspace-abc/workspace`, home: '/Users/someone' };
+  assert.deepEqual(pathsOutside('cp a "$TMPDIR"/s', tmpWhere), [], 'a scratch file');
+  assert.deepEqual(pathsOutside('cat a > "$TMPDIR"/s.txt && cat "$TMPDIR"/s.txt', tmpWhere), []);
+  assert.deepEqual(
+    pathsOutside('cat "$TMPDIR"/postbox-uat-workspace-def/workspace/x', tmpWhere),
+    ['$TMPDIR/postbox-uat-workspace-def/workspace/x'],
+    'another run’s, quoted in part',
+  );
+  assert.deepEqual(pathsOutside(`cat "$HOME"/.ssh/id_rsa`, where), ['$HOME/.ssh/id_rsa'], 'the same for $HOME');
+  assert.deepEqual(pathsOutside(`cat '..'/data/x`, where), ['../data/x']);
 });

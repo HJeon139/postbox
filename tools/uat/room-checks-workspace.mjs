@@ -40,14 +40,15 @@ function withoutHeredocs(command) {
 }
 
 /**
- * A command’s words, a quoted string as one word, with what separates one command from the next kept as words of
+ * A command’s words, as the shell reads them: quoted and unquoted parts next to each other are one word, without
+ * their quotes, so "$TMPDIR"/x is $TMPDIR/x (#885). What separates one command from the next is kept as words of
  * their own: `&&`, `||`, `;`, `|` and a new line.
  * @param {string} command
  * @returns {string[]}
  */
 function wordsOf(command) {
-  const words = withoutHeredocs(command).match(/&&|\|\||[;|\n]|"(?:\\.|[^"\\])*"|'[^']*'|[^\s;|&"']+/g) ?? [];
-  return words.map((w) => (/^["']/.test(w) ? w.slice(1, -1) : w));
+  const words = withoutHeredocs(command).match(/&&|\|\||[;|\n]|(?:"(?:\\.|[^"\\])*"|'[^']*'|[^\s;|&"'])+/g) ?? [];
+  return words.map((w) => w.replace(/"((?:\\.|[^"\\])*)"|'([^']*)'/g, (_, double, single) => double ?? single));
 }
 
 const BETWEEN_COMMANDS = new Set(['&&', '||', ';', '|', '\n']);
@@ -127,7 +128,8 @@ function runsFolder(workspace) {
  * @returns {string[]}  the paths, as the command wrote them
  */
 export function pathsOutside(command, { workspace, home, cwd = workspace }) {
-  // $TMPDIR is the runs’ temp folder, as the agents’ environment names it (#885); with none, it’s left as written.
+  // $TMPDIR is the runs’ temp folder, as the runner’s environment names it (#885); with none, it’s left as written. A
+  // scenario that gives agents a TMPDIR of its own (`- seed: git-remote`, its run folder’s tmp/) isn’t told apart.
   const base = tempBase(workspace);
   const expand = (/** @type {string} */ word) => {
     const homed = word.replace(/^(~|\$HOME|\$\{HOME\})(?=\/|$)/, home);
