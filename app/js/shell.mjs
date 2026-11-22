@@ -9,12 +9,13 @@ import { busy, client, needsYou, sessionsOf, threadsOf, topicsOf } from './clien
 import { fill, h, icon, syncList } from './dom.mjs';
 import { installLine } from './install-line.mjs';
 import { nextNeedsYou } from './needs-nav.mjs';
+import { openNewThread } from './new-thread-sheet.mjs';
 import { openPalette } from './palette.mjs';
 import { openPermissions } from './permissions.mjs';
 import { projectPlaces } from './places-menu.mjs';
 import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { confirmDeleteThread, openNewAgent, openNewThread, openRename, openSettings } from './sheets.mjs';
+import { confirmDeleteThread, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { threadState } from './thread-state.mjs';
 import './store-line.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
