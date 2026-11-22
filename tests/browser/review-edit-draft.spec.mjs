@@ -85,6 +85,46 @@ test('#858 deleting a draft before the one being edited leaves the edit on its o
     ]);
 });
 
+test('#858 deleting a draft after the one being edited leaves the edit on its own comment', async ({ page }) => {
+  const { block, blockId, open } = await twoDrafts(page, 'Delete after');
+  await block.locator('.g-mark[data-line="7"]').click();
+  await block.getByRole('textbox', { name: 'Comment on line 7' }).fill('on seven');
+  await block.getByRole('button', { name: 'Add draft comment', exact: true }).click();
+  const box = await open('on five');
+  await box.fill('five, edited');
+  await block
+    .locator('.rv-thread', { hasText: 'on seven' })
+    .getByRole('button', { name: /^Delete your comment on / })
+    .click();
+  const still = block.getByRole('textbox', { name: 'Edit your comment on line 5', exact: true });
+  await expect(still, 'the edit is still on line 5, with what was typed').toHaveValue('five, edited');
+  await still.press('Control+Enter');
+  await block.getByRole('button', { name: 'Submit review', exact: true }).click();
+  await expect
+    .poll(() => sent(blockId)?.map((c) => [c.line, c.text]))
+    .toEqual([
+      [3, 'on three'],
+      [5, 'five, edited'],
+    ]);
+});
+
+test('#858 Escape in an edit closes only the edit, in full screen too, and Save with blank text keeps the comment', async ({ page }) => {
+  const { block, open } = await twoDrafts(page, 'Full screen edit');
+  await block.getByRole('button', { name: 'Full screen', exact: true }).click();
+  await expect(block.locator('.rv-box.rv-full')).toBeVisible();
+  const box = await open('on five');
+  await box.press('Escape');
+  await expect(block.getByRole('textbox', { name: /^Edit your comment on / }), 'the edit closed').toHaveCount(0);
+  await expect(block.locator('.rv-box.rv-full'), 'full screen stays').toBeVisible();
+  // Blank text isn’t a comment: Save leaves the box open and the comment as it was.
+  const again = await open('on five');
+  await again.fill('   ');
+  await again.press('Control+Enter');
+  await expect(again, 'the box stays open').toBeVisible();
+  await again.press('Escape');
+  await expect(block.locator('.rv-thread', { hasText: 'on five' }), 'the comment is as it was').toHaveCount(1);
+});
+
 test('#858 a draft comment on a selection in Preview keeps its quote and columns when edited', async ({ page }) => {
   const { block, blockId } = await room.withReview(page, 'Edit a selection');
   await drawn(block, 'Preview');
