@@ -12,9 +12,10 @@
 //
 // The wall time is checked on a timer of its own, and the bound’s state read gives up after STATE_READ_MS, so a
 // Postbox that refuses or hangs can’t hold the bound back: the run takes no step after the one out. The runner’s own
-// waits read the state with no limit of their own, so once the wall time is up and Postbox has answered none of the
-// watch’s reads for GRACE_MS, the run runs its own stop, as a signal would, and exits (1, or a signal’s 130) with no
-// report. A run in a long wait it chose, with Postbox answering, finishes it and reports as any run does. Where the cap can still be passed: a turn that starts within a
+// reads give up after READ_MS (tools/uat/postbox.mjs, readJson), so a read Postbox takes and never answers unwinds the
+// run into its stop as an error, even while the watch’s reads are answered. And once the wall time is up and Postbox
+// has answered none of the watch’s reads for GRACE_MS, the run runs its own stop, as a signal would, and exits (1, or
+// a signal’s 130) with no report. A run in a long wait it chose, with Postbox answering, finishes and reports. Where the cap can still be passed: a turn that starts within a
 // poll of it runs until that poll, and starts lost while the event stream was down longer than the store keeps its
 // events count only as the state shows them. The run’s report and verifier come after the wall time; the verifier is
 // bounded by --max-cost and --budget, not by this.
