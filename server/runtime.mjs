@@ -3,12 +3,13 @@
 // you", and implements the UI tools that agents call (over MCP, or in-process for the mock).
 
 import { homedir } from 'node:os';
+import { QUESTION_TOOL } from '../shared/question-words.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { runAgentCommand } from './agent-commands.mjs';
 import { sendAppMessage } from './app-entries.mjs';
 import { Apps } from './app-service.mjs';
-import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
+import { askQuestions, questionBlocks } from './ask-question.mjs';
 import { asksPort } from './asks-port.mjs';
 import { Assets } from './asset-service.mjs';
 import { act } from './blocks.mjs';

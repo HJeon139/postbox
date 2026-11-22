@@ -19,16 +19,15 @@
 // (permission_denials) raises no refusal card either.
 
 import { validateBlock } from '../shared/catalog.mjs';
+import { STILL_OPEN } from '../shared/question-words.mjs';
 import { offerNeed } from './card-needs.mjs';
 import { newId } from './ids.mjs';
 import { CARD_WAIT_MS } from './permission-cards.mjs';
 import { gated } from './store-outage.mjs';
 
-export const QUESTION_TOOL = 'AskUserQuestion';
 export const DISMISSED = 'The person dismissed the question.';
 const WAITED = `Nobody answered within ${Math.round(CARD_WAIT_MS / 3600000)} hours.`;
 const DELIVERED = 'The person answered this question while Postbox restarted, and their answer already reached you as a message.';
-export const STILL_OPEN = 'The question stays open in the conversation; their answer reaches you as a message, so don’t ask it again.';
 
 /**
  * The choice blocks for an AskUserQuestion input, one per question, or null if any can’t be shown as one: the call

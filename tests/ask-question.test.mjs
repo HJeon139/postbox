@@ -10,10 +10,10 @@ import { mock, test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { canUseTool } from '../server/adapters/sdk-permission.mjs';
-import { STILL_OPEN } from '../server/ask-question.mjs';
 import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { STILL_OPEN } from '../shared/question-words.mjs';
 import * as arrange from './arrange.mjs';
 
 const RECORDED = JSON.parse(readFileSync(new URL('fixtures/claude-code/ask-user-question-prompts.json', import.meta.url), 'utf8')).prompts;
