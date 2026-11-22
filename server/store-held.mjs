@@ -4,7 +4,7 @@
 // whether the commit resolves or fails (store-commit.mjs, store-retry.mjs). The published state (store.state,
 // store.items()) is what the page, the stream, the read tools and every other reader see (design.md, “visible to
 // anything … only after its sync”; T-31). The pending read is for in-process code whose decision would be wrong on a
-// list that held writes have superseded, each call site placed in tests/store-held-guard.test.mjs.
+// list that held writes have superseded, each call site placed in tests/store-held-sites.mjs.
 //
 // It applies held emits without the commit in front of them, whose events don’t exist until the writer runs its
 // builder, so it is exact only while no commit touches the list read. One does: the archive pass’s turn.archive (#305,
