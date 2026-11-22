@@ -43,7 +43,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { HarnessEvents } from '../harness-events.mjs';
@@ -56,6 +55,8 @@ import { KIRO_TOOL_RULES, kiroAgent, kiroSystemPrompt } from './kiro-cli-agent.m
 import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { failOverLimit, kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
+import { kiroHomeFor } from './kiro-home.mjs';
+import { kiroMemoryOff } from './kiro-memory.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
 import { KINDS, toolOf } from './kiro-tools.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
@@ -94,10 +95,6 @@ export function kiroArgs({ persona, agent, sessionId = null, prompt, stdin = fal
     ...(stdin ? ['--no-interactive'] : ['--', prompt]),
   ];
 }
-
-/** The Kiro home a persona runs with: yours (KIRO_HOME, else ~/.kiro), or Postbox’s own when Isolated. */
-export const kiroHomeFor = (persona, { isolatedHome, env = process.env, home = homedir() }) =>
-  setupOf(persona).usesHostSetup ? env.KIRO_HOME || join(home, '.kiro') : isolatedHome;
 
 const contentText = (content) =>
   (Array.isArray(content) ? content : [])
@@ -354,6 +351,8 @@ export class KiroCliAdapter {
       const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
       file = join(home, 'agents', `${agent}.json`);
       await mkdir(join(home, 'agents'), { recursive: true });
+      // The home Postbox owns, which every Isolated persona shares, keeps no memory (#479).
+      if (!setupOf(persona).usesHostSetup) await kiroMemoryOff(home);
       await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders, reads: ctx.readFiles ?? [] }), null, 2));
       env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
     }

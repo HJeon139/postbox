@@ -1,4 +1,4 @@
-// The model ids in what `agy models` prints, for the model field’s suggestions (#1525).
+// The model ids in what `agy models` prints, for the model field’s suggestions (#143).
 
 /**
  * The model ids in an `agy models` answer, bounded: one per line, the id, then a tab and its name

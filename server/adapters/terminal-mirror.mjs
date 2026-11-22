@@ -10,6 +10,7 @@ import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { stepTool } from '../step-text.mjs';
 import { describeTool } from '../tool-labels.mjs';
 import { contentBlocks } from './claude-content.mjs';
 
@@ -151,7 +152,7 @@ export function entriesToItems(entries) {
       agent ??= out[out.push({ kind: 'agent', text: '', steps: [] }) - 1];
       for (const b of contentBlocks(e.message?.content)) {
         if (b.type === 'text' && b.text?.trim()) agent.text += (agent.text ? '\n\n' : '') + b.text;
-        if (b.type === 'tool_use') agent.steps.push({ id: b.id, label: describeTool(b.name, b.input), state: 'running' });
+        if (b.type === 'tool_use') agent.steps.push({ id: b.id, label: describeTool(b.name, b.input), ...stepTool(b.name), state: 'running' });
       }
     }
     if (e.type === 'user' && Array.isArray(e.message?.content)) {

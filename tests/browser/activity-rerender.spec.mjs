@@ -95,7 +95,8 @@ async function measure(page, run) {
   return counts;
 }
 
-test('#573: 10 activity steps change the step list and no Markdown box, frame or reply node', async ({ page }) => {
+test('#573: 10 activity steps change the step list and no Markdown box, frame or reply node', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the work counts come from Chromium’s DevTools protocol');
   const { reply, step } = await seeded(page, 'ten');
   const work = await measure(page, () => {
     for (let i = 1; i <= 10; i++) step({ id: `tool_${i}`, label: `Read file-${i}.md` });
@@ -147,7 +148,8 @@ test('#573: a background job’s row comes with its step and goes when it ends',
   await expect(reply.locator('details.activity > summary')).not.toContainText('running');
 });
 
-test('#573: a whole step list, as a terminal’s mirror sends it, changes no Markdown box, frame or reply node', async ({ page }) => {
+test('#573: a whole step list, as a terminal’s mirror sends it, changes no Markdown box, frame or reply node', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the work counts come from Chromium’s DevTools protocol');
   const { t, reply } = await seeded(page, 'mirror');
   const id = await reply.getAttribute('data-key');
   /** @type {any[]} */
