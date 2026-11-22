@@ -46,7 +46,7 @@ test('the probe counts the items skipped, and rows-skipped fires only once the r
   expect.soft([off.items, off.skipped, off.gated, off.settled]).toEqual([COUNT, 0, false, true]);
   expect.soft(rowsSkipped([off]), 'fires with the rule off').toHaveLength(1);
   if (process.env.RECORD_SKIP_SAMPLES) {
-    const recorded = `Chromium (Playwright), ${new Date().toUTCString().slice(5, 16)}, from tests/browser/skip-probe.spec.mjs's room of ${COUNT} items at 1,280 × 800: 'on' sampled once the page held still, 'off' after removing the transcript's cv-skip class in the page.`;
+    const recorded = `Chromium (Playwright), ${new Date().toUTCString().slice(5, 16)}, from tests/browser/skip-probe.spec.mjs's room of ${COUNT} items at 1,280 × 800: 'on' sampled once the page held still, 'off' after removing the transcript's cv-skip class in the page, then once it held still.`;
     const out = new URL('../fixtures/uat/skip-probe-samples.json', import.meta.url);
     writeFileSync(out, `${JSON.stringify({ recorded, on: [on], off: [off] }, null, 2)}\n`);
   }
