@@ -85,7 +85,8 @@ export function promptSteps(f, sessionId, delivered = new Map()) {
 /**
  * prompts.jsonl’s rows into the fold (tools/atif.mjs, foldEvents): each guide by its hash, and each prompt with a place
  * among the events, just before its turn’s first item, else its turn’s end, else its start in the work ledger, else
- * after the last item added before it was sent. Several prompts of one turn (one that ran again) keep their order.
+ * after the last item added before it was sent. A turn’s later prompt goes after the turn’s last item added before it
+ * was sent, so a follow-up comes after what it answers; several keep their order.
  * @param {{ guides: Map<string, string>, prompts: { seq: number, data: any }[], order: { seq: number, id: string }[], items: Map<string, any>, work: Map<string, any> }} f
  * @param {any[]} rows
  */
@@ -104,6 +105,8 @@ export function placePrompts(f, rows) {
     const at = first.get(r.turnId) ?? turn?.to ?? (turn ? turn.from + 1 : undefined) ?? (byTime ?? -1) + 1;
     const k = counted.get(r.turnId) ?? 0;
     counted.set(r.turnId, k + 1);
-    f.prompts.push({ seq: at - 0.5 + k / 1000, data: r });
+    // A later prompt of the turn (Antigravity’s follow-up after a refusal) goes after what the turn showed by then.
+    const shown = k ? f.order.findLast(({ id }) => f.items.get(id)?.turnId === r.turnId && f.items.get(id).at <= r.at) : undefined;
+    f.prompts.push({ seq: shown ? shown.seq + 0.5 + k / 1000 : at - 0.5 + k / 1000, data: r });
   }
 }

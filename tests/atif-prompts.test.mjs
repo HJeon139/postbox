@@ -91,3 +91,19 @@ test('a prompt goes where its turn first shows, else at its turn’s end, else b
   const at = got.findIndex((s) => s.message === 'Stray.');
   assert.equal(got[at - 1].extra.item_id, first.id);
 });
+
+test('a turn’s later prompt goes after what the turn showed before it was sent, not before its first reply', () => {
+  // Antigravity sends a follow-up in the same turn after a refusal (server/adapters/antigravity-cli.mjs): it answers
+  // what the turn had shown, so it comes after it.
+  const id = sessionOf('dry');
+  const reply = rec.events.find((e) => e.type === 'item.add' && e.data.item.sessionId === id && e.data.item.kind === 'agent').data.item;
+  const firstPrompt = rec.prompts.find((p) => p.type === 'prompt' && p.turnId === reply.turnId);
+  assert.ok(firstPrompt, 'the turn has its first prompt');
+  const followUp = { ...firstPrompt, text: 'Follow-up after the refusal.', at: reply.at + 1 };
+  const got = trajectories(rec.events, { version: POSTBOX_VERSION, live: rec.live, prompts: [...rec.prompts, followUp] }).find((x) => x.handle === 'dry')
+    .trajectory.steps;
+  const at = got.findIndex((s) => s.message === 'Follow-up after the refusal.');
+  const replyAt = got.findIndex((s) => s.extra?.item_id === reply.id);
+  assert.ok(replyAt >= 0 && at > replyAt, `the follow-up at ${at}, the reply at ${replyAt}`);
+  assert.ok(got.findIndex((s) => s.message === firstPrompt.text) < replyAt, 'the first prompt still comes before it');
+});
