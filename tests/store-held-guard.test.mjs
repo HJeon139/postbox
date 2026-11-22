@@ -109,7 +109,9 @@ const PENDING = {
   'turns.mjs': ['inputOf', 'inputOf', 'readItem', 'summaryOf', 'messageOf', 'personMessage'],
   'turn-service.mjs': ['retryEntries'], // whether the session a Retry wakes is still failed, maybe written behind a held commit (#1429)
   'queue-convert.mjs': ['convertOne', 'convertOne', 'notDelivered'], // the agents a stored queue's row waited for or came from, and the item an earlier conversion posted for it, read as the start's writes leave them (#1423)
-  'send-message.mjs': ['repeatOf'], // the item a repeated send's first try posted, maybe behind a held commit (#1138)
+  // the item a repeated send's first try posted, and its conversation, either maybe behind a held commit (#1138, #1292)
+  'send-message.mjs': ['repeatOf', 'repeatOf'],
+  'persona-create.mjs': ['createPersonaFor'], // the conversation a new agent joins, maybe started behind a held commit (#1292)
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
@@ -152,15 +154,18 @@ const PENDING = {
   // added behind a held commit (#1155); forgetReported: an agent’s sessions whose last report a backend switch drops
   // (#1315); stampNeeds: the session it stamps; unarchive: what an older Postbox archived, the threads and sessions it
   // rewrites as the store loads.
-  // The turn’s last reply, which goes back to whom woke it (#1518), maybe settled behind a held commit.
-  'reply-back.mjs': ['replyBack'],
+  // The turn’s last reply, which goes back to whom woke it (#1518), maybe settled behind a held commit; and the replies
+  // that woke it, whose reactions decide whether it goes back at all (#1553), a reaction maybe behind a held commit too.
+  'reply-back.mjs': ['replyBack', 'endedByReaction'],
   'sessions.mjs': ['pendingIn', 'pendingIn', 'ensure', 'update', 'needAt', 'remove', 'forgetReported', 'stampNeeds', 'unarchive'],
-  // A command’s item, maybe deleted behind a held commit, before its output or its end is written.
-  'shell-runs.mjs': ['commandOutput', 'endCommand'],
+  // A command’s item, maybe deleted behind a held commit, before its output or its end is written; and the agent and
+  // project whose folder it runs in, maybe made or changed behind one (#1292).
+  'shell-runs.mjs': ['commandFolder', 'commandFolder', 'commandOutput', 'endCommand'],
   'subagent-end.mjs': ['withUrgent'],
-  // Stop's stopped entries name the message each sender sent, maybe settled behind a held commit. conversationOf and
-  // deletedFrom: whether an agent left the conversation, which decides who answers or writes a summary (#283), maybe
-  // behind a held commit.
+  // Stop's stopped entries name the message each sender sent, maybe settled behind a held commit. A topic's conversation,
+  // which its session joins, and who answers in it, read as a topic opened behind a held commit leaves them (#1292).
+  // conversationOf and deletedFrom: whether an agent left the conversation, which decides who answers or writes a
+  // summary (#283), maybe behind a held commit.
   'side-threads.mjs': [
     'agentWake',
     'agentWake',
@@ -168,6 +173,9 @@ const PENDING = {
     'endChain',
     'endChain',
     'dropWakes',
+    'sideSession',
+    'threadPersona',
+    'threadPersona',
     'conversationOf',
     'deletedFrom',
     'bumpSideLink',
@@ -199,7 +207,9 @@ const PENDING = {
   'stop-record.mjs': ['recordStopped'], // the stopped turn’s segments still streaming, maybe held behind a commit (#602)
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
-  'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
+  // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637); and who answers in
+  // a new topic, read as the conversation was written (#1292)
+  'topic-open.mjs': ['startTopic', 'startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'],
   'wake-cards.mjs': ['lastAddAnswer', 'openCard'], // a declined add, so a mention asks no more (#693), and its lift by the person’s add (#789); another wake’s held hop card, so a second isn’t made
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };
