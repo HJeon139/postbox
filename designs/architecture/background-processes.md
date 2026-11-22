@@ -45,15 +45,18 @@ sequenceDiagram
   S->>H: a new turn: "Your background job … ended", with its output tail
 ```
 
-### 1. Which jobs Postbox keeps: owned ones only
+### 1. Which jobs Postbox keeps: only tasks bound to one live group
 
-A job is kept only when two things show which turn owns it:
-- **Harness metadata.** The harness reported the job in this turn’s stream: its task id and its command.
-- **What the OS shows.** While the CLI that Postbox holds as its own child is alive, its tool shells’ groups are listed (`shellGroups`). The job’s shell is the one running that command.
+A job is kept only when Postbox can bind the harness’s task to exactly one live process group, at the moment it ends the turn. Every one of these must hold, read from one `ps` snapshot taken while the CLI Postbox holds as its own child is still alive:
+- **The task is live, by the harness’s own account.** The owning turn’s stream reported it starting, with `task_started` (its task id and tool call id), and hasn’t reported it ending: there’s no `task_notification` for it yet.
+- **Exactly one shell matches.** Among the CLI’s tool shells (`shellGroups`: children of the CLI that lead their own groups), exactly one runs the task’s command.
+- **That shell started inside the task’s own call.** Its leader’s start time (`lstart`, to the second) falls between its tool call’s start and that call’s result, each widened by one second for the clock’s resolution.
 
-Postbox records that binding when it ends the turn: the job’s task id, its group id, each member’s pid and start time, the owning session and the owning turn. A task Postbox can’t bind this way is kept by no one. That covers no shell running its command, two shells running the same command, or a CLI that has already exited. Postbox signals that task’s processes only as part of the CLI’s own stop, as it does today.
+If none matches, more than one matches, or the match started outside its call, the task is ambiguous and nothing is kept for it. The same goes for a task that ended before the result, or a CLI that has already exited. An ambiguous task’s processes are stopped with the CLI, as every other foreground shell is. Postbox never keeps a group it couldn’t bind.
 
-This is the rule `stopTurn` already applies for Send now. The new part is when it runs: at the `result`, not only on Send now.
+A bound job is recorded with its task id, its group id, each member’s pid and start time, the owning session and the owning turn.
+
+**A strict path, apart from Send now’s.** `stopTurn`’s `keep` (`server/adapters/process-group.mjs`) is lenient for Send now. It takes the first shell running a command. If any job goes unmatched, it keeps every unmatched shell, because the person chose to keep the jobs, and a shell it couldn’t place might be one. The turn-end path is a separate, strict mode: it keeps only bound groups and stops every other shell. Send now keeps its current behavior. Whether Send now should also go strict is a separate question, for its own issue.
 
 ### 2. When the turn ends, and what survives it
 
@@ -77,13 +80,13 @@ When a kept job ends, the agent that started it gets one wake, sent the way a sc
 
 - **An end means the whole group is gone.** A job has ended when no member of its group still has its recorded start time.
 - **Exit status.** It comes only from the harness. A task notification the CLI sent before Postbox ended it carries one. Otherwise the wake says “exit status unknown”. Postbox reads no exit file a command wrote.
-- **Output tail.** It comes only from the output file the harness named for the task. For Claude Code, that is the `outputFile` its tool result gives. Postbox reads it only within the harness’s own authority:
-  - the file is in the folder the CLI writes its task output to, resolved with `realpath.native` when the job is bound;
-  - it is a regular file, owned by the person’s user;
-  - it was named in the owning turn’s stream;
-  - Postbox reads at most the last 8 KB and 50 lines.
-
-  The tail is quoted as data, so an @-mention in it wakes no one. Postbox doesn’t read a redirect on the command line or a multiplexer pane (`tmux capture-pane`). For a job with no harness-named output, the wake says the output wasn’t kept.
+- **Output tail.** It comes only from a file the harness owns, and its identity is checked when Postbox opens it and holds:
+  - **The folder comes from harness metadata, not from text.** Claude Code writes task output under its own per-session folder in the temp folder. Postbox derives that folder from what it knows: the person’s user id, the turn’s working folder and the session id from the CLI’s `init` event. It resolves the folder with `realpath.native` once, when the session starts.
+  - **The path in the tool result’s text is only a hint.** The stream parser takes `outputFile` from the tool result’s words (`BACKGROUND_FILE` in `claude-stream.mjs`), so it’s never trusted on its own. The only path accepted is one inside the derived folder. A `task_notification`’s structured `output_file` must name that same file.
+  - **Opened once, at binding, and held.** While the CLI is still alive, Postbox opens the file with `O_RDONLY | O_NOFOLLOW` and keeps the descriptor. It then checks the descriptor itself: `fstat` must show a regular file, owned by the person’s user, with one link. Then it resolves the path with `realpath.native`, and the result must lie inside the derived folder. The resolved path’s `lstat` must have the same device and inode as the descriptor. Any check that fails means no tail for that job.
+  - **Read through the descriptor only.** At the job’s end, Postbox reads at most the last 8 KB and 50 lines through the held descriptor, never by path again, so a path that changed after binding changes nothing it reads.
+  - **Unavailable otherwise.** After a restart the descriptor is gone, so the wake says “output not available: Postbox restarted while it ran”. The same goes for a job whose file failed a check, or a harness with no such folder. Postbox never reads a redirect on the command line, an exit file, or a multiplexer pane (`tmux capture-pane`).
+  - **Quoted as data.** The tail is quoted, so an @-mention in it wakes no one.
 - **Once.** The job’s end and its wake are committed together. A restart, or a host reconnect, that finds the job already ended wakes no one again.
 - **Quiet in the room.** The wake reaches only the agent that started the job. It counts as no hop and raises no “needs you”. Each job stays visible in the room with its Stop until it ends, and then shows that it ended. That isn’t an alarm: the agent it wakes acts on it (AGENTS.md, “No unactionable alarms”).
 - **Stop.** The person can Stop any job. An agent can stop only its own session’s jobs (#1606).
@@ -153,7 +156,11 @@ What each harness’s check answers:
   #1614’s recorded native stream, where the message waits, is the baseline.
 - **`tests/process/`, with real processes:**
   - at the result, the bound job’s group survives, while the CLI and a foreground shell are stopped;
-  - two shells running the same command bind neither;
+  - two shells running the same command bind neither, and both are stopped;
+  - **The ambiguous match critic named:** the background task has ended, and a foreground shell runs the same command. Nothing is kept, and the foreground shell is stopped.
+  - a task whose shell exits before binding is kept by no one;
+  - a shell that started before its task’s call doesn’t bind;
+  - **The output file’s identity:** swapping the path for a link after binding, or replacing the file, changes nothing that is read. A file outside the derived folder, a linked file, or one with a second link gives no tail.
   - a group whose members’ start times changed isn’t signaled or adopted.
 - **Unit tests:**
   - the keep decision for each end event;
