@@ -47,8 +47,10 @@ export function runBound({ turns, minutes, now = () => Date.now() }) {
 const capped = (n) => `its agents started ${n === 1 ? 'a turn' : `${n} turns`}, the most --max-turns ${n} allows.`;
 
 export class RunBound {
-  /** @type {{ step: number, at: number, why: string } | null} */
+  /** @type {{ step: number, during: boolean, at: number, why: string } | null} */
   stopped = null;
+  /** @type {number | null} when the watch ended: the run’s minutes are counted to here, not to the report’s writing */
+  endedAt = null;
   /** @type {Set<string>} every turn seen to start, by its id */
   turns = new Set();
   /** @type {Set<string> | null} the turns that started before the cap was reached: those may finish */
@@ -63,10 +65,10 @@ export class RunBound {
     this.startedAt = now();
   }
 
-  /** The run stops here, once: the step it was at, when, and why. */
-  stop(why) {
+  /** The run stops here, once: the step it didn’t take, or whose turns it stopped (`during`), when, and why. */
+  stop(why, during = false) {
     if (this.stopped) return this.stopped.why;
-    this.stopped = { step: this.step, at: this.now(), why };
+    this.stopped = { step: this.step, during, at: this.now(), why };
     return why;
   }
 
@@ -87,11 +89,11 @@ export class RunBound {
     const working = sessions.filter((se) => ['think', 'tool', 'gen'].includes(se.state ?? ''));
     const late = this.late();
     if (late) {
-      this.stop(late);
+      this.stop(late, true);
       return working.map((se) => se.id);
     }
     const past = sessions.some((se) => se.lastTurnId && !this.turns.has(se.lastTurnId));
-    if (this.turns.size >= this.maxTurns && past) this.stop(capped(this.maxTurns));
+    if (this.turns.size >= this.maxTurns && past) this.stop(capped(this.maxTurns), true);
     if (this.turns.size >= this.maxTurns) this.allowed ??= new Set(this.turns);
     const allowed = this.allowed;
     return allowed ? working.filter((se) => se.lastTurnId && !allowed.has(se.lastTurnId)).map((se) => se.id) : [];
@@ -106,13 +108,18 @@ export class RunBound {
     return this.turns.size >= this.maxTurns ? this.stop(capped(this.maxTurns)) : null;
   }
 
-  /** For report.md, findings.json and run.json. */
+  /** The watch has ended: the steps and the wait after them are over. */
+  end() {
+    this.endedAt ??= this.now();
+  }
+
+  /** For report.md, findings.json and run.json, written after the verifier too: minutes are counted to the watch’s end. */
   summary() {
     return {
       maxTurns: this.maxTurns,
       maxMinutes: this.maxMinutes,
       turns: this.turns.size,
-      minutes: Math.round(((this.now() - this.startedAt) / 60000) * 10) / 10,
+      minutes: Math.round((((this.endedAt ?? this.now()) - this.startedAt) / 60000) * 10) / 10,
       stopped: this.stopped,
     };
   }
@@ -121,7 +128,16 @@ export class RunBound {
 /**
  * The report’s sentence on the bound, said only when the run stopped at it. @param {ReturnType<RunBound['summary']> | null | undefined} b
  */
-export const boundNote = (b) => (b?.stopped ? ` **It stopped at its bound** at step ${b.stopped.step}: ${b.stopped.why}` : '');
+export function boundNote(b) {
+  if (!b?.stopped) return '';
+  return ` **It stopped at its bound** ${stoppedWhen(b.stopped)}: ${b.stopped.why}`;
+}
+
+/** When the bound stopped a run: before a step it didn’t take, or while a step’s turns ran. @param {{ step: number, during: boolean }} s */
+function stoppedWhen({ step, during }) {
+  if (!during) return `before step ${step}`;
+  return step ? `while step ${step}’s turns ran` : 'before its first step';
+}
 
 /**
  * The run’s watches, every 1.5 s until ended, whatever the run is doing: the bound’s, on every harness, and the dollar
@@ -154,6 +170,7 @@ export function watchRun({ bound, budget, api, threadsUnderTest, stop, log = () 
   return () => {
     ended = true;
     clearTimeout(timer);
+    bound.end();
     unbudget();
   };
 }

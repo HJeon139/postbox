@@ -66,7 +66,7 @@ test('the report says the run stopped at its bound, and says nothing when it did
   assert.equal(boundNote(b.summary()), '');
   b.see([se('a', 't1')]);
   b.beforeStep(3);
-  assert.equal(boundNote(b.summary()), ' **It stopped at its bound** at step 3: its agents started a turn, the most --max-turns 1 allows.');
+  assert.equal(boundNote(b.summary()), ' **It stopped at its bound** before step 3: its agents started a turn, the most --max-turns 1 allows.');
   assert.equal(boundNote(null), '');
 });
 
@@ -104,4 +104,24 @@ test('the run’s watch stops a looping room’s turns past the cap with no step
     lines.some((l) => l.startsWith('Stopped at the run’s bound')),
     lines.join('\n'),
   );
+});
+
+test('the report says whether the bound stopped a step or the turns at work, and counts minutes to the watch’s end', () => {
+  const t = clock();
+  const b = runBound({ minutes: '10', now: t.now });
+  t.pass(11);
+  b.see([se('a', 't1', 'think')]);
+  assert.match(boundNote(b.summary()), /stopped at its bound\*\* before its first step: it ran 11 minutes/);
+  const c = runBound({ turns: '1' });
+  c.beforeStep(2);
+  c.see([se('a', 't1', 'think')]);
+  c.see([se('a', 't2', 'think')]);
+  assert.match(boundNote(c.summary()), /while step 2’s turns ran/);
+  // The report is written again after the verifier: its minutes stay those of the steps, not the verifier’s.
+  const d = runBound({ now: t.now });
+  t.pass(30);
+  d.end();
+  t.pass(20);
+  assert.equal(d.summary().minutes, 30, 'minutes to the watch’s end');
+  assert.equal(d.summary().stopped, null, 'and a run that didn’t stop doesn’t read as past its cap');
 });
