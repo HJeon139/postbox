@@ -4,6 +4,7 @@
 // repeat gets the same answer. A prompt nobody can answer any more marks its card expired, canceled or ended.
 
 import { NOT_YOUR_PROMPT } from '../../shared/mcp-tools.mjs';
+import { HOST_LIMIT } from '../../shared/question-words.mjs';
 import { message as protocolMessage, REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
 import { describePermission } from '../adapters/claude-stream.mjs';
 import { offerNeed } from '../card-needs.mjs';
@@ -289,8 +290,10 @@ export function endCard(rts, card, status, message, at, extra = {}) {
   // A question’s blocks stay asking: its call hears why it ended, and a later answer reaches the agent as an event.
   // The end goes on each block, so the host prompt no longer counts as open (isOpen).
   if (isQuestion(card.it)) {
+    // The host’s own limit (noAnswer) says so, so the question hands over what it took (ask-question.mjs, handOver).
+    const why = extra.noAnswer ? HOST_LIMIT : status;
     for (const p of questionParts(rts, card.it.remote.turn, card.it.remote.prompt)) {
-      rt.settlePermission(p.it.id, status, message);
+      rt.settlePermission(p.it.id, why, message);
       rt.threads.patchItem(p.threadId, p.it.id, { remote: { ...p.it.remote, ended: at } });
     }
     return;

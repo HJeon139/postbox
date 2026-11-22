@@ -102,3 +102,15 @@ test('#1059 a host question the harness cancels shows nothing more and hands not
   r.d.end(turn);
   await settled(r);
 });
+
+test('#1059 a host question whose turn ends shows nothing more: only the host’s limit hands it over', async () => {
+  const r = rig();
+  const turn = await running(r);
+  r.d.append(turn, callLine(TWO));
+  r.d.prompt(turn, request(TWO));
+  await until(() => questions(r).length === 1 && r.rt.permissionWaits.has(questions(r)[0].id), 'the first block, waiting');
+  // The turn ends while the first question waits, as at its end or at Stop: its waits expire, but not at the host’s limit.
+  r.d.end(turn);
+  await settled(r);
+  assert.equal(questions(r).length, 1, 'the question it never reached isn’t shown');
+});

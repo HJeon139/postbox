@@ -2,6 +2,12 @@
 // (server/ask-question.mjs) and a host’s shim (server/remote/host/shim-calls.mjs): the question stays open in the
 // conversation, and its answer comes later as a message, so the agent doesn’t ask it again.
 
+/**
+ * How a host question’s wait hears that the host’s permissionWaitMax ended it (#1059): not a turn’s end or Stop, which
+ * end it as expired too, and not its harness canceling the call.
+ */
+export const HOST_LIMIT = 'host-limit';
+
 /** Claude Code’s tool for asking the person a question. */
 export const QUESTION_TOOL = 'AskUserQuestion';
 
