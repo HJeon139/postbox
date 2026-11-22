@@ -104,6 +104,8 @@ export const PENDING = {
   'subagent-end.mjs': ['withUrgent'],
   // Stop's stopped entries name the message each sender sent, maybe settled behind a held commit. A topic's conversation,
   // which its session joins, and who answers in it, read as a topic opened behind a held commit leaves them (#1292).
+  // conversationOf and deletedFrom: whether an agent left the conversation, which decides who answers or writes a
+  // summary (#283), maybe behind a held commit.
   'side-threads.mjs': [
     'agentWake',
     'agentWake',
@@ -114,6 +116,8 @@ export const PENDING = {
     'sideSession',
     'threadPersona',
     'threadPersona',
+    'conversationOf',
+    'deletedFrom',
     'bumpSideLink',
     'bumpSideLink',
   ],

@@ -5,7 +5,7 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { handles } from './agent-markdown.mjs';
 import { inThreadLine } from './agents.mjs';
 import { enhanceMarkdown } from './apps.mjs';
-import { api, client, itemIn, S, threadLink } from './client.mjs';
+import { api, client, itemIn, S, sessionsOf, threadLink } from './client.mjs';
 import { h, icon, trusted } from './dom.mjs';
 import { fetchRange } from './item-ranges.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
@@ -101,13 +101,16 @@ function summarizeButton(sideId, parent) {
   const t = S().threads[sideId];
   const two = t?.kind === 'side' ? String(t.pair ?? '').split('|') : null;
   const pair = two && [...two.filter((x) => x !== t.woke), ...two.filter((x) => x === t.woke)];
-  const choose = () =>
-    openMenu(
-      el,
-      // A side thread from before Postbox kept whom it woke can’t say who started it.
-      pair.map((x, i) => ({ label: `${x} writes it`, desc: i || !t.woke ? '' : 'started this thread', run: () => ask(x) })),
-      { label: 'Who writes the summary' },
-    );
+  // Only those still in the conversation: the server refuses one deleted since, rather than bring it back (#283). With
+  // neither left, no empty menu: the server’s refusal says who’s gone and what to do.
+  const choose = () => {
+    const here = new Set(sessionsOf(t.parentId).flatMap((x) => (x.retiredFork ? [] : [x.handle])));
+    const left = pair.filter((x) => here.has(x));
+    if (!left.length) return ask(null);
+    // A side thread from before Postbox kept whom it woke can’t say who started it.
+    const options = left.map((x) => ({ label: `${x} writes it`, desc: t.woke && x !== t.woke ? 'started this thread' : '', run: () => ask(x) }));
+    openMenu(el, options, { label: 'Who writes the summary' });
+  };
   const el = h(
     'button.btn.sm',
     {
