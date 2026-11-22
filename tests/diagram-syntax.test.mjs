@@ -62,3 +62,26 @@ test('#731 a diagram that parses gets no lint turn', async () => {
   await sleep(1500);
   assert.deepEqual(await lints(adapter, 0), []);
 });
+
+test('#731 the same broken diagram twice in one reply is reported once', async () => {
+  const { rt, t, adapter } = setup();
+  // With Postbox’s own settle, both would have joined the lint turn.
+  rt.checks.config.lintSettleMs = 1500;
+  adapter.next.push(async (c) => c.text(`First:\n\n${fence(BROKEN)}\n\nAgain:\n\n${fence(BROKEN)}`));
+  rt.sendMessage(t.id, { text: 'draw the plan twice' });
+  await settle(rt);
+  const [lint] = await lints(adapter);
+  assert.deepEqual(
+    lint.problems.map((p) => [p.code, p.scope.index]),
+    [['diagram-error', 0]],
+  );
+});
+
+test('#731 a ~~~mermaid diagram, which the page draws, is checked too', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text(`~~~mermaid\n${BROKEN}\n~~~`));
+  rt.sendMessage(t.id, { text: 'draw the plan' });
+  await settle(rt);
+  const [lint] = await lints(adapter);
+  assert.equal(lint?.problems[0].code, 'diagram-error');
+});

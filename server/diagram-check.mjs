@@ -82,7 +82,16 @@ function failedProblem(error, scope) {
  */
 export async function syntaxCheck(checks, turn, before) {
   const replies = checks.store.pending.items(turn.threadId).filter((it) => it.kind === 'agent' && it.turnId === turn.id && !it.lintReply);
-  const fresh = replies.flatMap((it) => mermaidBlocks(String(it.text ?? ''))).filter((block) => !before.has(hashOf(block.src)));
+  // Each diagram once: the same source twice in a reply is one diagram, as the session remembers it.
+  const seen = new Set(before);
+  const fresh = replies
+    .flatMap((it) => mermaidBlocks(String(it.text ?? '')))
+    .filter((block) => {
+      const hash = hashOf(block.src);
+      if (seen.has(hash)) return false;
+      seen.add(hash);
+      return true;
+    });
   if (!fresh.length) return;
   // The turn’s lint turn waits for the parser, as it does for an app still being checked, so an error joins it.
   const release = holdLint(checks, turn.id);
