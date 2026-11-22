@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.14 (2026-11-22)
+
+### Fixes
+
+- **kiro:** turn memory off in the Kiro home Postbox owns
+
 ## 4.35.13 (2026-11-22)
 
 ### Fixes
