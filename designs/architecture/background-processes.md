@@ -78,20 +78,26 @@ The strict mode is apart from Send now’s lenient keep, which stays as it is, b
 
 **Codex, Kiro and Antigravity: signal by pid, not by group.** Postbox chooses how it signals (`stopPgid`, `signalPgid`). At such a turn’s end, it can signal the harness and the processes it still parents by pid, and leave the marked background work that section 3 binds. It turns this on for a harness only once that harness’s live check passes. Until then the group kill stays, so nothing changes for it.
 
-**Identity is checked again before every pid signal.** Once Postbox signals by pid, a reused pid is the risk, so no pid is signaled on an old reading. Before each signal, Postbox reads that pid’s start time in a fresh `ps` read and signals only if it still matches the one recorded. That covers the first SIGINT, the SIGKILL `GRACE_MS` later, a Stop, and the restart sweep. A pid whose start time changed, or that is gone, is skipped and recorded as ended. The window left is between that read and the signal itself: milliseconds, and not zero. The group signals in section 2 already use the same check through `liveGroups`.
+**Identity is checked again before every pid signal.** Once Postbox signals by pid, a reused pid is the risk, so no pid is signaled on an old reading. Before each signal, Postbox reads that pid’s start time in a fresh `ps` read and signals only if it still matches the one recorded. That covers the first SIGINT, the SIGKILL `GRACE_MS` later, a Stop, and the restart sweep. A pid whose start time changed, or that is gone, is skipped and recorded as ended. The window left is between that read and the signal itself: milliseconds, and not zero.
+
+**Group signals get the same check.** On `main` only the host daemon matches a group by its members’ start times. The local `liveGroups` (`server/kept-jobs.mjs`) checks only the leader’s command line. `listProcesses` reads no start time, and `stopTurn`’s group signals don’t go through `liveGroups` at all. `stopPgid` sends its delayed SIGKILL with no second check. So the local `ps` read gains `lstart`. Before each group signal, including the delayed SIGKILL, the kept-job poll and the strict stop check that a member still has its recorded start time, as the daemon does.
 
 ### 3. The marker, for work the harness doesn’t report
 
 Postbox starts every harness process with two variables in its environment: `POSTBOX_SESSION=<session id>` and `POSTBOX_TURN=<turn id>`. Neither is a secret, and the turn’s MCP token never goes into the environment (#54, #126). Every descendant inherits both at exec, including after `setsid`, `nohup` or reparenting to init, which the process group can’t follow.
 
-**Ownership needs the marker and ancestry together.** The marker alone is only a process’s own account of where it came from. To keep a marked process, Postbox must also have seen it, or its group, under the owning turn’s harness process.
-- **While the turn runs,** each 5-second poll records every process with the turn’s marker that sits under the harness process: its pid, start time and group.
-- **At the turn’s end,** a marked process is bound as background work when all of these hold:
+**What binds.** A tool shell that backgrounds a command exits within milliseconds, and its child is reparented to init. The integrator measured this with a fake harness running `/bin/sh -c 'node -e … & echo $!'`. The shell lived 4.7 to 4.9 ms. Its child’s parent became pid 1, and its group stayed whichever group the shell had: its own, or the harness’s. A 5-second poll almost never sees such a shell, so ancestry recorded by polling can’t bind it. At a turn’s end, a process is bound as this turn’s background work in two cases:
+- **(a) It’s in the harness’s own process group.** Membership in that group is ancestry: only the harness and its descendants are in it. Such a process binds when it isn’t the harness and its start time falls inside the turn, with or without a readable marker. On macOS that covers #1614’s own `sleep 90 &`, whose `/bin/sleep` hides its environment.
+- **(b) It’s outside that group,** after `setsid` or as the orphan of a tool shell that led its own group. It binds when all of these hold:
   - its marker names this session and this turn;
-  - it isn’t the harness, and isn’t still parented by it;
-  - it, or a member of its group, was recorded under the harness during the turn, with the same pid and start time;
-  - it isn’t a Claude Code task that section 1 handled.
-- **Marked but not bound:** a process with the marker that was never seen under the harness, because it started and detached between two polls. It’s ambiguous, so it stays informational. Postbox shows it in the room with its pid, as last seen, but it queues no wake when the process ends and never signals it. It has no Stop, and the person can end it in their terminal. Only a bound job wakes an agent automatically.
+  - its start time falls inside the turn;
+  - its parent is init or the subreaper.
+
+**Why the marker is enough in case (b).** A forged marker can only come from a process of the person’s own user, and that process can already signal any of these processes. So a forger gains at most a spurious wake for the agent the marker names. A Claude Code task that section 1 handled is left to section 1.
+
+**Nothing leaks that `main` reaps.** At a turn’s end that uses pid signals, any process still in the harness’s group that didn’t bind gets that harness’s group signal, as today. That includes a marked process inside the turn that fails a rule above. A process outside the group that carries the marker but doesn’t bind stays informational: shown in the room with its pid as last seen, with no wake, no signal and no Stop. That’s the same as `main`, which never reached it either.
+
+**The poll’s cost.** On `main`, `pollKept` runs `ps` only while a kept job exists (`server/kept-jobs.mjs`). This design adds the marker scan at each turn’s end, and at each 5-second tick only while kept jobs exist. One scan per tick serves every turn and job. The implementation PR measures the scan, `ps -Eww -ax`, whose output is larger than today’s read, against `main`’s poll, and holds it to a budget stated there.
 
 **What the scan reads.** The scan keeps only the two marker variables from its output, and nothing else of any process’s environment. Raw scan output is never logged or stored.
 - **On macOS:** `ps -Eww -ax -o pid=,ppid=,pgid=,lstart=,command=`.
@@ -144,7 +150,7 @@ When a kept job ends, the agent that started it gets one wake, sent the way a sc
 
 A host gets the turn-end path only with both of these. Until then it keeps today’s behavior.
 - **A stream reader in `shared/`.** Section 1’s binding needs `task_started`, `task_notification`, each tool call with its input and result, and the `result`. On `main`, the parser is `server/adapters/claude-stream.mjs`, and `hostFiles` (`server/remote/install-bundle.mjs`) ships only `shared/` and `server/remote/host/`. A small reader of just those events moves to `shared/`, and both the server and the daemon load it. Then the daemon can bind a result that arrives while the laptop sleeps.
-- **A stop that keeps.** `daemon-kill.mjs` gains the strict keep: it stops the runner and its other shells, and keeps the bound groups. The binding rule, the marker scan, the poll and the job record live in one `shared/` module.
+- **A stop that keeps.** `daemon-kill.mjs` gains the strict keep: it stops the runner and its other shells, and keeps the bound groups. For Codex, Kiro and Antigravity on a host, it also gains section 2’s pid signal, gated by the same live check. On `main` it signals the runner’s group. The binding rule, the marker scan, the poll and the job record live in one `shared/` module.
 
 The daemon keeps polling, and keeps each job’s record, tail and status in its own data folder, never in the workspace. It does this while the laptop sleeps or the link is down. On reconnect, a job that ended while the two were apart wakes its agent once, from the stored record, in one commit. Jobs still running reappear as they are.
 
@@ -155,7 +161,7 @@ The protocol messages:
 - **`jobs.stop`:** laptop to daemon.
 - **`jobs.ack`:** laptop to daemon, once the end and its wake are committed, so the daemon can drop the record.
 
-A daemon from before this change doesn’t list `jobs` in its welcome. With one, the laptop keeps today’s behavior. That follows the welcome-field pattern of open PR #1583 (`claudeChecks`). While a host is disconnected, its jobs show in the room as unknown, last seen at a time, never as an alarm.
+A daemon from before this change doesn’t list `jobs` in its welcome. With one, the laptop keeps today’s behavior. That follows the welcome-field pattern that `claudeChecks` uses (`server/adapters/claude-code-remote.mjs`, and remote-hosts.md, “Postbox and the daemon”). While a host is disconnected, its jobs show in the room as unknown, last seen at a time, never as an alarm.
 
 ```mermaid
 sequenceDiagram
@@ -189,7 +195,7 @@ After a Postbox or daemon restart, a kept job is adopted again only if a member 
 
 ## Live checks, per harness, to record here
 
-Each check is a local run of up to 3 turns, as the sprint contract allows (`sprint/contract.md`, “High-cost / remote runs”). A harness gets this design only once its check passes. The check goes through the normal turn path and shows three things:
+Each check is a local run of up to 3 turns, so the cost is bounded: up to 3 turns per harness, with real agents, as AGENTS.md asks of any run that costs real usage. A harness gets this design only once its check passes. The check goes through the normal turn path and shows three things:
 - the background job survives the turn’s end;
 - an ordinary foreground child the turn left behind is stopped;
 - a room message reaches the owner while the job still runs, and the job’s end wakes it once.
@@ -213,7 +219,10 @@ What each check answers:
   - **A shell from before its call** doesn’t bind.
   - **The marker:**
     - it survives `nohup` and `setsid` on a non-platform binary, and the scan finds it;
-    - a marked process never seen under the harness isn’t bound or signaled, and its exit queues no wake;
+    - `sh -c 'cmd &'`, with the shell in the harness’s group: `cmd` binds by group membership and wakes the agent;
+    - `sh -c 'cmd &'`, with the shell leading its own group: `cmd`, reparented to init, binds by its marker and wakes the agent;
+    - a process in the harness’s group that doesn’t bind is still stopped at the turn’s end;
+    - a marked process outside the group that doesn’t bind isn’t signaled, and its exit queues no wake;
     - one with another session’s marker isn’t bound.
   - **Codex, Kiro and Antigravity by pid:** the harness and its children stop, and a bound marked process survives.
   - **A reused pid is skipped:** a pid whose start time changes between the first SIGINT and the delayed SIGKILL, or before a Stop, isn’t signaled.
