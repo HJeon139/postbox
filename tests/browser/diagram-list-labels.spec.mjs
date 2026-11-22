@@ -21,12 +21,19 @@ const SOURCE = `flowchart TD
 const STATES = `stateDiagram-v2
   s1: 1. Build
   s2: - Lint
-  s1 --> s2: 2. passes`;
-const STATE_LABELS = ['1. Build', '- Lint', '2. passes'];
+  s1 --> s2: 2. passes
+  state "3. Ship" as s3`;
+const STATE_LABELS = ['1. Build', '- Lint', '2. passes', '3. Ship'];
+// A class relation’s label follows a colon too; a member’s, after a bare class name, keeps its visibility mark.
 const CLASSES = `classDiagram
   class Build["1. Build"]
   Build : +int count
-  Build : - String name`;
+  Build : - String name
+  Build --> Test : 1. uses`;
+// The other blocks Mermaid can’t draw at a label’s start: a heading, a quote and a rule.
+const BLOCKS = `flowchart TD
+  A[# of users] --> B["> quoted"]
+  B --> C[---]`;
 // A Markdown string can run over lines, each of which can start like a list item, its first one included.
 const MARKDOWN_LINES = `flowchart TD
   A["\`
@@ -83,11 +90,12 @@ async function drawn(page, source) {
 for (const [kind, source, labels, plain = []] of /** @type {[string, string, string[], string[]?][]} */ ([
   ['a flowchart’s node and edge', SOURCE, LABELS],
   ['a state diagram’s', STATES, STATE_LABELS],
-  // A member’s “-” marks it private, so it stays Mermaid’s to read: no joiner goes before it.
   ['a Markdown string’s', MARKDOWN_LINES, ['1. Build', '- Lint', 'then ship']],
-  ['a class diagram’s', CLASSES, ['1. Build', '+int count', '- String name'], ['- String name']],
+  // A member’s “-” marks it private, so it stays Mermaid’s to read: no joiner goes before it.
+  ['a class diagram’s', CLASSES, ['1. Build', '+int count', '- String name', '1. uses'], ['- String name']],
+  ['a heading’s, a quote’s and a rule’s', BLOCKS, ['# of users', '> quoted', '---']],
 ]))
-  test(`#684 ${kind} labels that start like a list item show as written`, async ({ page }) => {
+  test(`#684 ${kind} labels that start like a block show as written`, async ({ page }) => {
     const shown = await drawn(page, source);
     expect(shown, 'no label says “Unsupported markdown”').not.toContain('Unsupported markdown');
     for (const label of labels) expect(shown, `the label “${label}”`).toContain(label);

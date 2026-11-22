@@ -2,27 +2,42 @@
 // this page answers with its height. Mermaid runs with strict security, so diagram text can’t add
 // links or script.
 
-// Mermaid reads a label as Markdown, so one that starts like a list item (“1. Build”, “2) Test”, “- Lint”) becomes a
-// list, which a label can’t show: it reads “Unsupported markdown: list” (#684). A word joiner (U+2060), which draws as
-// nothing, before the mark keeps it text. A backslash would too, but after “[” it opens Mermaid’s slanted shape.
-// A label starts after:
-// - a shape’s opening bracket, parenthesis or brace, or the “>” of an asymmetric shape, never an arrow’s head, where
-//   a sequence diagram’s “->>+ B” activates B;
-// - an edge label’s bar, or the “--”, “==” or “-.” that opens an edge’s text;
-// - a colon, for a state’s or a transition’s label;
-// - any of those, then a quote, or a quote and a backtick for a Markdown string.
-// A class diagram leaves out the colon and the brace, where “+” and “-” mark a member as public or private.
-const opener = (forClass) => String.raw`(?:[[(|${forClass ? '' : '{:'}]|(?<![-=.>])>|(?<![-=.<])(?:--|==|-\.)(?![-=.>]))(?:"\x60|["\x60])?[ \t]*`;
-const listStart = (forClass) => new RegExp(String.raw`(${opener(forClass)})(?=(?:\d{1,9}[.)]|[-*+])[ \t])`, 'g');
-const LIST_START = listStart(false);
-const LIST_START_CLASS = listStart(true);
-// A Markdown string (“`…`” in quotes) can run over lines, and each of its lines can start like a list item too.
+// Mermaid reads a label as Markdown, so one that starts like a block, a list item (“1. Build”, “2) Test”, “- Lint”), a
+// heading (“# of users”), a quote or a rule (“---”), can’t be drawn: it reads “Unsupported markdown: list” (#684). A
+// word joiner (U+2060), which draws as nothing, before the mark keeps it text. A backslash would too, but after “[”
+// it opens Mermaid’s slanted shape.
+
+// Where a label starts, each its own piece of the pattern:
+const SHAPE = String.raw`[[(]`; // a shape’s opening bracket or parenthesis
+const BRACE = '{'; // a rhombus; in a class diagram, a member list, whose “+” and “-” mark public and private
+const ASYMMETRIC = String.raw`(?<![-=.>])>`; // an asymmetric shape’s “>”, never an arrow’s head (“->>+ B”)
+const EDGE_BAR = String.raw`\|`; // an edge label’s bar
+const EDGE_TEXT = String.raw`(?<![-=.<])(?:--|==|-\.)(?![-=.>])`; // the “--”, “==” or “-.” that opens an edge’s text
+const COLON = ':'; // a state’s or a transition’s label, or a class relation’s
+const STATE_NAME = String.raw`\bstate[ \t]+`; // state "1. Build" as s1
+const QUOTED = String.raw`(?:"\x60|["\x60])?`; // then a quote, or a quote and a backtick for a Markdown string
+// What Mermaid reads as a block there: a list item, a heading or a quote, then a space; or a rule, alone.
+const BLOCK = String.raw`(?:(?:\d{1,9}[.)]|[-*+]|#{1,6}|>)[ \t]|(?:-{3,}|\*{3,}|_{3,})[ \t]*(?=["\x60\])}|\n]|$))`;
+const labelStart = (...openers) => new RegExp(String.raw`((?:${openers.join('|')})${QUOTED}[ \t]*)(?=${BLOCK})`, 'g');
+const LABEL_START = labelStart(SHAPE, BRACE, ASYMMETRIC, EDGE_BAR, EDGE_TEXT, COLON, STATE_NAME);
+// A class diagram: a colon opens a label only on a relation’s line (“A --> B : 1. uses”). After a bare class name
+// (“Build : - String name”), and in braces, the mark sets a member’s visibility.
+const CLASS_START = labelStart(SHAPE, ASYMMETRIC, EDGE_BAR, EDGE_TEXT, STATE_NAME);
+const RELATION_START = labelStart(SHAPE, ASYMMETRIC, EDGE_BAR, EDGE_TEXT, COLON, STATE_NAME);
+const RELATION = /--|\.\./;
+// A Markdown string (“`…`” in quotes) can run over lines, and each of its lines can start like a block too.
 const MARKDOWN_STRING = /"`([^`]*)`"/g;
-const LINE_LIST_START = /(^|\n)([ \t]*)(?=(?:\d{1,9}[.)]|[-*+])[ \t])/g;
-const asWritten = (src) =>
-  src
-    .replace(MARKDOWN_STRING, (_m, body) => '"`' + body.replace(LINE_LIST_START, '$1$2\u2060') + '`"')
-    .replace(/^\s*classDiagram\b/m.test(src) ? LIST_START_CLASS : LIST_START, '$1\u2060');
+const LINE_START = new RegExp(String.raw`(^|\n)([ \t]*)(?=${BLOCK})`, 'g');
+const JOINED = '$1⁠';
+/** The source with every label that starts like a block kept as text. @param {string} src */
+function asWritten(src) {
+  const text = src.replace(MARKDOWN_STRING, (_m, body) => '"`' + body.replace(LINE_START, '$1$2⁠') + '`"');
+  if (!/^\s*classDiagram\b/m.test(text)) return text.replace(LABEL_START, JOINED);
+  return text
+    .split('\n')
+    .map((line) => line.replace(RELATION.test(line) ? RELATION_START : CLASS_START, JOINED))
+    .join('\n');
+}
 
 (function () {
   const out = document.getElementById('out');
