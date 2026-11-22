@@ -32,6 +32,9 @@ test('#480 Kiro’s line follows its setup and where it runs', () => {
   assert.equal(memoryLine('kiro-cli', { usesHostSetup: false }), 'Memory: off. Isolated agents share one Kiro home, so Postbox turns it off there.');
   assert.equal(memoryLine('kiro-cli', { usesHostSetup: true }), 'Memory: yours. With your setup, it reads and adds to your own Kiro memory.');
   assert.equal(memoryLine('kiro-cli', {}), 'Memory: yours. With your setup, it reads and adds to your own Kiro memory.');
-  assert.equal(memoryLine('kiro-cli', { usesHostSetup: false, remote: 'ho_1' }), 'Memory: on, in a Kiro home of its own on the host, kept under its name.');
+  assert.equal(
+    memoryLine('kiro-cli', { usesHostSetup: false, remote: 'ho_1' }),
+    'Memory: if Kiro keeps any, it’s in a Kiro home of its own on the host, kept under its name.',
+  );
   assert.equal(memoryLine('kiro-cli', { usesHostSetup: true, remote: 'ho_1' }), 'Memory: the host account’s own Kiro memory, with your setup.');
 });

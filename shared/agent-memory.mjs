@@ -1,7 +1,8 @@
 // What each backend does with an agent’s memory, as the persona sheet says it in one line (#480): Claude Code and the
 // Agent SDK keep one per agent (#208), here and on a host (#491); Codex’s is off everywhere (#479); Kiro’s is off for
-// an isolated agent on this computer (#479), but on a host each isolated agent’s Kiro home keeps its own, and with your
-// setup it’s that account’s; Antigravity keeps its own for your sign-in (its delete_knowledge tool, agy-bypass.mjs).
+// an isolated agent on this computer (#479), while on a host each isolated agent has a Kiro home of its own, keeping
+// whatever memory that Kiro is set to, and with your setup it’s that account’s; Antigravity keeps its own for your
+// sign-in (its delete_knowledge tool, agy-bypass.mjs).
 
 import { MEMORY_CLAUDE_MIN } from './agent-facts.mjs';
 import { olderThan } from './versions.mjs';
@@ -12,7 +13,7 @@ const OWN = 'Memory: its own. No other agent, and none of your own sessions, rea
 function kiroLine(isolated, onHost) {
   if (onHost)
     return isolated
-      ? 'Memory: on, in a Kiro home of its own on the host, kept under its name.'
+      ? 'Memory: if Kiro keeps any, it’s in a Kiro home of its own on the host, kept under its name.'
       : 'Memory: the host account’s own Kiro memory, with your setup.';
   return isolated
     ? 'Memory: off. Isolated agents share one Kiro home, so Postbox turns it off there.'
