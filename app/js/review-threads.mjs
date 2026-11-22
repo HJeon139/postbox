@@ -193,6 +193,60 @@ function restoreComposer(ta, saved, text) {
   ta.setSelectionRange(start, Math.min(saved[1] ?? start, text.length));
 }
 
+/**
+ * A review comment box: the new comment’s, and a draft’s open for editing (#858). Its text and caret are kept on the
+ * draft, in the two fields `fields` names, so a repaint while it’s open (another agent’s comment, a revision) leaves
+ * both; Ctrl+Enter saves it and Escape cancels it; and it takes focus as refocus says.
+ * @param {any} d
+ * @param {{ label: string, mark: string, opened: string, fields: [string, string], text: string, quote: HTMLElement | null,
+ *   saveLabel: string, hint: string, onSave: (value: string) => void, onCancel: () => void }} box
+ */
+function commentBox(d, box) {
+  const [textField, selectionField] = box.fields;
+  const saved = Array.isArray(d[selectionField]) ? d[selectionField] : [box.text.length, box.text.length];
+  const remember = () => {
+    d[textField] = ta.value;
+    d[selectionField] = [ta.selectionStart, ta.selectionEnd];
+  };
+  const ta = h('textarea.textarea', {
+    'aria-label': box.label,
+    ...tracked(d, box.mark),
+    style: { minHeight: '56px' },
+    value: box.text,
+    oninput: remember,
+    onselect: remember,
+    onkeyup: remember,
+    onmouseup: remember,
+    onkeydown: (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        box.onSave(ta.value);
+      }
+      // Escape closes the box, and only the box: not a full-screen review around it too.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        box.onCancel();
+      }
+    },
+  });
+  refocus(ta, d, box.opened, box.mark, saved, box.text);
+  return h(
+    'div.rv-thread',
+    h(
+      'div.reply',
+      { style: { flexDirection: 'column' } },
+      box.quote ? h('span.small.dim', 'On ', box.quote) : null,
+      ta,
+      h(
+        'div.row-flex',
+        h('button.btn.sm.send', { type: 'button', onclick: () => box.onSave(ta.value) }, box.saveLabel),
+        h('button.btn.sm.ghost', { type: 'button', onclick: box.onCancel }, 'Cancel'),
+        h('span.small.dim', box.hint),
+      ),
+    ),
+  );
+}
+
 /** The box a new comment is written in, focused as it opens. @param {any} key @param {any} env */
 function composer(key, { b, d, closeComposer }) {
   const label =
@@ -201,55 +255,24 @@ function composer(key, { b, d, closeComposer }) {
       : b.format === 'app'
         ? `Comment on ${key}`
         : `Comment on line ${key}`;
-  const text = typeof d.composingText === 'string' ? d.composingText : '';
-  const saved = Array.isArray(d.composingSelection) ? d.composingSelection : [text.length, text.length];
-  const remember = () => {
-    d.composingText = ta.value;
-    d.composingSelection = [ta.selectionStart, ta.selectionEnd];
-  };
-  const ta = h('textarea.textarea', {
-    'aria-label': label,
-    ...tracked(d, 'data-new-comment'),
-    style: { minHeight: '56px' },
-    value: text,
-    oninput: remember,
-    onselect: remember,
-    onkeyup: remember,
-    onmouseup: remember,
-    onkeydown: (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        add();
-      }
-      // Escape closes the box, and only the box: not a full-screen review around it too.
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeComposer(key);
-      }
-    },
-  });
-  const add = () => {
-    const text = ta.value.trim();
+  const add = (/** @type {string} */ value) => {
+    const text = value.trim();
     if (!text) return;
     d.comments.push(typeof key === 'object' ? { ...key, text } : b.format === 'app' ? { anchor: key, text } : { line: key, text });
     closeComposer(key);
   };
-  refocus(ta, d, 'composeFocus', 'data-new-comment', saved, text);
-  return h(
-    'div.rv-thread',
-    h(
-      'div.reply',
-      { style: { flexDirection: 'column' } },
-      typeof key === 'object' ? h('span.small.dim', 'On ', quoted(key.quote)) : null,
-      ta,
-      h(
-        'div.row-flex',
-        h('button.btn.sm.send', { type: 'button', onclick: add }, 'Add draft comment'),
-        h('button.btn.sm.ghost', { type: 'button', onclick: () => closeComposer(key) }, 'Cancel'),
-        h('span.small.dim', 'Ctrl+Enter adds it'),
-      ),
-    ),
-  );
+  return commentBox(d, {
+    label,
+    mark: 'data-new-comment',
+    opened: 'composeFocus',
+    fields: ['composingText', 'composingSelection'],
+    text: typeof d.composingText === 'string' ? d.composingText : '',
+    quote: typeof key === 'object' ? quoted(key.quote) : null,
+    saveLabel: 'Add draft comment',
+    hint: 'Ctrl+Enter adds it',
+    onSave: add,
+    onCancel: () => closeComposer(key),
+  });
 }
 
 const VERDICTS = { comment: 'Comment', approve: 'Approve', request_changes: 'Request changes' };
