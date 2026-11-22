@@ -17,8 +17,20 @@ const WIDTH_KEY = 'pb-pane-w';
 const RAIL_W = 248;
 /** Below this width the pane covers the conversation instead (workbench.css). */
 const NARROW = 768;
-/** The width the column and the pane share: the window’s, less a classic scroll bar. */
-const roomW = () => document.documentElement.clientWidth;
+/**
+ * The width the column and the pane share: the window’s, less a classic scroll bar. It’s kept until the window or the
+ * root’s box changes size, since reading it lays out whatever is pending, the whole transcript after a change (#619).
+ * @type {number | null}
+ */
+let room = null;
+const roomW = () => (room ??= document.documentElement.clientWidth);
+const forgetRoom = () => {
+  room = null;
+};
+// Registered on import, before any pane’s own resize listener, so that one reads the new width.
+if (typeof addEventListener === 'function') addEventListener('resize', forgetRoom);
+// A classic scroll bar showing or going changes the root’s width without a resize.
+if (typeof ResizeObserver === 'function') new ResizeObserver(forgetRoom).observe(document.documentElement);
 
 /**
  * How the pane sits in win px when it wants want px: its width, the most it can take, whether the rail hides to make
