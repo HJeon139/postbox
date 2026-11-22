@@ -228,7 +228,9 @@
     for (let v = 0; v <= max + 1e-9; v += s) out.push(+v.toFixed(10));
     return out;
   };
-  // Black or white text on a token color, whichever contrasts more. It parses the token and returns fixed inks.
+  // Black or white text on a token color, whichever contrasts more. It parses the token and returns fixed inks. Pure
+  // black, not a near-black: the better of black and white then reaches at least √21 ≈ 4.58:1 on any fill, over the
+  // 4.5:1 the app check holds apps to (#997). With #0b0b0b, light --s1’s labels fell to 4.46:1 (#1014).
   function inkOn(varName) {
     const c = rgb(
       getComputedStyle(document.documentElement)
@@ -237,10 +239,10 @@
         // lint-allow tokens: converts the token’s value for measuring.
         .replace(/^#(..)(..)(..)$/, (_m, r, g, b) => `rgb(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)})`),
     );
-    if (!c) return '#ffffff'; // lint-allow tokens: pure white and near-black are the two inks this picks between.
+    if (!c) return '#ffffff'; // lint-allow tokens: pure white and pure black are the two inks this picks between.
     const L = lum(c);
     // lint-allow tokens: as above.
-    return (L + 0.05) / 0.0534 >= 1.05 / (L + 0.05) ? '#0b0b0b' : '#ffffff';
+    return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? '#000000' : '#ffffff';
   }
   const style = document.createElement('style');
   style.textContent = `.pb-chart{position:relative}.pb-chart svg{display:block;overflow:visible}.pb-chart svg text{font:12px system-ui,sans-serif;font-variant-numeric:tabular-nums}
