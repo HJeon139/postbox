@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { decideAgyTool } from '../server/adapters/agy-hook.mjs';
 import { realTarget } from '../server/adapters/agy-paths.mjs';
+import { kiroRules } from '../server/adapters/kiro-cli-agent.mjs';
 import { appPath } from '../server/adapters/mock-showcase.mjs';
 import { inProject } from '../server/request-words.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -49,4 +50,19 @@ test('#1215 the other judges of a path agree: a command’s path through that li
   assert.equal(inProject('f', ws), true, 'and the project’s own f is still in it');
   assert.equal(appPath(ws, 'x'), null, 'mock-showcase: a write through x would land outside the room’s folder');
   assert.equal(appPath(ws, 'f'), join(ws, 'f'), 'and one to its own f still goes there');
+});
+
+test('#1215 Kiro’s rules for a folder that is such a link allow where it leads, not its lexical sibling', () => {
+  const { ws, out } = aLinkThroughALink();
+  // A folder the permission panel keeps as the person spelled it: ws/dl links to sub/../d, which leads to outside/d.
+  // Read lexically it’s ws/d, a different folder, there too.
+  mkdirSync(join(out, 'd'));
+  mkdirSync(join(ws, 'd'));
+  symlinkSync('sub/../d', join(ws, 'dl'));
+  const rules = kiroRules({ persona: { permissionMode: 'auto', tools: [] }, folders: [join(ws, 'dl')] });
+  const allowed = (/** @type {string} */ cap) => rules.filter((r) => r.capability === cap && r.effect === 'allow').flatMap((r) => r.match);
+  for (const cap of ['fs_read', 'fs_write']) {
+    assert.ok(allowed(cap).includes(join(out, 'd')), `${cap} allows where the folder leads: ${allowed(cap).join(', ')}`);
+    assert.ok(!allowed(cap).includes(join(ws, 'd')), `${cap} doesn’t allow the lexical sibling ws/d`);
+  }
 });
