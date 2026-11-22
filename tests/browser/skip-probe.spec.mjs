@@ -39,8 +39,9 @@ test('the probe counts the items skipped, and rows-skipped fires only once the r
   expect.soft(on.skipped, 'nearly every item is skipped').toBeGreaterThan(COUNT * 0.9);
   expect.soft(rowsSkipped([on]), 'silent with the rule on').toEqual([]);
   await page.evaluate(() => document.querySelector('#main.transcript')?.classList.remove('cv-skip'));
-  // Sampled once the page holds still, as 'on' is: with the rule off, the next frame lays out all 1,200 items, which on
-  // CI's runner could outlast the probe's 1 s wait for two frames, so the sample read unsettled (#1256).
+  // Sampled once the page holds still, as 'on' is: after the frames that follow the class removal. On CI those frames
+  // sometimes didn't come within the probe's 1 s wait, so the sample read unsettled (#1256). Why they stall there isn't
+  // known; still() waits until two frame pairs see the same layout, so the probe's own two frames come after them.
   await still(page);
   const off = { step: 2, at: 2, ...(await sampleSkipped(ev)) };
   expect.soft([off.items, off.skipped, off.gated, off.settled]).toEqual([COUNT, 0, false, true]);
