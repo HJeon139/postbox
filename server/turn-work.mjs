@@ -41,7 +41,8 @@ export function workEvents(work, turn, live) {
 
 /**
  * parent: the subagent’s call it was made under, as the stream showed it, or null for the agent’s own.
- * @typedef {{ name: string, input: unknown, parent: string | null, state: 'open' | 'claimed' | 'answered', by?: unknown }} SeenCall
+ * raw: the call as its harness named it, when its adapter keeps it (#907: Antigravity’s, for its hook’s prompts).
+ * @typedef {{ name: string, input: unknown, parent: string | null, raw?: unknown, state: 'open' | 'claimed' | 'answered', by?: unknown }} SeenCall
  */
 
 /** @param {any} turn @returns {Map<string, SeenCall>} */
@@ -49,7 +50,7 @@ const seenOf = (turn) => (turn.seenCalls ??= new Map());
 /** @param {any} turn @returns {Map<string, Set<() => void>>} */
 const watchersOf = (turn) => (turn.callWatchers ??= new Map());
 
-/** A call the stream showed, once, with its whole input. @param {any} turn @param {{ id?: unknown, name?: unknown, input?: unknown, parent?: unknown }} u */
+/** A call the stream showed, once, with its whole input. @param {any} turn @param {{ id?: unknown, name?: unknown, input?: unknown, parent?: unknown, raw?: unknown }} u */
 function seeCall(turn, u) {
   if (typeof u?.id !== 'string' || !u.id || typeof u.name !== 'string') return;
   const seen = seenOf(turn);
@@ -57,7 +58,7 @@ function seeCall(turn, u) {
   const parent = typeof u.parent === 'string' && u.parent ? u.parent : null;
   const ahead = turn.claimedAhead;
   const claim = ahead?.has(u.id) ? { state: /** @type {const} */ ('claimed'), by: ahead.get(u.id) } : { state: /** @type {const} */ ('open') };
-  seen.set(u.id, { name: u.name, input: u.input ?? {}, parent, ...claim });
+  seen.set(u.id, { name: u.name, input: u.input ?? {}, parent, ...(u.raw ? { raw: u.raw } : {}), ...claim });
   const watchers = watchersOf(turn).get(u.id);
   watchersOf(turn).delete(u.id);
   for (const wake of watchers ?? []) wake();
