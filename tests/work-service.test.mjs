@@ -103,7 +103,9 @@ function rig({ host = false, archiveTurns = false } = {}) {
   const running = new Running();
   const ledger = fakeLedger();
   const persona = { id: 'pe_a', handle: 'alpha', backend: 'mock', folder: '/work/alpha', ...(host ? { remote: { hostId: 'h1' } } : {}) };
-  const sessions = { in: (/** @type {string} */ id) => Object.values(store.state.sessions).filter((se) => se.threadId === id) };
+  const inThread = (/** @type {string} */ id) => Object.values(store.state.sessions).filter((se) => se.threadId === id);
+  // A `!` command reads them as written (#1292); nothing is held here, so both reads agree.
+  const sessions = { in: inThread, pendingIn: inThread };
   const personas = { forSession: () => persona };
   const placement = {
     requestAdapter: () => ({ name: 'mock', folderFor: async (p, project) => p.folder || project?.folder }),

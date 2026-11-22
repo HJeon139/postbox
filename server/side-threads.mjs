@@ -156,8 +156,9 @@ export function dropWakes(rt, se, how = 'stopped') {
  * @param {any} side  the side or topic thread @param {string} personaId @param {string} by  the handle that woke it, or 'you'
  */
 export function sideSession(rt, side, personaId, by) {
-  const conv = rt.threads.lineage(side.id).at(-1);
-  const had = rt.sessions.in(conv).find((x) => x.personaId === personaId);
+  // As written: a topic, or its conversation, opened behind a held commit isn’t published yet (#1292).
+  const conv = rt.threads.lineage(side.id, (id) => rt.store.pending.thread(id)).at(-1);
+  const had = rt.sessions.pendingIn(conv).find((x) => x.personaId === personaId);
   if (had?.retiredFork) throw retiredError(had);
   const where = side.kind === 'topic' ? 'a topic thread' : 'a side thread';
   return (
@@ -175,8 +176,8 @@ export function sideSession(rt, side, personaId, by) {
  * @param {any} rt @param {any} t
  */
 export function threadPersona(rt, t) {
-  const last = rt.s.sessions[t.lastSpeaker];
-  const first = rt.s.sessions[t.members?.[0]];
+  const last = t.lastSpeaker && rt.store.pending.session(t.lastSpeaker);
+  const first = t.members?.[0] && rt.store.pending.session(t.members[0]);
   return (last && rt.persona(last.personaId)) ?? rt.personas.byHandle(t.woke ?? t.pair?.split('|')[1] ?? '') ?? (first && rt.persona(first.personaId)) ?? null;
 }
 
