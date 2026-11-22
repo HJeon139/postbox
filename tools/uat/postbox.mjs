@@ -100,7 +100,7 @@ export async function readJson(origin, path, ms = READ_MS) {
  * @param {{ origin: string, exited: number | null }} pb  the run’s Postbox, read as it is at each call
  * @param {number} [ms]  each read’s limit
  * @param {{ items?: boolean }} [o]  items: false reads the state alone, for a watch that needs only its sessions and
- *   threads: every thread’s items every 1.5 s would cost the Postbox under test more as its rooms grow (#1621)
+ *   threads: every thread’s items every 1.5 s would cost the Postbox under test more as its rooms grow (#1638)
  */
 export function postboxReader(pb, ms = READ_MS, { items = true } = {}) {
   const get = async (/** @type {string} */ p) => {
