@@ -88,3 +88,23 @@ test('#647: a kept block the agent asks again during the wake is a change, and r
   assert.equal(r.needs()?.itemId, r.b.id);
   assert.equal(heard.filter((n) => n.level === 'blocking').length, 1);
 });
+
+test('a turn with no kept block that asks a new one raises exactly one “needs you”', async () => {
+  // Integrator review of #1598: the ordinary alert sits behind `changed` too, and nothing pinned it. Deleting
+  // `needs.itemId !== se.keptId ||` silenced every “needs you” for a newly asked block, with every test still green.
+  const r = room();
+  /** @type {any[]} */
+  const heard = [];
+  r.rt.store.subscribe((/** @type {any} */ ev) => ev.type === 'notify' && heard.push(ev.data));
+  const work = held();
+  r.adapter.next.push(work.step);
+  r.rt.turnService.run(r.alpha.id, { kind: 'user', text: 'Which source first?' });
+  await sleep(5);
+  const turnId = r.rt.turns.get(r.alpha.id)?.id;
+  assert.ok(turnId, 'the turn runs');
+  const b = r.block(turnId);
+  work.release();
+  await settle(r.rt);
+  assert.equal(r.needs()?.itemId, b.id);
+  assert.equal(heard.filter((n) => n.level === 'blocking').length, 1);
+});
