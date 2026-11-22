@@ -4,7 +4,7 @@
 
 import { positionOf } from '../shared/item-index.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
-import { deletedFrom, sideSession, threadPersona } from './side-threads.mjs';
+import { presentIn, sideSession, threadPersona } from './side-threads.mjs';
 
 /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
 export function shareToConversation(rt, topicId, itemId) {
@@ -69,12 +69,14 @@ function summaryWriter(rt, t, handle) {
   const pair = String(t.pair ?? '').split('|');
   const chosen = name ? pair.find((x) => x.toLowerCase() === name) : null;
   if (name && !chosen) throw httpError(400, `@${clip(name, 40)} isn’t in this side thread. Name ${pair.map((x) => `@${x}`).join(' or ')}.`);
-  // One deleted from the conversation isn’t brought back to write it: sideSession would make it a fresh session (#283).
-  const left = pair.filter((x) => !deletedFrom(rt, t, x));
+  // Only one in the conversation writes it, as the side thread’s menu offers: sideSession would make one that isn’t there
+  // a fresh session, deleted or gone any other way (#283).
+  const here = presentIn(rt, t);
+  const left = pair.filter((x) => here.has(x));
   const both = pair.map((x) => `@${x}`).join(' and ');
   if (!left.length) throw httpError(409, `${both} are no longer in this conversation. @-mention one there to bring it back, then ask again.`);
   if (chosen && !left.includes(chosen)) throw httpError(409, `@${chosen} is no longer in this conversation. Ask @${left[0]} to write the summary.`);
-  return rt.personas.byHandle(chosen ?? left.find((x) => x !== t.woke) ?? left[0]);
+  return here.get(chosen ?? left.find((x) => x !== t.woke) ?? left[0]);
 }
 
 /**

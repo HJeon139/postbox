@@ -81,3 +81,16 @@ test('#283: nor does the person’s message with no @-mention in that topic thre
   assert.equal(f.adapter.calls.at(-1).sessionId, f.beta.id, 'beta answers');
   assert.deepEqual(alphas(f), [], 'no alpha session made');
 });
+
+test('#283: a pair member with no session in the conversation, and no line saying it left, isn’t brought back either (critic’s review)', async () => {
+  const f = setup();
+  const side = oldSide(f, ['Which editions differ?', 'The 1908 edition drops two chapters.']);
+  // alpha’s session goes with no “left” line, as a session lost another way would.
+  f.rt.sessions.remove(f.alpha.id);
+  f.adapter.next.push(async (c) => c.text('Beta writes it.'));
+  f.rt.summarizeBack(side.id);
+  await settle(f.rt);
+  assert.equal(f.adapter.calls.at(-1).sessionId, f.beta.id, 'beta writes it');
+  assert.deepEqual(alphas(f), [], 'no alpha session made');
+  assert.throws(() => f.rt.summarizeBack(side.id, { handle: 'alpha' }), { status: 409 });
+});

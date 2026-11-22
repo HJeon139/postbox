@@ -189,13 +189,26 @@ export function threadPersona(rt, t) {
 const conversationOf = (rt, t) => rt.threads.lineage(t.id, (id) => rt.store.pending.thread(id)).at(-1);
 
 /**
+ * The agents in a thread’s conversation as written, by handle, as their sessions have them: those that could write or
+ * answer there without being brought back (#283). @param {any} rt @param {any} t @returns {Map<string, any>}
+ */
+export function presentIn(rt, t) {
+  const here = new Map();
+  for (const se of rt.sessions.pendingIn(conversationOf(rt, t))) {
+    const p = !se.retiredFork && rt.persona(se.personaId);
+    if (p) here.set(p.handle, p);
+  }
+  return here;
+}
+
+/**
  * Whether an agent was deleted from a thread’s conversation and hasn’t come back: it has no session there, and the
  * conversation says it left. An agent that was never in it, as one a topic thread was woken for, can still join (#874).
  * @param {any} rt @param {any} t  the topic or side thread @param {string} handle
  */
 export function deletedFrom(rt, t, handle) {
+  if (presentIn(rt, t).has(handle)) return false;
   const conv = conversationOf(rt, t);
-  if (rt.sessions.pendingIn(conv).some((x) => !x.retiredFork && rt.persona(x.personaId)?.handle === handle)) return false;
   return rt.store.pending.items(conv).some((i) => i.kind === 'system' && i.variant === 'left' && i.to === handle);
 }
 
