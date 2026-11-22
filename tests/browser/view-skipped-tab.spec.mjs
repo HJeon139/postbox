@@ -179,7 +179,10 @@ test('#712a: with an app in view, Tab goes into it, out to the next control in d
 test('#712a: scrolled away from the app, Tab out of it and on into the skipped item below reaches each next control', async ({ page, browserName }) => {
   // In Firefox the item below the app isn’t skipped when the case checks, so it can’t show what it’s for there; and a
   // Tab from the composer at 1,000 items took 29–32 ms with skipping on, against 17–31 ms on main (Linux Firefox).
-  test.fixme(browserName === 'firefox', 'the next control isn’t skipped in Firefox when checked, and the app’s page stays unfocused: #906');
+  test.fixme(
+    browserName === 'firefox',
+    'the next control isn’t skipped in Firefox when checked, and its one Tab in doesn’t allow for Firefox’s stop on the frame’s document: #906',
+  );
   const { t, frame, inside, appItem, tallItem } = await room(page, 'Tab past an app scrolled away');
   const appKey = await appItem.getAttribute('data-key');
   // Retried: in about 4 of 20 plain full Chromium runs, the first Tab from Full screen left the pad's document inactive,
