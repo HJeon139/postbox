@@ -9,14 +9,15 @@
 //                                          stream alongside another, as Codex’s agent messages can, until this (#1293).
 // - thinking  { text, block?, parent?, whole? }   a piece of a thought; whole, or a thinking_end, makes it a step.
 // - thinking_end { block }
-// - tool_call { id, name, input?, label?, parent?, who?, final?, work?, patch? }   a call, named as Claude Code names its
+// - tool_call { id, name, input?, raw?, label?, parent?, who?, final?, work?, patch? }   a call, named as Claude Code names its
 //                                          tools (Bash, Read, Edit, Write, WebSearch, Agent, mcp__<server>__<tool>);
 //                                          again with its input, and final once that input is whole; label, its
 //                                          harness’s own words for it; who, the subagent it’s from when no call started
 //                                          it; work: false, the harness’s own housekeeping, which the work ledger never
 //                                          hears; patch, an edit’s change as a unified diff, when its harness says it so
-//                                          rather than in Claude Code’s input names. An Agent or Task call starts a
-//                                          subagent.
+//                                          rather than in Claude Code’s input names; raw, the call as its harness
+//                                          named it ({ name, args }), for the check on its hook’s prompt (#907). An
+//                                          Agent or Task call starts a subagent.
 // - tool_result { id, isError?, text?, result?, vcsCwd?, background?, refused?, ms?, parent? }   what it returned;
 //                                          background: it may have gone on as a job ({ job, named, outputFile }) or a
 //                                          subagent ({ agent }); refused: its harness refused it, and why.
@@ -150,6 +151,8 @@ export class HarnessEvents {
     if (!e.parent && !e.who && !this.st.tools.has(e.id)) this.words.calls += 1;
     if (e.work === false) this.st.used.add(e.id);
     this.tools.start(e.id, e.name, e.input ?? {}, this.by(e.parent, e.who), e.label, typeof e.patch === 'string' ? e.patch : undefined);
+    // The call as its harness named it, kept for the check on a prompt from Postbox’s own hook (#907).
+    if (e.raw && this.st.tools.has(e.id)) this.st.tools.get(e.id).raw ??= e.raw;
     if (e.input) this.tools.input(e.id, e.input, e.final === true);
     this.moveSub(e.parent, { state: 'tool', doing: describeTool(e.name, e.input) });
   }
