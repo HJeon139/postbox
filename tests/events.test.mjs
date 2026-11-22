@@ -71,7 +71,52 @@ test('a valid form converts numbers and toggles', () => {
   const r = buildEvent(form, 'submit', { name: 'Autumn', pages: '40', pace: 'steady', start: '2026-10-27', remind: true });
   assert.equal(r.ok, true);
   assert.deepEqual(r.event.values, { name: 'Autumn', pages: 40, pace: 'steady', start: '2026-10-27', remind: true });
-  assert.equal(r.voice, 'Sent: Reading plan · Plan name “Autumn” · Pages per day 40');
+  assert.equal(r.voice, 'Sent: Reading plan · Plan name “Autumn” · Pages per day 40 · Pace Steady · Start “2026-10-27” · Remind me on');
+});
+
+// #247: the receipt kept only the first two fields, so a third or fourth value the agent received never showed.
+// The fields and values are the ones from the issue’s manual UAT of v0.44.7.
+test('a form’s receipt lists every field the person sent', () => {
+  const release = {
+    id: 'release',
+    type: 'form',
+    version: 1,
+    fallback: 'x',
+    title: 'Schedule a release',
+    fields: [
+      { id: 'build', label: 'Build number', kind: 'number' },
+      { id: 'date', label: 'Release date', kind: 'date' },
+      { id: 'channel', label: 'Channel', kind: 'select', options: [{ id: 'beta', label: 'beta' }] },
+      { id: 'notify', label: 'Notify team', kind: 'toggle' },
+      { id: 'why', label: 'Why now', kind: 'longtext' },
+    ],
+  };
+  const r = buildEvent(release, 'submit', { build: '42', date: '2026-10-31', channel: 'beta', notify: true, why: 'Fixes the login loop' });
+  assert.equal(
+    r.voice,
+    'Sent: Schedule a release · Build number 42 · Release date “2026-10-31” · Channel beta · Notify team on · Why now “Fixes the login loop”',
+  );
+});
+
+// #247, found in review: a field id like “constructor” read Object’s own when unanswered, so the receipt named a value
+// the person never sent.
+test('a form’s receipt leaves out an unanswered field, whatever its id', () => {
+  const b = {
+    id: 'proto',
+    type: 'form',
+    version: 1,
+    fallback: 'x',
+    title: 'Volumes',
+    fields: [
+      { id: 'q', label: 'Questions', kind: 'number' },
+      { id: 'a', label: 'Articles', kind: 'number' },
+      { id: 'constructor', label: 'Notes', kind: 'text' },
+      { id: 'toString', label: 'More', kind: 'longtext' },
+    ],
+  };
+  const r = buildEvent(b, 'submit', { q: '12000', a: '400' });
+  assert.deepEqual(r.event.values, { q: 12000, a: 400 });
+  assert.equal(r.voice, 'Sent: Volumes · Questions 12,000 · Articles 400');
 });
 
 test('a form rejects fields it doesn’t have', () => {
