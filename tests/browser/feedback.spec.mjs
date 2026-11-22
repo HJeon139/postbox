@@ -102,7 +102,8 @@ test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
-test.use({ colorScheme: 'light' });
+// Times read in the page’s locale (#535), so the words checked here are en-US’s: clock.spec.mjs covers other locales.
+test.use({ colorScheme: 'light', locale: 'en-US' });
 
 /** A conversation of its own with @drawer, open in the page, sent that message. lints() are its lint turns. */
 async function conversation(page, title, text) {
@@ -123,8 +124,8 @@ test('a finished progress block says when it last moved, and the clock leaves it
   await expect(live).toBeVisible();
   // A finished block says the time it last moved, which needs no tick, with the day on hover.
   const updated = finished.locator('.block-head [data-since]');
-  await expect(updated).toHaveText(/^Updated \d{1,2}:\d\d(?:\s[AP]M)?$/);
-  await expect(updated).toHaveAttribute('title', /\w+day, \w+ \d+ \d{1,2}:\d\d(?:\s[AP]M)?$/);
+  await expect(updated).toHaveText(/^Updated \d{1,2}:\d\d\s[AP]M$/);
+  await expect(updated).toHaveAttribute('title', /\w+day, \w+ \d+ \d{1,2}:\d\d\s[AP]M$/);
   // Count every change to the finished block while the running one’s time goes up at least once.
   await finished.evaluate((node) => {
     const w = /** @type {any} */ (window);

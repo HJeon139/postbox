@@ -75,7 +75,8 @@ test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
-test.use({ colorScheme: 'light' });
+// Times read in the page’s locale (#535), so the words checked here are en-US’s: clock.spec.mjs covers other locales.
+test.use({ colorScheme: 'light', locale: 'en-US' });
 
 /**
  * A conversation of its own, where @drafter has shown what that message asks for, open in the page at that origin.
@@ -122,7 +123,7 @@ test('#106 the person dismisses an open choice by keyboard, after its Send: the 
   const heard = () => calls.filter((m) => m.kind === 'event' && m.event.blockId === 'where').map((m) => m.event.action);
   await expect.poll(heard, { message: 'the agent hears “dismiss”' }).toEqual(['dismiss']);
   expect(store.state.sessions[se.id].needs, 'its agent no longer needs you').toBe(null);
-  await expect(block('where').locator('.closed-note')).toHaveText(/^Dismissed by you at \d{1,2}:\d\d(?:\s[AP]M)?$/);
+  await expect(block('where').locator('.closed-note')).toHaveText(/^Dismissed by you at \d{1,2}:\d\d\s[AP]M$/);
   expect(heard(), 'once').toEqual(['dismiss']);
   const s = await shown(block('where'));
   expect([s.dismiss, s.answered, s.enabled], 'it’s closed: no Dismiss, and nothing to answer').toEqual([false, true, 0]);
@@ -135,7 +136,7 @@ test('#106 the agent withdraws a choice it asked: it reads by whom and why, and 
   const r = tools.update_block({ block: { id: 'stale', withdraw: 'You answered in chat.' } });
   expect(r.ok, `the agent withdraws it (${r.message})`).toBe(true);
   expect(store.state.sessions[se.id].needs, 'its agent no longer needs you once it’s withdrawn').toBe(null);
-  await expect(block('stale').locator('.closed-note')).toHaveText(/^Withdrawn by drafter at \d{1,2}:\d\d(?:\s[AP]M)?: You answered in chat\.$/);
+  await expect(block('stale').locator('.closed-note')).toHaveText(/^Withdrawn by drafter at \d{1,2}:\d\d\s[AP]M: You answered in chat\.$/);
   const s = await shown(block('stale'));
   expect([s.dismiss, s.answered, s.enabled], 'it’s closed: no Dismiss, and nothing to answer').toEqual([false, true, 0]);
 });
