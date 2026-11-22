@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.35.8 (2026-11-21)
+
+### Fixes
+
+- **rings:** a short thinking swell is a round blob, not a spike
+- **rings:** a thinking ring runs a tapered swell along its arc again
+- **kiro:** tell a Kiro agent that Postbox's tools load on demand
+- **composer:** hint a refused command typed after a space, and say it
+- **composer:** say to remove the files too when a command is refused for them
+- **composer:** keep the command hint true when files are attached
+- **composer:** run or refuse Postbox's own command typed with an argument
+
 ## 4.35.7 (2026-11-21)
 
 ### Fixes
