@@ -4,6 +4,7 @@
 // moved from server/runtime.mjs.
 
 import { STEP_TEXT } from '../shared/limits.mjs';
+import { uatRecording } from './uat-mode.mjs';
 
 // The most of one field a step shows, so the next field still fits on the line.
 const FIELD = 120;
@@ -56,14 +57,17 @@ const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'age
 /** A step’s state, or done for one Postbox doesn’t know. @param {unknown} state */
 export const stepState = (state) => (STEP_STATES.has(/** @type {string} */ (state)) ? /** @type {string} */ (state) : 'done');
 
+/** Whether steps name their tool: UAT recording mode, decided once, when Postbox starts (server/uat-mode.mjs). */
+const RECORDING = uatRecording();
+
 /**
  * A tool call’s step names the tool it ran, by its harness’s name, bounded as a label is, for the ATIF export’s
- * function_name (#1527, #1529). Only in UAT recording mode (POSTBOX_UAT_RECORD=1), by the owner’s decision on #1527:
- * only the UAT export reads it, and every room would otherwise carry it on each step update. Every place that makes a
- * tool call’s step takes it from here.
- * @param {unknown} name @param {Record<string, string | undefined>} [env]
+ * function_name (#1527, #1529). Only in UAT recording mode, by the owner’s decision on #1527: only the UAT export reads
+ * it, and every room would otherwise carry it on each step update. `name` is checked first, so a step that isn’t a
+ * tool call reads nothing else. Every place that makes a tool call’s step takes it from here.
+ * @param {unknown} name @param {boolean} [on] whether steps name their tool: RECORDING, unless a test says otherwise
  */
-export const toolOf = (name, env = process.env) => (env.POSTBOX_UAT_RECORD === '1' && typeof name === 'string' && name ? { tool: name.slice(0, 200) } : {});
+export const stepTool = (name, on = RECORDING) => (typeof name === 'string' && name && on ? { tool: name.slice(0, 200) } : {});
 
 /**
  * The step a turn keeps, from what its activity was told: each field bounded, and only the ones it has.
@@ -76,7 +80,7 @@ export function turnStep({ id, label, tool, state, ms, who, parent, detail, kind
   return {
     id,
     label: String(label).slice(0, 200),
-    ...toolOf(tool),
+    ...stepTool(tool),
     state: stepState(state),
     ms,
     ...(who ? { who: String(who).slice(0, 40) } : {}),

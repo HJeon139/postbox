@@ -1,25 +1,20 @@
-// A step as a turn reports it (server/step-text.mjs, turnStep): what it keeps of what its harness gave.
+// A step’s tool (server/step-text.mjs, stepTool): set only in UAT recording mode, and only for a tool call. The
+// mode itself is read once, when the module loads (tests/step-tool-on.test.mjs and step-tool-off.test.mjs run it).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { toolOf, turnStep } from '../server/step-text.mjs';
+import { stepTool } from '../server/step-text.mjs';
+import { uatRecording } from '../server/uat-mode.mjs';
 
-test('a tool call’s step keeps the tool its harness ran in UAT recording mode, so the record can name it', () => {
-  // As server/harness-tools.mjs starts a call’s step: its label, and the tool’s name.
-  const was = process.env.POSTBOX_UAT_RECORD;
-  process.env.POSTBOX_UAT_RECORD = '1';
-  try {
-    const step = turnStep({ id: 'toolu_1', label: 'Print CLAUDE_EFFORT environment variable', tool: 'Bash', state: 'running' });
-    assert.equal(step.tool, 'Bash');
-    assert.equal(turnStep({ id: 'thought-1', label: 'Thinking', state: 'done', kind: 'thought' }).tool, undefined);
-  } finally {
-    if (was === undefined) delete process.env.POSTBOX_UAT_RECORD;
-    else process.env.POSTBOX_UAT_RECORD = was;
-  }
+test('a step names its tool only in UAT recording mode, and only when it has one, bounded as a label is', () => {
+  assert.deepEqual(stepTool('Bash', true), { tool: 'Bash' });
+  assert.deepEqual(stepTool('Bash', false), {});
+  assert.deepEqual(stepTool(undefined, true), {});
+  assert.deepEqual(stepTool('', true), {});
+  assert.equal(stepTool('x'.repeat(300), true).tool.length, 200);
 });
 
-test('outside UAT recording mode no step names its tool, so a room’s steps cost what they did (#1527)', () => {
-  assert.deepEqual(toolOf('Bash', {}), {});
-  assert.deepEqual(toolOf('Bash', { POSTBOX_UAT_RECORD: '0' }), {});
-  assert.deepEqual(toolOf('Bash', { POSTBOX_UAT_RECORD: '1' }), { tool: 'Bash' });
+test('UAT recording mode is POSTBOX_UAT_RECORD=1 and nothing else', () => {
+  assert.equal(uatRecording({ POSTBOX_UAT_RECORD: '1' }), true);
+  for (const v of [undefined, '', '0', 'true', 'yes']) assert.equal(uatRecording({ POSTBOX_UAT_RECORD: v }), false, String(v));
 });
