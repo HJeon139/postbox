@@ -145,7 +145,8 @@ async function measure(page, room, item, act) {
   return runs;
 }
 
-test('#1155 ⌃J to an ask far up a 10,000-item room does main’s work: no load, and no more layouts', async ({ page }) => {
+test('#1155 ⌃J to an ask far up a 10,000-item room does main’s work: no load, and no more layouts', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
   test.setTimeout(120_000);
   const { room, asks } = roomWithAsks('10,000 items, an ask at 100');
   const runs = await measure(page, room, asks.need, 'ctrlJ');
@@ -158,7 +159,8 @@ test('#1155 ⌃J to an ask far up a 10,000-item room does main’s work: no load
   for (const r of runs) expect(r.layouts, `layouts for ⌃J: ${JSON.stringify(runs)}`).toBeLessThanOrEqual(MAIN_LAYOUTS.ctrlJ);
 });
 
-test('#1155 an agent’s open-asks link to a block far up a 10,000-item room does main’s work: no load, and no more layouts', async ({ page }) => {
+test('#1155 an agent’s open-asks link to a block far up a 10,000-item room does main’s work: no load, and no more layouts', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
   test.setTimeout(120_000);
   const { room, se, asks } = roomWithAsks('10,000 items, an open ask at 300');
   const runs = await measure(page, room, asks.open, `button[data-open-asks="${se.id}"]`);

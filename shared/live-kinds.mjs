@@ -15,6 +15,7 @@
 export const STEP_FIELDS = Object.freeze([
   'id',
   'label',
+  'tool',
   'state',
   'ms',
   'who',

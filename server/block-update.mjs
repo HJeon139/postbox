@@ -8,8 +8,9 @@ import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mj
 import { LIMITS } from '../shared/limits.mjs';
 import { clip, clipText, echoedId } from './helpers.mjs';
 import { stampSteps } from './progress-steps.mjs';
+import { echoedAuthors, ownedAuthors } from './review-authors.mjs';
 import { revisedFiles } from './review-files.mjs';
-import { ownedAuthors, revisedReview } from './review-person.mjs';
+import { revisedReview } from './review-person.mjs';
 
 export const CATCH_UP_CHARS = 16000;
 
@@ -80,7 +81,7 @@ export function updateBlock(apps, sessionId, { block }, { turn, se, threadId, en
   const kind = updateKind(block);
   if (kind === 'withdraw') return withdraw(apps, sessionId, block, { se, threadId });
   if (kind === 'outcome') return recordOutcome(apps, sessionId, block, { se, threadId });
-  const v = validateBlock(block, { imageOrigins: apps.config.imageOrigins });
+  const v = validateBlock(echoedAuthors(block), { imageOrigins: apps.config.imageOrigins });
   if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${withShape(v.errors, block)}` };
   const { where, existing: found } = shownBy(apps, sessionId, v.block.id, threadId(), se());
   if (!found) return notShown(apps, sessionId, v.block.id);

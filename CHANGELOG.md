@@ -2,6 +2,66 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.36.0 (2026-11-22)
+
+### Features
+
+- **server:** name a step's tool only in UAT recording mode
+- **server:** name the tool each activity step ran
+
+### Fixes
+
+- **server:** read UAT recording mode once, and test that no mirrored step names its tool when off
+- **threads:** keep a relabeled head button's text where a plain one puts it
+- **apps:** name the version on screen in the app bar, and pin the review exception
+- **threads:** give a thread head's changing labels their widest width
+- **server:** name the tool on every step a tool call makes, refused and mirrored ones too
+- **threads:** set a thread head's rows by its width alone
+- **app:** show times on the browser's own clock
+- **threads:** keep room for a thread head's text at the panel's narrowest
+- **threads:** keep a thread panel's head lines to one line each
+- **apps:** never let a version Postbox couldn’t check stand in for a later one
+- **apps:** stand in only a version the person was shown while its agent fixes the next
+- **apps:** keep the check’s findings for the agent and show the person a plain status
+
+## 4.35.17 (2026-11-22)
+
+### Fixes
+
+- **app:** cut the kept tail back a page at a time, not on every add
+- **app:** cap the newest items kept for End when they're first kept
+- **app:** keep at most a page of the newest items for End
+
+## 4.35.16 (2026-11-22)
+
+### Fixes
+
+- **remote:** find a claude installed on a host after Postbox connected
+
+## 4.35.15 (2026-11-22)
+
+### Fixes
+
+- **blocks:** keep the own import that a form's submit and table cells use
+- **blocks:** write the table sort's two cell reads as two declarations
+- **app:** mark a term no one defined, whatever its key
+- **blocks:** read a table's cells and a field's error by own keys only
+- **blocks:** read only answered values wherever a block's answer is shown
+- **blocks:** name only fields the person answered in a form's receipt
+- **blocks:** list every sent field in a form's receipt
+
+## 4.35.14 (2026-11-22)
+
+### Fixes
+
+- **kiro:** turn memory off in the Kiro home Postbox owns
+
+## 4.35.13 (2026-11-22)
+
+### Fixes
+
+- **app:** a press on the transcript's work chip isn't lost to a refill
+
 ## 4.35.12 (2026-11-22)
 
 ### Fixes
