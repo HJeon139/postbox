@@ -72,7 +72,7 @@ export function agentWake(
   // A card keeps the mention’s message, so Allow wakes from it rather than posting it again.
   // A bounce keeps its mark on the card, so what is held is told as a reply, not a mention (#1518).
   const card = { text, replyIn: at === parent.id ? null : at, fromTurnId, itemId, ...(bounce ? { bounce } : {}) };
-  if (!target) return askToAdd(rt, from, parent, p, card, { prose });
+  if (!target) return wakeAbsent(rt, from, parent, p, card, prose);
   // No limit between two agents (#492): the room shows the chain’s count, with a hint to Stop past CHAIN_HINT.
   if (!confirmed && (parent.hops ?? 0) >= roomChainLimit(rt, parent.id)) return askToWake(rt, from, parent, p, card);
   const hop = (parent.hops ?? 0) + 1;
@@ -168,6 +168,18 @@ export function sideSession(rt, side, personaId, by) {
       joined: { by, in: side.id },
     })
   );
+}
+
+/**
+ * A wake of an agent the conversation doesn’t have. One the person deleted from it isn’t asked for again: their delete
+ * stands, and the waker carries on without it (#283). Their own @-mention brings it back. Any other is asked for, on a
+ * card the person answers (#228).
+ * @param {any} rt @param {any} from @param {any} parent @param {any} p @param {any} card @param {boolean} prose
+ */
+function wakeAbsent(rt, from, parent, p, card, prose) {
+  if (deletedFrom(rt, parent, p.handle))
+    return { ok: false, message: `@${p.handle} was deleted from this conversation, so it didn’t get your message. Carry on without it.` };
+  return askToAdd(rt, from, parent, p, card, { prose });
 }
 
 /**
