@@ -38,7 +38,8 @@ async function open(page, r) {
   await synced(page, app);
 }
 
-test('the driver opens a topic with a reply from its “1 reply” link (#720)', async ({ page }) => {
+test('the driver opens a topic with a reply from its “1 reply” link (#720)', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
   const r = sideRoom(app, 'One reply');
   const root = says(r, r.room.id, 'The 1908 edition drops two chapters.');
   const topic = app.rt.startTopic(r.room.id, root.id).threadId;
@@ -50,7 +51,8 @@ test('the driver opens a topic with a reply from its “1 reply” link (#720)',
   await expect(page.locator(`.sidepanel .transcript[data-thread="${topic}"] .item`, { hasText: 'Chapters 9 and 12.' })).toBeVisible();
 });
 
-test('the driver opens a message with no topic yet through “Reply in thread” (#887)', async ({ page }) => {
+test('the driver opens a message with no topic yet through “Reply in thread” (#887)', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
   const r = sideRoom(app, 'No topic yet');
   const root = says(r, r.room.id, 'The 1912 edition adds a preface.');
   await open(page, r);
