@@ -160,7 +160,7 @@ test('a capture shows the app with its check’s note, as the person sees it, an
   store.emit('app', { ...rt.s.apps[shown.appId], check: { status: 'note', attempt: 1, problems, notes: true } });
   await page.goto(capture);
   await expect(page.locator('[data-capture="ready"]')).toBeAttached({ timeout: 15_000 });
-  await expect(page.locator('[data-capture-item] .app-note')).toContainText('Shown with notes for researcher: Text under 12 px.');
+  await expect(page.locator('[data-capture-item] .app-note')).toHaveText('Some text or marks here may be hard to read or use.');
 });
 
 test('the picture is as wide as the app the person sees, beside the rail by default and beside an open pane', async ({ page }) => {

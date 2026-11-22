@@ -19,7 +19,7 @@ import { agentQueueButton } from './agent-queue.mjs';
 import { paintTree, subagentToggle } from './agent-tree.mjs';
 import { agentsHeaderButtons } from './agents-header.mjs';
 import { client, headerOf, sessionsOf } from './client.mjs';
-import { fill, h, syncList } from './dom.mjs';
+import { fill, h, syncList, timeOf } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { hostLine, hostOf, turnLine } from './remote.mjs';
 import { ringFor } from './ring.mjs';
@@ -76,11 +76,10 @@ export function stateWords(st) {
   if (st.state === 'running') return st.detail || 'running';
   if (st.state === 'stopping') return 'stopping';
   if (st.state === 'job') return `waiting on a job: ${st.detail}`;
-  if (st.state === 'quota') return st.until ? `out of quota until ${clock(st.until)}` : 'out of quota';
-  if (st.state === 'behind') return `waiting behind @${st.detail}${st.since ? ` since ${clock(st.since)}` : ''}`;
+  if (st.state === 'quota') return st.until ? `out of quota until ${timeOf(st.until)}` : 'out of quota';
+  if (st.state === 'behind') return `waiting behind @${st.detail}${st.since ? ` since ${timeOf(st.since)}` : ''}`;
   return { you: 'needs you', failed: 'failed' }[st.state] ?? 'idle';
 }
-const clock = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
 /**
  * Who is in a topic thread, in one line for its panel (#228): the agent it started with, and the ones that answered

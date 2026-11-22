@@ -82,7 +82,8 @@ async function paintsOver5s(page) {
 const ranFor = (ring) => ring.evaluate((el) => el.getAnimations({ subtree: true }).reduce((ms, a) => ms + Number(a.currentTime ?? 0), 0));
 
 for (const state of ['think', 'gen', 'tool'])
-  test(`PF-2: with one agent working (${state}), neither the transcript nor the page is repainted on each frame over 5 s`, async ({ page }) => {
+  test(`PF-2: with one agent working (${state}), neither the transcript nor the page is repainted on each frame over 5 s`, async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'the paint count comes from Chromium’s DevTools protocol');
     const se = await seeded(page, `paint-${state}`);
     const ring = await working(page, se, state);
     const before = await ranFor(ring);

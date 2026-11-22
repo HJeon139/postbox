@@ -8,6 +8,7 @@
 import { validateBlock } from '../shared/catalog.mjs';
 import { commentErrors, MAX_COMMENTS, quoteOf, VERDICTS } from '../shared/review-comments.mjs';
 import { findQuote, splitLines } from '../shared/review-diff.mjs';
+import { ownedAuthors } from './review-authors.mjs';
 import { SUMMARY_WAKES_NO_ONE } from './side-threads.mjs';
 
 /**
@@ -36,7 +37,8 @@ export function reviewBlock(apps, sessionId, args) {
   const problems = comments.flatMap((c, i) => [...commentErrors(c, `comments[${i}]`), ...placeError(it.block, c, i)]);
   if (problems.length) return no(`Nothing was added: ${problems.slice(0, 5).join(' ')}`);
 
-  const { threads, added } = withComments(it.block.threads ?? [], comments, se.handle);
+  // A review stored before the author rule reads as its agent’s, as update_block reads it (#1208).
+  const { threads, added } = withComments(ownedAuthors(it).block.threads ?? [], comments, se.handle);
   const block = { ...it.block, threads };
   // Built from checked parts, but checked again as a whole: a block on screen is always one the catalog takes.
   const v = validateBlock(block, { imageOrigins: apps.config.imageOrigins });

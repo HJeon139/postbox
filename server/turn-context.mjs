@@ -189,10 +189,12 @@ function stepCallback(rt, se0, turn, live) {
   const ensureSegment = () => replySegment(rt, turn, se0);
   return {
     // who: the subagent that took the step; parent nests it under its starting step; detail holds an error,
-    // thought, narration or subagent result; kind names non-tool work; job names its background job (#73, #129).
+    // thought, narration or subagent result; kind names non-tool work; job names its background job (#73, #129); tool
+    // names the tool a call ran.
     activity({
       id,
       label,
+      tool = null,
       state = 'running',
       ms = null,
       who = null,
@@ -214,7 +216,7 @@ function stepCallback(rt, se0, turn, live) {
       const sid = id ?? newId('st');
       // A new step of the agent’s own shows in the part it writes in now, after that part’s words so far.
       const place = i < 0 && !who ? placeStep(rt, turn, sid) : {};
-      const step = turnStep({ id: sid, label, state, ms, who, parent, detail, kind, job, input, output, ...place, added, deleted, diff });
+      const step = turnStep({ id: sid, label, tool, state, ms, who, parent, detail, kind, job, input, output, ...place, added, deleted, diff });
       if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
       else turn.steps.push(step);
       // Live, and stored at the next commit point (live-buffer.mjs).
