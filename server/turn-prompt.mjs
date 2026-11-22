@@ -7,11 +7,12 @@
 import { createHash } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { uatRecording } from './uat-mode.mjs';
 
 export const PROMPTS_FILE = 'prompts.jsonl';
 
 /** Where the recording goes, or null with the mode off. @param {string} dataDir @param {Record<string, string | undefined>} env */
-export const promptsFileFor = (dataDir, env = process.env) => (env.POSTBOX_UAT_RECORD === '1' ? join(dataDir, PROMPTS_FILE) : null);
+export const promptsFileFor = (dataDir, env = process.env) => (uatRecording(env) ? join(dataDir, PROMPTS_FILE) : null);
 
 /**
  * The guides each runtime has recorded since it started, by session and hash: once per session, so each
