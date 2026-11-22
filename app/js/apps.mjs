@@ -545,7 +545,8 @@ export function renderAppItem(item, ctx) {
   if (!app) return h('div.block', h('div.block-body', h('p.dim', 'This app was removed.')));
   const holder = h('div.app-holder');
   const v = shownVersion(app);
-  const last = app.versions[app.current - 1];
+  // The version on screen: an older one picked from the menu, or the one standing in while the agent fixes the next (#948).
+  const last = app.versions[v - 1] ?? app.versions[app.current - 1];
   const versionBtn = h(
     'button.btn.sm',
     {
@@ -572,7 +573,7 @@ export function renderAppItem(item, ctx) {
           { label: 'Versions', className: 'versions' },
         ),
     },
-    `v${app.current} · updated ${ago(last.at)}`,
+    `v${last.v} · updated ${ago(last.at)}`,
     icon('down', 'i-sm'),
   );
   // Retired (#193): one line in its place, and no sandbox until you open a version from its menu.

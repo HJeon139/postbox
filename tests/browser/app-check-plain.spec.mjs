@@ -78,11 +78,28 @@ test('#948 while the agent fixes a later version, the person sees the last versi
   await expect(item().locator('iframe.app-iframe'), 'v1’s frame').toHaveAttribute('src', /\/sandbox\/app\/later\/1\?/);
   await expect(item().locator('.app-note')).toHaveText('researcher is fixing v2. Until then, this is v1, read-only.');
   await expect(item(), 'none of the check’s words for the agent').not.toContainText(AGENT_WORDS);
-  // The version menu names the version on screen, not the one being fixed.
+  // The version button and its menu name the version on screen, not the one being fixed.
+  await expect(item().locator('[aria-haspopup="menu"]'), 'the button names v1').toHaveText(/^v1 · /);
   await item().locator('[aria-haspopup="menu"]').click();
   await expect(page.getByRole('menuitem', { name: /^v1\b/ }), 'v1 is the one marked in the menu').toHaveAttribute('aria-current', 'true');
   await page.keyboard.press('Escape');
   await shoot('948-fixing-later');
+});
+
+test('#948 an app review of a version being fixed shows the plain placeholder, never the version before it', async ({ page }) => {
+  const { rt, store } = app;
+  const { tools, item, fixing } = await seed(page, 'reviewed');
+  tools.update_app({ id: 'reviewed', code: FAINT, summary: 'bigger labels' });
+  await fixing();
+  // The transcript’s copy shows v1 in v2’s place; a review asks about v2, so it doesn’t.
+  await expect(item().locator('iframe.app-iframe'), 'v1 stands in, in the transcript').toHaveAttribute('src', /\/reviewed\/1\?/);
+  tools.show_block({ block: { id: 'rv-reviewed', type: 'review', version: 1, fallback: 'Review the app', format: 'app', appId: 'reviewed' } });
+  await synced(page, app);
+  const threadId = rt.store.state.apps.reviewed.threadId;
+  const rv = store.items(threadId).find((i) => i.kind === 'block' && i.block.id === 'rv-reviewed');
+  const review = page.locator(`#main [data-key="${rv.id}"]`);
+  await expect(review.locator('.app-placeholder')).toContainText('researcher is fixing this app before you see it');
+  await expect(review.locator('iframe.app-iframe'), 'no version runs in the review').toHaveCount(0);
 });
 
 test('#948 a version still waiting for its check never stands in for one being fixed', async ({ page }) => {
