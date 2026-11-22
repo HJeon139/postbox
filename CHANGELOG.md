@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.36.3 (2026-11-22)
+
+### Fixes
+
+- **markdown:** let a spaced * open no emphasis, and read code spans in linear time
+- **server:** point a cut in an answer's comments at its own line
+- **markdown:** tell fenced blocks from inline spans in plain text
+- **server:** keep each answer's comments on its own line, readable with no session
+- **server:** give the room the comments that came with the person's review
+- **markdown:** read code spans left to right as the renderer does
+- **markdown:** read code spans of any backtick run in plain text
+- **blocks:** keep a wide table's scroll when it's drawn anew
+- **markdown:** keep a placeholder-like character and code spans' stars in plain text
+- **markdown:** keep the asterisks of 10**9 and 2*n as typed
+
 ## 4.36.2 (2026-11-22)
 
 ### Fixes
