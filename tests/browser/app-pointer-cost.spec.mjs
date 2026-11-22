@@ -181,7 +181,7 @@ async function backUnderPointer(page, width) {
   const rest = { x: b.x + b.width / 2, y: b.y + Math.min(40, b.height / 2) };
   await page.mouse.move(rest.x, rest.y);
   await expect(f, 'live under the pointer').toHaveClass(/\blive\b/);
-  // Far away in one scroll, and back in another, before the far app unloads.
+  // Far away in one scroll, and back in another, before its unload is due.
   const held = () => page.evaluate(() => /** @type {any} */ (window).pbHeldUnloads);
   const before = await held();
   await page.evaluate(() => scrollBy(0, 4 * innerHeight));
