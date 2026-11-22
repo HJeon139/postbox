@@ -5,7 +5,6 @@
 import './md-images.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
-import { own } from '/shared/state-assets.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
 import { asDrawn, closing } from './block-close.mjs';
 import { fitChoiceOptions } from './choice-layout.mjs';
@@ -17,6 +16,7 @@ import { renderReview } from './review.mjs';
 import { forgetReviewDraft } from './review-draft-store.mjs';
 import { fmtCell } from './table-cells.mjs';
 import { scrollFrame } from './table-scroll.mjs';
+import { sortedRows } from './table-sort.mjs';
 
 const drafts = new Map(); // item id → local, unsent input
 const draft = (id, init) => {
@@ -326,14 +326,7 @@ const RENDER = {
         icon('expand'),
       ),
     ]);
-    let rows = b.rows;
-    if (d.sort) {
-      const col = b.columns.find((c) => c.id === d.sort);
-      rows = [...rows].sort((x, y) => {
-        const [a, c] = [own(x.cells, d.sort), own(y.cells, d.sort)];
-        return (col.kind === 'number' ? (+a || 0) - (+c || 0) : String(a ?? '').localeCompare(String(c ?? ''))) * d.dir;
-      });
-    }
+    const rows = sortedRows(b.rows, b.columns, d.sort, d.dir);
     const status = h('span.sr-only', { role: 'status' });
     const th = (c) => {
       const sortBtn = h(
