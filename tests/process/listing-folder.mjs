@@ -64,10 +64,10 @@ export function writers(dir, closedAt, o = {}) {
   return `files: ${left(dir).join(', ') || 'none'}; processes: ${procs}`;
 }
 
-/** writers, or why it couldn’t say, so a diagnostic that fails never stops the removal. @param {() => string} describe */
-function safely(describe) {
+/** writers, or why it couldn’t say, so a diagnostic that fails never stops the removal. @param {() => string} what */
+function safely(what) {
   try {
-    return describe();
+    return what();
   } catch (e) {
     return `(couldn’t say what was there: ${/** @type {Error} */ (e).message})`;
   }
@@ -76,17 +76,17 @@ function safely(describe) {
 /**
  * Removes the listing’s folder, retrying when the first try fails, and records what was there then as a diagnostic.
  * @param {import('node:test').TestContext} t @param {string} dir @param {number | undefined} closedAt
- * @param {() => string} [describe]  what was there, writers by default, which a test replaces
+ * @param {() => string} [what]  what was there, writers by default, which a test replaces
  */
-export function removeListing(t, dir, closedAt, describe = () => writers(dir, closedAt)) {
+export function removeListing(t, dir, closedAt, what = () => writers(dir, closedAt)) {
   try {
     rmSync(dir, { recursive: true, force: true });
   } catch (e) {
-    t.diagnostic(`#1562: the listing’s folder was still being written after the CLI closed, so its removal retried. ${safely(describe)}`);
+    t.diagnostic(`#1562: the listing’s folder was still being written after the CLI closed, so its removal retried. ${safely(what)}`);
     try {
       rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
     } catch (again) {
-      throw new Error(`Couldn’t remove the listing’s folder: ${safely(describe)}`, { cause: new AggregateError([e, again]) });
+      throw new Error(`Couldn’t remove the listing’s folder: ${safely(what)}`, { cause: new AggregateError([e, again]) });
     }
   }
 }
