@@ -87,3 +87,18 @@ test('#1059 an ended question no longer counts as open: a prompt-expired naming 
   r.d.end(turn);
   await settled(r);
 });
+
+test('#1059 a host question the harness cancels shows nothing more and hands nothing over', async () => {
+  const r = rig();
+  const turn = await running(r);
+  r.d.append(turn, callLine(TWO));
+  const id = r.d.prompt(turn, request(TWO));
+  await until(() => questions(r).length === 1 && r.rt.permissionWaits.has(questions(r)[0].id), 'the first block, waiting');
+  // The agent stopped asking: its harness canceled the call, which the host reports as a canceled prompt.
+  r.link.hear({ type: 'prompt-expired', id, turn, at: Date.now(), reason: 'canceled' });
+  await until(() => !r.rt.permissionWaits.has(questions(r)[0].id), 'the wait to end');
+  for (let i = 0; i < 5; i++) await new Promise((done) => setImmediate(done));
+  assert.equal(questions(r).length, 1, 'the question it stopped asking isn’t shown');
+  r.d.end(turn);
+  await settled(r);
+});

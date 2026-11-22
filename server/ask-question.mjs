@@ -91,8 +91,9 @@ export async function askQuestions(rt, sessionId, req, blocks, shown = []) {
     const over = endedBy(got);
     if (over) return { allow: false, message: [over, answeredText(answers), unaskedText(unasked)].filter(Boolean).join(' ') };
     if (!got.values) {
-      // On a host the call hears the shim’s own words, not these, so “it stays open” is made true here (#1059).
-      if (req.hostPrompt && at) handOver(rt, sessionId, { ...req, hostPrompt: req.hostPrompt }, taken, at.threadId, unasked, i + 1);
+      // On a host the call hears the shim’s own words, not these, so “it stays open” is made true here (#1059). Only
+      // when the host’s limit ended it: a harness that canceled the call has stopped asking.
+      if (req.hostPrompt && at && got.status === 'expired') handOver(rt, sessionId, { ...req, hostPrompt: req.hostPrompt }, taken, at.threadId, unasked, i + 1);
       return { allow: false, message: stillOpen(got.message, answers, unasked) };
     }
     if (at) taken.push(at);
