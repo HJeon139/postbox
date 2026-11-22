@@ -64,7 +64,7 @@ stateDiagram-v2
    gh pr edit <n> --add-label "ready for integrator"
    ```
 2. **Push again, and the label is out of date.** Nothing removes it for you: remove it yourself when you push to a head that’s labeled, and add it again once the new head is ready.
-3. **Answer a review.** The integrator posts the verdict as a GitHub review, with a comment on each line that has to change, and replaces `ready for integrator` with `changes requested` or `integrator approved`. Fix what blocks, push, and comment with each finding’s fix commit and its evidence (`designs/developing.md`, “Before you ask for review”). Then swap `changes requested` for `ready for integrator`. You won’t be asked to rebase: the integrator’s batch merges `main` and resolves conflicts. A fix of a few lines the review spells out may be made by the integrator in the batch instead. Points that don’t block go into new issues, not into this PR.
+3. **Answer a review.** The integrator posts the verdict as a GitHub review, with a comment on each line that has to change, and replaces `ready for integrator` with `changes requested` or `integrator approved`. Fix what blocks, push, and comment with each finding’s fix commit and its evidence (`designs/developing.md`, “Before you ask for review”). Then swap `changes requested` for `ready for integrator`. You won’t be asked to rebase: the integrator’s batch merges `main` and resolves conflicts, and asks you to merge only a conflict only you can resolve. A fix of a few lines the review spells out may be made by the integrator in the batch instead. Points that don’t block go into new issues, not into this PR.
    ```bash
    gh pr edit <n> --remove-label "changes requested" --add-label "ready for integrator"
    ```
