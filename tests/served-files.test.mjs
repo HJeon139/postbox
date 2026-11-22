@@ -52,7 +52,18 @@ test('#351: a path with a malformed % escape is the request’s fault: 400 with 
 });
 
 test('#351: the page, its icon and the shared stylesheet are served through the same check, and still load', async () => {
-  for (const path of ['/', '/index.html', '/favicon.svg', '/kit/workbench.css', '/app/workbench.css'])
+  for (const path of ['/', '/index.html', '/favicon.svg', '/app/workbench.css'])
     assert.equal((await fakeRequest(app.handle, { method: 'GET', path, host: `127.0.0.1:${PORT}` })).status, 200, path);
   for (const path of ['/app/', '/kit/']) assert.equal((await fakeRequest(app.handle, { method: 'GET', path, host: `127.0.0.1:${PORT}` })).status, 404, path);
+});
+
+test('#1272 no file answers another site’s script: no access-control-allow-origin, and no stylesheet alias under /kit/', async () => {
+  const origin = 'https://example.com';
+  for (const path of ['/kit/kit.js', '/app/workbench.css', '/media/favicon.svg', '/media/reactions/reaction-approve-64.png']) {
+    const res = await fakeRequest(app.handle, { method: 'GET', path, host: `127.0.0.1:${PORT}`, origin });
+    assert.equal(res.status, 200, path);
+    const allowed = Object.entries(res.headers).find(([k]) => k.toLowerCase() === 'access-control-allow-origin');
+    assert.equal(allowed, undefined, `${path} lets ${origin} read it`);
+  }
+  assert.equal((await fakeRequest(app.handle, { method: 'GET', path: '/kit/workbench.css', host: `127.0.0.1:${PORT}` })).status, 404, 'the alias is gone');
 });

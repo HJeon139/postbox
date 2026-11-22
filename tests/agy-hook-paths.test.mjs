@@ -187,7 +187,12 @@ test('#1074 an edited path on a card goes back in the field the card was about',
     return { ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text }] } }) };
   };
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'ask', POSTBOX_AGY_FOLDERS: JSON.stringify([ws]) };
-  const res = await runAgyHook(JSON.stringify({ toolCall: { name: 'grep_search', args } }), { cwd: ws, env, home, fetchImpl: /** @type {any} */ (fetchImpl) });
+  const res = await runAgyHook(JSON.stringify({ conversationId: 'c1', stepIdx: 1, toolCall: { name: 'grep_search', args } }), {
+    cwd: ws,
+    env,
+    home,
+    fetchImpl: /** @type {any} */ (fetchImpl),
+  });
   assert.deepEqual(asked, { file_path: join(out, 'secret.txt') });
   assert.deepEqual(res, { decision: 'allow', overwrite: { ...args, SearchPath: join(out, 'other.txt') } });
 });
@@ -236,7 +241,12 @@ test('#1074 an edited path on a card about a tidied path goes back in that pathâ
     return { ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text }] } }) };
   };
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'ask', POSTBOX_AGY_FOLDERS: JSON.stringify([ws]) };
-  const res = await runAgyHook(JSON.stringify({ toolCall: { name: 'grep_search', args } }), { cwd: ws, env, home, fetchImpl: /** @type {any} */ (fetchImpl) });
+  const res = await runAgyHook(JSON.stringify({ conversationId: 'c1', stepIdx: 1, toolCall: { name: 'grep_search', args } }), {
+    cwd: ws,
+    env,
+    home,
+    fetchImpl: /** @type {any} */ (fetchImpl),
+  });
   assert.deepEqual(asked, { file_path: join(out, 'secret.txt') });
   assert.deepEqual(res, { decision: 'allow', overwrite: { ...args, SearchPath: join(out, 'other.txt') } });
 });

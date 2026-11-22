@@ -17,22 +17,25 @@ import { CARD_WAIT_MS } from '../permission-cards.mjs';
 import { autoAllows, intoGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
 import { decideBypass } from './agy-bypass.mjs';
 import { isProtectedPath, leadsInto, PATH_FIELDS, pathArgs, realTarget, tidyPath } from './agy-paths.mjs';
+import { stepId } from './agy-tools.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 export const HOOK_SCRIPT = fileURLToPath(import.meta.url);
 /** Outlasts Postbox’s card wait (CARD_WAIT_MS) so an unanswered card expires to deny before agy times the hook out. */
 export const HOOK_TIMEOUT_S = Math.ceil(CARD_WAIT_MS / 1000) + 60;
-/** How Antigravity asks (adapter.mjs’s capabilities): through permission_prompt, from this hook, by an id no stream line carries (#353). */
+/** How Antigravity asks (adapter.mjs’s capabilities): through permission_prompt, from this hook, by its stream’s step id (#907). */
 export const HOOK_PROMPTS = Object.freeze({ promptTool: true, promptHook: true });
 
-const WRITE_TOOLS = new Set(['write_file', 'write_to_file', 'edit_file', 'replace_file_content', 'multi_replace_file_content']);
-const READ_TOOLS = new Set(['read_file', 'view_file', 'list_dir', 'find_by_name', 'grep_search']);
+export const WRITE_TOOLS = new Set(['write_file', 'write_to_file', 'edit_file', 'replace_file_content', 'multi_replace_file_content']);
+export const READ_TOOLS = new Set(['read_file', 'view_file', 'list_dir', 'find_by_name', 'grep_search']);
 // agy’s own folders a model reads with no card: its MCP tools’ schemas and its notes (agy-tools.mjs’s AGY_FILE), and
 // its builtin skills and guide, which a model read unprompted in a UAT: a card nobody can usefully judge (#1074).
 const AGY_READABLE = ['mcp', 'brain', 'builtin'];
 const SUBAGENT_TOOLS = new Set(['invoke_subagent', 'define_subagent', 'send_message', 'manage_subagents', 'manage_task']);
 // A command that names Antigravity’s plugin, this hook or agy’s settings: always a card, flagged.
-const PROTECTED_CMD = /\.agents\b|agy-hook\.mjs\b|\.gemini[\\/]antigravity-cli\b/i;
+export const PROTECTED_CMD = /\.agents\b|agy-hook\.mjs\b|\.gemini[\\/]antigravity-cli\b/i;
+/** What a card for such a command says first (#907’s check holds a prompt to it). */
+export const PROTECTED_WARNING = 'Touches Antigravity’s plugin, hook or settings';
 const PUBLISH_OFF = 'This agent can’t publish outside Postbox (its persona’s “Can publish outside Postbox” is off), so Postbox refused this tool.';
 
 export { isProtectedPath };
@@ -78,7 +81,7 @@ export function decideAgyTool(
   if (READ_TOOLS.has(name)) return decideRead(args, { roots: [...roots, ...readable(reads, cwd)], cwd, home });
   if (name === 'run_command') {
     const summary = String(args.toolSummary ?? '').trim();
-    const warn = PROTECTED_CMD.test(command) ? 'Touches Antigravity’s plugin, hook or settings' : '';
+    const warn = PROTECTED_CMD.test(command) ? PROTECTED_WARNING : '';
     const description = warn && summary ? `${warn} — ${summary}` : warn || summary;
     return { decision: 'ask', toolName: 'Bash', input: { command, ...(description ? { description } : {}) } };
   }
@@ -212,6 +215,10 @@ async function evaluateHook(stdinText, { cwd = process.cwd(), env = process.env,
   const check = decideAgyTool(event, { mode, folders, reads, cwd, scriptPath, home, ...personaOf(env) });
   if (check.decision === 'allow' || check.decision === 'deny') return check;
   if (!mcpUrl) return { decision: 'deny', reason: 'Postbox’s MCP URL is missing, so the hook couldn’t ask for permission.' };
+  // The call’s id as the turn’s stream shows it, so Postbox holds the prompt to that call (#907).
+  const step = { conversation_id: event?.conversationId, step_index: event?.stepIdx };
+  if (typeof step.conversation_id !== 'string' || !step.conversation_id || !Number.isInteger(step.step_index))
+    return { decision: 'deny', reason: 'agy didn’t say which step this call is, so Postbox’s hook couldn’t ask for permission.' };
   const requestId = `agy-hook-${randomUUID()}`;
   const res = await fetchImpl(mcpUrl, {
     method: 'POST',
@@ -220,7 +227,7 @@ async function evaluateHook(stdinText, { cwd = process.cwd(), env = process.env,
       jsonrpc: '2.0',
       id: requestId,
       method: 'tools/call',
-      params: { name: 'permission_prompt', arguments: { tool_name: check.toolName, input: check.input, tool_use_id: requestId } },
+      params: { name: 'permission_prompt', arguments: { tool_name: check.toolName, input: check.input, tool_use_id: stepId(step) } },
     }),
   });
   if (!res?.ok) return { decision: 'deny', reason: `Postbox returned HTTP ${res?.status ?? 'error'} for the permission request.` };

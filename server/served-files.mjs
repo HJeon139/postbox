@@ -12,8 +12,8 @@ const MEDIA_TYPES = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', 
 
 /**
  * A file in one of Postbox’s folders, by a request’s path, followed through links, which can’t lead out of it (#351).
- * Postbox’s own folders hold its code, but an agent at work in a clone of Postbox can write there, and /kit/ and /media/
- * answer any site’s script (access-control-allow-origin: *), so a link there to a file elsewhere would hand it out.
+ * Postbox’s own folders hold its code, but an agent at work in a clone of Postbox can write there, so a link there to
+ * a file elsewhere would hand it to whatever page or frame asks for it.
  * @param {string} dir @param {string} rel  the path after the route’s prefix, as the request sent it
  */
 export async function servedFile(dir, rel) {
