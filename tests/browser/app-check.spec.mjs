@@ -126,12 +126,13 @@ const APPS = {
 /**
  * Whether a page error is one of the two #328 runs on purpose, told by its type and its exact words in each engine
  * (#1140): `(1;` is a SyntaxError, “Unexpected token ';'” in Chromium and “missing ) in parenthetical” in Firefox, and
- * `null.missing` is a TypeError, “(reading 'missing')” in Chromium and “property "missing", value is null” in Firefox.
+ * `null.missing` is a TypeError, “Cannot read properties of null (reading 'missing')” in Chromium and “property "missing",
+ * value is null” in Firefox: the same read on undefined is still reported.
  * Any other error naming `missing` is still reported. @param {Error} e
  */
 const deliberate = (e) =>
   (e.name === 'SyntaxError' && /Unexpected token ';'|missing \) in parenthetical/.test(e.message)) ||
-  (e.name === 'TypeError' && /\(reading 'missing'\)|property "missing", value is null/.test(e.message));
+  (e.name === 'TypeError' && /Cannot read properties of null \(reading 'missing'\)|property "missing", value is null/.test(e.message));
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
