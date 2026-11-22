@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.36.4 (2026-11-22)
+
+### Fixes
+
+- **store:** send a held Retry the recovery its wake line kept
+- **store:** arm a wake scheduled behind a held commit, and read schedules as written
+
 ## 4.36.3 (2026-11-22)
 
 ### Fixes
