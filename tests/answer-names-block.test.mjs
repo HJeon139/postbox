@@ -116,3 +116,16 @@ test('#1253: comments cut on the answer line point at the line, which keeps this
   // And that reading has the comment whole.
   assert.ok(arrange.describeItem(f.rt, line, null, 100_000, f.beta).includes(long.trim()));
 });
+
+test('#1253: a read with no session leaves out the block’s own agent by the reader, and by the line’s own record', () => {
+  // Integrator review of #1600: describeItem’s reader stands in for se, and answerTo names the agent when the block
+  // can’t be found where the reader looks.
+  const f = setup();
+  const it = answered(f, { type: 'choice', id: 'pick-3', version: 1, title: 'Which?', options: [{ id: 'a', label: 'A' }] }, 'Chose: A');
+  assert.equal(arrange.describeItem(f.rt, it, null, Number.POSITIVE_INFINITY, f.alpha), null, 'the reader is the block’s agent');
+  assert.match(arrange.describeItem(f.rt, it, null, Number.POSITIVE_INFINITY, f.beta), /answered @alpha’s choice “Which\?” \(pick-3\)/);
+  const unfound = { type: 'choice', id: 'gone', handle: 'alpha', sessionId: f.alpha.id };
+  const kept = arrange.post(f.rt, f.t.id, { kind: 'voice', text: 'Chose: B', blockItemId: 'it_missing', answerTo: unfound });
+  assert.equal(arrange.describeItem(f.rt, kept, f.alpha), null, 'its own record names the agent when the block isn’t found');
+  assert.match(arrange.describeItem(f.rt, kept, f.beta), /answered @alpha’s choice \(gone\)/);
+});

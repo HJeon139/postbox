@@ -28,7 +28,23 @@ test('#1253: the answer line in another agent’s turn input carries the review�
   const { tail } = f.rt.memory.turnTail(f.leadSe(), []);
   const line = tail.find((l) => l.includes('Request changes'));
   assert.ok(line, tail.join('\n'));
+  // turnTail reads with no session: the line still names the block, from its own record (integrator review of #1600).
+  assert.match(line, /answered @critic’s review “Release plan” \(plan\)/);
   assert.match(line, /line 1: Fix the date\./);
+});
+
+test('#1253: an answer line keeps the title its block had when it was answered', async () => {
+  // The line’s own record of the block (answerTo) is what a lookup of the block can’t give: the block as it was.
+  const f = await room();
+  f.rt.act(f.t.id, f.item.id, 'submit', { verdict: 'request_changes', comments: [{ line: 1, text: 'Fix the date.' }] });
+  await settle(f.rt);
+  const r = await turn(f.rt, f.adapter, f.t, (tools) => tools.update_block({ block: { ...review, title: 'Release plan, v2', content: 'Ship Monday.' } }));
+  assert.equal(r.ok, true, r.message);
+  const { tail } = f.rt.memory.turnTail(f.leadSe(), []);
+  const first = tail.find((l) => l.includes('Request changes'));
+  assert.ok(first, tail.join('\n'));
+  assert.match(first, /“Release plan” \(plan\)/);
+  assert.doesNotMatch(first, /v2/);
 });
 
 test('#1253: each answer line keeps its own comments when the review is revised and answered again', async () => {
