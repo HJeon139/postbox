@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cancelWake, scheduleWakeTool } from '../server/schedule-tools.mjs';
-import { fireScheduledWake } from '../server/scheduled-wakes.mjs';
+import { fireScheduledWake, prepareScheduledRetry } from '../server/scheduled-wakes.mjs';
 import { PENDING_WAKES } from '../shared/limits.mjs';
 import { heldStore, setup } from './stop-reply-fixture.mjs';
 
@@ -77,6 +77,20 @@ test('#623: a wake scheduled behind a held commit fires when it’s due', async 
     (store.state.inbox[result.se.id] ?? []).some((e) => e.source === 'scheduled' && e.message?.scheduledWakeId === result.sc.id),
     'its wake went to the agent',
   );
+  for (const t of env.rt.timers.values()) clearTimeout(t);
+  await store.close();
+});
+
+test('#623: a Retry of a wake canceled behind a held commit sends the recovery its line kept, as written', async () => {
+  // Critic’s review of PR #1578: with the cancel and the line’s recovery note both held, Retry read the line from the
+  // published items and sent the old instruction, which a tool may already have acted on.
+  const { env, result, store } = await whileHeld(({ rt, se }) => {
+    const sc = rt.schedule(se.id, { inMs: 60_000, note: 'deploy the fix' });
+    rt.threads.patchItem(sc.threadId, sc.itemId, { recoveryNote: 'Check what the deploy changed before you continue.' });
+    rt.cancelSchedule(sc.id);
+    return prepareScheduledRetry(rt, { retry: true, scheduledWakeId: sc.id, note: 'deploy the fix' }, sc.threadId);
+  });
+  assert.equal(result.note, 'Check what the deploy changed before you continue.');
   for (const t of env.rt.timers.values()) clearTimeout(t);
   await store.close();
 });

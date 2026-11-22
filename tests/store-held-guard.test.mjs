@@ -41,7 +41,6 @@ const PUBLISHED = {
   'review-files.mjs': ['findReviewFile'], // a review’s image, as an HTTP answer to the page (#780)
   'search-conversation.mjs': ['searchConversation'], // a read tool (#1340): the hit’s item, as read_conversation reads it
   'runtime.mjs': ['resolveProposal'], // a person’s action on an item they see
-  'scheduled-wakes.mjs': ['prepareScheduledRetry'], // the person’s Retry of a wake line they see
   'share-back.mjs': ['shareToConversation', 'shareToConversation'], // the person’s Share of an item they see
   'shell-runs.mjs': ['stopShellCommand'], // the person’s Stop on a command they see
   'store-outage.mjs': ['settleOrphanTurns'], // at a reload, when nothing is held

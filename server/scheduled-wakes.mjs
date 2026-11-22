@@ -71,7 +71,8 @@ export function prepareScheduledRetry(rt, message, threadId) {
   if (message?.retry !== true || typeof message.scheduledWakeId !== 'string') return message;
   const sc = rt.store.pending.schedule(message.scheduledWakeId);
   if (!sc) {
-    const line = rt.store.items(threadId).find((i) => i.kind === 'system' && i.scheduleId === message.scheduledWakeId);
+    // As written: a cancel and the line’s recovery note may both be held behind a commit (#623).
+    const line = rt.store.pending.items(threadId).find((i) => i.kind === 'system' && i.scheduleId === message.scheduledWakeId);
     return line?.recoveryNote ? { ...message, note: line.recoveryNote } : message;
   }
   clearTimeout(rt.timers.get(sc.id));

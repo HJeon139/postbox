@@ -31,12 +31,14 @@ export const PENDING = {
   'turn-service.mjs': ['retryEntries'], // whether the session a Retry wakes is still failed, maybe written behind a held commit (#1429)
   'queue-convert.mjs': ['convertOne', 'convertOne', 'notDelivered'], // the agents a stored queue's row waited for or came from, and the item an earlier conversion posted for it, read as the start's writes leave them (#1423)
   // A wake's schedule, maybe just scheduled, changed or removed behind a held commit: arming its timer, firing it,
-  // recording its tools, settling or canceling it, and the per-agent limit each decide a write (#623).
+  // recording its tools, settling or canceling it, and the per-agent limit each decide a write (#623); and a Retry's
+  // wake line, whose recovery note may be held with its cancel.
   'schedule-tools.mjs': ['cancelWake', 'scheduleWakeTool'],
   'scheduled-wakes.mjs': [
     'armWake',
     'fireScheduledWake',
     'fireScheduledWake',
+    'prepareScheduledRetry',
     'prepareScheduledRetry',
     'addTool',
     'settleScheduledWake',
