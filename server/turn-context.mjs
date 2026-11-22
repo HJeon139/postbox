@@ -28,6 +28,13 @@ export function adapterContext(rt, se0, turn) {
     ...reportCallbacks(rt, turn, live),
     // What the turn sends its agent, only in UAT recording mode (server/turn-prompt.mjs).
     ...promptHook(rt, turn),
+    // With run clocks on: Stop gave up on the CLI’s group, which outlived SIGKILL (server/adapters/process-group.mjs),
+    // so its end isn’t an exit, and a run clock voids its run.
+    ...(rt.runClock && {
+      unkilled: () => {
+        turn.mayRunOn ??= 'unkilled';
+      },
+    }),
     tools,
   };
 }
