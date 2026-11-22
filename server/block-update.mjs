@@ -26,7 +26,7 @@ export function answerDelivered(apps, threadId, message) {
 }
 
 /**
- * Reopening an answered block keeps a receipt of that answer: what it was, for which revision, and when, so the person
+ * Reopening an answered review keeps a receipt of that answer: what it was, for which revision, and when, so the person
  * can see it was for an earlier revision and answer this one (#518). The review hides it once they answer again.
  * @param {any} existing  the block item being updated
  */

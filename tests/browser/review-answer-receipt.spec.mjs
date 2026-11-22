@@ -1,7 +1,7 @@
 // #518: the person approves a review, the agent reads the approval and revises the draft, and the block asks again.
 // Before, the approval vanished: the block showed only “Changes since you looked”, with Approve back, and nothing said
 // whether the approval counted. Now the revised block keeps a receipt of what they answered, for which revision and
-// when, and says this revision needs its own answer. Answering it clears the receipt. At 375 and 1280 px.
+// when, and says the agent has revised it since. Answering it clears the receipt. At 375 and 1280 px.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -30,7 +30,7 @@ test.afterAll(async () => {
 failOnPageErrors(test);
 
 for (const width of [375, 1280])
-  test(`#518 a review revised after the person approved it says what they approved, and that this revision needs its own answer (${width} px)`, async ({
+  test(`#518 a review revised after the person approved it says what they approved, and that the agent has revised it since (${width} px)`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
