@@ -111,6 +111,22 @@ test('a run whose stream lost events exports its trajectories marked partial, wi
   }
 });
 
+test('a gap after a restart names its epoch, since event numbers start lower again there', (t) => {
+  const dir = tempDir('pb-atif-gaps-');
+  for (const f of ['events.jsonl', 'live.jsonl']) writeFileSync(join(dir, f), readFileSync(new URL(`fixtures/atif/dry-run/${f}`, import.meta.url), 'utf8'));
+  writeFileSync(
+    join(dir, 'stream-gaps.json'),
+    JSON.stringify([
+      { after: 40, at: 1, epoch: 0 },
+      { after: 3, at: 2, epoch: 1 },
+    ]),
+  );
+  const out = join(dir, 'out');
+  t.mock.method(console, 'log', () => {});
+  assert.equal(main([dir, '--out', out]), 0);
+  for (const f of readdirSync(out)) assert.match(JSON.parse(readFileSync(join(out, f), 'utf8')).notes, /lost events 2 times, after event 40, 3 of epoch 1,/);
+});
+
 test('after a restart numbers events from lower again, the recorder keeps them, in their own epoch, after one gap', () => {
   const r = streamRecorder();
   const item = (seq, id) => `id: ${seq}\nevent: item.add\ndata: ${JSON.stringify({ threadId: 't', item: { id, kind: 'user', at: 1 } })}`;

@@ -150,7 +150,9 @@ function gapNote(gaps) {
   if (!gaps?.length) return null;
   const events = gaps.filter((g) => g.lost !== 'live');
   const live = gaps.filter((g) => g.lost === 'live');
-  const where = (/** @type {any[]} */ list) => `after event ${list.map((g) => g.after).join(', ')}`;
+  // A restart numbers events from lower again (tools/uat/history.mjs, streamRecorder), so a gap after one names its epoch.
+  const at = (/** @type {any} */ g) => (g.epoch ? `${g.after} of epoch ${g.epoch}` : String(g.after));
+  const where = (/** @type {any[]} */ list) => `after event ${list.map(at).join(', ')}`;
   const said = [
     events.length
       ? `lost events ${events.length === 1 ? 'once' : `${events.length} times`}, ${where(events)}, where the server could no longer replay them, so steps that came between are missing`
