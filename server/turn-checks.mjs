@@ -8,6 +8,7 @@ import { lintDiagrams } from '../shared/diagram-lint.mjs';
 import { blockProblems, diagramProblems, introducedTerms, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { rememberDiagrams, syntaxCheck } from './diagram-check.mjs';
 import { endLint, quietLint } from './lint-delivery.mjs';
+import { backTo } from './reply-back.mjs';
 
 /**
  * The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
@@ -38,10 +39,13 @@ export function checkTurn(checks, turn, se) {
       diagrams.map((d) => d.src),
     );
   problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
-  // A reply that should have been a block (#63): what this turn showed, and what the person last asked for.
+  // A reply that should have been a block (#63): what this turn showed, and what the person last asked for. A reply to
+  // another agent is that agent’s to answer (#1695): one that @-mentioned an agent, or one that goes back to the agents
+  // whose mentions woke the turn, as reply-back decides it.
   const own = checks.store.pending.items(turn.threadId);
   const shown = own.filter((it) => it.kind === 'block' && it.valid && it.turnId === turn.id).map((it) => it.block.type);
-  problems.push(...blockProblems(turn.said, shown, own.findLast((it) => it.kind === 'user')?.text ?? ''));
+  const toAgent = Boolean(turn.named) || (turn.backTo ?? backTo(turn.asked?.message?.entries ?? [])).length > 0;
+  problems.push(...blockProblems(turn.said, shown, own.findLast((it) => it.kind === 'user')?.text ?? '', { toAgent }));
   return problems;
 }
 

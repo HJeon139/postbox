@@ -112,19 +112,21 @@ const DRAFT = /\b(?:draft|review|approve|looks? (?:good|right)|feedback|any chan
 /**
  * A reply that should have been a block (#63): it ends with options or questions in prose, hands over a long draft,
  * or has a long Markdown table. Agents slip back into prose over a long session, so this checks every reply. A turn
- * that showed the right block, or where the person asked for prose or Markdown, isn’t flagged.
+ * that showed the right block, or where the person asked for prose or Markdown, isn’t flagged. A reply to another
+ * agent isn’t flagged for options, questions or a draft: those are that agent’s to answer, not the person’s (#1695).
  * @param {string} text  the reply @param {string[]} [shown]  the block types the turn showed
  * @param {string} [asked]  what the person last wrote
+ * @param {{ toAgent?: boolean }} [opts]  toAgent: the reply is addressed to another agent
  * @returns {Problem[]}
  */
-export function blockProblems(text, shown = [], asked = '') {
+export function blockProblems(text, shown = [], asked = '', { toAgent = false } = {}) {
   if (/\b(?:markdown|prose|plain text)\b/i.test(asked)) return [];
   const prose = String(text ?? '')
     .replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm, ' ')
     .split('\n')
     .filter((l) => l.trim() && !/^\s*(?:#|>)/.test(l));
   const tail = prose.slice(-10);
-  const asks = shown.some((t) => ['choice', 'form', 'review', 'confirm'].includes(t));
+  const asks = toAgent || shown.some((t) => ['choice', 'form', 'review', 'confirm'].includes(t));
   const numbered = tail.filter((l) => /^\s*\d+[.)]\s+\S/.test(l)).length;
   const bullets = tail.filter((l) => /^\s*[-*•]\s+\S/.test(l)).length;
   const questions = tail.filter((l) => /\?\W*$/.test(l)).length;
