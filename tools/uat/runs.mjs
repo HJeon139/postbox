@@ -7,7 +7,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { agentsSpent, uncosted } from './cost.mjs';
+import { agentsSpent, dollarStreams, uncosted } from './cost.mjs';
 import { pictureRecord } from './picture-choice.mjs';
 import { isTargeted, parseScenario } from './scenario.mjs';
 
@@ -105,7 +105,7 @@ export function reportFacts(md) {
   // The usage line, as it is written now and as it was: Kiro’s credits come inside the note on harnesses that report no
   // cost, or after “and”, with Antigravity’s tokens after them.
   const kiro = String.raw`${N} Kiro credits`;
-  const alone = String.raw`(?: on Claude Code alone \((?:[^)]*?${kiro})?[^)]*\))?`;
+  const alone = String.raw`(?: on Claude Code(?: and the Agent SDK)? alone \((?:[^)]*?${kiro})?[^)]*\))?`;
   const usage = String.raw`Usage: agents \$${N}${alone}(?: and ${kiro})?(?: and [\d,]+ Antigravity tokens)?, tester \$${N}`;
   const m = new RegExp(String.raw`Run on [^,]*, (?:(\d+) min, )?(\d+) steps[^.]*\. ${usage}`).exec(md ?? '');
   const credits = m?.[4] ?? m?.[5];
@@ -147,7 +147,7 @@ export function runRecord({
   now = Date.now(),
   git = gitOut,
 }) {
-  const agents = agentsSpent(facts.streams ?? []);
+  const agents = agentsSpent(dollarStreams(facts));
   const others = uncosted(facts);
   const flag = (k) => (typeof opt[k] === 'string' && opt[k] ? /** @type {string} */ (opt[k]) : null);
   return {

@@ -195,7 +195,7 @@ async function main() {
     scenario.summary += await setUpRemote(scenario, { dir, page, threadId: mainThread, log }); // `- seed: git-remote` (#305)
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
-    budget.track({ streams: streamResults(paths.streams), tester, log });
+    budget.track({ streams: streamResults(paths.streams, paths.sdkStreams), tester, log });
     const system = systemPrompt({ scenario, issues });
     const labels = new Map(); // item key → I1…
     const keys = new Map(); // I1… → item key

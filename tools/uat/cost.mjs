@@ -1,4 +1,5 @@
-// What a run spent on Claude Code, from the results its sessions report.
+// What a run spent on Claude Code and the Agent SDK, from the results their sessions report: the two backends that
+// report dollars, the Agent SDK in the same result events, recorded in streams/sdk/ (#1674).
 //
 // A result’s total_cost_usd is its Claude Code session’s running total, not the cost of that one call: a resumed
 // session continues from the total its transcript saved, so its first result already carries the earlier turns
@@ -42,6 +43,13 @@ export function turnCosts(streams) {
 export const agentsSpent = (streams) => turnCosts(streams).reduce((a, t) => a + t.usd, 0);
 
 /**
+ * The run’s streams that report dollars: Claude Code’s and the Agent SDK’s, read as one, so a session resumed on the
+ * other backend (a switch through the persona sheet) continues from its own running total.
+ * @param {{ streams?: any[], sdkStreams?: any[] }} facts
+ */
+export const dollarStreams = (facts) => [...(facts.streams ?? []), ...(facts.sdkStreams ?? [])];
+
+/**
  * The tokens Codex used over a run’s turns, in and out. Codex reports no cost. Its count runs on for a thread from
  * turn to turn, so each thread’s largest total is taken, and the threads are added up. The largest, not the last
  * read: the streams come in the order their files are read, which isn’t the order the turns ran.
@@ -62,7 +70,7 @@ export function codexTokens(streams) {
 
 /**
  * The harnesses a run had turns on that report no cost in dollars, so the agents’ cost a run states is Claude Code’s
- * alone: a run’s budget (--max-cost) doesn’t count their turns either.
+ * and the Agent SDK’s alone: a run’s budget (--max-cost) doesn’t count their turns either.
  * @param {{ codexStreams?: any[], kiroStreams?: any[], agyStreams?: any[] }} facts
  * @returns {string[]}
  */
@@ -74,36 +82,40 @@ export function uncosted(facts) {
 }
 
 /**
- * A reader of the turns’ streams in `folder`, cut to their result events, for a budget that reads them every few
- * seconds: a file whose size hasn’t changed since it was last read isn’t read again. Each call returns every stream,
- * as readStreams (tools/uat/run-files.mjs) does, with only its results.
- * @param {string} folder
+ * A reader of the turns’ streams in `folders`, cut to their result events, for a budget that reads them every few
+ * seconds: a file whose size hasn’t changed since it was last read isn’t read again. Each call returns every stream
+ * in every folder, as readStreams (tools/uat/run-files.mjs) does, with only its results.
+ * @param {...string} folders  the folders of the backends that report dollars: streams/ and streams/sdk/
  * @returns {() => { handle: string, started: number|undefined, events: any[] }[]}
  */
-export function streamResults(folder) {
+export function streamResults(...folders) {
   /** @type {Map<string, { size: number, stream: { handle: string, started: number|undefined, events: any[] } }>} */
   const seen = new Map();
-  return () => {
-    if (!existsSync(folder)) return [];
-    return readdirSync(folder)
-      .filter((f) => f.endsWith('.jsonl'))
-      .map((f) => {
-        const { size } = statSync(join(folder, f));
-        const hit = seen.get(f);
-        if (hit?.size === size) return hit.stream;
-        const events = readFileSync(join(folder, f), 'utf8')
-          .split('\n')
-          .filter((l) => l.includes('"type":"result"'))
-          .flatMap((l) => {
-            try {
-              return [JSON.parse(l)];
-            } catch {
-              return [];
-            }
-          });
-        const stream = { handle: f.replace(/^\d+-/, '').replace(/\.jsonl$/, ''), started: Number(/^(\d+)-/.exec(f)?.[1]) || undefined, events };
-        seen.set(f, { size, stream });
-        return stream;
+  /** @param {string} file  @param {string} name */
+  const read = (file, name) => {
+    const { size } = statSync(file);
+    const hit = seen.get(file);
+    if (hit?.size === size) return hit.stream;
+    const events = readFileSync(file, 'utf8')
+      .split('\n')
+      .filter((l) => l.includes('"type":"result"'))
+      .flatMap((l) => {
+        try {
+          return [JSON.parse(l)];
+        } catch {
+          return [];
+        }
       });
+    const stream = { handle: name.replace(/^\d+-/, '').replace(/\.jsonl$/, ''), started: Number(/^(\d+)-/.exec(name)?.[1]) || undefined, events };
+    seen.set(file, { size, stream });
+    return stream;
   };
+  return () =>
+    folders
+      .filter((folder) => existsSync(folder))
+      .flatMap((folder) =>
+        readdirSync(folder)
+          .filter((f) => f.endsWith('.jsonl'))
+          .map((f) => read(join(folder, f), f)),
+      );
 }
