@@ -102,3 +102,23 @@ test('#706: two refused writes of the same bytes, the second put after the first
   assert.equal(f.files().length, 2, 'neither refused write left its bytes');
   assert.deepEqual([f.blobs.held.size, f.blobs.kept.size, f.blobs.orphaned.size], [0, 0, 0]);
 });
+
+test('#706: a refused put settled before a put of the same bytes that’s kept leaves no mark, so a later refusal leaves the file', async (t) => {
+  const { blobs } = await folder(t);
+  const [a, b] = await Promise.all([blobs.put(text('same'), { staged: true }), blobs.put(text('same'), { staged: true })]);
+  await blobs.settle([a], false);
+  await blobs.settle([b], true);
+  assert.equal(blobs.orphaned.size, 0, 'the kept put cleared the refused one’s mark');
+  await blobs.settle([await blobs.put(text('same'), { staged: true })], false);
+  assert.equal((await blobs.get(a.sha256)).toString(), 'same', 'a version keeps these bytes');
+});
+
+test('#706: two refused writes at once of bytes that were there before leave the file', async (t) => {
+  const { blobs } = await folder(t);
+  const { sha256 } = await blobs.put(text('kept'));
+  const [a, b] = await Promise.all([blobs.put(text('kept'), { staged: true }), blobs.put(text('kept'), { staged: true })]);
+  await blobs.settle([a], false);
+  await blobs.settle([b], false);
+  assert.equal((await blobs.get(sha256)).toString(), 'kept', 'neither put made the file, so neither removes it');
+  assert.deepEqual([blobs.held.size, blobs.orphaned.size], [0, 0]);
+});
