@@ -1,0 +1,153 @@
+{
+  "about": "The Agent SDK agent’s recorded turns (streams/sdk/) of the UAT run 2026-11-23T07-46-16-wikisearch-sdk, cut to their init and result events. Its run.json said agents $0.00 and byAgent {}: the runner read streams/ alone (#1674).",
+  "run": "2026-11-23T07-46-16-wikisearch-sdk",
+  "streams": [
+    {
+      "handle": "researcher",
+      "started": 1795419991329,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 22765,
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "total_cost_usd": 0.460754
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1795420018352,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 13,
+          "duration_ms": 63382,
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "total_cost_usd": 0.7540186000000001
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1795420097945,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 19068,
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "total_cost_usd": 0.8369380000000001
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1795420128950,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 34287,
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "total_cost_usd": 0.9615656000000001
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1795420175963,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 5,
+          "duration_ms": 36517,
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "total_cost_usd": 1.1159462
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1795420228461,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 3,
+          "duration_ms": 44217,
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "total_cost_usd": 1.279472
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1795420274167,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 1,
+          "duration_ms": 5403,
+          "session_id": "0e51a381-3b0c-455c-b69a-74b4630a5ee7",
+          "total_cost_usd": 1.3094366
+        }
+      ]
+    }
+  ]
+}
