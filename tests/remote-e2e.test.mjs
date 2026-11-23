@@ -104,6 +104,19 @@ async function running(p, text = 'hi') {
 /** Until the turn’s whole stream so far is applied: the remote process has acked all of it. */
 const applied = (p, turn) => until(() => p.d.turns.get(turn).acked === (p.d.turns.get(turn).out.at(-1)?.next ?? 0), 'the stream to be applied');
 const settled = (p) => until(() => !arrange.liveTurns(p.rt) && !arrange.exitingTurns(p.rt), 'the turn to end');
+/**
+ * Until the reply’s words hold `text`: a turn keeps its words a moment before it stores them, so the stream being
+ * acked isn’t their being in the store, and a loaded machine showed the gap (#1657).
+ */
+const said = (p, text) =>
+  until(
+    () =>
+      replies(p)
+        .map((i) => i.text)
+        .join('')
+        .includes(text),
+    `the reply to say ${text}`,
+  );
 
 test('#120 e2e: a remote Claude Code turn streams the host’s lines, shows its block, asks through a card, and ends Done', async () => {
   const p = postbox();
@@ -113,6 +126,7 @@ test('#120 e2e: a remote Claude Code turn streams the host’s lines, shows its 
     assert.equal(arrange.hostStatus(p.rt, p.host.id).state, 'connected');
     await applied(p, turn);
     // The recorded stream, applied as the laptop applies a local one.
+    await said(p, 'hello.txt');
     assert.match(
       replies(p)
         .map((i) => i.text)
@@ -183,6 +197,7 @@ test('#120 e2e: Postbox restarts mid-turn, attaches to the turn still on the hos
     await applied(first, turn);
     first.d.tool(turn, 'show_block', { block: BLOCK });
     await until(() => d.replies.length === 1, 'the block’s reply');
+    await until(() => replies(first).some((i) => i.text), 'part of the reply to be stored');
     assert.ok(
       replies(first).some((i) => i.text),
       'part of the reply showed',
@@ -190,7 +205,9 @@ test('#120 e2e: Postbox restarts mid-turn, attaches to the turn still on the hos
     // Postbox shuts down: the remote turn isn’t stopped, it goes on on the host (stopTurns), and the links close.
     await first.done();
     await until(() => first.ssh.children.every((c) => c.exited), 'its ssh to end');
-    await sleep(10); // and the daemon to see its connection close
+    // A stop sent as it shut down was written before its ssh ended; one turn of the event loop lets the daemon’s
+    // reader take what the pipe still holds, so the check below sees it. No timed wait (#1657).
+    await new Promise((r) => setImmediate(r));
     assert.deepEqual(d.stops, [], 'the turn on the host wasn’t stopped');
     assert.equal(store.state.sessions[first.se().id].remoteTurn.turn, turn, 'its host turn is kept with the session');
     // Meanwhile the host’s turn writes more.
@@ -247,8 +264,12 @@ test('#120 e2e: a change to a setting the daemon enforces reaches a connected ho
     assert.equal(hellos(p.d).length, 1);
     // stallTimeout stays on the laptop: no new session.
     p.rt.updateHost(p.host.id, { settings: { stallTimeout: 20 * 60_000 } });
-    await sleep(30);
-    assert.equal(hellos(p.d).length, 1, 'a laptop-only setting doesn’t reconnect');
+    // A reconnect closes the session inside updateHost, or a turn or two later if it’s deferred: two turns of the event
+    // loop cover that, with no timed wait, and the ssh under the session is still up. (A hello count alone can’t tell:
+    // a wrong reconnect opens only after the next update too, carrying its setting.)
+    for (let turn = 0; turn < 2; turn++) await new Promise((r) => setImmediate(r));
+    assert.equal(p.ssh.children.at(-1).exited, false, 'a laptop-only setting doesn’t close the session to reconnect');
+    assert.equal(hellos(p.d).length, 1, 'and opens no new one');
     // permissionWaitMax is the host’s: a new session, whose hello carries it.
     p.rt.updateHost(p.host.id, { settings: { permissionWaitMax: 2 * 3_600_000 } });
     await until(() => hellos(p.d).length === 2, 'a fresh hello');

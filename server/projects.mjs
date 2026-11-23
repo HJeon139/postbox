@@ -28,7 +28,8 @@ export async function createProject(store, body) {
  * @param {any} store @param {string} id @param {unknown} url
  */
 export function setPushUrl(store, id, url) {
-  const p = store.state.projects[id];
+  // As written: a project deleted behind a held commit isn’t emitted back (#119).
+  const p = store.pending.project(id);
   if (!p) throw httpError(404, 'That project doesn’t exist any more.');
   const clean = typeof url === 'string' ? url.trim() : '';
   if (clean && !isPushUrl(clean))

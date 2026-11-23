@@ -14,7 +14,7 @@ import { httpError } from './helpers.mjs';
  * @returns {number}
  */
 export function roomChainLimit(rt, threadId) {
-  return rt.store.pending.thread(rt.threads.lineage(threadId).at(-1))?.chainLimit ?? HOP_LIMIT;
+  return rt.store.pending.thread(rt.threads.conversationToWrite(threadId))?.chainLimit ?? HOP_LIMIT;
 }
 
 /**

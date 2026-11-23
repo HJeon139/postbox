@@ -2,6 +2,58 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.42.0 (2026-11-23)
+
+### Features
+
+- **app:** delete a project from Settings › Projects
+- **app:** add and remove a conversation's agents from the Agents header
+- **server:** add an agent the person has to a conversation
+
+### Fixes
+
+- **settings:** list a created project once the page has heard of it
+- **assets:** remove bytes two refused writes of the same content left behind
+- **assets:** keep a damaged file a refused write made whole again
+- **assets:** remove the bytes a refused asset write put
+- **app:** take the press-time hold only while following the end
+- **app:** take hold of a pressed button the moment it's pressed
+- **server:** cancel a deleted session's scheduled wakes with it
+- **uat:** say live frames are saved for ATIF, not scanned for asset copies
+- **uat:** don't count live-frame tool previews as stored asset content
+- **app:** dim an off Delete project…, and count a project's every thread
+- **server:** count only live agents for −'s last-agent refusal
+- **app:** return focus to the composer after the Agents header's − removes one
+- **app:** dim the Agents header's − while it's off
+- **app:** never add a retired agent from the Agents header's +
+- **app:** name the agent when − can't remove it
+- **app:** never let the Agents header's − erase a conversation
+- **app:** keep the last agent and retired sessions out of + and −
+
+## 4.41.0 (2026-11-23)
+
+### Features
+
+- **server:** delete a project, and its conversations with it
+- **remote:** relay a host's old-version turns through the new daemon
+- **remote:** relay a host's old-version turns (work in progress)
+
+### Fixes
+
+- **uat:** round a run's Kiro credits as its report prints them
+- **apps:** count a loop whose every frame is slow as a loop
+- **uat:** read what the agents spent again before each report
+- **uat:** record a live run's Kiro credits in its run.json
+- **remote:** never cut text an agent reads inside a character
+- **apps:** drop the off-screen hold, judge a run by its frames, and keep the told version
+- **apps:** let the page say when an app is on screen, and count only looped frames
+- **apps:** tell an app's agent when its animation loop runs on with no input
+- **server:** read a project as written before writing it back
+- **remote:** give a relay time to be welcomed, and relay by named version
+- **server:** read projects pending, so a held delete keeps the last one
+- **remote:** never drop a relayed line without telling Postbox
+- **wakes:** find a conversation and its agents as written on the wake path
+
 ## 4.40.2 (2026-11-23)
 
 ### Fixes

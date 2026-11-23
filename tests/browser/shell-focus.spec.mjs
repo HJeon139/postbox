@@ -66,6 +66,8 @@ test('#26 new agent: Space on a Tools checkbox keeps focus on it', async ({ page
   await open(page, `#/t/${threadNamed('Index planning').id}`);
   await actions(page).click();
   await page.getByRole('menuitem', { name: /^Add an agent/ }).click();
+  // Its picker lists the agents not here, then New agent (#1620).
+  await page.getByRole('menuitem', { name: /^New agent/ }).click();
   await expect(dialog(page)).toBeVisible();
   const box = page.locator('.d-body [role=checkbox]').nth(1);
   const before = await box.getAttribute('aria-checked');
@@ -107,7 +109,7 @@ test('#26 settings: Enter on the Projects tab keeps focus on it, and Escape retu
   await focusIs(page, 'button: Settings');
 });
 
-test('#26 ⋯ › Add an agent… by keyboard, then Escape, returns focus to ⋯', async ({ page }) => {
+test('#26 ⋯ › Add an agent… › New agent… by keyboard, then Escape, returns focus to ⋯', async ({ page }) => {
   await open(page, `#/t/${threadNamed('Index planning').id}`);
   await actions(page).focus();
   await page.keyboard.press('Enter');
@@ -116,6 +118,10 @@ test('#26 ⋯ › Add an agent… by keyboard, then Escape, returns focus to ⋯
   await focusIs(page, /^menuitem: Wake chain limit…/); // beside Rename…: the other setting of the room itself (#1035)
   await page.keyboard.press('ArrowDown');
   await focusIs(page, /^menuitem: Add an agent…/);
+  await page.keyboard.press('Enter');
+  // Its picker (#1620): the agents not here, then New agent, last, one ArrowUp away as the menu wraps.
+  await page.keyboard.press('ArrowUp');
+  await focusIs(page, /^menuitem: New agent…/);
   await page.keyboard.press('Enter');
   await expect(dialog(page)).toBeVisible();
   // #4: the sheet says “conversation”, never “thread”.

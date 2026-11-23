@@ -3,8 +3,8 @@
 // Every write goes through one function commit (server/store-commit.mjs): on the applied state it checks the base, the
 // name, the bounds and the budget, and writes the version with what it prunes as one fsynced line, so a version exists
 // only once the disk has it, and of two writes from one base exactly one wins. The bytes are put first, so a version
-// never names a file that isn’t there; a write refused after that leaves a file nothing names, which the load keeps
-// and counts (server/asset-orphans.mjs).
+// never names a file that isn’t there; a write refused after that removes the file it put, unless another put holds
+// it (#706). One left by a write cut off before its commit is kept and counted at load (server/asset-orphans.mjs).
 
 import { join } from 'node:path';
 import { hasInvisible } from '../shared/invisible.mjs';
@@ -290,7 +290,7 @@ function writeProblem(req) {
 
 /**
  * Publishes one version through the store’s one commit path. Checks the name, op and size before anything is written
- * (F1), puts the bytes (F2), then commits; a refusal there leaves the bytes unnamed (F3). A commit the store couldn’t
+ * (F1), puts the bytes (F2), then commits; a refusal there removes the bytes this write put (F3, #706). A commit the store couldn’t
  * confirm (F5, F7) is reported as not confirmed, never as published.
  * @param {import('./store.mjs').Store} store @param {Blobs} blobs
  * @param {any} req  as planWrite’s, with `bytes` (a Buffer) for a write in place of sha256, size and isText
@@ -301,9 +301,12 @@ export async function writeAsset(store, blobs, req) {
   if (problem) return { ok: false, code: 'invalid', message: problem };
   const at = req.at ?? Date.now();
   let put = {};
+  /** @type {{ sha256: string, fresh: boolean }[]} */
+  const staged = [];
   if (req.bytes) {
     try {
-      const { sha256, size } = await blobs.put(req.bytes);
+      const { sha256, size, fresh } = await blobs.put(req.bytes, { staged: true });
+      staged.push({ sha256, fresh });
       put = { sha256, size, isText: isTextBytes(req.bytes) };
     } catch (e) {
       return { ok: false, code: 'failed', message: SAY.failed(e), cause: e };
@@ -317,8 +320,12 @@ export async function writeAsset(store, blobs, req) {
       return out.events;
     });
   } catch (e) {
+    // A refusal wrote nothing, so the bytes this write put go again (#706): an agent retrying a stale base would
+    // otherwise grow the disk by a file a try. A commit not confirmed may be on disk, so its bytes stay.
+    await blobs.settle(staged, !(e instanceof AssetRefusal));
     if (e instanceof AssetRefusal) return { ok: false, code: e.code, message: e.message };
     return { ok: false, code: 'unconfirmed', message: SAY.unconfirmed(e), cause: e };
   }
+  await blobs.settle(staged, true);
   return { ok: true, id: out.id, version: out.version, repeat: out.repeat };
 }

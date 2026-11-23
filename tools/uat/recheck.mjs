@@ -6,7 +6,7 @@ import { launch, sleep } from '../browser.mjs';
 import { runChecks } from './checks.mjs';
 import { driver } from './driver.mjs';
 import { remoteFacts } from './git-remote.mjs';
-import { readHistory, readLive } from './history.mjs';
+import { readHistory } from './history.mjs';
 import { asPlayed } from './hosts-options.mjs';
 import { readHosts } from './hosts-run.mjs';
 import { forHosts } from './hosts-scenario.mjs';
@@ -61,7 +61,6 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     workspace: workspaceOf(dir, record),
     sdkStreams: readStreams(join(dir, 'streams', 'sdk')),
     events: readHistory(dir),
-    live: readLive(dir),
     store: readStore(join(dir, 'data')),
     remote: remoteFacts(dir),
     console: logs,

@@ -9,6 +9,7 @@ import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileS
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { agentsSpent, dollarStreams, uncosted } from './cost.mjs';
 import { pictureRecord } from './picture-choice.mjs';
+import { kiroCredits } from './room-checks-backends.mjs';
 import { isTargeted, parseScenario } from './scenario.mjs';
 
 /**
@@ -148,6 +149,7 @@ export function runRecord({
   git = gitOut,
 }) {
   const agents = agentsSpent(dollarStreams(facts));
+  const credits = kiroCredits(facts.kiroStreams ?? []);
   const others = uncosted(facts);
   const flag = (k) => (typeof opt[k] === 'string' && opt[k] ? /** @type {string} */ (opt[k]) : null);
   return {
@@ -172,7 +174,8 @@ export function runRecord({
     cost: {
       agents: Math.round(agents * 100) / 100,
       tester: Math.round((tester.spent ?? 0) * 100) / 100,
-      kiroCredits: null,
+      // What the report’s usage line gives, from the same streams (#1697).
+      kiroCredits: credits ? Number(credits.toFixed(2)) : null,
       ...(others.length ? { noCostFrom: others } : {}),
     },
     coverage,

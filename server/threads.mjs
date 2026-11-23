@@ -46,7 +46,8 @@ export class Threads {
    * @param {{ projectId: string, title: string, kind?: string, parentId?: string|null }} opts
    */
   create({ projectId, title, kind = 'thread', parentId = null }) {
-    if (!this.store.state.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
+    // Read pending: a project deleted behind a held commit takes no new conversation (#119).
+    if (!this.store.pending.project(projectId)) throw httpError(404, 'That project doesn’t exist.');
     return this.put({
       id: newId('th'),
       projectId,
@@ -180,6 +181,15 @@ export class Threads {
     const out = [];
     for (let id = threadId; id && thread(id) && !out.includes(id) && out.length < 8; id = thread(id).parentId) out.push(id);
     return out;
+  }
+
+  /**
+   * The conversation a thread belongs to, as memory will hold it, for a write it decides (#623): a topic opened behind
+   * a held commit, and its conversation, aren’t published yet, so lineage reads them as written.
+   * @param {string} threadId
+   */
+  conversationToWrite(threadId) {
+    return this.lineage(threadId, (id) => this.store.pending.thread(id)).at(-1);
   }
 
   /**

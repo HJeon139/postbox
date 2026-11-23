@@ -6,6 +6,7 @@ import { tokenMatches } from './daemon-files.mjs';
 import { findWithLogin, welcomeLoginPath } from './daemon-login.mjs';
 import { fail, send } from './daemon-reply.mjs';
 import { checkIdle, scan } from './daemon-scan.mjs';
+import { closeRelays, connectRelays, planRelays } from './relay.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
 
@@ -61,7 +62,22 @@ export async function hello(d, c, m) {
   const { node, harnesses } = d.programs;
   // claudeChecks: a turn’s start may carry claude’s version floor, which this daemon checks there (#1084).
   const welcome = { version: PROTOCOL_VERSION, home: d.home, node, harnesses, problems: allProblems, turns, loginPath: welcomeLoginPath(d) };
-  await send(c, 'welcome', { ...welcome, claudeChecks: true });
-  checkIdle(d);
-  await d.brk.hello?.((type, body) => send(c, type, body));
+  // The turns this host still runs under an older Postbox, relayed to that version’s daemon (#759): planned before the
+  // welcome, so the snapshots Postbox sends once welcomed go there, and connected after it.
+  const relays = await planRelays(d, c, m).catch((e) => {
+    d.log(`Relaying older turns failed: ${e.message}`);
+    return [];
+  });
+  if (c.closed) return closeRelays(d, c);
+  try {
+    await send(c, 'welcome', { ...welcome, claudeChecks: true });
+    checkIdle(d);
+    await d.brk.hello?.((type, body) => send(c, type, body));
+  } catch (e) {
+    // The planned relays would hold Postbox’s lines for their turns with no hello to send them after.
+    closeRelays(d, c);
+    throw e;
+  }
+  // Not awaited: the driver’s next messages don’t wait on another daemon.
+  connectRelays(d, relays).catch((e) => d.log(`Relaying older turns failed: ${e.message}`));
 }

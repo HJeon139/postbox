@@ -236,7 +236,7 @@ function removeEntity(s, d) {
     delete s.glossary[d.id];
     if (s.work) delete s.work[d.id];
   }
-  const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
+  const kept = { session: 'sessions', app: 'apps', persona: 'personas', project: 'projects' }[d.kind];
   if (kept) delete s[kept][d.id];
   if (d.kind === 'app' && s.published) delete s.published[d.id];
   if (d.kind === 'app' && s.appNotes) delete s.appNotes[d.id];

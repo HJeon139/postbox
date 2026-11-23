@@ -1,0 +1,104 @@
+// #119: a project can be deleted from Settings. Its conversations go with it, as deleting each would (the person’s
+// choice, 22 November 2026), and its folder on this computer stays. The last project stays, since Postbox opens on one.
+
+import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { projectsRoute } from '../server/project-routes.mjs';
+import * as arrange from './arrange.mjs';
+import { setup } from './side-threads-fixture.mjs';
+import { setup as heldSetup, heldStore } from './stop-reply-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+const remove = (f, id) => projectsRoute(f.rt, `/api/projects/${id}`, 'DELETE', {}, new URLSearchParams());
+
+/** The fixture’s project p1, with its conversation, beside a second project p2 with one of its own. */
+function twoProjects() {
+  const f = setup();
+  f.store.emit('project', { id: 'p2', name: 'Q', folder: tempDir('pb-project-') });
+  const other = f.rt.createThread({ projectId: 'p2', title: 'U', personaIds: [f.a.id] });
+  return { ...f, other };
+}
+
+test('#119 deleting a project deletes its conversations, their sessions and threads, and keeps the others', async () => {
+  const f = twoProjects();
+  const topic = f.rt.createThread({ projectId: 'p1', title: 'A topic', kind: 'topic', parentId: f.t.id });
+  const answer = await remove(f, 'p1');
+  assert.deepEqual(answer, { status: 200, body: { name: 'P', conversations: 1 } });
+  assert.equal(f.store.state.projects.p1, undefined, 'the project goes');
+  for (const id of [f.t.id, topic.id]) assert.equal(f.store.state.threads[id], undefined, 'its conversation and its topic go');
+  for (const se of [f.alpha, f.beta]) assert.equal(f.store.state.sessions[se.id], undefined, 'their sessions go');
+  assert.ok(f.store.state.threads[f.other.id], 'another project’s conversation stays');
+  assert.equal(arrange.sessionsIn(f.rt, f.other.id).length, 1);
+  assert.ok(f.store.state.personas[f.a.id], 'the personas stay');
+});
+
+test('#119 the last project is refused, saying what to do, and nothing goes', async () => {
+  const f = setup();
+  await assert.rejects(remove(f, 'p1'), {
+    status: 409,
+    message: 'This is the only project, and Postbox opens on one. Add another project, then delete this one.',
+  });
+  assert.ok(f.store.state.projects.p1);
+  assert.ok(f.store.state.threads[f.t.id]);
+});
+
+test('#119 a project that doesn’t exist is refused with a 404', async () => {
+  const f = twoProjects();
+  await assert.rejects(remove(f, 'p9'), { status: 404 });
+  assert.ok(f.store.state.projects.p1 && f.store.state.projects.p2);
+});
+
+/** fn run on a runtime whose store holds its next commit, with projects p1 and p2 published first (#1292’s class). */
+async function whileHeld(fn) {
+  const h = await heldStore();
+  const env = await heldSetup(async () => {}, h.store);
+  h.store.emit('project', { id: 'p2', name: 'Q', folder: tempDir('pb-project-') });
+  await h.store.flush();
+  h.hold();
+  const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync;
+  try {
+    await fn(env);
+  } finally {
+    h.release();
+    await commit;
+    await h.store.flush();
+  }
+  return h.store;
+}
+
+test('#119 behind a held commit, a delete counts the projects as written: the last one is still refused', async () => {
+  const store = await whileHeld(async ({ rt }) => {
+    await projectsRoute(rt, '/api/projects/p1', 'DELETE', {}, new URLSearchParams());
+    await assert.rejects(projectsRoute(rt, '/api/projects/p1', 'DELETE', {}, new URLSearchParams()), { status: 404 }, 'gone already');
+    await assert.rejects(projectsRoute(rt, '/api/projects/p2', 'DELETE', {}, new URLSearchParams()), { status: 409 }, 'the last');
+    // And no conversation starts in the project that was just deleted.
+    assert.throws(() => rt.createThread({ projectId: 'p1', title: 'Late' }), { status: 404 });
+  });
+  assert.deepEqual(Object.keys(store.state.projects), ['p2']);
+  assert.ok(!Object.values(store.state.threads).some((t) => t.projectId === 'p1'));
+});
+
+const route = (rt, path, method, body = {}) => projectsRoute(rt, path, method, body, new URLSearchParams());
+
+test('#119 behind a held commit, a conversation started there goes with its project, and nothing brings it back', async () => {
+  const root = tempDir('pb-attach-gone-');
+  const id = '11111111-2222-3333-4444-555555555555';
+  mkdirSync(join(root, '-work-site'));
+  const typed = { type: 'user', turnOrigin: 'human', cwd: '/work/site', message: { role: 'user', content: 'Fix the header' } };
+  writeFileSync(join(root, '-work-site', `${id}.jsonl`), `${JSON.stringify(typed)}\n`);
+  let started = null;
+  const store = await whileHeld(async ({ rt }) => {
+    rt.config.claudeProjectsRoot = root;
+    started = rt.createThread({ projectId: 'p1', title: 'Started behind the hold' });
+    await route(rt, '/api/projects/p1', 'DELETE');
+    // An attach into it, and a write of its push repository, find it gone rather than emit it again.
+    await assert.rejects(rt.attachClaudeSession({ claudeSessionId: id, projectId: 'p1' }), { status: 404 });
+    await assert.rejects(route(rt, '/api/projects/p1/push-url', 'PUT', { url: 'https://github.com/a/b.git' }), { status: 404 });
+  });
+  assert.equal(store.state.threads[started.id], undefined, 'the conversation started behind the hold went with it');
+  assert.deepEqual(Object.keys(store.state.projects), ['p2'], 'and the project stays gone');
+  assert.ok(!Object.values(store.state.personas).some((p) => p.handle === 'site'), 'the refused attach made no agent');
+});

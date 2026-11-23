@@ -112,6 +112,11 @@ addEventListener('message', async (e) => {
     case 'state':
       if (current) saveState(rec.appId, m.state);
       break;
+    case 'animating':
+      // A loop drawing on with no input (#438, app/kit/frames.js): its agent hears it. Only the agent can act on it,
+      // so a report that doesn’t land is dropped, and the person sees nothing.
+      if (current && !rec.check) api(`/api/apps/${encodeURIComponent(rec.appId)}/animating`, { version: rec.version }).catch(() => {});
+      break;
     case 'open':
       // A web link the person clicked in the app (#1480): one per click, in a new tab (app-links.mjs).
       if (!rec.check) openAppLink(e, rec, m.url, activated(e, rec));

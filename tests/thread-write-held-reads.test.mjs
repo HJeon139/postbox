@@ -132,10 +132,27 @@ test('a turn that ends in a topic opened behind a held commit settles the topic�
   f.rt.agentWake(f.beta.id, 'alpha', 'Which column?', { replyIn: topic });
   for (let i = 0; i < 200 && (!f.adapter.calls.length || f.rt.turns.size); i++) await sleep(5);
   await release();
-  assert.equal(waits.length, 1, 'the turn’s end settled the topic');
+  // alpha’s answer names no one, so it goes back to beta in the topic (#1518); its conversation is read as written,
+  // so a topic opened behind the held commit no longer loses that reply (#623). Each turn’s end settles the topic.
+  const answer = f.store.items(topic).find((i) => i.kind === 'agent' && i.sessionId === f.alpha.id);
+  assert.deepEqual(answer?.wentBack, ['beta'], 'alpha’s answer went back to beta');
+  assert.equal(waits.length, 2, 'each turn’s end settled the topic');
   waits[0]();
   for (let i = 0; i < 200 && !prompts.length; i++) await sleep(5);
   assert.equal(prompts.length, 1);
+  await f.store.close();
+});
+
+test('#623: when the turns in a topic opened behind a held commit end, the chain’s count starts again', async () => {
+  const f = await heldRoom();
+  f.rt.threads.patch(f.t.id, { hops: 3 });
+  const release = await f.hold();
+  const topic = topicOn(f);
+  f.rt.agentWake(f.beta.id, 'alpha', 'Which column?', { replyIn: topic });
+  for (let i = 0; i < 200 && (!f.adapter.calls.length || f.rt.turns.size); i++) await sleep(5);
+  await release();
+  for (let i = 0; i < 200 && f.rt.turns.size; i++) await sleep(5);
+  assert.equal(f.store.state.threads[f.t.id].hops, 0);
   await f.store.close();
 });
 

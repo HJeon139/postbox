@@ -10,6 +10,9 @@ The person needs to see what each agent runs with, from wherever they are. The c
 
 ## Expected functionality
 
+- **+ and − beside the Agents heading** (#1620), as a list has in macOS:
+  - **+** lists the agents you have that aren’t in this conversation, each added in one pick, with a line in the conversation saying it joined, then New agent…. A retired agent isn’t listed. After an add, focus goes to the composer.
+  - **−** lists the agents here, each removed through the [Delete session](../../sheets/delete-session.md) confirm; its persona stays. While one agent is left, − is off and says why (“The last agent can’t be removed. Delete the conversation instead.”), and it still takes focus. If another agent is removed while the confirm is open, the server refuses, and the conversation stays.
 - One row per agent: its ring, `@handle` (“mock” after it on the mock), its state in words, and on a second line the model that answered its last turn and the effort (“Sonnet 5.5, not Opus 5.5 · medium effort”). Switched to another backend or model, it shows the new setting until a turn reports its own, never the model an earlier turn reported (#1315: Kiro on its router reports none, and its row kept saying “Opus 5.5, not auto”). A mock agent has no second line. Each part follows the agent live.
 - **Its state** (#1403), read from its records, never from what it said, on the row’s one line, cut with an ellipsis, with the whole of it as the line’s tooltip. A change of state never changes the row’s size, so nothing moves under the pointer. The first that holds:
   - “· needs you”;
@@ -37,11 +40,12 @@ The person needs to see what each agent runs with, from wherever they are. The c
 4. Tab to a row, press Enter, and press Escape: focus is back on the row.
 5. Send `@indexer /compact`, then `@indexer /delete` and Cancel.
 6. Under an agent reply, choose Reply in thread, and ask something there. The conversation’s own agent answers; the thread’s panel names it in a line, and the sidebar lists no new agent.
-7. Narrow the window to 375 px and check a topic thread’s panel.
-8. In a room, ask @indexer to wake @researcher with a long task, and while @researcher works in the side thread, have @indexer wake it again: the second wake waits for its turn, with no fork. Check the tree under @researcher, the side-thread line, and `/stop` in the conversation.
-9. With a real agent, ask it to use a subagent that starts its own subagent, and watch the tree under its row while they work. Tab to one’s End and press Enter: it reads “ending”, and the agent stops it.
-10. Ask @indexer to start a long command in the background (`sleep 120`, run in the background) and keep working. While it works, press Stop, and in “@indexer has 1 background job running. Stop it too?” choose Keep running: its row says it’s waiting on that job until the job ends. A turn that ends on its own stops every job it didn’t keep, so without Keep running there’s no job to wait on. Ask it to @-mention @researcher while @researcher works: its row says it’s waiting behind @researcher until @researcher takes it.
-11. Run `npx playwright test agents agent-state side-threads` (`tests/browser/agents.spec.mjs`, `agent-state.spec.mjs` and `side-threads.spec.mjs`).
+7. Press + beside Agents and pick an agent not in the conversation: its row appears at once, and focus is in the composer. Press −, pick it, and confirm, all by keyboard: its row goes, focus is in the composer, and the page announces the delete. With one agent left, Tab to −: it says why it’s off, and Enter does nothing.
+8. Narrow the window to 375 px and check a topic thread’s panel.
+9. In a room, ask @indexer to wake @researcher with a long task, and while @researcher works in the side thread, have @indexer wake it again: the second wake waits for its turn, with no fork. Check the tree under @researcher, the side-thread line, and `/stop` in the conversation.
+10. With a real agent, ask it to use a subagent that starts its own subagent, and watch the tree under its row while they work. Tab to one’s End and press Enter: it reads “ending”, and the agent stops it.
+11. Ask @indexer to start a long command in the background (`sleep 120`, run in the background) and keep working. While it works, press Stop, and in “@indexer has 1 background job running. Stop it too?” choose Keep running: its row says it’s waiting on that job until the job ends. A turn that ends on its own stops every job it didn’t keep, so without Keep running there’s no job to wait on. Ask it to @-mention @researcher while @researcher works: its row says it’s waiting behind @researcher until @researcher takes it.
+12. Run `npx playwright test agents agent-state side-threads agents-add-remove` (`tests/browser/agents.spec.mjs`, `agent-state.spec.mjs`, `side-threads.spec.mjs` and `agents-add-remove.spec.mjs`).
 
 **Pass if:** Each row says its agent’s state as listed, at a steady size; an agent’s name opens its persona sheet, a change there reaches its next turn, a backend switch leaves no other backend’s model on its row, and `@handle /compact` and `/delete` act on that agent; the row works by keyboard and fits at 375 and 1280 px; an agent at work in a side or topic thread shows under its row with a Stop, and nothing else lists agents; each subagent at work shows under it with what it was asked and what it’s doing now, nested by who started it, with an End the agent obeys; and the checks pass.
 
