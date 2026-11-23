@@ -46,7 +46,8 @@ export class Threads {
    * @param {{ projectId: string, title: string, kind?: string, parentId?: string|null }} opts
    */
   create({ projectId, title, kind = 'thread', parentId = null }) {
-    if (!this.store.state.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
+    // Read pending: a project deleted behind a held commit takes no new conversation (#119).
+    if (!this.store.pending.project(projectId)) throw httpError(404, 'That project doesn’t exist.');
     return this.put({
       id: newId('th'),
       projectId,

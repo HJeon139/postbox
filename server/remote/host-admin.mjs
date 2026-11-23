@@ -94,7 +94,8 @@ export async function removeHost(hosts, id, { waitMs = REMOVE_HOST_WAIT_MS } = {
   if (hosts.manager) await leaveHost(hosts, h, id);
   // It may have been removed meanwhile, by a second click.
   if (!hosts.store.state.hosts?.[id]) return { ok: true, stopped: stopped.length + given };
-  for (const p of Object.values(hosts.store.state.projects)) {
+  // As written: a project deleted behind a held commit isn’t emitted back (#119).
+  for (const p of Object.values(hosts.store.pending.projects())) {
     if (!p.hostFolders || !Object.hasOwn(p.hostFolders, id)) continue;
     const { [id]: _gone, ...rest } = p.hostFolders;
     hosts.store.emit('project', { ...p, hostFolders: rest });
@@ -187,7 +188,7 @@ async function leaveHost(hosts, h, id) {
  * @param {import('./host-service.mjs').Hosts} hosts @param {string} projectId @param {string} hostId @param {unknown} folder
  */
 export function setProjectHostFolder(hosts, projectId, hostId, folder) {
-  const p = hosts.store.state.projects[projectId];
+  const p = hosts.store.pending.project(projectId);
   if (!p) throw httpError(404, 'That project doesn’t exist.');
   const h = host(hosts, hostId);
   const { [hostId]: _old, ...rest } = p.hostFolders ?? {};

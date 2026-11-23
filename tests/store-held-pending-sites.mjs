@@ -9,9 +9,10 @@ export const PENDING = {
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
   // keptBlock: the block a turn kept, in any of the agent's threads, which decides the need its end writes (#647).
   'card-needs.mjs': ['keptBlock', 'keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed'],
-  // The mirrored reply a terminal line adds to, maybe held behind a commit; and the session attachClaudeSession just
-  // made, whose transcript mirror starts following.
-  'claude-mirror.mjs': ['mirror', 'pollMirror'],
+  // The project a session is attached into, maybe deleted behind a held commit (#119); the mirrored reply a terminal
+  // line adds to, maybe held behind a commit; and the session attachClaudeSession just made, whose transcript mirror
+  // starts following.
+  'claude-mirror.mjs': ['attachClaudeSession', 'mirror', 'pollMirror'],
   'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleFixing', 'settleRetiredNeeds', 'cardOf'], // an app left fixing, settled by whether its app-check entry still runs, a sweep that writes back (#1664); the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
@@ -64,6 +65,9 @@ export const PENDING = {
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
   'read-folders.mjs': ['inReadFolder'], // whether a read is allowed with no card: a removal held behind a commit counts at once (#1074)
+  // The projects whose folder on a host goes with it, and the project a host folder is set on, any of them maybe deleted
+  // behind a held commit, so the write doesn’t bring one back (#119).
+  'remote/host-admin.mjs': ['removeHost', 'setProjectHostFolder'],
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies
   'remote/turns-prompt-cards.mjs': ['permissionCards'], // a host turn’s own cards, and a question’s blocks (#1059): the sweep its callers settle, and the calls an attach after a restart holds (#353)
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
@@ -102,6 +106,11 @@ export const PENDING = {
   'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
   // An agent changed or deleted, and a deleted agent’s sessions, any of them maybe made behind a held commit.
   'personas.mjs': ['update', 'remove'],
+  // The project a delete takes, the projects it counts so the last one stays, and its conversations, any of them maybe
+  // made or deleted behind a held commit (#119).
+  'project-delete.mjs': ['deleteProject', 'deleteProject', 'deleteProject'],
+  // The project a push repository is set on, maybe deleted behind a held commit, so the write doesn’t bring it back (#119).
+  'projects.mjs': ['setPushUrl'],
   // pendingIn: a thread's sessions, for a read that decides whether to make one; ensure: the agent it joins, which the
   // same request may have just made; update and remove: the session they write; needAt: the need's item's time, maybe
   // added behind a held commit (#1155); forgetReported: an agent’s sessions whose last report a backend switch drops
@@ -144,9 +153,10 @@ export const PENDING = {
   // Every write of a thread that exists starts from it (#796), and toWrite refuses one that doesn’t exist there. Then
   // the turn’s own items, a move after a pending read, and the thread a topic reply count goes to, maybe opened or
   // deleting behind a held commit (#796). A reply a patch settles, streaming as the patch before it left it, and that
-  // reply and its thread as item.final carries them, both maybe held (#1367).
+  // reply and its thread as item.final carries them, both maybe held (#1367). And the project a new conversation starts
+  // in, maybe deleted behind a held commit (#119).
   // conversationToWrite: the conversation a write lands in, through a topic maybe opened behind a held commit (#623).
-  'threads.mjs': ['patch', 'toWrite', 'pending', 'addItem', 'addItem', 'patchItem', 'patchItem', 'patchItem', 'bringForward', 'conversationToWrite'],
+  'threads.mjs': ['create', 'patch', 'toWrite', 'pending', 'addItem', 'addItem', 'patchItem', 'patchItem', 'patchItem', 'bringForward', 'conversationToWrite'],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left

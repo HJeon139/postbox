@@ -28,7 +28,7 @@ export async function attachClaudeSession(rt, { claudeSessionId, projectId, hand
   const folder = sessionFolder(cs.cwd);
   if (Object.values(rt.s.sessions).some((se) => se.backendState?.claudeSessionId === claudeSessionId))
     throw httpError(409, 'That session is already attached.');
-  if (!rt.s.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
+  if (!rt.store.pending.project(projectId)) throw httpError(404, 'That project doesn’t exist.');
   const base =
     String(handle || basename(cs.cwd))
       .toLowerCase()
