@@ -61,6 +61,11 @@ test('#858 a correction follows the person’s comment, marked edited, and the a
     action: 'correct',
     values: { threadId: s.threadId, line: 3, replaces: 'Say what we index.', text: 'Say which papers we index.' },
   });
+  const read = s.rt.toolsFor(s.se.id).read_message({ id: s.item().id });
+  assert.match(
+    read.message,
+    /- The person: Say what we index\.\n- The person \(correcting their earlier comment in this thread\): Say which papers we index\./,
+  );
 });
 
 test('#858 a second correction replaces the first, and one that changes nothing adds nothing', async () => {
@@ -89,7 +94,7 @@ test('#858 only the person’s own comment on a review can be corrected, with wo
       (e) => e.status === status && words.test(e.message),
     );
   refused({ threadId: s.threadId, text: '   ' }, 422, /^The correction is empty\./);
-  refused({ threadId: s.threadId, text: 'x'.repeat(4001) }, 422, /longer than 4000/);
+  refused({ threadId: s.threadId, text: 'x'.repeat(4001) }, 422, /longer than 4,000/);
   refused({ threadId: 'no-such-thread', text: 'Hm.' }, 404, /isn’t a comment of yours/);
   // A thread of the agent’s own, with no comment of the person’s in it.
   const own = { id: 'r1', status: 'open', line: 4, comments: [{ author: '@researcher', text: 'Check the end.' }] };
@@ -129,6 +134,20 @@ test('#858 a correction that would take a thread past its 50 comments is refused
   assert.equal(s.rt.toolsFor(s.se.id).update_block({ block: { ...draft, content: `${DRAFT}\n` } }).ok, true, 'its agent can still update it');
 });
 
+test('#858 a correction past the review’s 2 MB of comment text says what the person can do', async () => {
+  const s = await answered();
+  arrange.setItem(s.rt, s.t.id, s.item().id, { answer: { ...s.item().answer, read: true } });
+  const big = 'x'.repeat(4000);
+  const full = (id, n) => ({ id, status: 'resolved', line: 1, comments: Array.from({ length: n }, () => ({ author: '@researcher', text: big })) });
+  const threads = [...s.item().block.threads, ...Array.from({ length: 10 }, (_, i) => full(`a${i}`, 50)), full('b', 24)];
+  assert.equal(s.rt.toolsFor(s.se.id).update_block({ block: { ...draft, content: `${DRAFT}\n`, threads } }).ok, true);
+  assert.throws(
+    () => s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'y'.repeat(3999) }),
+    (e) =>
+      e.status === 422 && /ask @researcher to show a new review block with the text so far/.test(e.message) && !/: show a new review block/.test(e.message),
+  );
+});
+
 test('#858 a card action with the id “correct” still reaches the agent as a click', async () => {
   const s = await answered();
   const card = { id: 'c1', type: 'card', version: 1, fallback: 'Fix it?', actions: [{ id: 'correct', label: 'Correct it' }] };
@@ -161,6 +180,15 @@ test('#858 a correction on a block that isn’t a review, or from a retired sess
   );
   arrange.setSession(s.rt, s.se.id, { retiredFork: true });
   assert.throws(() => s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'Too late.' }), /retired|fork/i);
+  // Deleting the review’s agent (when another agent remains in the room) marks the item deletedAgent: true.
+  const other = s.rt.createPersona({ handle: 'critic' });
+  s.rt.ensureSession(s.t.id, other.id);
+  arrange.setSession(s.rt, s.se.id, { retiredFork: false });
+  s.rt.deleteSession(s.se.id);
+  assert.throws(
+    () => s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'After delete.' }),
+    (e) => e.status === 409 && /That agent was deleted, so it can’t hear a correction\./.test(e.message),
+  );
   assert.equal(s.item().block.threads[0].comments.length, 1, 'nothing was added');
   assert.deepEqual(await s.events(), []);
 });

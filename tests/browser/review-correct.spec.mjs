@@ -1,6 +1,7 @@
 // #858: the person corrects a comment of theirs after submitting the review. Edit on their sent comment opens it in a
 // box with its text; Send correction adds the new text after it, marked Edited, while what they sent stays; and the
-// agent hears an event that names the comment it replaces. Focus then goes to the message box, as after any act. A refusal opens the box again with what was typed and why.
+// agent hears an event that names the comment it replaces. Focus then goes to the message box, as after any act, and
+// a refusal opens the box again with what was typed and why.
 
 import { expect, test } from '@playwright/test';
 import { allowPageError, failOnPageErrors } from './postbox.mjs';
@@ -69,13 +70,13 @@ test('#858 Cancel leaves a sent comment as it was, and a refused correction open
   const long = 'x'.repeat(4001);
   await box.fill(long);
   await block.getByRole('button', { name: 'Send correction', exact: true }).click();
-  await expect(block.getByRole('alert'), 'why it was refused').toContainText('longer than 4000 characters');
+  await expect(block.getByRole('alert'), 'why it was refused').toContainText('longer than 4,000 characters');
   await expect(box, 'the box is open again, with what was typed').toHaveValue(long);
   expect(corrections(blockId), 'the agent heard nothing').toEqual([]);
 });
 
-test('#858 Send correction with the text as it was closes the box as Cancel does, and sends nothing', async ({ page }) => {
-  const { block, blockId, edit } = await sent(page, 'Unchanged correction');
+test('#858 Send correction with the text as it was closes the box as Cancel does, and a withdrawn review offers no Edit', async ({ page }) => {
+  const { block, blockId, edit, sessionOf } = await sent(page, 'Unchanged correction');
   await edit.click();
   const box = block.getByRole('textbox', { name: 'Edit your sent comment on line 3', exact: true });
   await expect(box).toHaveValue('Make it bolder.');
@@ -84,4 +85,8 @@ test('#858 Send correction with the text as it was closes the box as Cancel does
   await expect(edit, 'and Edit is back, with focus').toBeFocused();
   await expect(block.locator('.rv-thread .c'), 'nothing was added').toHaveCount(1);
   expect(corrections(blockId), 'the agent heard nothing').toEqual([]);
+  // Once the agent withdraws the review, no Edit is offered on the thread.
+  await room.idle();
+  room.app.rt.toolsFor(sessionOf('drafter').id).update_block({ block: { id: blockId, withdraw: 'Superseded by the new plan.' } });
+  await expect(block.getByRole('button', { name: /^Edit your sent comment/ })).toHaveCount(0);
 });

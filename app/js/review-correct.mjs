@@ -9,6 +9,8 @@ import { commentBox, placeKey, placeOf } from './review-comment-box.mjs';
 
 /** Each review’s correction: which thread’s is open, its box’s text and caret, and why the last one was refused. */
 const states = new Map();
+/** Which thread is open for correction on the review with item id `id`, without creating state for an unedited review. @param {string} id */
+export const correctingIn = (id) => states.get(id)?.correcting ?? null;
 /** The correction state of the review with item id `id`, as commentBox keeps a box’s. @param {string} id */
 export function correctionOf(id) {
   if (!states.has(id))
@@ -42,14 +44,14 @@ export function correctButton(t, { b, itemId, rerender }) {
     rerender();
   };
   const label = `Edit your sent comment on ${placeIn(t, b)}`;
-  const d = correctionOf(itemId);
+  const d = states.get(itemId);
   // Which Edit last had focus: focus moving to another control forgets it; the button leaving the page doesn’t.
   const track = {
     onfocus: () => {
-      d.focusedEdit = t.id;
+      correctionOf(itemId).focusedEdit = t.id;
     },
     onblur: (/** @type {FocusEvent} */ e) => {
-      if (e.relatedTarget) d.focusedEdit = null;
+      if (e.relatedTarget && states.has(itemId)) states.get(itemId).focusedEdit = null;
     },
   };
   const button = h(
@@ -60,7 +62,7 @@ export function correctButton(t, { b, itemId, rerender }) {
   // Over a repaint, focus stays here while this Edit had it last and nothing else has it since. After a correction
   // is sent, focus goes to the message box, as after any act on a block (thread.mjs).
   const active = document.activeElement;
-  const had = d.focusedEdit === t.id && (!active || active === document.body || /** @type {HTMLElement} */ (active).dataset?.correct === t.id);
+  const had = d?.focusedEdit === t.id && (!active || active === document.body || /** @type {HTMLElement} */ (active).dataset?.correct === t.id);
   if (had) queueMicrotask(() => button.isConnected && button.focus());
   return button;
 }
@@ -79,7 +81,6 @@ export function correctionBox(t, { b, itemId, rerender, correct }) {
   // The correction’s own update draws the thread again with it, and without the box. Only a refusal draws it here,
   // from this box, which is still on the page.
   const send = (/** @type {string} */ value) => {
-    if (!value.trim()) return;
     // What was sent, unchanged, is no correction: the box closes as Cancel does, and nothing is sent.
     if (value.trim() === t.comments[lastMine(t)].text) return close();
     d.correcting = null;

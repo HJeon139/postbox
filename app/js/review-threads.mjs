@@ -6,7 +6,7 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { authorName } from '/shared/review-comments.mjs';
 import { h, icon, plural, trusted } from './dom.mjs';
 import { commentBox, placeKey, placeOf, quoted } from './review-comment-box.mjs';
-import { correctButton, correctionBox, correctionOf, lastMine } from './review-correct.mjs';
+import { correctButton, correctingIn, correctionBox, lastMine } from './review-correct.mjs';
 import { parkComment, saveEdit } from './review-draft.mjs';
 import { revisionOf } from './review-view.mjs';
 
@@ -32,7 +32,7 @@ export function threadBox(key, env) {
 function threadOf(t, env) {
   const resolved = t.status === 'resolved';
   const mine = lastMine(t);
-  const open = correctionOf(env.itemId).correcting === t.id;
+  const open = !env.closed && correctingIn(env.itemId) === t.id;
   return h(
     'div.rv-thread',
     { class: resolved ? 'resolved' : '' },
@@ -46,7 +46,7 @@ function threadOf(t, env) {
           i === 0 ? h('span.status-tag', { class: resolved ? 'ok' : 'open' }, resolved ? [icon('check', 'i-sm'), 'Resolved'] : 'Open') : null,
           i === 0 ? quoted(t.quote) : null,
           c.edited ? h('span.status-tag', 'Edited') : null,
-          i === mine && !open ? correctButton(t, env) : null,
+          i === mine && !open && !env.closed ? correctButton(t, env) : null,
         ),
         h('div', { html: trusted(renderMarkdown(c.text)) }),
       ),

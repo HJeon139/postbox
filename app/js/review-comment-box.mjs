@@ -1,6 +1,6 @@
-// A review’s comment box, the new comment’s and a draft’s open for editing (#858): its text and caret kept over a
-// repaint, its keys, and when it takes focus; and how a comment’s place reads in its box and buttons. Moved out of
-// app/js/review-threads.mjs, which had reached its length limit.
+// A review’s comment box, the new comment’s, a draft’s open for editing, and a sent comment’s correction (#858): its
+// text and caret kept over a repaint, its keys, and when it takes focus; and how a comment’s place reads in its box
+// and buttons.
 
 import { h } from './dom.mjs';
 

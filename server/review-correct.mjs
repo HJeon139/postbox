@@ -3,7 +3,7 @@
 // thread, marked edited, and the agent hears it as an event that names the comment it replaces.
 
 import { validateBlock } from '../shared/catalog.mjs';
-import { COMMENT_MAX, PERSON } from '../shared/review-comments.mjs';
+import { COMMENT_MAX, PERSON, personNext, threadsError } from '../shared/review-comments.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
 
 /** The act a correction is, as the page sends it. Like a reaction’s, it can’t be a block’s own action id, which starts
@@ -18,9 +18,10 @@ export function correctComment(rt, threadId, itemId, values) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind !== 'block' || !it.valid || it.block.type !== 'review') throw httpError(409, 'Only a comment on a review can be corrected.');
   if (it.closed?.by === 'agent') throw httpError(409, `@${it.closed.handle} withdrew this review, so it takes no corrections. Say it in a message instead.`);
+  if (it.deletedAgent) throw httpError(409, 'That agent was deleted, so it can’t hear a correction. Say it in a message instead.');
   const text = typeof values?.text === 'string' ? values.text.trim() : '';
   if (!text) throw httpError(422, 'The correction is empty. Write what your comment should say.');
-  if (text.length > COMMENT_MAX) throw httpError(422, `The correction is longer than ${COMMENT_MAX} characters. Shorten it.`);
+  if (text.length > COMMENT_MAX) throw httpError(422, `The correction is longer than ${COMMENT_MAX.toLocaleString('en-US')} characters. Shorten it.`);
   const threads = it.block.threads ?? [];
   const at = threads.findIndex((t) => t.id === values?.threadId);
   const thread = threads[at];
@@ -55,6 +56,9 @@ export function correctComment(rt, threadId, itemId, values) {
  * @param {any} rt @param {any} it @param {any[]} threads
  */
 function keptWith(rt, it, threads) {
+  const full = [];
+  threadsError(threads, full, personNext(it.handle));
+  if (full.length) throw httpError(422, `Your correction wasn’t sent. ${full.join(' ')}`);
   const v = validateBlock({ ...it.block, threads }, { imageOrigins: rt.apps.config.imageOrigins });
   if (!v.ok)
     throw httpError(
