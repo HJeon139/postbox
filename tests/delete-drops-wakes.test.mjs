@@ -28,5 +28,4 @@ test('#1670 removing one agent from a room cancels its wakes and keeps the other
   assert.equal(line?.status, 'canceled', 'its line in the room reads canceled');
   assert.ok(f.store.state.schedules[b.id], 'the other agent’s wake stays');
   assert.ok(f.rt.timers.has(b.id));
-  f.rt.deleteSession(f.beta.id, { keepConversation: false });
 });
