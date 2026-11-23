@@ -14,15 +14,16 @@ import { untilTurns } from './until-turns.mjs';
 
 /**
  * Waits for the automatic install under way on h1, if there is one, to end and be acted on: its `done` resolves, then
- * what the manager chains on it (afterBusy, which may connect), so a connect it makes has started by the time this
- * returns. No fixed wait: a fixed one let these races pass, or fail, by the machine’s load (#1530, #1657). What it
- * covers is a connect made in that chain, which dials at once (connectNow); one put off on a timer isn’t, as no
- * bounded wait could cover a timer of any length.
+ * what the manager chains on it (afterBusy, which may connect), then two turns of the event loop, so a connect it makes
+ * at once, or a turn or two later, has started by the time this returns. No timed wait: a timed one let these races
+ * pass, or fail, by the machine’s load (#1530, #1657). A connect put off on a timer isn’t covered, as no bounded wait
+ * could cover a timer of any length.
  * @param {any} t
  */
 async function installSettled(t) {
   const entry = t.mgr.updating.get('h1');
   if (entry) await entry.done.then(() => {});
+  for (let turn = 0; turn < 2; turn++) await new Promise((r) => setImmediate(r));
 }
 
 test('#464-b2a: removing a host whose version is missing doesn’t install on it first, consent or not', async () => {
