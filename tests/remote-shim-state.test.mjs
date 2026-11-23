@@ -14,7 +14,10 @@ import { ID_RE } from '../shared/remote-protocol-checks.mjs';
 test('#908 two shims started in the same millisecond give their calls and prompts different ids, each a random UUID', (t) => {
   const at = Date.now();
   t.mock.method(Date, 'now', () => at);
-  t.mock.property(process, 'pid', 1371);
+  // By hand, not t.mock.property, which Node 22.13 lacks though package.json takes any Node 22 (#1628).
+  const pid = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(process, 'pid'));
+  Object.defineProperty(process, 'pid', { ...pid, value: 1371 });
+  t.after(() => Object.defineProperty(process, 'pid', pid));
   const made = [];
   const real = crypto.randomUUID.bind(crypto);
   // Ids that hold the pid’s base-36 form, “123”, as a random one sometimes does.

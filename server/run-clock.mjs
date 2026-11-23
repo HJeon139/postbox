@@ -6,6 +6,7 @@
 
 import { CLOCK_BUDGET_MAX_S, clockElapsed, clockLine, isLocalStop } from '../shared/run-clock.mjs';
 import { httpError } from './helpers.mjs';
+import { hostOf } from './remote/placement.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
 import { resumeHeld } from './run-clock-held.mjs';
 import { clockNote, repairClockNote } from './run-clock-notes.mjs';
@@ -239,7 +240,8 @@ export function rearmClocks(rt, now = Date.now) {
     if (clock && clock.state !== 'expired' && clock.since !== null && rt.store.writable) {
       const at = now();
       rt.store.emit('clock.restored', { sessionId, elapsedMs: clockElapsed(clock, at), budgetMs: clock.budgetMs, at });
-      clockNote(rt, sessionId, 'restored', { budgetMs: clock.budgetMs, elapsedMs: clockElapsed(clock, at) });
+      const host = Boolean(hostOf(rt.personas.forSession(rt.store.pending.session(sessionId))));
+      clockNote(rt, sessionId, 'restored', { budgetMs: clock.budgetMs, elapsedMs: clockElapsed(clock, at), host });
     }
     armClock(rt, sessionId, now);
   }

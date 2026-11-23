@@ -4,6 +4,7 @@
 // Runtime first (designs/architecture/code-size.md, “What a move may change”).
 
 import { HOP_LIMIT } from '../shared/limits.mjs';
+import { endFixes } from './apps.mjs';
 import { joinConversation } from './conversation-join.mjs';
 import { clip } from './helpers.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
@@ -140,6 +141,8 @@ export function dropWakes(rt, se, how = 'stopped') {
   // Agents’ waiting entries are stopped, so none starts a turn after the Stop, and each agent that sent one hears so;
   // the person’s messages wait for the next turn, and are stopped too when the agent was removed.
   for (const e of rt.delivery.stopped(se.id, { all: how !== 'stopped' })) {
+    // An app check that waited won’t run now, so nothing fixes its app: it shows with its note, or crashed (#1664).
+    if (e.message?.kind === 'app-check') endFixes(rt, se.id);
     // A scheduled wake that waited is settled, as one held on the turn was, so a restart doesn’t fire it again (#466).
     if (e.source === 'scheduled') dropScheduledWake(rt, e.message);
     // A summary request isn’t coming, as one held on a stopped turn wasn’t (#93): its panel’s button stops waiting.

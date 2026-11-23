@@ -9,10 +9,11 @@ A run clock holds its agent: while it’s paused, and for good once it expires, 
 ## Expected functionality
 
 - **Started:** “@timed’s run clock started, with a budget of 60s.”
-- **Paused:** “@timed’s run clock is paused. Postbox stopped @timed, and starts no turn of it until the clock resumes.”
+- **Paused:** with @timed idle, “@timed’s run clock is paused. Postbox starts no turn of @timed until the clock resumes.” During a turn: “@timed’s run clock is paused. Postbox stopped @timed, and starts no turn of it until the clock resumes. Until its stopped turn has ended, @timed may still be working, so the clock counts on.”
 - **Resumed:** “@timed’s run clock resumed at 10s of 60s.”, with the time used so far, which leaves out the pause.
-- **Expired:** “@timed’s run clock reached its budget of 60s, so Postbox stopped @timed. Messages to @timed here now wait, and no turn starts; a new timed run goes in a new conversation.”
-- **Restored:** when Postbox starts again with the clock running: “Postbox started again with @timed’s run clock at 30s of 60s. The time it was down counted, and @timed may have worked through it on its host.”
+- **Expired:** with @timed idle, “@timed’s run clock reached its budget of 60s. Messages to @timed here now wait, and no turn starts; a new timed run goes in a new conversation.” During a turn, the first sentence ends “so Postbox stopped @timed’s turn, which may run on until its CLI has exited.”
+- **Restored:** when Postbox starts again with the clock running: “Postbox started again with @timed’s run clock at 30s of 60s. The time it was down counted.” For an agent on a host, it goes on “, and @timed may have worked through it on its host.”
+- A restart never repeats a line: an expired or paused clock shows its line once, even when its stopped turn’s end came after it.
 - Each is a plain line, like the other system lines, and starts no turn. It fits a 375 px window.
 - **A reply the clock stopped** is tagged “Stopped at 14:06: its run clock reached its budget”, or “… its run clock was paused”, never “Stopped by you”: the person didn’t press Stop.
 

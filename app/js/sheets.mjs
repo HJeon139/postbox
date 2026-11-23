@@ -15,6 +15,7 @@ import {
   PERMISSIONS,
   selectBackend,
 } from '/shared/agent-facts.mjs';
+import { memoryLine } from '/shared/agent-memory.mjs';
 
 import { hostMarker, mockMarker } from './agent-facts.mjs';
 import { boilerplateRow } from './boilerplate-row.mjs';
@@ -161,6 +162,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
   const available = new Set(BACKENDS.map(([id]) => id).filter((id) => local.has(id) || onHost(id)));
   const real = st.backend !== 'mock';
   const perm = SHEET_MODES.find(([id]) => id === st.permissionMode) ?? SHEET_MODES[0];
+  const memory = memoryLine(st.backend, st, client.config.versions);
   return [
     // A dropdown, as Effort is: four backends side by side wrapped their names onto two lines in a half-width
     // field. One this computer can’t run stays in the list, disabled, so you can see it exists.
@@ -175,7 +177,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
               'select.select',
               {
                 id: `${idp}-b`,
-                'aria-describedby': `${idp}-b-help`,
+                'aria-describedby': memory ? `${idp}-b-help ${idp}-b-mem` : `${idp}-b-help`,
                 onchange: (e) => {
                   selectBackend(st, e.target.value, client.config);
                   // Where it runs: only a backend that can run on a host keeps one, and one that isn’t on this
@@ -197,6 +199,8 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
             icon('down'),
           ),
       h('span.help', { id: `${idp}-b-help` }, BACKENDS.find(([id]) => id === st.backend)?.[2] ?? ''),
+      // What it does with memory (#480): its own, off, yours or none.
+      memory ? h('span.help', { id: `${idp}-b-mem` }, memory) : null,
     ),
     real && capsOf(st.backend).remote && (hosts.length || !local.has(st.backend))
       ? placeField(st, paint, { idp, hosts, here: local.has(st.backend), name: BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend })

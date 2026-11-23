@@ -9,7 +9,7 @@ import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { reviewApp } from './review-app.mjs';
-import { reviewDraft, startComment, stopComment } from './review-draft.mjs';
+import { followOpen, reviewDraft, saveEdit, startComment, stopComment } from './review-draft.mjs';
 import { keepReviewDraft } from './review-draft-store.mjs';
 import { inlineMd, itemWords, words } from './review-inline.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
@@ -32,10 +32,7 @@ export function renderReview(b, item, ctx, kit) {
   if (b.format !== 'app' && d.on !== b.content) {
     d.comments = followLines(d.comments, d.on, b.content);
     // An open comment box goes with its line, or its selection, too.
-    if (d.composing !== null && typeof d.composing !== 'string') {
-      const [c] = followLines([typeof d.composing === 'number' ? { line: d.composing } : d.composing], d.on, b.content);
-      d.composing = typeof c.col === 'number' ? c : (c.line ?? null);
-    }
+    followOpen(d, d.on, b.content);
     d.on = b.content;
   }
   if (!item.answered) keepReviewDraft(item.id, item.revision ?? 1, d);
@@ -298,7 +295,9 @@ export function renderReview(b, item, ctx, kit) {
           'button.btn.send',
           {
             type: 'button',
-            onclick: () =>
+            onclick: () => {
+              // A comment open for editing goes as last typed.
+              saveEdit(d);
               submit(
                 item,
                 ctx,
@@ -306,7 +305,8 @@ export function renderReview(b, item, ctx, kit) {
                 // moved and gone are only for the person: the agent gets each comment where it is now.
                 { verdict: d.verdict, comments: d.comments.map(({ moved: _m, gone: _g, ...c }) => c) },
                 setError,
-              ),
+              );
+            },
           },
           'Submit review',
         ),

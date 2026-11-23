@@ -220,6 +220,53 @@ test('needs-mismatch fires for a ring left on a choice already answered', () => 
   );
 });
 
+/**
+ * @researcher’s choice shown by the turn that’s still running, as the Agent SDK, Codex, Kiro and Antigravity runs of
+ * 23 November 2026 recorded it when the run handed the choice to the tester mid-turn (#289): the session thinks, its
+ * turn hasn’t finished, and it needs nothing yet. That turn’s own end decides its need (server/card-needs.mjs, turnsOf).
+ */
+function runningTurnRoom({ ended, question = false, remote = null }) {
+  const r = room();
+  r.agent('researcher', { backend: 'agent-sdk' });
+  r.add({
+    id: 'it_choice',
+    at: s(2),
+    kind: 'block',
+    sessionId: 'se_researcher',
+    handle: 'researcher',
+    turnId: 'turn_running',
+    valid: true,
+    block: { id: 'wiki-search-next', type: 'choice', title: 'What next?' },
+    ...(question ? { question: true } : {}),
+    ...(remote ? { remote } : {}),
+  });
+  Object.assign(r.f.state.sessions.se_researcher, { state: ended ? 'idle' : 'think', lastTurnId: 'turn_running', finishedAt: ended ? s(3) : null });
+  return r.f;
+}
+
+test('needs-mismatch stays silent for a choice its still-running turn showed', () => {
+  assert.deepEqual(found(runningTurnRoom({ ended: false }), 'needs-mismatch'), []);
+});
+
+test('needs-mismatch fires once the turn that showed the choice ends without needing you', () => {
+  assert.deepEqual(
+    found(runningTurnRoom({ ended: true }), 'needs-mismatch').map((x) => x.key),
+    ['needs-mismatch:it_choice'],
+  );
+});
+
+test('needs-mismatch fires mid-turn for an AskUserQuestion’s choice, whose call waits on you (#521)', () => {
+  assert.deepEqual(
+    found(runningTurnRoom({ ended: false, question: true }), 'needs-mismatch').map((x) => x.key),
+    ['needs-mismatch:it_choice'],
+  );
+});
+
+test('needs-mismatch stays silent mid-turn for an AskUserQuestion’s choice on a host, which its limit may let go (#1059)', () => {
+  const remote = { hostId: 'host_box', turn: 'turn_running', prompt: 'hp_1', entry: null, part: 0 };
+  assert.deepEqual(found(runningTurnRoom({ ended: false, question: true, remote }), 'needs-mismatch'), []);
+});
+
 /** @critic’s permission card, open or expired, with its session needing you for it (#721). */
 function permissionRoom(status) {
   const r = room();
@@ -240,4 +287,17 @@ test('#721 needs-mismatch fires for a ring left on a permission card that expire
 
 test('#721 needs-mismatch stays silent while the permission card it needs you for is open', () => {
   assert.deepEqual(found(permissionRoom('open'), 'needs-mismatch'), []);
+});
+
+test('ask-dropped counts a Stop before a restart as no reason for a wake taken off after it, across the new epoch', () => {
+  // As tools/uat/history.mjs keeps events after Postbox restarted: each later one tagged with its epoch, numbered from
+  // lower again (#1529). The Stop is in the first epoch, so it can’t be what took the wake off in the second, though
+  // their bare seqs are within STOP_WINDOW of each other.
+  const f = takenOffRoom('stopped');
+  const off = f.events.findIndex((e) => e.type === 'item.patch' && Array.isArray(e.data.patch.held) && !e.data.patch.held.length);
+  f.events = f.events.map((e, i) => (i >= off ? { ...e, epoch: 1 } : e));
+  assert.deepEqual(
+    found(f, 'ask-dropped').map((x) => x.key),
+    [`ask-dropped:it_card:se_critic:developer:${headOf(ROUND_TWO)}`],
+  );
 });

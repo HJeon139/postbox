@@ -7,6 +7,7 @@ import { ASKING } from '../../shared/catalog.mjs';
 import { needsYouNow } from '../../shared/needs.mjs';
 import { clip } from '../../shared/text.mjs';
 import { cardHistory, heldKey, holds, inputsOf, recorded, turnsOf } from './room-delivery.mjs';
+import { placeOf } from './room-events.mjs';
 import { notCheckableAll, unreadable } from './room-unverified.mjs';
 
 // Closed: its agent was archived, removed or retired, and everyone held on it was told (#693).
@@ -24,20 +25,21 @@ const STOP_WINDOW = 60;
  * meanwhile as not sent. The events keep no reason on the patch, and no notice, so the reason is read from around it:
  * the target’s empty stopped item or its session going to stopping within STOP_WINDOW events before the patch; its
  * session archived in the state; or no session of its handle in the state, or a “left” line after the patch.
- * @param {any} f  @param {{ to: string }} w  @param {number|null} seq  the held patch’s seq, when one took it off
+ * @param {any} f  @param {{ to: string }} w  @param {number|null} at  the held patch’s place across the run’s epochs
+ * (placeOf), when one took it off
  */
-function byDesign(f, w, seq) {
+function byDesign(f, w, at) {
   const sessions = Object.values(f.state?.sessions ?? {}).filter((se) => se?.handle === w.to);
   if (!sessions.length || sessions.every((se) => se.archived)) return true;
   const ids = new Set(sessions.map((se) => se.id));
   return (f.events ?? []).some(
     (e) =>
-      (seq !== null &&
-        e.seq <= seq &&
-        e.seq >= seq - STOP_WINDOW &&
+      (at !== null &&
+        placeOf(e) <= at &&
+        placeOf(e) >= at - STOP_WINDOW &&
         ((e.type === 'session' && e.data?.state === 'stopping' && ids.has(e.data.id)) ||
           (e.type === 'item.add' && e.data?.item?.kind === 'agent' && e.data.item.status === 'stopped' && e.data.item.handle === w.to))) ||
-      (seq !== null && e.seq > seq && e.type === 'item.add' && e.data?.item?.kind === 'system' && e.data.item.variant === 'left' && e.data.item.to === w.to),
+      (at !== null && placeOf(e) > at && e.type === 'item.add' && e.data?.item?.kind === 'system' && e.data.item.variant === 'left' && e.data.item.to === w.to),
   );
 }
 
@@ -102,7 +104,7 @@ function droppedAsks(f) {
       // Settled with its card: Allow or Don’t allow is the person’s answer; retiring sends it on, so it must arrive.
       const cardGone = !answered && !live.has(id);
       if (!(h.removedOpen || cardGone || retired)) continue;
-      if ((h.removedOpen || retired) && byDesign(f, h.w, h.removedOpen ? h.removedSeq : null)) continue;
+      if ((h.removedOpen || retired) && byDesign(f, h.w, h.removedOpen ? h.removedAt : null)) continue;
       if (reached(h.w, firstHeld(cards, h), retired ? c.settled : null)) continue;
       const via = h.movedFrom ? `, moved from ${h.movedFrom}` : '';
       out.push({
@@ -117,7 +119,7 @@ function droppedAsks(f) {
 
 /**
  * needs-mismatch: a ring that disagrees with the open asks. An agent with an open card or an unanswered block that
- * doesn’t need you, or one that needs you for an ask already settled.
+ * doesn’t need you (a block once the turn that showed it has ended), or one that needs you for an ask already settled.
  */
 function needsMismatches(f) {
   const out = [];
@@ -130,7 +132,7 @@ function needsMismatches(f) {
       const se = sid ? sessions[sid] : null;
       if (!se || se.archived) continue;
       const open = it.kind === 'hop' ? it.status === 'open' : ASKING.has(it.block?.type) && it.valid !== false && !it.answered && !it.closed;
-      if (open && !needsYouNow(se))
+      if (open && !needsYouNow(se) && !shownByRunningTurn(it, se))
         out.push({
           key: `needs-mismatch:${it.id}`,
           title: `@${se.handle} has an open ask, and its ring doesn’t say it needs you`,
@@ -149,6 +151,17 @@ function needsMismatches(f) {
   }
   return out;
 }
+
+/**
+ * Whether a block was shown by its agent’s turn that’s still running: a turn clears `finishedAt` as it starts and sets
+ * it as it ends. That turn’s own end decides whether its block needs you (server/card-needs.mjs, turnsOf), so a run
+ * that reads the room mid-turn, as it does when it hands a block to the tester while the agent works (#289), finds no
+ * need yet on any backend. Not an AskUserQuestion’s block shown here (#521): its call waits on the person, so it needs
+ * you mid-turn. One on a host may be let go mid-turn by the host’s own limit (#1059), so it’s judged at the turn’s end.
+ * @param {any} it  @param {any} se
+ */
+const shownByRunningTurn = (it, se) =>
+  it.kind === 'block' && (!it.question || Boolean(it.remote)) && Boolean(it.turnId) && it.turnId === se.lastTurnId && !se.finishedAt;
 
 /**
  * Whether the ask a ring points at is settled: a wake card or a permission card that’s no longer open (one that

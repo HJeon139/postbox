@@ -1149,7 +1149,7 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     );
   });
 
-  test('the history: a run’s saved events, else what’s left of Postbox’s log, cut to what the checks read', () => {
+  test('the history: a run’s saved events, else what’s left of Postbox’s log, cut to what the checks and the run’s ATIF read', () => {
     const dir = mkdtempSync(join(tmpdir(), 'postbox-history-'));
     try {
       mkdirSync(join(dir, 'data'));
@@ -1160,7 +1160,7 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
       ];
       // The last line was still being written.
       writeFileSync(join(dir, 'data', 'events-1.jsonl'), `${log.map((e) => JSON.stringify(e)).join('\n')}\n{"seq":4,"type":"item.pa`);
-      assert.deepEqual(readHistory(dir), [{ seq: 1, type: 'session', data: { id: 's2', state: 'think', finishedAt: null, updatedAt: null } }, added]);
+      assert.deepEqual(readHistory(dir), [{ seq: 1, type: 'session', data: { id: 's2', state: 'think', finishedAt: null, updatedAt: null } }, log[1], added]);
       writeFileSync(join(dir, 'events.jsonl'), `${JSON.stringify(session(9, 'idle'))}\n`);
       assert.deepEqual(readHistory(dir), [session(9, 'idle')]);
     } finally {

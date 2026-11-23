@@ -60,9 +60,22 @@ function dueAsks(asks, { told, since, working }) {
  * while an agent still works once something needs the person that the tester hasn’t had: Stop’s question about a
  * background job, which keeps the turn running until it’s answered (#126), or a block that asks and has waited
  * BLOCK_GRACE_MS. The tester gets it then, rather than when the turn ends (#289), once for each (dueAsks).
- * @param {{ api: any, d: any, threadsUnderTest: any, facts: any, midTurnChecks: any, opt: any, told?: Set<string>, handBack?: boolean, log?: (line: string) => void }} ctx
+ * stopped: whether the run’s bound or budget has stopped it. Then an app being checked holds no wait: the turn that
+ * would fix it may be one the run stopped (#1664).
+ * @param {{ api: any, d: any, threadsUnderTest: any, facts: any, midTurnChecks: any, opt: any, told?: Set<string>, handBack?: boolean, stopped?: () => boolean, log?: (line: string) => void }} ctx
  */
-export async function settle({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told = new Set(), handBack = false, log = () => {} }) {
+export async function settle({
+  api,
+  d,
+  threadsUnderTest,
+  facts,
+  midTurnChecks,
+  opt,
+  told = new Set(),
+  handBack = false,
+  stopped = () => false,
+  log = () => {},
+}) {
   const end = Date.now() + Number(opt['turn-timeout']) * 1000;
   let calm = 0;
   const since = new Map();
@@ -86,10 +99,16 @@ export async function settle({ api, d, threadsUnderTest, facts, midTurnChecks, o
       return null;
     }
     if (working.length) await midTurnChecks(st);
-    calm = working.length || checking ? 0 : calm + 1;
+    calm = working.length || (checking && !stopped()) ? 0 : calm + 1;
     if (calm >= 2) return null;
   }
-  await d.stopAll();
+  // With no Stop on screen (an app still being checked, with no turn at work), the wait says so rather than failing the
+  // run before its report (#1664).
+  const unstopped = await d.stopAll().then(
+    () => null,
+    (/** @type {Error} */ e) => e.message,
+  );
+  if (unstopped) return `Something was still working after ${opt['turn-timeout']} s, and the run couldn’t press Stop: ${unstopped}`;
   return `An agent was still working after ${opt['turn-timeout']} s, so the run pressed Stop.`;
 }
 

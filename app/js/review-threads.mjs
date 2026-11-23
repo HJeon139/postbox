@@ -5,10 +5,24 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { authorName } from '/shared/review-comments.mjs';
 import { h, icon, plural, trusted } from './dom.mjs';
+import { parkComment, saveEdit } from './review-draft.mjs';
 import { revisionOf } from './review-view.mjs';
 
 /** Whether a thread or a comment is on key: an app’s part, or a line. */
 const on = (b, x, key) => (b.format === 'app' ? x.anchor === key : x.line === key);
+/**
+ * Where a comment is, as its box and buttons name it (#858): “line 3”, an app’s part, or the text a selection quotes.
+ * @param {any} at  a line, a part, or a selection with its quote @param {any} b
+ */
+function placeOf(at, b) {
+  if (typeof at === 'object') return `“${at.quote.length > 60 ? `${at.quote.slice(0, 59)}…` : at.quote}”`;
+  return b.format === 'app' ? at : `line ${at}`;
+}
+/** A draft comment’s place, as placeOf takes it. @param {any} c @param {any} b */
+function placeKey(c, b) {
+  if (typeof c.quote === 'string') return c;
+  return b.format === 'app' ? c.anchor : c.line;
+}
 /** The text a comment on a selection is about, as its meta line shows it. */
 const quoted = (q) => (typeof q === 'string' ? h('q.rv-quote', q.length > 80 ? `${q.slice(0, 79)}…` : q) : null);
 
@@ -47,10 +61,28 @@ function threadOf(t) {
   );
 }
 
-/** One of the person’s draft comments, until the review is sent. @param {any} c @param {any} env */
-function draftOf(c, { d, done, rerender }) {
+/**
+ * One of the person’s draft comments, until the review is sent: Edit opens it in place (#858), Delete drops it. Which
+ * one is open is kept by its place in the draft, which revising the text under it (followLines) keeps.
+ * @param {any} c @param {any} env
+ */
+function draftOf(c, env) {
+  const { b, d, done, rerender } = env;
+  const at = d.comments.indexOf(c);
+  if (!done && d.editing === at) return editorOf(c, at, env);
   const remove = () => {
     d.comments = d.comments.filter((x) => x !== c);
+    // The one open for editing keeps its place when one before it goes.
+    if (typeof d.editing === 'number' && d.editing > at) d.editing--;
+    rerender();
+  };
+  // One box at a time: a new comment’s box closes, and another edit keeps what was typed in it.
+  const edit = () => {
+    parkComment(d);
+    saveEdit(d);
+    d.editFocus = true;
+    d.editing = at;
+    d.editingText = d.comments[at].text;
     rerender();
   };
   return h(
@@ -64,12 +96,89 @@ function draftOf(c, { d, done, rerender }) {
         // Its quote is gone from the text the agent revised (#179), or its line changed (#123).
         c.gone !== undefined ? h('span.status-tag', 'Its text changed') : c.moved ? h('span.status-tag', 'Its line changed') : null,
         quoted(c.quote ?? c.gone),
-        done ? null : h('button.btn.sm.ghost', { type: 'button', style: { marginLeft: 'auto' }, onclick: remove }, 'Delete'),
+        // Each names its comment’s place, so a screen reader tells one draft’s buttons from another’s.
+        done
+          ? null
+          : h(
+              'button.btn.sm.ghost',
+              {
+                type: 'button',
+                style: { marginLeft: 'auto' },
+                'aria-label': `Edit your comment on ${placeOf(placeKey(c, b), b)}`,
+                'data-draft': String(at),
+                onclick: edit,
+              },
+              'Edit',
+            ),
+        done
+          ? null
+          : h('button.btn.sm.ghost', { type: 'button', 'aria-label': `Delete your comment on ${placeOf(placeKey(c, b), b)}`, onclick: remove }, 'Delete'),
       ),
       h('div', c.text),
     ),
   );
 }
+
+/**
+ * A draft comment open for editing, with its text, on the same line, selection or part: saving replaces its text and
+ * keeps where it is; Cancel or Escape leaves it as it was. Either way focus goes back to its Edit button.
+ * @param {any} c @param {number} at  its place in the draft @param {any} env
+ */
+function editorOf(c, at, { b, d, rerender }) {
+  const close = (/** @type {string | null} */ value) => {
+    if (value !== null && !value.trim()) return;
+    d.editingText = value ?? '';
+    saveEdit(d);
+    /** @type {HTMLElement | null} */ (rerender().querySelector(`[data-draft="${at}"]`))?.focus();
+  };
+  return commentBox(d, {
+    label: `Edit your comment on ${placeOf(placeKey(c, b), b)}`,
+    mark: 'data-edit-draft',
+    opened: 'editFocus',
+    fields: ['editingText', 'editingSelection'],
+    text: typeof d.editingText === 'string' ? d.editingText : c.text,
+    quote: quoted(c.quote ?? c.gone),
+    saveLabel: 'Save comment',
+    hint: 'Ctrl+Enter saves it',
+    onSave: (value) => close(value),
+    onCancel: () => close(null),
+  });
+}
+
+/** Each comment box’s review draft, so a repaint finds only its own box (refocus). */
+const ownerOf = new WeakMap();
+
+/**
+ * Gives a comment box focus, with its saved selection, when it was just opened (`d[opened]`), or after a repaint only
+ * if it had focus (#858): a repaint while the person types elsewhere, such as another agent’s comment arriving, leaves
+ * their focus where it is. It had focus if its old box, `mark` in this review, still has it, or if nothing does and
+ * this box had it last: a resync takes the old box off the page before the new one is built.
+ * @param {HTMLTextAreaElement} ta @param {any} d @param {string} opened @param {string} mark @param {number[]} saved
+ * @param {string} text
+ */
+function refocus(ta, d, opened, mark, saved, text) {
+  ownerOf.set(ta, d);
+  const active = document.activeElement;
+  const nowhere = !active || active === document.body;
+  const had = d.focusedBox === mark && (nowhere || (ownerOf.get(active) === d && active.hasAttribute(mark)));
+  const open = d[opened] || had;
+  d[opened] = false;
+  if (open) queueMicrotask(() => restoreComposer(ta, saved, text));
+}
+
+/**
+ * Keeps which box has focus on its draft. Focus moving to another control clears it; the box leaving the page, or the
+ * window losing focus, doesn’t. @param {any} d @param {string} mark
+ */
+const tracked = (d, mark) => ({
+  [mark]: '',
+  onfocus: () => {
+    d.focusedBox = mark;
+  },
+  onblur: (/** @type {FocusEvent} */ e) => {
+    if (e.relatedTarget) d.focusedBox = null;
+  },
+});
 
 /** Restores focus and the saved selection after the box is rebuilt. */
 function restoreComposer(ta, saved, text) {
@@ -78,24 +187,26 @@ function restoreComposer(ta, saved, text) {
   ta.setSelectionRange(start, Math.min(saved[1] ?? start, text.length));
 }
 
-/** The box a new comment is written in, focused as it opens. @param {any} key @param {any} env */
-function composer(key, { b, d, closeComposer }) {
-  const label =
-    typeof key === 'object'
-      ? `Comment on “${key.quote.length > 60 ? `${key.quote.slice(0, 59)}…` : key.quote}”`
-      : b.format === 'app'
-        ? `Comment on ${key}`
-        : `Comment on line ${key}`;
-  const text = typeof d.composingText === 'string' ? d.composingText : '';
-  const saved = Array.isArray(d.composingSelection) ? d.composingSelection : [text.length, text.length];
+/**
+ * A review comment box: the new comment’s, and a draft’s open for editing (#858). Its text and caret are kept on the
+ * draft, in the two fields `fields` names, so a repaint while it’s open (another agent’s comment, a revision) leaves
+ * both; Ctrl+Enter saves it and Escape cancels it; and it takes focus as refocus says.
+ * @param {any} d
+ * @param {{ label: string, mark: string, opened: string, fields: [string, string], text: string, quote: HTMLElement | null,
+ *   saveLabel: string, hint: string, onSave: (value: string) => void, onCancel: () => void }} box
+ */
+function commentBox(d, box) {
+  const [textField, selectionField] = box.fields;
+  const saved = Array.isArray(d[selectionField]) ? d[selectionField] : [box.text.length, box.text.length];
   const remember = () => {
-    d.composingText = ta.value;
-    d.composingSelection = [ta.selectionStart, ta.selectionEnd];
+    d[textField] = ta.value;
+    d[selectionField] = [ta.selectionStart, ta.selectionEnd];
   };
   const ta = h('textarea.textarea', {
-    'aria-label': label,
+    'aria-label': box.label,
+    ...tracked(d, box.mark),
     style: { minHeight: '56px' },
-    value: text,
+    value: box.text,
     oninput: remember,
     onselect: remember,
     onkeyup: remember,
@@ -103,37 +214,53 @@ function composer(key, { b, d, closeComposer }) {
     onkeydown: (e) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        add();
+        box.onSave(ta.value);
       }
       // Escape closes the box, and only the box: not a full-screen review around it too.
       if (e.key === 'Escape') {
         e.preventDefault();
-        closeComposer(key);
+        box.onCancel();
       }
     },
   });
-  const add = () => {
-    const text = ta.value.trim();
-    if (!text) return;
-    d.comments.push(typeof key === 'object' ? { ...key, text } : b.format === 'app' ? { anchor: key, text } : { line: key, text });
-    closeComposer(key);
-  };
-  queueMicrotask(() => restoreComposer(ta, saved, text));
+  refocus(ta, d, box.opened, box.mark, saved, box.text);
   return h(
     'div.rv-thread',
     h(
       'div.reply',
       { style: { flexDirection: 'column' } },
-      typeof key === 'object' ? h('span.small.dim', 'On ', quoted(key.quote)) : null,
+      box.quote ? h('span.small.dim', 'On ', box.quote) : null,
       ta,
       h(
         'div.row-flex',
-        h('button.btn.sm.send', { type: 'button', onclick: add }, 'Add draft comment'),
-        h('button.btn.sm.ghost', { type: 'button', onclick: () => closeComposer(key) }, 'Cancel'),
-        h('span.small.dim', 'Ctrl+Enter adds it'),
+        h('button.btn.sm.send', { type: 'button', onclick: () => box.onSave(ta.value) }, box.saveLabel),
+        h('button.btn.sm.ghost', { type: 'button', onclick: box.onCancel }, 'Cancel'),
+        h('span.small.dim', box.hint),
       ),
     ),
   );
+}
+
+/** The box a new comment is written in, focused as it opens. @param {any} key @param {any} env */
+function composer(key, { b, d, closeComposer }) {
+  const add = (/** @type {string} */ value) => {
+    const text = value.trim();
+    if (!text) return;
+    d.comments.push(typeof key === 'object' ? { ...key, text } : b.format === 'app' ? { anchor: key, text } : { line: key, text });
+    closeComposer(key);
+  };
+  return commentBox(d, {
+    label: `Comment on ${placeOf(key, b)}`,
+    mark: 'data-new-comment',
+    opened: 'composeFocus',
+    fields: ['composingText', 'composingSelection'],
+    text: typeof d.composingText === 'string' ? d.composingText : '',
+    quote: typeof key === 'object' ? quoted(key.quote) : null,
+    saveLabel: 'Add draft comment',
+    hint: 'Ctrl+Enter adds it',
+    onSave: add,
+    onCancel: () => closeComposer(key),
+  });
 }
 
 const VERDICTS = { comment: 'Comment', approve: 'Approve', request_changes: 'Request changes' };

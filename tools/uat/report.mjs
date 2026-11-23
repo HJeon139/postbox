@@ -6,7 +6,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
-import { agentsSpent, codexTokens, uncosted } from './cost.mjs';
+import { agentsSpent, codexTokens, dollarStreams, uncosted } from './cost.mjs';
 import { githubSection } from './github-attempts.mjs';
 import { pictureSection } from './picture-choice.mjs';
 import { backendName } from './room-unverified.mjs';
@@ -28,9 +28,9 @@ const listOf = (/** @type {string[]} */ names) => (names.length < 3 ? names.join
  * @param {any} facts  @param {{ spent: number }} tester
  */
 function usageLine(facts, tester) {
-  const agentCost = agentsSpent(facts.streams);
-  // Only Claude Code reports dollars. What the others report is listed in its place: Codex and Antigravity tokens
-  // (#143), Kiro credits. The line says so, or “agents $0.01” reads as what agents on four harnesses cost.
+  const agentCost = agentsSpent(dollarStreams(facts));
+  // Only Claude Code and the Agent SDK report dollars. What the others report is listed in its place: Codex and
+  // Antigravity tokens (#143), Kiro credits. The line says so, or “agents $0.01” reads as what agents on four harnesses cost.
   const others = uncosted(facts);
   const reported = [
     [codexTokens(facts.codexStreams ?? []), 'Codex tokens'],
@@ -40,7 +40,7 @@ function usageLine(facts, tester) {
     .filter(([n]) => n)
     .map(([n, unit]) => `${unit === 'Kiro credits' ? Number(n).toFixed(2) : Number(n).toLocaleString('en-US')} ${unit}`);
   const told = reported.length ? `: ${reported.join(', ')}` : '';
-  const alone = others.length ? ` on Claude Code alone (${listOf(others)} ${others.length === 1 ? 'reports' : 'report'} no cost${told})` : '';
+  const alone = others.length ? ` on Claude Code and the Agent SDK alone (${listOf(others)} ${others.length === 1 ? 'reports' : 'report'} no cost${told})` : '';
   return `Usage: agents $${agentCost.toFixed(2)}${alone}, tester $${tester.spent.toFixed(2)}.${budgetNote(facts.budget)}${boundNote(facts.bound)}${timingLine(facts.timing)}${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
 }
 

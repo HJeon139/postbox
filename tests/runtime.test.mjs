@@ -755,7 +755,8 @@ test('the problems of one turn, from the server and the browser, reach the agent
   const item = store.items(t.id).find((i) => i.kind === 'agent');
   // The browser measures the diagram a moment after the turn ends, before the lint turn goes.
   assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nA-->B', textPx: 7, width: 728 }).sent, true);
-  await sleep(60);
+  // The lint turn also waits for the server’s Mermaid parse of the two diagrams (#731), which can take a moment to start.
+  for (let i = 0; i < 200 && !lints(adapter).length; i++) await sleep(25);
   await settle(rt);
   assert.equal(lints(adapter).length, 1);
   const m = lints(adapter)[0].message;
@@ -963,7 +964,8 @@ test('problems from a turn that failed don’t reach the agent', async () => {
 
 test('#46: a diagram the browser couldn’t draw comes back to the agent once, with Mermaid’s message and line', async () => {
   const { rt, store, t, adapter } = setup();
-  const broken = 'graph LR\nA -->> B';
+  // With a label in HTML, which only the page can check: the server reports what Mermaid refuses on its own (#731).
+  const broken = 'graph LR\nA[x<br>y] -->> B';
   adapter.next.push(async (c) => c.text(`Two diagrams.\n\n\`\`\`mermaid\ngraph TD\nX-->Y\n\`\`\`\n\n\`\`\`mermaid\n${broken}\n\`\`\``));
   rt.sendMessage(t.id, { text: 'draw' });
   await settle(rt);
