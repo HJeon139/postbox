@@ -61,6 +61,9 @@ test('a confirm that shows the exact command lets it run with no model; one that
     const s = await setup();
     assert.deepEqual(await afterBlock(s, confirm(hidden), ['confirm', {}], [comment]), [false], hidden);
   }
+  // A fence that names a language draws <code data-lang>, and still shows its command.
+  const fenced = await setup();
+  assert.deepEqual(await afterBlock(fenced, confirm(`Open the PR:\n\n\`\`\`sh\n${cmd}\n\`\`\``), ['confirm', {}], [comment]), [true]);
   const piped = bash('gh pr create --title "a | b" --body "Closes #508."');
   const inCell = `| Command |\n| --- |\n| \`${piped.input.command.replaceAll('|', '\\|')}\` |`;
   const cellMismatch = await setup();
