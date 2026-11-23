@@ -60,7 +60,6 @@ export function waitForCheck(appId, version, { ms = CHECK_WAIT_MS, gone = null }
       resolve(check);
     };
     const timer = setTimeout(() => done(null), ms);
-    timer.unref?.();
     if (typeof gone?.addEventListener === 'function') gone.addEventListener('abort', () => done(null), { once: true });
     else gone?.once?.('close', () => done(null));
     set.add(done);
