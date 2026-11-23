@@ -237,6 +237,21 @@ const isReview = (event) =>
   !event.sent && (typeof event.from === 'string' || typeof event.values?.verdict === 'string') && Array.isArray(event.values?.comments);
 
 /**
+ * What the block’s agent does about another agent’s review (#133). On a review the person already answered (#716), a
+ * revision or a new comment in a thread asks them again, so it’s told only a thread’s status change keeps their answer.
+ * On one withdrawn or dismissed since, any update asks again.
+ * @param {any} event
+ */
+function reviewedNote(event) {
+  const where = 'Each comment is on the block now, by its threadId.';
+  if (event.closed)
+    return `${where} This block is closed, so it no longer asks the person: any update_block to it but an outcome, even one that only resolves a comment, asks them again.`;
+  if (event.answered)
+    return `${where} The person already answered this block: changing only status to “resolved” in update_block’s threads? keeps their answer; adding a reply, changing its content or sending it back unchanged asks them again.`;
+  return `${where} Revise with update_block, and keep each one in the block’s threads? with status “resolved” once you’ve handled it. The block still waits on the person.`;
+}
+
+/**
  * Writes one Postbox message as the text of a turn for the agent: the turn’s envelope (designs/508, “Delivering a
  * turn”, the envelope; DL-4, #504, #515). In order:
  * 1. In a topic or side thread: the thread, and what was said there (message.taskContext), then the line that makes
@@ -320,9 +335,7 @@ function formatBody(message, pathOf) {
               .join('\n')
           : '',
         // Another agent’s review (#133): its comments are on the block now, and the person still decides.
-        message.event.from
-          ? 'Each comment is on the block now, by its threadId. Revise with update_block, and keep each one in the block’s threads? with status “resolved” once you’ve handled it. The block still waits on the person.'
-          : '',
+        message.event.from ? reviewedNote(message.event) : '',
         // The person’s review (#1143): their comments are threads now, and they can’t resolve one, so the agent does.
         !message.event.from && isReview(message.event) && message.event.values.comments.some((c) => c?.threadId)
           ? `Each comment is on the block now, by its threadId, and only you can resolve it: once you’ve handled one, keep it in update_block’s threads? with status: "resolved". Up to ${REVIEW_THREADS_OPEN} can be open at once.`

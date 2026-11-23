@@ -1,7 +1,8 @@
 // review_block (#133): an agent comments on another agent’s review block in its conversation, in the comment shape the
 // person’s review uses (shared/review-comments.mjs). Each comment becomes an open thread on the draft, with the agent’s
 // handle as its author, where the person’s comments go. The block’s agent hears them as an event, so it can revise and
-// resolve them; the block still waits on the person, who decides. A revision that leaves one of those threads out keeps
+// resolve them; a waiting block still waits on the person, who decides, while an answered review takes comments without
+// reopening it and a closed one refuses (#716). A revision that leaves one of those threads out keeps
 // it, following its line or quote into the new text, so a reviewer’s comment never vanishes from the draft: the block’s
 // agent resolves it instead.
 
@@ -30,10 +31,9 @@ export function reviewBlock(apps, sessionId, args) {
   if ('message' in found) return found;
   const { it, where } = found;
   if (it.sessionId === sessionId) return no(`${it.block.id} is your own review block: add or answer its threads with update_block.`);
-  if (it.closed || it.answered)
-    return no(
-      `@${it.handle}’s ${it.block.id} is ${it.closed ? 'closed' : 'answered'} already, so it takes no more comments. Say what you’d change in a message instead.`,
-    );
+  // An answered review still takes a reviewer’s comments, under the person’s answer, without reopening it (#716): a
+  // read of a design the person approved belongs on the block. A closed one, withdrawn or dismissed, doesn’t.
+  if (it.closed) return no(`@${it.handle}’s ${it.block.id} is closed, so it takes no more comments. Say what you’d change in a message instead.`);
   const problems = comments.flatMap((c, i) => [...commentErrors(c, `comments[${i}]`), ...placeError(it.block, c, i)]);
   if (problems.length) return no(`Nothing was added: ${problems.slice(0, 5).join(' ')}`);
 
@@ -46,7 +46,15 @@ export function reviewBlock(apps, sessionId, args) {
   const revision = it.revision ?? 1;
   const review = { handle: se.handle, ...(verdict ? { verdict } : {}), revision, threads: added.map((c) => c.threadId), at: Date.now() };
   apps.threads.patchItem(where, it.id, { block: v.block, reviews: [...(it.reviews ?? []), review] });
-  const event = { blockId: it.block.id, revision, action: 'review', values: { ...(verdict ? { verdict } : {}), comments: added }, from: se.handle };
+  // answered is read when the turn takes the entry (turns.mjs, messageOf), so a revision in the answer’s own turn before
+  // the review is delivered doesn’t leave a stale answered: true on the event (#716).
+  const event = {
+    blockId: it.block.id,
+    revision,
+    action: 'review',
+    values: { ...(verdict ? { verdict } : {}), comments: added },
+    from: se.handle,
+  };
   let heard = `@${it.handle} hears them now, and can revise.`;
   try {
     // A review is the one entry an agent makes without an @-mention: its block’s author’s, pointing at the block. Until
@@ -62,7 +70,7 @@ export function reviewBlock(apps, sessionId, args) {
   const n = added.length;
   return {
     ok: true,
-    message: `Added ${n} comment${n === 1 ? '' : 's'} to @${it.handle}’s ${it.block.id} (revision ${revision}). ${heard} The block still waits on the person.`,
+    message: `Added ${n} comment${n === 1 ? '' : 's'} to @${it.handle}’s ${it.block.id} (revision ${revision}). ${heard} ${it.answered ? 'The person already answered it, and your comments don’t reopen it.' : 'The block still waits on the person.'}`,
   };
 }
 
