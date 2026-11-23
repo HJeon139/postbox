@@ -31,6 +31,8 @@ test('#1695 a turn whose reply @-mentions another agent gets no reply-form lint;
   const { rt, store, t, adapter } = setup();
   const lead = rt.createPersona({ handle: 'lead' });
   rt.ensureSession(t.id, lead.id);
+  // Each scripted reply names no one, so it would go back and forth to the chain limit: two hops keep the run short.
+  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
   const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
   const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
   adapter.next.push(async (c) => c.text(HANDOFF));
@@ -56,6 +58,8 @@ test('#1695 a reply that goes back to the agent that woke it, naming no one, get
   const { rt, store, t, adapter } = setup();
   const lead = rt.createPersona({ handle: 'lead' });
   rt.ensureSession(t.id, lead.id);
+  // Each scripted reply names no one, so it would go back and forth to the chain limit: two hops keep the run short.
+  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
   const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
   const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
   // @critic asks @lead; @lead's answer names no one, so it goes back to @critic (reply-back.mjs, #1518).
@@ -71,5 +75,25 @@ test('#1695 a reply that goes back to the agent that woke it, naming no one, get
       .filter((c) => c.endsWith('-in-prose')),
     [],
     'no reply-form problem',
+  );
+});
+
+test('#1695 a turn that opens a topic for another agent, then offers the person options, is still asked for a choice', async () => {
+  const { rt, store, t, adapter } = setup();
+  const lead = rt.createPersona({ handle: 'lead' });
+  rt.ensureSession(t.id, lead.id);
+  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
+  const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
+  const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
+  adapter.next.push(async (c) => {
+    const asked = store.items(t.id).findLast((it) => it.kind === 'user');
+    c.tools.open_topic({ itemId: asked.id, message: '@critic could you check the relay while I ask?' });
+    c.text('Two ways to go:\n1. Drop the hold\n2. Keep the report\n\nWhich do you want?');
+  });
+  rt.sendMessage(t.id, { text: '@lead how should we fix #438?' });
+  await settle(rt);
+  assert.ok(
+    lints().some((c) => c.message.problems.some((p) => p.code === 'options-in-prose')),
+    'the topic named an agent, but the reply asks the person',
   );
 });

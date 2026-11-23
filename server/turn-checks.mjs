@@ -40,11 +40,12 @@ export function checkTurn(checks, turn, se) {
     );
   problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
   // A reply that should have been a block (#63): what this turn showed, and what the person last asked for. A reply to
-  // another agent is that agent’s to answer (#1695): one that @-mentioned an agent, or one that goes back to the agents
-  // whose mentions woke the turn, as reply-back decides it.
+  // another agent is that agent’s to answer (#1695): one whose @-mention woke an agent or waits for one (`mentioned`,
+  // set by mention-entries.mjs from the replies alone, not by open_topic or a review), or one that goes back to the
+  // agents whose mentions woke the turn, as reply-back decides it.
   const own = checks.store.pending.items(turn.threadId);
   const shown = own.filter((it) => it.kind === 'block' && it.valid && it.turnId === turn.id).map((it) => it.block.type);
-  const toAgent = Boolean(turn.named) || (turn.backTo ?? backTo(turn.asked?.message?.entries ?? [])).length > 0;
+  const toAgent = (turn.mentioned?.length ?? 0) > 0 || (turn.backTo ?? backTo(turn.asked?.message?.entries ?? [])).length > 0;
   problems.push(...blockProblems(turn.said, shown, own.findLast((it) => it.kind === 'user')?.text ?? '', { toAgent }));
   return problems;
 }
