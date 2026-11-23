@@ -62,9 +62,9 @@ test('a confirm that shows the exact command lets it run with no model; one that
     assert.deepEqual(await afterBlock(s, confirm(hidden), ['confirm', {}], [comment]), [false], hidden);
   }
   const piped = bash('gh pr create --title "a | b" --body "Closes #508."');
-  const inCell = `| Command |\n| --- |\n| \`${piped.input.command.replace('|', '\\|')}\` |`;
+  const inCell = `| Command |\n| --- |\n| \`${piped.input.command.replaceAll('|', '\\|')}\` |`;
   const cellMismatch = await setup();
-  assert.deepEqual(await afterBlock(cellMismatch, confirm(inCell), ['confirm', {}], [bash(piped.input.command.replace('|', '\\|'))]), [false]);
+  assert.deepEqual(await afterBlock(cellMismatch, confirm(inCell), ['confirm', {}], [bash(piped.input.command.replaceAll('|', '\\|'))]), [false]);
   const cellShown = await setup();
   assert.deepEqual(await afterBlock(cellShown, confirm(inCell), ['confirm', {}], [piped]), [true]);
 });
