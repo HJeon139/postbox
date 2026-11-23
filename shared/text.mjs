@@ -81,7 +81,7 @@ function unquoted(text, isCopy) {
   const plain = withoutCode(text);
   // Read line by line only when a line could be a quote: the page reads a draft on every keystroke.
   if (!plain.includes('>') && !(isCopy && plain.includes('it_'))) return plain;
-  const lines = plain.split('\n').filter((line) => !BLOCKQUOTE.test(line));
+  const lines = plain.split(/\r\n?|\n/).filter((line) => !BLOCKQUOTE.test(line));
   return (isCopy ? withoutCopies(lines, isCopy) : lines).join('\n');
 }
 

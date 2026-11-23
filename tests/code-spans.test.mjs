@@ -69,6 +69,7 @@ test('a lone carriage return ends a line for spans too, as the renderer reads it
   const fenced = '```\r@critic\r```\rafter';
   assert.doesNotMatch(renderMarkdown(fenced, { mentions: ['critic'] }), /class="mention"/);
   assert.deepEqual(parseMentions(fenced, ['critic']), []);
+  assert.deepEqual(parseMentions('hi\r> @critic', ['critic']), []);
 });
 
 test('a long line of runs with no close renders in linear time', () => {
