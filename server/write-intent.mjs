@@ -14,6 +14,7 @@
 // fails is a card.
 
 import { randomBytes } from 'node:crypto';
+import { renderMarkdown } from '../shared/markdown.mjs';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
@@ -75,8 +76,18 @@ const squash = (s) =>
     .trim();
 const wordsOf = (s) => norm(s).match(/[\p{L}\p{N}][\p{L}\p{N}'._/#-]*/gu) ?? [];
 
-/** The code in a confirm’s statement: each fenced block and each `inline` span, as written. */
-const codeIn = (statement) => [...String(statement ?? '').matchAll(/```[^\n]*\n([\s\S]*?)```|`([^`\n]+)`/g)].map((m) => m[1] ?? m[2]);
+const HTML_ENT = { '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&amp;': '&' };
+
+/**
+ * The code in a confirm’s statement: each `<code…>` element `renderMarkdown` draws on the page (#1659), both fenced
+ * blocks and inline spans, so a command hidden in a dropped table cell, a link target, math or an indented line never
+ * counts as confirmed.
+ * @param {unknown} statement
+ */
+function codeIn(statement) {
+  const html = renderMarkdown(String(statement ?? ''));
+  return [...html.matchAll(/<code(?:\s[^>]*)?>([\s\S]*?)<\/code>/g)].map((m) => m[1].replace(/&(?:lt|gt|quot|#39|amp);/g, (e) => HTML_ENT[e]));
+}
 
 /**
  * What the person asked for in this turn: the messages they typed that started it, and the confirm they confirmed, at

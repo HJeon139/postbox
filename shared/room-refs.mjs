@@ -3,6 +3,7 @@
 // Ids are looked up in the conversation’s own room and work only, so an id from another conversation names nothing
 // (#31).
 
+import { codeSpansIn } from './code-spans.mjs';
 import { nameKey, own, roomOf } from './state-assets.mjs';
 
 /** An asset id as Postbox writes them: as_ and 8 letters or digits (server/ids.mjs). */
@@ -105,9 +106,6 @@ export function refLookup(state, convId) {
   };
 }
 
-/** Inline code in a message’s Markdown: what links in a reply are made from (app/js/room-links.mjs). */
-const CODE = /`([^`\n]+)`/g;
-
 /** How many In this chat ranks at most: past it, the list isn’t a short list any more. */
 export const RELEVANT_MAX = 50;
 
@@ -168,7 +166,8 @@ export function relevantRefs(state, convId, items, { messages = 10, turns = 2 } 
     if (name) seen.set(ref.at, { ...ref, when, name });
   };
   for (const it of lastSaid(items, messages)) {
-    for (const m of it.text.matchAll(CODE)) note(find(m[1]), it.at ?? 0);
+    // Inline code in a message’s Markdown, as the page draws it (#1659): what links in a reply are made from (app/js/room-links.mjs).
+    for (const code of codeSpansIn(it.text)) note(find(code), it.at ?? 0);
     for (const m of it.text.matchAll(ASSET_ID)) note(find(m[0]), it.at ?? 0);
   }
   const entries = state.work?.[convId] ?? [];

@@ -1,5 +1,8 @@
-// Code spans, read as the renderer reads them (markdown-inline.mjs), for the readers that set code apart without
-// rendering: plain text, mentions, the glossary lint and the disclosure parser (#1601).
+// Code spans, read as the renderer reads them (markdown-inline.mjs, markdown.mjs), for the readers that set code apart
+// without rendering: plain text, mentions, the glossary lint, the disclosure parser (#1601), the raw-HTML lint, write
+// intent and room links (#1659). An escaped character is text, and a table row's cells are read one at a time.
+
+import { ESCAPED, FENCE, HEADING, LIST_ITEM, QUOTE, RULE, TABLE_SEP } from './markdown-blocks.mjs';
 
 /**
  * The longest run of backticks that starts at or after each place in s, so a run with no close of its length is known
@@ -34,21 +37,43 @@ export function codeSpanAt(line, at, longest) {
 }
 
 /**
- * One line with each code span replaced by `fn(code, span)`, read left to right (codeSpanAt).
+ * One line with each code span replaced by `fn(code, span)`, read left to right as the renderer reads it: an escaped
+ * character first, so `\\`` is a backtick in the text, then a run of backticks (codeSpanAt).
  * @param {string} line @param {(code: string, span: string) => string} fn
  */
 function mapLine(line, fn) {
   if (!line.includes('`')) return line;
   const longest = longestRunFrom(line);
   let out = '';
-  let i = 0;
-  for (let at = line.indexOf('`'); at > -1; at = line.indexOf('`', i)) {
-    const { code, end } = codeSpanAt(line, at, longest);
-    out += line.slice(i, at) + (code === null ? line.slice(at, end) : fn(code, line.slice(at, end)));
+  let from = 0;
+  for (let i = 0; i < line.length; ) {
+    if (line[i] === '\\' && ESCAPED.test(line[i + 1] ?? '')) {
+      i += 2;
+      continue;
+    }
+    if (line[i] !== '`') {
+      i++;
+      continue;
+    }
+    const { code, end } = codeSpanAt(line, i, longest);
+    if (code !== null) {
+      out += line.slice(from, i) + fn(code, line.slice(i, end));
+      from = end;
+    }
     i = end;
   }
-  return out + line.slice(i);
+  return out + line.slice(from);
 }
+
+/**
+ * A table row with each cell's code spans replaced: the renderer splits a row at each unescaped “|” before it reads its
+ * spans (markdown.mjs, table), so a span never crosses a cell. @param {string} row @param {(code: string, span: string) => string} fn
+ */
+const mapRow = (row, fn) =>
+  row
+    .split(/(?<!\\)(\|)/)
+    .map((part, i) => (i % 2 ? part : mapLine(part, fn)))
+    .join('');
 
 /**
  * The text with each code span replaced by `fn(code, span)`. A span never crosses a line, since the renderer reads one
@@ -59,8 +84,35 @@ function mapLine(line, fn) {
 export function mapCodeSpans(s, fn) {
   // Most messages have no backticks, and mentions are read on every keystroke and every item in a catch-up.
   if (!s.includes('`')) return s;
-  return s
-    .split(/(\r\n?|\n)/)
-    .map((part, i) => (i % 2 ? part : mapLine(part, fn)))
+  const parts = s.split(/(\r\n?|\n)/);
+  // The lines of a table: a line with a “|” whose next is a separator row, then each line with a “|” after it. As
+  // the renderer reads blocks (markdown.mjs), a heading, a quote, a list item, a fence or a rule is read first, so
+  // none of them starts a table, though a rule under it matches the separator.
+  const inTable = new Set();
+  for (let i = 0; i < parts.length; i += 2) {
+    if (!parts[i].includes('|') || !TABLE_SEP.test(parts[i + 2] ?? '') || readFirst(parts[i])) continue;
+    inTable.add(i);
+    for (i += 4; i < parts.length && parts[i].includes('|') && parts[i].trim(); i += 2) inTable.add(i);
+    i -= 2;
+  }
+  return parts
+    .map((part, i) => {
+      if (i % 2) return part;
+      return inTable.has(i) ? mapRow(part, fn) : mapLine(part, fn);
+    })
     .join('');
+}
+
+/** Whether the renderer reads a line as another block before it could start a table. @param {string} line */
+const readFirst = (line) => [FENCE, HEADING, QUOTE, LIST_ITEM, RULE].some((re) => re.test(line));
+
+/** The code of each code span in the text, in order, as the page draws them. @param {string} s */
+export function codeSpansIn(s) {
+  /** @type {string[]} */
+  const found = [];
+  mapCodeSpans(String(s ?? ''), (code, span) => {
+    found.push(code);
+    return span;
+  });
+  return found;
 }
