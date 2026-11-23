@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { settleInterrupted } from '../server/restart-sweep.mjs';
+import { settleOrphanTurns } from '../server/store-outage.mjs';
 import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
 
@@ -16,4 +17,13 @@ test('#1715 a restart marks the turn it cut off as ended, and leaves an idle ses
   settleInterrupted(f.rt);
   assert.ok(f.store.state.sessions[f.alpha.id].finishedAt >= before, 'the cut-off turn has ended');
   assert.equal(f.store.state.sessions[f.beta.id].finishedAt, 1234, 'an idle session is untouched');
+});
+
+test('#1715 a session reset after a store outage, with no turn running, is marked ended too', () => {
+  const f = setup();
+  arrange.setSession(f.rt, f.alpha.id, { state: 'tool', finishedAt: null });
+  const before = Date.now();
+  settleOrphanTurns(f.rt);
+  assert.equal(f.store.state.sessions[f.alpha.id].currentStep, 'Interrupted: Postbox couldn’t save changes');
+  assert.ok(f.store.state.sessions[f.alpha.id].finishedAt >= before, 'the orphaned turn has ended');
 });
