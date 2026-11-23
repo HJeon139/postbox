@@ -8,6 +8,7 @@ import { blockTitle } from './block-update.mjs';
 import { releaseNeed } from './card-needs.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
 import { REACT } from './reactions.mjs';
+import { CORRECT, correctComment } from './review-correct.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
 import { resolveViewAsk } from './view-app/consent.mjs';
 import { stopRequested } from './write-intent.mjs';
@@ -27,12 +28,21 @@ const ANSWERED_BY = {
   allowedcall: (rt, threadId, itemId, action) => stopRequested(rt, threadId, itemId, action),
 };
 
+/**
+ * The acts that never answer the item they’re on: a reaction, on any message, block or app (#251), and the person’s
+ * correction of their own comment on a review they answered (#858).
+ * @type {Record<string, (rt: any, threadId: string, itemId: string, values: any) => any>}
+ */
+const NOT_ANSWERS = {
+  [REACT]: (rt, threadId, itemId, values) => rt.threads.toggleReaction(threadId, itemId, values?.emoji),
+  [CORRECT]: (rt, threadId, itemId, values) => correctComment(rt, threadId, itemId, values),
+};
+
 /** @param {number} [revision]  the revision of the block the person answered, as their page showed it (#123) */
 export function act(rt, threadId, itemId, action, values, revision) {
   const it = rt.store.item(threadId, itemId);
   if (!it) throw httpError(404, 'That block doesn’t exist any more.');
-  // A reaction is an act on any message, block or app (#251), and never answers one.
-  if (action === REACT) return rt.threads.toggleReaction(threadId, itemId, values?.emoji);
+  if (Object.hasOwn(NOT_ANSWERS, action)) return NOT_ANSWERS[action](rt, threadId, itemId, values);
   if (Object.hasOwn(ANSWERED_BY, it.kind)) return ANSWERED_BY[it.kind](rt, threadId, itemId, action, values);
   if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
   if (it.closed?.by === 'agent')
