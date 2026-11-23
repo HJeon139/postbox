@@ -138,7 +138,14 @@ export function turnExited(rt, turn) {
   const hung = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id;
   const stoppedBy = stoppedLine(turn, se, hung);
   if (se.state === 'stopping' || se.currentStep === 'Stopping')
-    rt.sessions.update(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
+    // A stopped turn ends a count of a provider’s failures in a row too (#1713).
+    rt.sessions.update(se.id, {
+      state: se.state === 'stopping' ? 'idle' : se.state,
+      currentStep: stoppedBy,
+      finishedAt: Date.now(),
+      sideTurn: null,
+      autoRetry: null,
+    });
   else if (se.sideTurn) rt.sessions.update(se.id, { sideTurn: null });
   const held = se.retiredFork ? [] : ex.held;
   // Shutting down, nothing starts a CLI: your messages wait in the agent’s inbox, which a restart keeps. One a turn took

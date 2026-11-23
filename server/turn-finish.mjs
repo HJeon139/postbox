@@ -79,8 +79,10 @@ function settleReplies(rt, turn, items, err) {
  */
 function markFailed(rt, se, turn, { target, message, failure, transient }) {
   const quota = failure?.kind === 'quota' ? outOfQuota(rt, se, failure.until, turn.threadId) : null;
-  let need = { needs: { kind: 'failed', itemId: target, text: message, ...rt.sessions.awayFrom(se, turn.threadId) } };
-  if (quota) need = { quota, needs: null };
+  // Any failure but a provider’s ends a wait to try again: the agent needs the person, or waits for its quota (#1713).
+  /** @type {Record<string, any>} */
+  let need = { needs: { kind: 'failed', itemId: target, text: message, ...rt.sessions.awayFrom(se, turn.threadId) }, autoRetry: null };
+  if (quota) need = { quota, needs: null, autoRetry: null };
   else if (transient) need = transientSession(transient, turn.threadId, target);
   rt.sessions.update(se.id, {
     state: 'failed',

@@ -169,9 +169,10 @@ export const PENDING = {
   // The quota marks that decide a mark or its clearing, and the persona that says whose quota it is, each maybe held
   // behind a commit (#442).
   'turn-quota.mjs': ['quotaKey', 'sessionsOn', 'quotaName', 'quotaMoved'],
-  // The count of a provider’s failures in a row, which decides whether a turn tries again or stops, and its clearing,
+  // The count of a provider’s failures in a row, which decides whether a turn tries again or stops, its clearing, and
+  // whether a wait’s end still belongs to the session’s wait,
   // each maybe held behind a commit (#1713).
-  'turn-transient.mjs': ['transientRetry', 'autoRetryEnds'],
+  'turn-transient.mjs': ['transientRetry', 'armRetry', 'autoRetryEnds'],
   // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
   'turn-stop.mjs': ['stop', 'turnExited'],
   'stop-record.mjs': ['recordStopped'], // the stopped turn’s segments still streaming, maybe held behind a commit (#602)

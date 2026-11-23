@@ -73,13 +73,14 @@ export function afterTransient(rt, se, turn, r, itemId) {
 }
 
 /**
- * The wait for one try: at its end, the person’s Retry of the failed reply, which does nothing once the reply isn’t
- * failed any more (the person retried it, or dismissed the agent). A Retry refused leaves the reply failed, with Retry.
+ * The wait for one try: at its end, the person’s Retry of the failed reply, which does nothing once the session is no
+ * longer waiting on this reply (a later failure, a Dismiss, a Stop or a turn that went well), or the reply isn’t failed. A Retry refused leaves the reply failed, with Retry.
  * @param {any} rt @param {string} sessionId @param {string} threadId @param {string} itemId @param {number} at
  */
 function armRetry(rt, sessionId, threadId, itemId, at) {
   const fire = () => {
-    if (rt.closing) return;
+    // Only the wait the session is still in: a later failure, a Dismiss, a Stop or a turn that went well ended this one.
+    if (rt.closing || rt.store.pending.session(sessionId)?.autoRetry?.itemId !== itemId) return;
     Promise.resolve()
       .then(() => rt.turnService.retry(threadId, itemId))
       .catch((/** @type {any} */ e) => {

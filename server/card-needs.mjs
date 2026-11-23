@@ -240,6 +240,8 @@ export function dismissFailed(rt, threadId, itemId) {
   if (it?.kind !== 'agent' || it.status !== 'failed') throw httpError(409, 'Only a failed reply can be dismissed.');
   if (it.dismissed) return { ok: true };
   rt.threads.patchItem(threadId, itemId, { dismissed: true });
+  // Dismissed, it isn’t tried again on its own either (#1713).
+  rt.sessions.update(it.sessionId, (se) => (se.autoRetry?.itemId === itemId ? { autoRetry: null } : {}));
   releaseNeed(rt, rt.s.sessions[it.sessionId], itemId);
   return { ok: true };
 }
