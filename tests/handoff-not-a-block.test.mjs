@@ -54,6 +54,39 @@ test('#1695 a turn whose reply @-mentions another agent gets no reply-form lint;
   );
 });
 
+test('#1695 a Retry whose reply @-mentions the agent the failed reply already woke gets no reply-form lint', async () => {
+  const { rt, store, t, adapter } = setup();
+  const lead = rt.createPersona({ handle: 'lead' });
+  rt.ensureSession(t.id, lead.id);
+  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
+  const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
+  const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
+  // The reply that fails has already woken @critic, so the retry’s mention of it wakes no one again.
+  adapter.next.push(async (c) => {
+    c.text('@critic, please re-review #1656.');
+    throw new Error('Claude Code exited with code 1.');
+  });
+  adapter.next.push(async (c) => c.text('ok'));
+  rt.sendMessage(t.id, { text: '@lead hand #1656 to critic' });
+  await settle(rt);
+  const failed = store.items(t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
+  assert.deepEqual(failed.wokeOnFailure, ['critic']);
+  adapter.next.push(async (c) => c.text(HANDOFF));
+  await rt.retry(t.id, failed.id);
+  await settle(rt);
+  assert.ok(
+    store.items(t.id).some((i) => i.kind === 'agent' && i.status === 'done' && i.text?.includes('Point 46')),
+    'the retry answered',
+  );
+  assert.deepEqual(
+    lints()
+      .flatMap((c) => c.message.problems.map((p) => p.code))
+      .filter((c) => c.endsWith('-in-prose')),
+    [],
+    'no reply-form problem',
+  );
+});
+
 test('#1695 a reply that goes back to the agent that woke it, naming no one, gets no reply-form lint', async () => {
   const { rt, store, t, adapter } = setup();
   const lead = rt.createPersona({ handle: 'lead' });

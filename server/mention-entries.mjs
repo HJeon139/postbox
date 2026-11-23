@@ -35,6 +35,8 @@ export function mentionEntries(rt, { threadId, item }) {
     if (h.toLowerCase() === se.handle.toLowerCase()) continue;
     // It named an agent, so it doesn’t go back to the one that woke it (reply-back.mjs), whether or not this wakes it.
     turn.named = true;
+    // And a reply of its own named one, which open_topic and a review don’t set: the reply-form checks read it (#1695).
+    turn.addressed = true;
     if (turn.woken.includes(h)) continue;
     const opts = { replyIn, fromTurnId: turn.id, itemId: said, prose: true, wake: live, retryId: replayKey(turn, h) };
     const r = rt.agentWake(se.id, h, item.text, opts);
