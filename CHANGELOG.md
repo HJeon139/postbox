@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.43.2 (2026-11-23)
+
+### Fixes
+
+- **threads:** mark a reply that only wrote before the agent's next turn is told where its reply goes
+- **threads:** count a second reply in a row per exchange, not per agent
+- **threads:** say in one place which of Postbox's tools are a turn's work
+- **threads:** end an exchange at an agent's second reply in a row that only writes
+- **kiro:** read a Postbox tool's name from the call's title
+- **threads:** let a turn with nothing to add end without waking anyone
+- **threads:** keep a mention from waking the agent a reaction just ended with
+
 ## 4.43.1 (2026-11-23)
 
 ### Fixes
