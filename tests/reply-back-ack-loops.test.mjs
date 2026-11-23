@@ -68,7 +68,7 @@ test('#1591: a 👍 on a direct request doesn’t stop a question to the agent t
   );
 });
 
-test('#1591: agents that write “I’m ending without a reply” end there (holdstill)', async () => {
+test('#1591: agents that write “I’m ending without a reply” end at the second such line in a row (holdstill)', async () => {
   // critic and researcher, about 50 turns each with no tool call: each took the other’s reply that came back and wrote
   // “Nothing here is for me to act on, so I’m ending without a reply.”, which posted as its reply and went back.
   const plays = { researcher: playsWith('holdstill', 'researcher', 'critic', 6), critic: playsWith('holdstill', 'critic', 'researcher') };
@@ -76,23 +76,36 @@ test('#1591: agents that write “I’m ending without a reply” end there (hol
   rt.sendMessage(t.id, { text: '@researcher write a long reply on how word counts differ between tools' });
   await settle(rt);
   assert.ok(!heldOnCard(store, t), `the exchange ended before the room’s limit: ${turnsOf(adapter)}`);
-  // researcher names critic, critic’s answer goes back (#1518), and researcher, with nothing to add, ends it.
-  assert.equal(turnsOf(adapter), 'researcher critic researcher');
-  const last = replies(store, t).at(-1);
-  assert.equal(last.text, "Nothing here is for me to act on, so I'm ending without a reply.", 'its line still posts');
-  assert.equal(last.wentBack, undefined, 'and goes back to no one');
+  // researcher names critic, and critic’s answer goes back (#1518). Then each writes one line that only writes, which
+  // is delivered, and researcher’s second in a row ends it.
+  assert.equal(turnsOf(adapter), 'researcher critic researcher critic researcher');
+  const said = replies(store, t);
+  assert.deepEqual(
+    said.slice(2).map((i) => [i.handle, i.wentBack, i.wordsOnly]),
+    [
+      ['researcher', ['critic'], true],
+      ['critic', ['researcher'], true],
+      ['researcher', undefined, undefined],
+    ],
+  );
+  assert.equal(said.at(-1).text, "Nothing here is for me to act on, so I'm ending without a reply.", 'its line still posts');
 });
 
-test('#1591: a turn that a reply coming back woke is told its words alone wake no one', async () => {
+test('#1591: an agent is told when its next reply that only writes will wake no one', async () => {
   const plays = { researcher: playsWith('holdstill', 'researcher', 'critic', 6), critic: playsWith('holdstill', 'critic', 'researcher') };
   const { rt, adapter, t } = room(plays);
   rt.sendMessage(t.id, { text: '@researcher write a long reply on how word counts differ between tools' });
   await settle(rt);
-  const [asked, back] = [adapter.calls[1].text, adapter.calls[2].text];
+  const [asked, back, again] = [adapter.calls[1].text, adapter.calls[2].text, adapter.calls[4].text];
   assert.match(asked, /Your reply posts there and goes back to @researcher\. @-mention another agent to hand off to them instead\.\n/);
-  assert.match(back, /Your reply posts there\. It goes back to @critic only if you do work this turn \(more than reading here and reacting\): /);
-  assert.match(back, /if you only write, it wakes no one, so @-mention whoever must act on it or answer it\./);
+  // Its first reply after one came back goes back as any does, and a reaction or nothing at all ends the exchange.
+  assert.match(back, /Your reply posts there and goes back to @critic\. @-mention another agent to hand off to them instead\. If the exchange is done, /);
   assert.match(back, /react to the reply: then nothing you write this turn wakes its sender, even by name\. You can also end without writing anything\.\n/);
+  assert.match(again, /Your reply posts there\. Your last reply here only wrote, so this one goes back to @critic only if you do work this turn /);
+  assert.match(
+    again,
+    /\(more than reading the room and reacting\): a second in a row that only writes wakes no one, so @-mention whoever must act on it or answer it\./,
+  );
 });
 
 test('#1591: agents at work still answer each other, however many replies came back before (#1523)', async () => {
@@ -100,32 +113,117 @@ test('#1591: agents at work still answer each other, however many replies came b
   const work = (text) => ({ text, step: true });
   const plays = {
     alpha: [{ text: '@critic please review wordcount.py.' }, work('Fixed the tabs case.'), work('Fixed the empty file case.'), { text: 'Thanks.' }],
-    critic: [work('Tabs count as words.'), work('An empty file prints nothing.'), work('Both hold now.')],
+    critic: [work('Tabs count as words.'), work('An empty file prints nothing.'), work('Both hold now.'), { text: 'Any time.' }],
   };
   const { store, rt, adapter, t } = room(plays);
   rt.sendMessage(t.id, { text: '@alpha ask critic for a review' });
   await settle(rt);
-  assert.equal(turnsOf(adapter), 'alpha critic alpha critic alpha critic alpha');
+  // Then the pleasantries: one from each is delivered, and alpha’s second “Thanks.” in a row ends it.
+  assert.equal(turnsOf(adapter), 'alpha critic alpha critic alpha critic alpha critic alpha');
   const went = replies(store, t).map((i) => [i.text, i.wentBack]);
-  assert.deepEqual(went.slice(1, 6), [
+  assert.deepEqual(went.slice(1), [
     ['Tabs count as words.', ['alpha']],
     ['Fixed the tabs case.', ['critic']],
     ['An empty file prints nothing.', ['alpha']],
     ['Fixed the empty file case.', ['critic']],
     ['Both hold now.', ['alpha']],
+    ['Thanks.', ['critic']],
+    ['Any time.', ['alpha']],
+    ['Thanks.', undefined],
   ]);
-  assert.deepEqual(went[6], ['Thanks.', undefined], 'and the thanks ends it');
 });
 
-test('#1591: a turn that only writes still reaches the agent it @-mentions', async () => {
+test('#1591: work between two replies that only write starts the count again', async () => {
+  const work = (text) => ({ text, step: true });
   const plays = {
-    alpha: [{ text: '@critic please review wordcount.py.' }, { text: '@critic and the tabs case?' }, { text: '' }],
-    critic: [{ text: 'Reviewed: whitespace-only input prints 0.' }, { text: 'Tabs split words too.' }],
+    alpha: [
+      { text: '@beta draft the plan.' },
+      { text: 'Add a rollback step.' },
+      work('I checked it against the runbook: one gap.'),
+      { text: 'Good, that closes it.' },
+      { text: '' },
+    ],
+    beta: [work('Drafted the plan.'), work('Added the rollback step.'), work('Closed the gap.'), work('Filed it.')],
   };
-  const { rt, adapter, t } = room(plays);
-  rt.sendMessage(t.id, { text: '@alpha ask critic for a review' });
+  const { store, rt, t } = room(plays);
+  rt.sendMessage(t.id, { text: '@alpha have beta draft the plan' });
   await settle(rt);
-  assert.equal(turnsOf(adapter), 'alpha critic alpha critic alpha');
+  const went = Object.fromEntries(replies(store, t).map((i) => [i.text, i.wentBack]));
+  assert.deepEqual(went['Add a rollback step.'], ['beta'], 'the first that only writes');
+  assert.deepEqual(went['Good, that closes it.'], ['beta'], 'and the next one, after a reply that did work');
+});
+
+// The exchanges the integrator’s review of PR #1724 found cut when an agent’s first reply that only wrote went back to
+// no one. Each depends on one such reply reaching the other agent, with no @-mention.
+const END = { text: '' };
+const heard = (adapter, handle, text) => adapter.calls.some((c) => c.handle === handle && c.text.includes(text));
+const CUT_CASES = [
+  {
+    name: 'a follow-up question, and its answer',
+    ask: '@alpha ask beta which file holds the changelog',
+    plays: {
+      alpha: [{ text: '@beta which file holds the changelog?' }, { text: 'Which section?' }, END],
+      beta: [{ text: 'It’s CHANGELOG.md.' }, { text: 'Under Unreleased.' }],
+    },
+    reaches: [
+      ['beta', 'Which section?'],
+      ['alpha', 'Under Unreleased.'],
+    ],
+  },
+  {
+    name: 'a reviewer’s “Looks good, ship it.” after a fix',
+    ask: '@alpha build it and get critic’s review',
+    plays: {
+      alpha: [{ text: '@critic please review wordcount.py.', step: true }, { text: 'Fixed both.', step: true }, { text: 'Shipped.', step: true }, END],
+      critic: [{ text: 'Two problems: tabs and empty files.', step: true }, { text: 'Looks good, ship it.' }, END],
+    },
+    reaches: [['alpha', 'Looks good, ship it.']],
+  },
+  {
+    name: 'the answer to a clarifying question',
+    ask: '@alpha have beta add the changelog entry',
+    plays: {
+      alpha: [{ text: '@beta add the entry for the fix to the changelog.' }, { text: 'Under Unreleased.' }, END],
+      beta: [{ text: 'Which section does it go under?' }, { text: 'Added it under Unreleased.', step: true }],
+    },
+    reaches: [['beta', 'Under Unreleased.']],
+  },
+  {
+    name: 'a hand-off in words, with no @',
+    ask: '@alpha have beta draft the plan, then run the tests',
+    plays: {
+      alpha: [{ text: '@beta draft the plan.' }, { text: 'Good. beta, now run the tests and report.' }, END],
+      beta: [
+        { text: 'Drafted the plan.', step: true },
+        { text: 'Tests pass.', step: true },
+      ],
+    },
+    reaches: [['beta', 'now run the tests']],
+  },
+];
+for (const { name, ask, plays, reaches } of CUT_CASES) {
+  test(`#1591: one reply that only writes still reaches the other agent: ${name}`, async () => {
+    const { store, rt, adapter, t } = room(plays);
+    rt.sendMessage(t.id, { text: ask });
+    await settle(rt);
+    for (const [handle, text] of reaches) assert.ok(heard(adapter, handle, text), `${handle} heard “${text}”: ${turnsOf(adapter)}`);
+    assert.ok(!heldOnCard(store, t));
+  });
+}
+
+test('#1591: a discussion in words only ends at the fifth message, unless an agent @-mentions', async () => {
+  const alpha = (third) => [{ text: '@beta I’d cache at the edge. Objections?' }, { text: 'Per-user data is 5%; split it?' }, { text: third }, END];
+  const beta = () => [{ text: 'Edge fails for per-user data.' }, { text: 'Split works if the keys differ.' }, { text: 'Then we agree.' }];
+  const { store, rt, adapter, t } = room({ alpha: alpha('Agreed: split, edge for public.'), beta: beta() });
+  rt.sendMessage(t.id, { text: '@alpha agree an approach with beta' });
+  await settle(rt);
+  assert.equal(turnsOf(adapter), 'alpha beta alpha beta alpha');
+  assert.equal(replies(store, t).at(-1).wentBack, undefined, 'alpha’s second reply in a row that only wrote');
+  // With the @-mention its first line asks for, the discussion goes on.
+  const named = room({ alpha: alpha('@beta agreed: split, edge for public.'), beta: beta() });
+  named.rt.sendMessage(named.t.id, { text: '@alpha agree an approach with beta' });
+  await settle(named.rt);
+  assert.ok(heard(named.adapter, 'beta', 'agreed: split, edge for public.'), turnsOf(named.adapter));
 });
 
 test('#1591: a turn that acted through one of Postbox’s tools did work, and one that only reacted or read didn’t', () => {

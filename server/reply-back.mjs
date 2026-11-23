@@ -1,9 +1,9 @@
 // A reply that goes back (#1518; designs/intent.md, the row on agents waking agents): a turn only other agents’
 // @-mentions started, whose replies @-mention no one, goes back to the agents whose mentions woke it, as if it had
 // mentioned them. Every time (#1523): chaining is how agents talk, and the room’s chain limit counts each bounce as
-// any wake. An exchange ends with a reaction to the reply that came back (#1553), or with a turn that reply woke
-// and that did nothing but write (#1591). Functions take the Runtime first, as waiting code does until Turns is a
-// service.
+// any wake. An exchange ends with a reaction to the reply that came back (#1553), or at an agent’s second reply in a
+// row from a turn that reply woke and that did nothing but write (#1591). Functions take the Runtime first, as
+// waiting code does until Turns is a service.
 
 /**
  * Whom a turn that took these entries goes back to when its replies @-mention no one: the agents whose mentions it
@@ -28,8 +28,9 @@ export function replyBack(rt, turn, se, took) {
   // turn.named: a reply or an open_topic of this turn @-mentioned an agent, even one that couldn’t be woken, or it
   // reviewed an agent’s block, which hands off to its author.
   if (turn.endErr || turn.named || turn.summarizeTo) return;
-  // A turn with nothing to add ends the exchange, whatever line it closes with (#1591).
-  if (endedExchange(turn)) return;
+  // An agent’s second reply in a row that only writes ends the exchange, whatever line it closes with (#1591).
+  const wordsOnly = endedExchange(turn);
+  if (wordsOnly && wroteOnlyLast(rt, se, turn.threadId, turn.id)) return;
   const conv = rt.threads.conversationToWrite(turn.threadId);
   const here = (/** @type {string} */ h) => rt.sessions.pendingIn(conv).some((/** @type {any} */ x) => x.handle === h && !x.retiredFork);
   // A turn that took no entries carries whom it goes back to: a host turn continued under a new ID goes back as the turn
@@ -47,7 +48,23 @@ export function replyBack(rt, turn, se, took) {
     // Only one that went: a bounce past the chain limit waits on the card, which shows it, and may never go.
     if (r.ok) went.push(h);
   }
-  if (went.length) rt.threads.patchItem(turn.threadId, reply.id, { wentBack: went });
+  // The reply keeps that its turn only wrote, where the agent’s next turn in the thread reads it, after a restart too.
+  if (went.length) rt.threads.patchItem(turn.threadId, reply.id, { wentBack: went, ...(wordsOnly ? { wordsOnly: true } : {}) });
+}
+
+/**
+ * Whether the agent’s last reply in a thread, before this turn’s, came from a turn that only wrote and went back
+ * (#1591). One such reply is delivered, since it may be a follow-up question, its answer, a reviewer’s “ship it” or a
+ * hand-off in words, which Postbox can’t tell from a thanks without reading it. A second in a row is what every
+ * recorded loop was made of: 351 of 351 in the eight stored runs were “I’m not replying” or “Acknowledged.” (the
+ * integrator’s review of PR #1724), so the owner chose to end the exchange there. Any reply between them that did
+ * work, or that a request woke, starts the count again. Read by the turn’s input too (turns.mjs), so what the agent
+ * is told is what happens.
+ * @param {any} rt @param {any} se @param {string} threadId @param {string | null} [turnId]  the turn whose replies don’t count
+ */
+export function wroteOnlyLast(rt, se, threadId, turnId = null) {
+  const mine = (/** @type {any} */ x) => x.kind === 'agent' && x.sessionId === se.id && x.turnId !== turnId && x.text?.trim();
+  return rt.store.pending.items(threadId).findLast(mine)?.wordsOnly === true;
 }
 
 /**
@@ -71,11 +88,11 @@ export function endedByReaction(rt, se, took, handle, since) {
 /**
  * Only replies that went back on their own woke it, and it had nothing to add (#1543): it took no step and acted
  * through none of Postbox’s tools, a reaction aside. An exchange between agents may end there quietly, since a
- * failure is an alarm the person can’t act on (empty-reply.mjs), and what such a turn writes goes back to no one
- * (#1591): a model closes its turn with a line, the harness posts it as the reply, and two agents sent each other
- * “I’m ending without a reply.” about 50 times each in a UAT run of 23 November 2026. It still wakes whom it
- * @-mentions. A turn that took a step had work to report (#485), and its reply goes back, however many came back
- * before (#1523). A direct @-mention is a request, so a turn it woke still owes its reply, which goes back, as do the
+ * failure is an alarm the person can’t act on (empty-reply.mjs), and the second reply in a row that such turns of
+ * one agent write goes back to no one (#1591, wroteOnlyLast): a model closes its turn with a line, the harness posts
+ * it as the reply, and two agents sent each other “I’m ending without a reply.” about 50 times each in a UAT run of
+ * 23 November 2026. It still wakes whom it @-mentions. A turn that took a step had work to report (#485), and its
+ * reply goes back, however many came back before (#1523). A direct @-mention is a request, so a turn it woke still owes its reply, which goes back, as do the
  * person’s Retry and a host turn continued after Interrupted or Sign-in needed: the first was the person asking, and
  * the second may have done its work before it was cut off.
  * @param {any} turn

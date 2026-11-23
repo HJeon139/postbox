@@ -621,8 +621,7 @@ async function indexerReply(m, a, _mem) {
   await a.think(500);
   if (/confirm the edition/i.test(m.text))
     return a.say('Confirmed again: the 1874 *Middlemarch* and the chapter-headed *Emma* and *Persuasion*. @researcher please check once more, in a loop.');
-  // Named without @, as the guide asks when it needn’t act. After a direct mention the thanks goes back, and the
-  // researcher reacts (#1523); after a reply that came back, it posts and wakes no one (#1591).
+  // Named without @, as the guide asks when it needn’t act; the thanks goes back, and the researcher reacts (#1523).
   await a.say(`Thanks, ${String(m.from).replace(/^@/, '')}. I’ll treat “Introduction” as a preface and rebuild those three books.`);
 }
 

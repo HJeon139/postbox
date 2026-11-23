@@ -31,16 +31,17 @@ test('#1553: Codex with Kiro, acknowledging with a reaction and words, stops onc
 
 test('#1591: two Claude agents that write “I’m not replying” instead of reacting end there, not at the chain limit', async () => {
   // scifact from turn 7, where critic @-mentions researcher, then from turn 8 on neither agent reacts, and each says
-  // it isn’t replying, in a reply. Until #1591 each of those lines went back, to hop 333 in the run: now a turn that
-  // only a reply coming back woke, and that only writes, wakes no one.
+  // it isn’t replying, in a reply. Until #1591 each of those lines went back, to hop 333 in the run: now an agent’s
+  // second reply in a row from a turn that only a reply coming back woke, and that only writes, wakes no one.
   const { store, rt, adapter, t } = room({ researcher: playsFrom('scifact', 'researcher', 8), critic: playsFrom('scifact', 'critic', 7) });
   rt.sendMessage(t.id, { text: '@critic close the table exchange with researcher' });
   await settle(rt);
   assert.ok(!heldOnCard(store, t), 'the exchange ended before the room’s limit');
-  // critic names researcher, researcher’s answer goes back (#1518), and critic’s “Closed on my side too.” ends it.
+  // critic names researcher, researcher’s answer goes back (#1518), each says once more that it isn’t replying, and
+  // critic’s second such line ends it.
   assert.deepEqual(
     adapter.calls.map((c) => c.handle),
-    ['critic', 'researcher', 'critic'],
+    ['critic', 'researcher', 'critic', 'researcher', 'critic'],
   );
 });
 
@@ -79,8 +80,7 @@ test('#1553: the person’s reaction to a reply that came back doesn’t end the
   const plays = {
     alpha: [
       { text: '@critic please review wordcount.py.', react: false },
-      // It ran the file before asking: a turn that only writes goes back to no one, whoever reacts (#1591).
-      { text: 'One more: does it handle tabs?', personReacts: true, step: true },
+      { text: 'One more: does it handle tabs?', personReacts: true },
     ],
     critic: [
       { text: 'Reviewed: whitespace-only input prints 0.', react: false },
@@ -96,13 +96,9 @@ test('#1553: the person’s reaction to a reply that came back doesn’t end the
 
 test('#1553: a reaction ends the exchange only with the agent whose reply it was', async () => {
   // critic asks two agents, then works on the person’s next message while both answer, so one turn takes both replies.
-  // It checks them, reacts to beta’s, the last, and writes a line: that goes back to alpha, whose reply it didn’t react to.
+  // It reacts to beta’s, the last, and writes a line: that goes back to alpha, whose reply it didn’t react to.
   const plays = {
-    critic: [
-      { text: '@alpha @beta check the counts.' },
-      { text: 'Working on the table.', busyMs: 300 },
-      { text: 'Noted, and both match my run.', react: true, step: true },
-    ],
+    critic: [{ text: '@alpha @beta check the counts.' }, { text: 'Working on the table.', busyMs: 300 }, { text: 'Thanks, noted.', react: true }],
     alpha: [{ text: 'alpha: the counts hold.' }],
     beta: [{ text: 'beta: the counts hold.' }],
   };
@@ -112,7 +108,7 @@ test('#1553: a reaction ends the exchange only with the agent whose reply it was
   await settle(rt);
   const third = adapter.calls.filter((c) => c.handle === 'critic')[2];
   assert.ok(third?.text.includes('alpha: the counts hold.') && third.text.includes('beta: the counts hold.'), JSON.stringify(adapter.calls));
-  const noted = store.items(t.id).find((i) => i.kind === 'agent' && i.text === 'Noted, and both match my run.');
+  const noted = store.items(t.id).find((i) => i.kind === 'agent' && i.text === 'Thanks, noted.');
   assert.deepEqual(noted.wentBack, ['alpha']);
 });
 
