@@ -7,13 +7,15 @@ export const PENDING = {
   // The agent's next need when a card is answered, the released card whose turn it may read, and the card it notifies:
   // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
-  'card-needs.mjs': ['keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed'],
+  // keptBlock: the block a turn kept, in any of the agent's threads, which decides the need its end writes (#647).
+  'card-needs.mjs': ['keptBlock', 'keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed'],
   // The mirrored reply a terminal line adds to, maybe held behind a commit; and the session attachClaudeSession just
   // made, whose transcript mirror starts following.
   'claude-mirror.mjs': ['mirror', 'pollMirror'],
   'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
+  'ask-question.mjs': ['handOver'], // a host question’s blocks this turn answered, whose answers go on when the host ends its call (#1059)
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
   'app-entries.mjs': ['lostEvent'], // the voice line an app’s event posted, maybe behind a held commit, read when its turn starts (#1425)
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
@@ -62,7 +64,7 @@ export const PENDING = {
   'permission-prompt.mjs': ['permission'], // the card the call waits on
   'read-folders.mjs': ['inReadFolder'], // whether a read is allowed with no card: a removal held behind a commit counts at once (#1074)
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies
-  'remote/turns-prompts.mjs': ['cardOf', 'permissionCards'], // a host turn’s own cards: the sweep its callers settle, and the calls an attach after a restart holds (#353)
+  'remote/turns-prompt-cards.mjs': ['permissionCards'], // a host turn’s own cards, and a question’s blocks (#1059): the sweep its callers settle, and the calls an attach after a restart holds (#353)
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
   'remote/turns.mjs': ['noteAttach', 'noteAttach'], // the session and the persona: whether it awaits attach, which decides a delivery’s wait, with the persona as written (#1135)
   'reply-segment.mjs': ['wordsSegment', 'placeStep'], // whether the turn’s open part is still its thread’s last decides where its next words and steps go
@@ -82,6 +84,17 @@ export const PENDING = {
   // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035); and the room a
   // PATCH sets it on, maybe started there.
   'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
+  // With run clocks on (#1526): every decision on a run clock (its route, its timer, a turn’s line, Delivery’s hold),
+  // on the clock as held writes will leave it; the session its route names, which a held delete may have removed; and
+  // the host stops its pause or expiry waits on, which the stop itself just wrote.
+  'run-clock-install.mjs': ['installRunClock'],
+  'run-clock.mjs': ['clockOf', 'unconfirmedStops', 'clockAction'],
+  // Whether a turn is kept for the resume: its clock may have expired behind a held commit, and then it can never run.
+  // The refusal’s words: the agent’s handle, and whether its clock is paused, maybe written behind a held commit.
+  'run-clock-held.mjs': ['holdForClock', 'refuseWhileHeld', 'refuseWhileHeld'],
+  // The session a clock line names, maybe just made, says which conversation the line goes to; and that
+  // conversation’s newest clock line, maybe just added, whether a holding clock still needs one.
+  'run-clock-notes.mjs': ['clockNote', 'repairClockNote', 'repairClockNote'],
   // The members a delete keeps its room for, maybe joined behind a held commit (#796); the session it deletes, and the
   // threads a conversation’s delete covers, any of them maybe made there too. Every lookup comes before any change.
   'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
@@ -92,8 +105,9 @@ export const PENDING = {
   // added behind a held commit (#1155); forgetReported: an agent’s sessions whose last report a backend switch drops
   // (#1315); stampNeeds: the session it stamps; unarchive: what an older Postbox archived, the threads and sessions it
   // rewrites as the store loads.
-  // The turn’s last reply, which goes back to whom woke it (#1518), maybe settled behind a held commit.
-  'reply-back.mjs': ['replyBack'],
+  // The turn’s last reply, which goes back to whom woke it (#1518), maybe settled behind a held commit; and the replies
+  // that woke it, whose reactions decide whether it goes back at all (#1553), a reaction maybe behind a held commit too.
+  'reply-back.mjs': ['replyBack', 'endedByReaction'],
   'sessions.mjs': ['pendingIn', 'pendingIn', 'ensure', 'update', 'needAt', 'remove', 'forgetReported', 'stampNeeds', 'unarchive'],
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written; and the agent and
   // project whose folder it runs in, maybe made or changed behind one (#1292).
@@ -101,6 +115,8 @@ export const PENDING = {
   'subagent-end.mjs': ['withUrgent'],
   // Stop's stopped entries name the message each sender sent, maybe settled behind a held commit. A topic's conversation,
   // which its session joins, and who answers in it, read as a topic opened behind a held commit leaves them (#1292).
+  // conversationOf and deletedFrom: whether an agent left the conversation, which decides who answers or writes a
+  // summary (#283), maybe behind a held commit.
   'side-threads.mjs': [
     'agentWake',
     'agentWake',
@@ -111,6 +127,8 @@ export const PENDING = {
     'sideSession',
     'threadPersona',
     'threadPersona',
+    'conversationOf',
+    'deletedFrom',
     'bumpSideLink',
     'bumpSideLink',
     // the session whose last messages it keeps, maybe written behind a held commit (#623)

@@ -5,6 +5,7 @@
 
 import { runningJobs, runningProgress, settleJobs } from './job-records.mjs';
 import * as queue from './message-queue.mjs';
+import { clockStopConfirmed } from './run-clock.mjs';
 import { dropScheduledWake } from './scheduled-wakes.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { recordStopped } from './stop-record.mjs';
@@ -15,6 +16,38 @@ import { entriesFirst } from './turns.mjs';
 
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;
+
+/** What a waiting permission is told, by who stopped the turn: the person, or a run clock (server/run-clock.mjs). */
+const STOP_WHY = Object.freeze({
+  you: 'You stopped the agent.',
+  clock: 'Its run clock reached its budget, so Postbox stopped it.',
+  pause: 'The person paused its run clock, so Postbox stopped it until they resume it.',
+});
+
+/** What the session’s line says once a turn a run clock stopped has exited, by its stopReason. */
+const CLOCK_STOPPED = Object.freeze({ clock: 'Stopped: its run clock reached its budget', pause: 'Stopped: its run clock is paused' });
+
+/**
+ * What the session’s line says once a stopped turn has exited: a store that couldn’t save, a remote turn Postbox
+ * stopped because it hung (its message), a run clock, or your Stop. @param {any} turn @param {any} se @param {boolean} hung
+ */
+function stoppedLine(turn, se, hung) {
+  if (turn.stopReason === 'store') return STORE_STOPPED;
+  if (hung) return se.remoteTurn.message;
+  return Object.hasOwn(CLOCK_STOPPED, turn.stopReason) ? CLOCK_STOPPED[/** @type {'clock' | 'pause'} */ (turn.stopReason)] : 'Stopped by you';
+}
+
+/**
+ * Why a stopped turn’s reply says it stopped (stopReason, app/js/reply-stop.mjs): Send now, a shutdown (none), a run
+ * clock’s expiry or pause (#1526), your Stop that kept its background jobs, or your Stop.
+ * @param {{ sendNow: boolean, by: string, kept: boolean }} o @returns {string | null}
+ */
+function stopReasonOf({ sendNow, by, kept }) {
+  if (sendNow) return 'send-now';
+  if (by === 'shutdown') return null;
+  if (by === 'clock' || by === 'pause') return by;
+  return kept ? 'kept-jobs' : 'stop';
+}
 
 /**
  * Stop ends this agent’s turn and its subagents. Agents it woke keep running. Its process gets SIGINT, then SIGKILL,
@@ -27,14 +60,14 @@ const STOP_WATCHDOG_MS = 15000;
  * A remote turn’s Stop is always a plain stop: the daemon stops the whole turn, so no job is kept (#120).
  * @param {any} rt  the runtime
  * @param {string} sessionId
- * @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' | 'hung', why?: string, sendNow?: boolean }} [opts]
+ * @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' | 'hung' | 'clock' | 'pause', why?: string, sendNow?: boolean }} [opts]
  */
 export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you', why, sendNow = false } = {}) {
   const turn = rt.turns.get(sessionId);
   if (!turn) return false;
   const keep = jobs === 'keep' && !turn.remote ? runningJobs(rt, sessionId, turn.id) : [];
   turn.keepJobs = new Set(keep.map((j) => j.id));
-  turn.stopReason = sendNow ? 'send-now' : by === 'shutdown' ? null : keep.length ? 'kept-jobs' : 'stop';
+  turn.stopReason = stopReasonOf({ sendNow, by, kept: keep.length > 0 });
   // Postbox is going: its exit starts nothing, as once it’s closing (turnExited).
   if (by === 'shutdown') turn.shutdown = true;
   const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: turn.stopReason };
@@ -43,7 +76,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
   turn.closed = true;
   rt.running.end(sessionId);
-  recordStopped(rt, turn, ended, { by, why: 'You stopped the agent.' });
+  recordStopped(rt, turn, ended, { by, why: by === 'clock' || by === 'pause' ? STOP_WHY[by] : STOP_WHY.you });
   // What the turn took was given to the agent, so it isn't handed over again (designs/architecture/services.md, “The
   // end of a turn”). A shutdown's isn't settled: the restart reopens it once, as a resend.
   if (by !== 'shutdown') rt.bus.emit('turn.stopping', { turn });
@@ -61,6 +94,8 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
     rt.watchdogs.delete(watchdog);
     if (rt.exiting.get(sessionId)?.turn !== turn) return;
     console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
+    // Its CLI may still work: a run clock voids its run (clockStopConfirmed).
+    if (rt.runClock) turn.mayRunOn ??= 'watchdog';
     turnExited(rt, turn);
   }, STOP_WATCHDOG_MS);
   watchdog.unref?.();
@@ -85,6 +120,10 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
  * then the queue.
  */
 export function turnExited(rt, turn) {
+  // With run clocks on, a clock that paused or expired while this turn could still work hears it’s over, at the time it
+  // was, or that Postbox stopped waiting for a CLI that may still work (mayRunOn: the watchdog, or a group that
+  // outlived SIGKILL).
+  if (rt.runClock && !turn.remote) clockStopConfirmed(rt, turn.sessionId, `turn:${turn.id}`, Date.now(), turn.mayRunOn);
   // What the exit writes waits for writes to reopen (ST-3), behind the stop’s own records (server/store-outage.mjs).
   if (!rt.store.writable) return whenWritable(rt, () => turnExited(rt, turn));
   settleJobs(rt, turn);
@@ -97,7 +136,7 @@ export function turnExited(rt, turn) {
   // Something else may have set the state meanwhile (a delete, an answered card); “Stopping” goes either way.
   // A remote turn Postbox stopped because it hung says so instead (#120).
   const hung = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id;
-  const stoppedBy = turn.stopReason === 'store' ? STORE_STOPPED : hung ? se.remoteTurn.message : 'Stopped by you';
+  const stoppedBy = stoppedLine(turn, se, hung);
   if (se.state === 'stopping' || se.currentStep === 'Stopping')
     rt.sessions.update(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
   else if (se.sideTurn) rt.sessions.update(se.id, { sideTurn: null });

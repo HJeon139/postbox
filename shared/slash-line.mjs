@@ -21,13 +21,19 @@ export function parseSlashLine(text) {
  * command, run as se’s turn with line as the prompt. missing: the line goes as a message, because the agent it names
  * offers no such command ('command'), or because no agent here has that handle ('agent'); the composer says which
  * before it’s sent. Null for a plain message.
+ * Postbox’s own commands take no argument (#546). Typed with one and no agent offering that name, one that only opens a
+ * view runs without it (dropped: what it leaves out); any other is refused (refused: true), since running /stop or
+ * /delete without the agent typed after it would act on others. Either way the composer says so before Enter.
+ * files: the draft has files, so the composer sends the line with them as a message, unless it’s refused; one that
+ * would drop its argument is refused too, marked files, since the files must go before it can run; and an agent’s
+ * command isn’t marked shadows, since no turn of it starts.
  * @param {string} text
- * @param {{ members: any[], reply: any, pick?: (name: string) => any, own: string[], has: (se: any, name: string) => boolean }} at
+ * @param {{ members: any[], reply: any, pick?: (name: string) => any, own: string[], views?: string[], has: (se: any, name: string) => boolean, files?: boolean }} at
  *   members: the conversation’s sessions; reply: the one the composer replies to; pick: the agent the / menu chose
- *   for that name, if any; own: Postbox’s command names; has: whether an agent offers a skill or command of that name
- * @returns {{ own: boolean, name: string, line: string, se: any, named: any } | { missing: 'command' | 'agent', name: string, named: any, handle: string | null } | null}
+ *   for that name, if any; own: Postbox’s command names; views: those of them that only open a view; has: whether an agent offers a skill or command of that name
+ * @returns {{ own: boolean, name: string, line: string, se: any, named: any, dropped?: string, shadows?: true } | { refused: true, name: string, se: any, named: any, dropped: string, files?: true } | { missing: 'command' | 'agent', name: string, named: any, handle: string | null } | null}
  */
-export function resolveCommand(text, { members, reply, pick = () => null, own, has }) {
+export function resolveCommand(text, { members, reply, pick = () => null, own, views = [], has, files = false }) {
   const cmd = parseSlashLine(text);
   if (!cmd) return null;
   const live = members.filter((x) => !x.retiredFork);
@@ -37,6 +43,12 @@ export function resolveCommand(text, { members, reply, pick = () => null, own, h
   if (own.includes(cmd.name) && !cmd.rest.trim()) return { own: true, name: cmd.name, line: cmd.line, se: named ?? reply, named };
   const offers = (se) => !!se && has(se, cmd.name);
   const se = named ? (offers(named) ? named : null) : (pick(cmd.name) ?? (offers(reply) ? reply : null) ?? live.find(offers) ?? null);
-  if (se) return { own: false, name: cmd.name, line: cmd.line, se, named };
+  // An agent’s command named like one of Postbox’s (Claude Code’s /effort): shadows, so the composer names whose turn it
+  // starts, since the person may have meant Postbox’s (#546).
+  if (se) return { own: false, name: cmd.name, line: cmd.line, se, named, ...(!named && !files && own.includes(cmd.name) ? { shadows: true } : {}) };
+  // Postbox’s own, typed with an argument as a CLI takes it (`/effort low`): never a paid turn as a message (#546).
+  const dropped = cmd.rest.trim();
+  if (views.includes(cmd.name) && !files) return { own: true, name: cmd.name, line: `/${cmd.name}`, se: named ?? reply, named, dropped };
+  if (own.includes(cmd.name)) return { refused: true, name: cmd.name, se: named ?? reply, named, dropped, ...(files ? { files } : {}) };
   return named ? { missing: 'command', name: cmd.name, named, handle: cmd.handle } : null;
 }

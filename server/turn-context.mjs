@@ -12,6 +12,7 @@ import { recordScheduledTool } from './scheduled-wakes.mjs';
 import { turnStep } from './step-text.mjs';
 import { newId } from './store.mjs';
 import { saveBackendState } from './store-outage.mjs';
+import { promptHook } from './turn-prompt.mjs';
 /**
  * What a turn's adapter runs with: what the turn is, its permissions, and the callbacks it reports through.
  * @param {any} rt  the runtime @param {any} se0  the session as the turn starts @param {any} turn
@@ -25,6 +26,15 @@ export function adapterContext(rt, se0, turn) {
     ...replyWords(rt, se0, turn, live),
     ...stepCallback(rt, se0, turn, live),
     ...reportCallbacks(rt, turn, live),
+    // What the turn sends its agent, only in UAT recording mode (server/turn-prompt.mjs).
+    ...promptHook(rt, turn),
+    // With run clocks on: Stop gave up on the CLI’s group, which outlived SIGKILL (server/adapters/process-group.mjs),
+    // so its end isn’t an exit, and a run clock voids its run.
+    ...(rt.runClock && {
+      unkilled: () => {
+        turn.mayRunOn ??= 'unkilled';
+      },
+    }),
     tools,
   };
 }
@@ -189,10 +199,12 @@ function stepCallback(rt, se0, turn, live) {
   const ensureSegment = () => replySegment(rt, turn, se0);
   return {
     // who: the subagent that took the step; parent nests it under its starting step; detail holds an error,
-    // thought, narration or subagent result; kind names non-tool work; job names its background job (#73, #129).
+    // thought, narration or subagent result; kind names non-tool work; job names its background job (#73, #129); tool
+    // names the tool a call ran.
     activity({
       id,
       label,
+      tool = null,
       state = 'running',
       ms = null,
       who = null,
@@ -214,7 +226,7 @@ function stepCallback(rt, se0, turn, live) {
       const sid = id ?? newId('st');
       // A new step of the agent’s own shows in the part it writes in now, after that part’s words so far.
       const place = i < 0 && !who ? placeStep(rt, turn, sid) : {};
-      const step = turnStep({ id: sid, label, state, ms, who, parent, detail, kind, job, input, output, ...place, added, deleted, diff });
+      const step = turnStep({ id: sid, label, tool, state, ms, who, parent, detail, kind, job, input, output, ...place, added, deleted, diff });
       if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
       else turn.steps.push(step);
       // Live, and stored at the next commit point (live-buffer.mjs).

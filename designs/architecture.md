@@ -4,7 +4,7 @@ The high-level design of Postbox: what it’s made of, how data moves through it
 
 ## What Postbox is
 
-Postbox is a local web app where one person directs two to four AI agents on their own computer. They talk to the agents in conversations; the agents answer in Markdown, in blocks from a fixed catalog that Postbox renders, and in apps they write that run sandboxed in the conversation. The agents run on real harnesses (Claude Code, the Agent SDK, Kiro, Codex and Antigravity), on this computer or on a remote host, and work together without waiting on the person. Postbox is Node with zero required runtime dependencies (the Agent SDK, the local voice and view_app’s browser are optional ones), plain ES modules and no build step. Its quality bar is intent.md’s: the loop right before the looks, nothing lost or applied twice, and what’s checked today in intent.md, “Quality bar”.
+Postbox is a local web app where one person directs a team of AI agents on their own computer. They talk to the agents in conversations; the agents answer in Markdown, in blocks from a fixed catalog that Postbox renders, and in apps they write that run sandboxed in the conversation. The agents run on real harnesses (Claude Code, the Agent SDK, Kiro, Codex and Antigravity), on this computer or on a remote host, and work together without waiting on the person. Postbox is Node with zero required runtime dependencies (the Agent SDK, the local voice and view_app’s browser are optional ones), plain ES modules and no build step. Its quality bar is intent.md’s: the loop right before the looks, nothing lost or applied twice, and what’s checked today in intent.md, “Quality bar”.
 
 ## The system at a glance
 
@@ -45,7 +45,7 @@ What each box holds is under “The main components”; what moves along the arr
 
 **Remote hosts** (`server/remote/`). An agent’s turns can run on another machine reached with the person’s own `ssh`. Only the agent’s process moves: the adapter stays on the laptop and drives a daemon on the host, which runs each turn detached and serves Postbox’s tools through a stdio shim. Nothing on the host can reach back. See [remote-hosts.md](architecture/remote-hosts.md), and [the person’s guide to hosts](remote-hosts.md).
 
-**Sandboxed apps** (`server/sandbox.mjs`, `app/kit/`). An agent’s app or diagram runs in a page sandboxed by its `Content-Security-Policy` header that loads nothing from a URL. The kit and libraries reach it inline or over the postMessage bridge, the only way it talks to the page. See [sandbox.md](architecture/sandbox.md) and [agent-apps.md](agent-apps.md).
+**Sandboxed apps** (`server/sandbox.mjs`, `app/kit/`). An agent’s app or diagram runs in a page sandboxed by its `Content-Security-Policy` header that loads nothing from a URL. The kit and libraries reach it inline or over the postMessage bridge, the only way it talks to the page. Through the bridge, Postbox’s server fetches public URLs for it; planned (#1610), it also reads the person’s own network and files on disk under a grant the agent sets, so an app shows live data without its agent relaying it. See [sandbox.md](architecture/sandbox.md) and [agent-apps.md](agent-apps.md).
 
 **Side processes.** Work with native code runs outside the server that holds the conversations, started on first use and stopped when idle: narration’s local voice ([narration.md](architecture/narration.md)) and the pinned headless browser that shows an agent its app ([view-app.md](architecture/view-app.md)).
 
@@ -80,9 +80,10 @@ sequenceDiagram
 
 ## Security boundaries
 
-Postbox runs on the person’s computer, as them, for one person. These are the boundaries AGENTS.md, “Security boundaries”, lists as rules, one for one; a change to any of them is reviewed as a security change, and SECURITY.md says what a report may cross.
+Postbox runs on the person’s computer, as them, for one person, and function comes first (intent.md, “Function first”): a boundary stays because it costs no function or keeps out a real risk the agents’ harnesses don’t already carry. These are the boundaries AGENTS.md, “Security boundaries”, lists as rules, one for one; a change to any of them is reviewed as a security change, and SECURITY.md says what a report may cross.
 - **This computer alone.** Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1` or `localhost` on its port. It refuses other `Host` headers and cross-site `Origin`s, and every write needs the page’s token ([security-boundaries.md](architecture/security-boundaries.md)).
-- **Agent and app content is data.** It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()` wrapped in `trusted()`. Agent apps run only in CSP-sandboxed pages that load nothing ([sandbox.md](architecture/sandbox.md)).
+- **Agent and app content is data.** It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()` wrapped in `trusted()`. Agent apps run only in CSP-sandboxed pages that load nothing themselves ([sandbox.md](architecture/sandbox.md)).
+- **An app reaches the network only through `net.fetch`, today public addresses only.** Planned (#1610): a grant its agent sets when it shows the app opens the sources it names, the person’s own network and folders on disk through `fs.read`, bounded by the agent’s own tools and run on its machine, and never credential locations, cloud metadata or another Postbox ([security-boundaries.md](architecture/security-boundaries.md), “What leaves through net.fetch” and “What an app reads from disk”).
 - **No shell strings.** Processes are spawned with an argument array, never a shell string.
 - **What reaches the browser** is decided by the `public` flag in `EVENTS` and the state-key lists in `shared/state.mjs`. `/api/state` and the event stream (the live and backlog frames) go through `server/public-state.mjs`. Every other route that answers with state may carry only data of public keys: review holds that until A2 adds the first private data, with a check that holds it ([security-boundaries.md](architecture/security-boundaries.md), “What reaches the browser”).
 
@@ -104,12 +105,14 @@ Each is one line: the decision, why, and where its detail is.
 - **The harness decides, in the mode the person set:** Postbox shows what agents did, and adds ask rules only for writes outside it, only in Ask me and Accept edits ([permissions.md](architecture/permissions.md), [agent-setup.md](architecture/agent-setup.md)).
 - **One session per agent per conversation:** agents never fork themselves, and the person chooses what an agent remembers by where they talk to it ([shared-memory.md](architecture/shared-memory.md)).
 - **Every agent reads the whole conversation:** an agent woken by a mention answered about a discussion it had never seen ([shared-memory.md](architecture/shared-memory.md)).
-- **Apps are sandboxed by header and load nothing:** the desktop app’s browser pane refuses a frame with the `sandbox` attribute, and a page that needs no requests can’t be broken by one ([sandbox.md](architecture/sandbox.md)).
+- **Function first:** a boundary that costs agents or their apps function needs a real risk; planned (#1610), an app reads live data under a grant its agent sets, so the agent never relays it ([intent.md](intent.md), “Function first”).
+- **Apps are sandboxed by header and load nothing themselves:** the desktop app’s browser pane refuses a frame with the `sandbox` attribute, and a page that needs no requests can’t be broken by one ([sandbox.md](architecture/sandbox.md)).
 - **Writes need the page’s token:** an agent’s casual `curl` can’t speak as the person ([security-boundaries.md](architecture/security-boundaries.md)).
 - **The page sees only what’s listed public:** one table, beside the reducer, fails closed ([security-boundaries.md](architecture/security-boundaries.md)).
 - **Only the agent’s process moves to a host:** the adapters, the store and the page stay local, so their assumptions hold ([remote-hosts.md](architecture/remote-hosts.md)).
 - **Native code runs in its own process:** narration and view_app’s browser bring native packages that never run inside the server ([narration.md](architecture/narration.md), [view-app.md](architecture/view-app.md)).
 - **The work ledger is built from tool calls and counted from diffs, and git is only read:** recorded streams, not guesses ([work-ledger.md](architecture/work-ledger.md)).
+- **A run clock is the server’s, and only a timed trial has one:** off unless Postbox starts with `POSTBOX_RUN_CLOCK=1`; the agent learns its budget from its turn’s line, a paused or expired clock holds the agent’s inbox, and while Postbox is down an agent on a host isn’t stopped, which a timed run treats as voiding it ([run-clock.md](architecture/run-clock.md)).
 - **Checks on a reply measure what the reader sees:** a diagram too wide doesn’t fail, it shrinks ([diagram-legibility.md](architecture/diagram-legibility.md)).
 - **A length ceiling only comes down:** the limits are for the reader, and a file that needs to grow is split by concern first ([code-size.md](architecture/code-size.md)).
 - **One folder per concern:** a proposed map of where every module goes, for review before anything moves ([folders.md](architecture/folders.md)).
@@ -151,6 +154,7 @@ Each is one line: the decision, why, and where its detail is.
 | [diagram-legibility.md](architecture/diagram-legibility.md) | The checks on a reply, and the pipeline that brings their findings to the agent |
 | [security-boundaries.md](architecture/security-boundaries.md) | This computer alone, the page’s token, `!` commands, and what reaches the browser |
 | [work-ledger.md](architecture/work-ledger.md) | The work ledger, what a command committed, and Restore |
+| [run-clock.md](architecture/run-clock.md) | Run clocks for timed trials, off by default: state, the turn’s line, holds and stops, and the outage limit |
 | [remote-hosts.md](architecture/remote-hosts.md) | The daemon, its protocol, the shim, turn states, the SSH connection, security and keeping a host up to date |
 | [view-app.md](architecture/view-app.md) | An agent sees its app, in a pinned headless browser |
 | [code-quality.md](architecture/code-quality.md) | The linters and checks, and how an exception is written |

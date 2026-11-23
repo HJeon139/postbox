@@ -63,13 +63,13 @@ Then an adversarial review subagent goes through your diff against the practices
 
 **Scope.** Fix any bug the review finds in your own change. Anything that adds scope (a new behavior, a new check, a wider fix, more test matrix) needs both of these before you take it on:
 - **Evidence:** a repro, a measurement, a UAT result, an issue, or the person’s own request. A guess that something might happen isn’t evidence.
-- **Intent:** why it serves [intent.md](intent.md): one person directing two to four agents on their own computer, who work together without waiting on the person, with the loop right before the looks.
+- **Intent:** why it serves [intent.md](intent.md): one person directing a team of agents on their own computer, who work together without waiting on the person, with the loop right before the looks.
 
 If it costs more than it gives back to that intent, decline it. Put it under “Declined” in the pull request with the reason, or file a follow-up issue that carries its evidence. Two examples:
 - **Accepted:** showing what subagents say and think. The person was waiting, the screen looked idle, and a subagent was busy. The evidence was a UAT run, and it’s a gap in the loop.
 - **Declined:** phone-only polish (touch, phone sheets, phone screenshots). Postbox runs on localhost on your own computer, so it doesn’t run on a phone. The 375 px checks stay only because narrow windows and the thread panel squeeze the column the same way. Update the text of the UAT docs your change affects (`tests/uat/`). Don’t refresh their screenshots.
 
-**End-to-end UAT is Claude only.** A scenario that puts an agent on another backend (the Kiro CLI, the Antigravity CLI or Codex) is a compatibility run: `tools/uat-run.mjs` refuses it without `--compat`, and it runs only when a task asks for it, with a model that backend offers (for Kiro, one that `kiro-cli chat --list-models` lists).
+**End-to-end UAT is Claude only, except a batch’s.** A scenario that puts an agent on another backend (the Kiro CLI, the Antigravity CLI or Codex) is a compatibility run, with a model that backend offers (for Kiro, one that `kiro-cli chat --list-models` lists): `tools/uat-run.mjs` refuses it without `--compat`, and it runs only when a task asks for it or in a batch UAT, which runs on every backend (review-guide.md, “Batch UAT”).
 
 **The screenshot tools and the end-to-end UAT** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`) run only when the task asks for them, or in the reviewing session. That session runs them on the merged UI: the demo screenshots (not committed), with axe over every scene; the UAT doc screenshots; and the end-to-end scenarios. It reports findings per pull request, including accessibility violations, and commits the refreshed UAT doc screenshots (`tests/uat/screenshots/`) and nothing else under `screenshots/` (“Screenshots”).
 
@@ -264,13 +264,13 @@ engineering-practices.md, “Building on Claude Code and the Agent SDK”, holds
 
 ## Security
 
-Postbox runs on your computer, as you, for one person. Its safety rests on a few boundaries, and a change that touches one of them is reviewed as a security change. Before any change to what Postbox listens on, who it answers, or what a page may load, read architecture/security-boundaries.md, “Writes need the page’s token”, and architecture/sandbox.md, “Sandboxed pages that load nothing”, and their “Revisit when” lines.
+Postbox runs on your computer, as you, for one person, and function comes first (intent.md, “Function first”). Its safety rests on a few boundaries that cost agents and their apps no function, and a change that touches one of them is reviewed as a security change. A new boundary, or a tighter one, that costs function needs a real risk, seen or measured: refusing an app what its agent’s own tools allow only makes the agent relay the data. An app isn’t its agent, though: it runs with no turn and no harness judging it, so it is to get only what its agent grants it, within that agent’s tools (planned, #1610: today every agent’s apps hold `net.fetch`), and never what a dashboard doesn’t need (credential locations, cloud metadata, another Postbox). Before any change to what Postbox listens on, who it answers, or what a page may load, read architecture/security-boundaries.md, “Writes need the page’s token”, and architecture/sandbox.md, “Sandboxed pages that load nothing”, and their “Revisit when” lines.
 
 **It answers this computer alone.** The server listens on 127.0.0.1, refuses a `Host` other than `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding) and a cross-site `Origin`, and every write needs the page’s token, compared in constant time (#74). `!` commands also refuse unless Postbox listens on loopback and the request came from this computer (#67). A change to the listen address is a change to all of these.
 
-**Agent content is data.** It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()` wrapped in `trusted()` (engineering-practices.md, “The DOM”). Agent apps run only in a page sandboxed by its `Content-Security-Policy` header ([CSP `sandbox`][mdn-csp-sandbox]), loading nothing from a URL, and the bridge answers only frames whose origin is `'null'`. Never `eval` or `new Function` agent text anywhere else.
+**Agent content is data.** It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()` wrapped in `trusted()` (engineering-practices.md, “The DOM”). Agent apps run only in a page sandboxed by its `Content-Security-Policy` header ([CSP `sandbox`][mdn-csp-sandbox]), loading nothing from a URL itself, and the bridge answers only frames whose origin is `'null'`. What an app needs from the network, and planned (#1610) from the disk, Postbox’s server gets for it (architecture/security-boundaries.md, “What leaves through net.fetch” and “What an app reads from disk”). Never `eval` or `new Function` agent text anywhere else.
 
-**Every input is untrusted, including one from an agent’s own tool call.** Validate at the boundary and refuse rather than normalize, because normalizing approves one string and acts on another. `shared/urls.mjs` rejects a URL with control characters instead of stripping them. A file path is resolved with `realpath` and refused if it lands outside the folder it belongs to.
+**Every input is untrusted, including one from an agent’s own tool call.** Validate at the boundary and refuse rather than normalize, because normalizing approves one string and acts on another. `shared/urls.mjs` rejects a URL with control characters instead of stripping them. A file path is resolved with the native realpath (`fs.promises.realpath` or `realpathSync.native`) and refused if it lands outside the folder it belongs to. JavaScript’s own `realpathSync` and callback `fs.realpath` read a link target’s `..` lexically, so a link through another link can lead outside while they say inside, or never return (#1215).
 
 **Spawn with an argument array, never a shell string** ([child_process][node-child-process]). Git runs with `GIT_OPTIONAL_LOCKS=0` and is only ever read. The one place a shell is the point is a `!` command, which runs your own text, as you, behind the checks above.
 
@@ -330,6 +330,7 @@ Each habit comes from a defect that cost a fix in Postbox or in an earlier servi
 10. **Fix a defect you find, within the scope rule.** A bug in your own change is always yours. A defect you find in files you own, with evidence, is cheapest to fix in the session that found it. One outside them, or one that adds scope, is filed as an issue that carries its evidence, never left unsaid (“Rules for every session”, its “Scope”). “That was already broken” identifies a defect and leaves it there.
 11. **Nothing waits on the person unless only they can decide it.** A new card, confirm, warning, notice or limit that stops an agent or asks for the person’s attention needs evidence of a decision only they can make, and a reason the harness’s own check isn’t enough (intent.md, principle 8). A card that repeats what they already allowed, or a check against a risk no one has seen, is tedium: show what the agent did instead, where the person can see it. Postbox’s own write cards in auto were removed for this on 7 November 2026, after about 258 cards and confirms in one day ([#852](https://github.com/HJeon139/postbox/issues/852)).
 12. **No unactionable alarms.** “Needs you”, a blocking notification, a focus move and a button that only acknowledges are each a claim that the person must act. Make none for something they can’t act on: a tool call the agent can retry or work around (a refusal, a failure), a change an agent already made, or a step Postbox already took. Show it where it happened, as a step, a card or a note that asks nothing. A notice about something that changed appears when it changes, never on the click that was meant for something else, and never where it moves a button under the pointer or takes focus. Two cases taught this on 10 November 2026: a refused call pulsed “needs you” until the person pressed Leave it, and a block an agent updated cost a click that only revealed a notice saying it had changed.
+13. **Function first.** A measure that takes function from agents or their apps, a refusal, a limit or a consent step, needs a real risk the agent’s harness doesn’t already carry, and says what it protects against. New app access follows the grant its agent sets, within that agent’s own tools, with no click from you (planned, #1610: today every agent’s apps hold `net.fetch`); an approval whose only effect is a click is left out, and a confirm before something destructive or costly stays (intent.md, “Function first”). Designs for agent integrations keep reaching for an approval step; review declines one that buys little security.
 
 ## Progress in living documents
 
@@ -412,6 +413,24 @@ engineering-practices.md, “Commits and versions”, holds the Conventional Com
 **Branch from `main`, stay based on it, and never push to it.** Every merge to `main` releases once `main`’s checks pass on it (`.github/workflows/release.yml`), so what reaches `main` is what people get.
 
 **Answer review on the same branch, with new commits.** A force-push over commits a reviewer has commented on leaves their comments on code that’s no longer there. Fold fixup commits into the commit they fix before review, not after.
+
+### Before you ask for review
+
+Only 37% of pull requests passed their first review in late November 2026, and most first reviews that led to a second asked for an item on this list (review-guide.md, “Review rounds”). Check each before you add `ready for integrator`:
+- Each guard, clear or branch you add has a mutant: delete it, and a test fails.
+- Each new test or spec fails on main first, for the reason the PR names, and the body shows the command.
+- The class is swept: where else the same defect could be, with the grep you ran in the body.
+- A change on a hot path is measured against main.
+- The body is written from the head, not from an earlier push.
+- The PR has an issue you’ve claimed, and `Fixes #n` in its body.
+- Each fix is its own commit, and a move of code is alone in its commit.
+- No lines joined or names dropped to fit a limit.
+
+**Fix commits meet the same bar.** 57% of the findings in later reviews were defects in the fixes. When you ask for re-review, map each finding to its fix commit and its evidence:
+- its test fails on the previous head;
+- each guard the fix adds, with its mutant;
+- its new tests pass with `--repeat-each` or under load, since a fix’s own test is where flakes came from (#1592);
+- the review’s probe rows (the widths, paths or inputs it tried) are now tests.
 
 ### The pull request’s body
 

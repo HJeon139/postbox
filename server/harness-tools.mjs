@@ -5,7 +5,7 @@
 
 import { glimpseOf } from '../shared/text.mjs';
 import { stepDiff } from './step-diff.mjs';
-import { stepInput, stepOutput } from './step-text.mjs';
+import { stepInput, stepOutput, stepTool } from './step-text.mjs';
 import { describeTool, QUIET } from './tool-labels.mjs';
 
 /** The calls that start a subagent. */
@@ -56,12 +56,12 @@ export class HarnessTools {
   used(id, t) {
     if (this.st.used.has(id)) return;
     this.st.used.add(id);
-    this.ctx.toolUse?.({ id, name: t.name, input: t.input ?? {}, who: t.who, ...(t.parent ? { parent: t.parent } : {}) });
+    this.ctx.toolUse?.({ id, name: t.name, input: t.input ?? {}, who: t.who, ...(t.parent ? { parent: t.parent } : {}), ...(t.raw ? { raw: t.raw } : {}) });
   }
 
   /** @param {string} id @param {any} t @param {string} state @param {Record<string, unknown>} [extra] */
   stepOf(id, t, state, extra = {}) {
-    return { id, label: t.label, state, ms: t.ms ?? this.now() - t.started, ...byOf(t), ...extra };
+    return { id, label: t.label, ...stepTool(t.name), state, ms: t.ms ?? this.now() - t.started, ...byOf(t), ...extra };
   }
 
   /**
@@ -77,7 +77,7 @@ export class HarnessTools {
     this.st.tools.set(id, { name, label, own, input, patch, shown: stepInput(input, label), who, parent: by?.parent ?? null, started: this.now(), quiet });
     const diff = stepDiff(name, input, patch);
     this.st.tools.get(id).diff = diff.diff;
-    const step = { id, label, state: 'running', ...byOf(by), ...inputOf(input, label), ...diff };
+    const step = { id, label, ...stepTool(name), state: 'running', ...byOf(by), ...inputOf(input, label), ...diff };
     if (!quiet) this.ctx.activity({ ...step, ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
     else if (!who) this.status({ state: 'tool', currentStep: label });
     if (SUBAGENT_TOOLS.has(name)) this.startSubagent(id, input, by);

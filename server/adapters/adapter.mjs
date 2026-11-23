@@ -75,8 +75,9 @@
 //                                     off for one agent (#207); 'postbox': it loads only Postbox’s, so only those show
 //   capabilities.promptTool: false    it never asks through Postbox’s permission_prompt (the CLI’s --permission-prompt-tool),
 //                                     so MCP doesn’t list it and refuses a call to it at once (#220)
-//   capabilities.promptHook: true     its prompts come from Postbox’s own hook, by an id of the hook’s (Antigravity’s),
-//                                     so they aren’t matched to a call its stream showed, as the CLI’s are (#353)
+//   capabilities.promptHook: true     its prompts come from Postbox’s own hook (Antigravity’s), by the id of the call
+//                                     its stream showed, and its card is the adapter’s promptCard(call, args), made
+//                                     from that call; one without promptCard has every prompt refused (#907)
 //   capabilities.remote: { ... }      how it runs on a remote host, where the daemon starts its process (#120):
 //     stdin: 'file' | 'none' | 'held'   the turn’s message goes in a file, or nothing goes in, or stdin stays open
 //                                       until the turn ends (Codex’s JSON-RPC)
@@ -107,7 +108,8 @@
 /**
  * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, promptTool?: boolean, promptHook?: boolean, models?: string[],
  *   remote?: RemoteCapabilities },
- *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter
+ *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void,
+ *   promptCard?(call: any, args: any): { tool: string, input: any } | null }} Adapter
  */
 
 /**

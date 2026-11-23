@@ -111,6 +111,7 @@ const heldOn = (store, name) => Boolean(store.held) && /** @type {any} */ (store
  *   sessions: () => Readonly<Record<string, Entry>>,
  *   persona: (id: string) => Entry | undefined,
  *   project: (id: string) => Entry | undefined,
+ *   clock: (sessionId: string) => Entry | null,
  *   schedule: (id: string) => Entry | undefined,
  *   schedules: () => Readonly<Record<string, Entry>>,
  * }} PendingReads
@@ -133,9 +134,37 @@ export function pendingReads(store) {
   reads.sessions = () => pendingCollection(store, 'sessions');
   reads.persona = (/** @type {string} */ id) => pendingEntity(store, 'personas', id);
   reads.project = (/** @type {string} */ id) => pendingEntity(store, 'projects', id);
+  reads.clock = (/** @type {string} */ sessionId) => pendingClock(store, sessionId);
   reads.schedule = (/** @type {string} */ id) => pendingEntity(store, 'schedules', id);
   reads.schedules = () => pendingCollection(store, 'schedules');
   return /** @type {PendingReads} */ (reads);
+}
+
+/**
+ * An agent’s run clock as memory will hold it once what is held is released (shared/run-clock.mjs): its held events
+ * applied in order to a copy, by the reducer, so a clock started, paused or expired behind a held commit holds and
+ * times its agent at once (#1526). Only the run clock’s own code reads it, and only with POSTBOX_RUN_CLOCK=1, so no
+ * index of held events names clocks: a read walks what is held. Delivery.ready asks on every wake while a commit is
+ * held, so each such wake walks the held log once; that’s fine for a timed UAT room, whose held log is short.
+ * @param {import('./store.mjs').Store} store @param {string} sessionId @returns {Entry|null}
+ */
+function pendingClock(store, sessionId) {
+  const published = store.state.clocks && Object.hasOwn(store.state.clocks, sessionId) ? store.state.clocks[sessionId] : null;
+  if (!store.held) return published;
+  const s = { clocks: Object.assign(Object.create(null), published ? { [sessionId]: { ...published } } : {}) };
+  for (let i = 0; i < store.heldLog.length; i++) {
+    const { held, json } = store.heldLog.at(i);
+    const removes = held.type === 'remove' && held.data?.kind === 'session' && held.data.id === sessionId;
+    if (removes) delete s.clocks[sessionId];
+    if (removes || !held.type?.startsWith('clock.') || held.data?.sessionId !== sessionId) continue;
+    const { type, data } = JSON.parse(json);
+    try {
+      apply(s, type, data);
+    } catch {
+      // the reducer rejects it the same way, and the release holds it as rejected (#609): skipped
+    }
+  }
+  return s.clocks[sessionId] ?? null;
 }
 
 /**

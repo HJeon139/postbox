@@ -55,12 +55,13 @@ import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
+import { overdueStop, runBound, watchRun } from './uat/run-bound.mjs';
 import { endRun } from './uat/run-end.mjs';
 import { runEnv } from './uat/run-env.mjs';
 import { runFacts } from './uat/run-facts.mjs';
-import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths } from './uat/run-files.mjs';
+import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
-import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
+import { gitInfo, mainCheckout, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
@@ -69,8 +70,8 @@ import { onStopSignal, runStop } from './uat/stop.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { runTiming } from './uat/timing.mjs';
 import { phaseGoals } from './uat/triggers.mjs';
-import { namedWait, sendThenStop, settle as settleTurns, stopThroughPage, testerWait, watchBudget } from './uat/turns.mjs';
-import { makeWorkspace } from './uat/workspace.mjs';
+import { namedWait, sendThenStop, settle as settleTurns, stopThroughPage, testerWait } from './uat/turns.mjs';
+import { keepOnExit, makeWorkspace, retainWorkspace, runPaths } from './uat/workspace.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -87,6 +88,9 @@ const { values: opt } = parseArgs({
     budget: { type: 'string', default: '8' },
     // The most the whole run may spend, in dollars (tools/uat/budget.mjs). Unset, only --budget caps the tester.
     'max-cost': { type: 'string' },
+    // The most agent turns, and minutes, a run takes on any harness (tools/uat/run-bound.mjs): 150 and 45 by default.
+    'max-turns': { type: 'string' },
+    'max-minutes': { type: 'string' },
     'tester-model': { type: 'string', default: 'claude-sonnet-5-5' },
     // The agents’ model and effort. A pass checks that Postbox works, and a fast model shows that as well as the
     // default one does. Scenarios that measure what agents choose say `- models: persona`, and `persona` here keeps
@@ -120,9 +124,11 @@ async function main() {
   const { name, hosts, placement, scenario, phases, gate } = runScenario(opt, ROOT);
   const steps = stepCap(scenario, opt.steps);
   const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
+  const bound = runBound({ turns: opt['max-turns'], minutes: opt['max-minutes'] });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
-  const paths = await runPaths(dir);
+  const paths = await runPaths(dir, { root: ROOT, main: mainCheckout({ root: ROOT }) });
+  keepOnExit(paths);
   makeWorkspace(scenario, paths, dir);
   // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
   const faults = faultSetup({ scenario, root: ROOT, dir, env: process.env });
@@ -147,7 +153,7 @@ async function main() {
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
   const { agentModels, agentEffort } = await seedAgents({ scenario, opt, root: ROOT, data: paths.data, log });
   // Ctrl-C cleans the hosts up through the page before anything stops (tools/uat/stop.mjs), with what’s there by then.
-  const run = { log, dir };
+  const run = { log, dir, retain: () => retainWorkspace(paths, log) };
   const stop = runStop(run);
   const signals = onStopSignal(stop, { log });
   const timeline = [];
@@ -291,12 +297,14 @@ async function main() {
 
     const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
 
-    // With --max-cost, the budget watches the agents’ turns through the steps and the wait after them.
-    unwatch = watchBudget({ budget, api, threadsUnderTest, stop: stopThroughPage(page), log });
+    // The bound, and with --max-cost the budget, watch the agents’ turns through the steps and the wait after them.
+    // Past the wall time, a run held by a Postbox that answers nothing runs its own stop, as a signal would, and exits.
+    const overdue = overdueStop(stop);
+    unwatch = watchRun({ bound, budget, api: postbox.watchApi, events: history.events, threadsUnderTest, stop: stopThroughPage(page), log, overdue });
     for (let step = 1; step <= steps; step++) {
       if (signals.stopping) throw new Error('The run was stopped by a signal.');
       const timedOut = await settle(true);
-      if (budget.stopped) break;
+      if (budget.stopped || bound.stopped) break;
       await refreshFacts();
       if (hr) await afterStep(hr, facts);
       if (timedOut)
@@ -323,7 +331,7 @@ async function main() {
       const prompt = stepPrompt({ step, steps, phase, scenario, goal, lastAction, actionError, actionResult, timedOut, obs, waiting, jobsAsk, fresh });
       // With --max-cost, the step goes ahead only if it, and an agent turn it may start, fit what’s left.
       const busy = obs.states.filter((s) => /: (?:think|tool|gen)\b/.test(s)).length;
-      if (budget.beforeStep({ step, working: busy })) break;
+      if (bound.beforeStep(step) || budget.beforeStep({ step, working: busy })) break;
       timing.at(step);
       const answer = await timing.time('tester', () => tester.step(prompt, system));
       goals.took(phase);
@@ -341,8 +349,8 @@ async function main() {
       actionError = null;
       actionResult = null;
       log(`action: ${JSON.stringify(a)}`);
-      // The budget’s watch can stop the run while the tester thinks: its action would start a turn past the cap.
-      if (budget.stopped) break;
+      // The watch can stop the run while the tester thinks: its action would start a turn past a cap.
+      if (budget.stopped || bound.stopped) break;
       // Moving on, or waiting while no agent works, past something that waits on the person: say so once, and ask
       // again. A second try with the same list goes ahead, so a run can’t loop on a block it can’t answer.
       const idle = !busy;
@@ -512,7 +520,7 @@ async function main() {
     const shoot = (label, file) => d.shotItem(keys.get(label), file);
     await endRun({
       report: async () => {
-        Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
+        Object.assign(facts, { budget: budget.summary(), bound: bound.summary(), timing: timing.summary(Date.now() - started) });
         await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
       },
       review: verify || review.file ? () => timing.time('verifier', () => reviewFindings({ ...review, ask: budget.verifier() })) : null,
@@ -535,6 +543,7 @@ async function main() {
         tester,
         facts,
         coverage,
+        workspace: paths.workspace,
       }),
       ...(facts.budget ? { budget: facts.budget } : {}),
     });

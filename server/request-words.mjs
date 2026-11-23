@@ -55,7 +55,8 @@ export function inProject(w, folder = null) {
     // A path that isn’t there yet is where its nearest folder that is leads.
     let at = resolve(folder, path);
     while (!existsSync(at) && dirname(at) !== at) at = dirname(at);
-    const rel = relative(realpathSync(folder), realpathSync(at));
+    // The native call, as the kernel resolves a link target’s .. after another link, not lexically (#1215).
+    const rel = relative(realpathSync.native(folder), realpathSync.native(at));
     return !rel.startsWith('..') && !isAbsolute(rel);
   } catch {
     return false;

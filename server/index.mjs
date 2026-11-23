@@ -38,6 +38,7 @@ import { settleInterrupted, stopStreaming } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
 import { roomFileRoute } from './room-files.mjs';
+import { installRunClock, runClockOn } from './run-clock-install.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { settleLedger, stopTimers } from './runtime-close.mjs';
 import { sandboxRoute } from './sandbox-routes.mjs';
@@ -49,6 +50,7 @@ import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { storedFileRoute } from './stored-files.mjs';
 import { searchOf } from './thread-search.mjs';
+import { promptsFileFor } from './turn-prompt.mjs';
 import { uploadName } from './upload-name.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
@@ -121,6 +123,7 @@ export async function start({
     // The person’s Claude Code user settings live here: the permissions panel reads and writes their rules (#66).
     home: claudeHome,
     archiveTurns: archiveTurns === true, // the archive pass (#305), off until step 4: only `true` turns it on
+    promptsFile: promptsFileFor(dataDir), // each turn’s prompt, only in UAT recording mode (server/turn-prompt.mjs)
   };
   // Kokoro is optional; without it, narration says it isn’t installed.
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
@@ -141,6 +144,7 @@ export async function start({
   settleInterrupted(rt);
   stopStreaming(rt);
   rt.rearmSchedules();
+  if (runClockOn()) installRunClock(rt); // timed UAT trials only (#1526)
   rt.expireStalePermissions();
   rt.work.expireStale();
   rt.expireStaleJobs();
@@ -244,15 +248,14 @@ export async function start({
         req,
       );
     if (path === '/favicon.svg') return file(res, await servedFile(BUNDLED_MEDIA, 'favicon.svg'), {}, req);
-    if (path === '/kit/workbench.css' || path === '/app/workbench.css')
-      return file(res, await servedFile(STATIC['/app/'], 'workbench.css'), { 'access-control-allow-origin': '*' }, req);
+    // No file here answers another origin’s script (#1272): sandbox pages inline the kit and the stylesheet, and load
+    // /media/ only as images, which need no cross-origin read.
     if (path.startsWith('/media/')) {
       const media = await mediaPath(BUNDLED_MEDIA, mediaDir, path.slice('/media/'.length));
-      return file(res, media.real, media.bundled ? { 'access-control-allow-origin': '*' } : MEDIA_HEADERS, req);
+      return file(res, media.real, media.bundled ? {} : MEDIA_HEADERS, req);
     }
     for (const [prefix, dir] of Object.entries(STATIC)) {
-      if (path.startsWith(prefix))
-        return file(res, await servedFile(dir, path.slice(prefix.length)), prefix === '/kit/' ? { 'access-control-allow-origin': '*' } : {}, req);
+      if (path.startsWith(prefix)) return file(res, await servedFile(dir, path.slice(prefix.length)), {}, req);
     }
 
     // Sandbox frames: agent apps and Mermaid diagrams (server/sandbox-routes.mjs).

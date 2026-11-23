@@ -64,14 +64,18 @@ import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, probeAgyHook } from './agy-hook-check.mjs';
+import { modelIds } from './agy-model-ids.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
+import { hookPromptCard } from './agy-prompt-card.mjs';
 import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
+import { repeatsLastError } from './agy-repeated-error.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
-import { toolOf } from './agy-tools.mjs';
+import { stepId, toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
+import { recordOnceSpawned } from './prompt-sent.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
 
@@ -128,19 +132,7 @@ export function agyModels(bin = findAgy(), { spawnImpl = spawn } = {}) {
   });
 }
 
-/**
- * The model ids in an `agy models` answer, bounded: one per line, the id, then a tab and its name
- * (“gemini-3.8-flash-high	Gemini 3.8 Flash (High)”). The “Fetching available models...” line and a sign-in
- * error aren’t ids.
- */
-export function modelIds(text) {
-  const ids = String(text ?? '')
-    .split('\n')
-    .map((l) => /^([a-z0-9][\w.:-]{0,79})\t/i.exec(l)?.[1])
-    .filter((id) => typeof id === 'string');
-  return [...new Set(ids)].slice(0, 60);
-}
-
+export { modelIds } from './agy-model-ids.mjs';
 export { AGY_CAPABILITIES, AGY_DEFAULT_MODEL };
 
 /**
@@ -233,17 +225,12 @@ export function agyRules({ persona, guide, schemas = null, hooked = false }) {
   return `${[guide, schemas ? toolsNote(schemas) : '', approval, limits].filter(Boolean).join('\n\n')}\n`;
 }
 
-export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp };
+export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp, stepId };
 
 // How agy refuses a call it would ask about, headless (recorded): the step ends in ERROR with “permission check
 // failed for …: user denied permission …”, and the result lists it in denied_actions. The turn still succeeds.
 export const REFUSED = /permission check failed|user denied permission/;
 // agy words a refusal as the person’s answer, but nobody was asked: the step says what happened instead.
-/**
- * A tool step’s id in Postbox: its conversation and its index there, which grows across the conversation’s turns.
- * The UAT’s checks match refused steps by it (tools/uat/checks.mjs), so two agents’ steps never share one.
- */
-export const stepId = (s) => `agy-${String(s?.conversation_id ?? '').slice(0, 8)}-${s?.step_index}`;
 /** A step’s name: Claude Code’s for a tool Postbox knows, else agy’s name for it, spaced out. @param {{ name: string, input: any }} tool */
 const nameOf = ({ name, input }) => (name.startsWith('mcp__') || Object.keys(input).length || name === 'ToolSearch' ? name : clip(name.replace(/_/g, ' '), 80));
 
@@ -328,7 +315,15 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     };
     st.tools.set(key(s), t);
     // agy reading its own files to load a tool’s schema isn’t the agent’s work (agy-tools.mjs).
-    emit({ kind: 'tool_call', id: t.id, name, input: tool.input, final: true, ...(name === 'ToolSearch' ? { work: false } : {}) });
+    emit({
+      kind: 'tool_call',
+      id: t.id,
+      name,
+      input: tool.input,
+      raw: { name: t.name, args: s.tool_info?.parameters ?? {} },
+      final: true,
+      ...(name === 'ToolSearch' ? { work: false } : {}),
+    });
     Object.assign(st, { refusedLast: null, textSinceTool: false, writing: false });
     return t;
   };
@@ -447,8 +442,12 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           // The result’s usage is the whole turn’s total: the context only when no step reported its own.
           if (r.usage && !st.stepUsage) context(r.usage);
           emit({ kind: 'turn_end', isError: r.status !== 'SUCCESS' && !(st.went && !st.stuck) });
-          if (r.status === 'SUCCESS') return;
-          const why = clip(r.error || r.status || 'no reason given', 400);
+          const error = r.status === 'SUCCESS' ? null : String(r.error || r.status || 'no reason given');
+          // agy can end each later turn of a conversation with the last one’s error again (#335).
+          // Only an error agy gave words to: a bare status such as ERROR says nothing that could repeat.
+          const repeated = repeatsLastError(ctx, st.sessionId ?? resumed, r.status === 'SUCCESS' || !r.error ? null : String(r.error));
+          if (error === null) return;
+          const why = clip(error, 400);
           // agy’s ERROR doesn’t say how the turn ended. Recorded in the Gemini room UAT: ERROR after a model call it
           // retried and went on from, once with the review written in full and once ending at a refused command;
           // and ERROR (“API error (attempt 2)”) on a turn with no failed call in its stream, which a refused read
@@ -456,6 +455,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           // decides: the turn fails if the model got nowhere, or if the last thing in it was a failed call (the
           // retries ran out). Otherwise the error is a step, and the turn stands; a refusal shows as its own step.
           if (st.went && !st.stuck) {
+            // An earlier turn’s error, repeated, with no failed call in this turn’s own stream: not this turn’s.
+            if (!st.retried && repeated) return;
             ctx.activity(
               st.retried
                 ? { id: 'agy-retried', label: 'Antigravity retried after a model error', state: 'done', detail: why }
@@ -577,6 +578,11 @@ export class AntigravityCliAdapter {
     return agyModels(this.bin, { spawnImpl: this.spawn });
   }
 
+  /** The card for a prompt from its hook, made from the stream’s call, or null when they disagree (agy-prompt-card.mjs, #907). */
+  promptCard(call, args) {
+    return hookPromptCard(call?.raw, args);
+  }
+
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
   folderFor(persona, project) {
     return agentFolder(persona, project, this.workRoot);
@@ -619,15 +625,19 @@ export class AntigravityCliAdapter {
         Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript, probe: this.hookProbe })));
       const hookConfirmed = await confirmed();
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
-      if (useHook && !hookConfirmed && !agyBypassWebOff(persona)) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
+      const unhooked = useHook && !hookConfirmed && !agyBypassWebOff(persona);
+      if (unhooked) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
+      const rulesRead = unhooked ? rulesWith(false) : rules; // the rules file as agy reads it, recorded with each run’s prompt
+      // What every run of this turn shares: where agy runs, and the rules file it reads, recorded with each run’s prompt.
+      const each = { ctx, cwd, addDirs, guide: rulesRead };
       try {
-        let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
+        let done = await this.run({ ...each, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
         if (done.missingSession && !ctx.signal.aborted) {
           ctx.saveState({ agySessionId: null });
           ctx.state.agySessionId = null;
           const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
-          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null, hookConfirmed: await confirmed() });
+          done = await this.run({ ...each, prompt: note + prompt, sessionId: null, hookConfirmed: await confirmed() });
         }
         // agy ends a turn at a refused call, before the agent says anything (the Gemini room UAT’s tester rated that
         // high: the person saw a refused step and silence). So the conversation goes on once, for the agent to say
@@ -635,7 +645,7 @@ export class AntigravityCliAdapter {
         if (done.endedOnRefusal && !ctx.signal.aborted && ctx.state.agySessionId) {
           ctx.status({ state: 'think', currentStep: 'Telling you about the refused call' });
           const followUp = refusalFollowUp(done.endedOnRefusal);
-          await this.run({ ctx, cwd, addDirs, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed: await confirmed() });
+          await this.run({ ...each, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed: await confirmed() });
         }
       } finally {
         await rm(plugin, { recursive: true, force: true }).catch(() => {});
@@ -647,10 +657,10 @@ export class AntigravityCliAdapter {
   }
 
   /**
-   * @param {{ ctx: any, cwd: string, addDirs: string[], prompt: string, sessionId: string|null, wrote?: boolean, hookConfirmed?: boolean }} turn
+   * @param {{ ctx: any, cwd: string, addDirs: string[], prompt: string, guide?: string, sessionId: string|null, wrote?: boolean, hookConfirmed?: boolean }} turn
    * @returns {Promise<{ missingSession?: boolean, endedOnRefusal?: string|null, wrote?: boolean }>}
    */
-  run({ ctx, cwd, addDirs, prompt, sessionId, wrote = false, hookConfirmed = false }) {
+  run({ ctx, cwd, addDirs, prompt, guide, sessionId, wrote = false, hookConfirmed = false }) {
     const persona = ctx.persona;
     const model = agyModel(persona, this.capabilities.models);
     const effort = agyEffort(model, effortOf(persona));
@@ -667,6 +677,7 @@ export class AntigravityCliAdapter {
         reject(agyStartError(e, prompt, this.bin));
         return;
       }
+      recordOnceSpawned(ctx, child, { guide, text: prompt });
       let stderr = '';
       const c = child;
       const exited = new Promise((r) => {
@@ -675,7 +686,7 @@ export class AntigravityCliAdapter {
         c.once('error', r);
       });
       // SIGINT to the group, then SIGKILL after the grace period (process-group.mjs), as for the other CLIs.
-      const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list }));
+      const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list, unkilled: ctx.unkilled }));
       child.on('error', (e) => reject(agyStartError(e, prompt, this.bin)));
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);

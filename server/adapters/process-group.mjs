@@ -143,10 +143,11 @@ export function signalPgid(pgid, signal, kill = process.kill) {
  * job with no tool shell left at all isn’t in kept.
  * @param {any} child  the CLI, as spawned (detached)
  * @param {{ keep?: { id: string, command: string }[], exited: Promise<any>, graceMs?: number, pollMs?: number, kill?: KillFn,
- *           list?: () => Promise<Proc[]> }} opts  exited: resolves when the spawned process has exited
+ *           list?: () => Promise<Proc[]>, unkilled?: () => void }} opts  exited: resolves when the spawned process has exited;
+ *           unkilled: called when it gives up on a group that outlived SIGKILL, which may still be working
  * @returns {Promise<{ kept: { id: string, pgid: number, groups: KeptGroup[] }[], gone: Promise<void> }>}
  */
-export async function stopTurn(child, { keep = [], exited, graceMs = GRACE_MS, pollMs = 100, kill = process.kill, list = listProcesses }) {
+export async function stopTurn(child, { keep = [], exited, graceMs = GRACE_MS, pollMs = 100, kill = process.kill, list = listProcesses, unkilled }) {
   if (child?.remote) return stopRemote(child);
   const pid = child?.pid;
   const shells = pid ? shellGroups(await list().catch(() => []), pid) : [];
@@ -192,6 +193,8 @@ export async function stopTurn(child, { keep = [], exited, graceMs = GRACE_MS, p
     // A group that outlives SIGKILL (a process stuck in the kernel) can’t hold the session forever: say so, and go on.
     const late = setTimeout(() => {
       console.error(`Postbox stopped a turn, but process group ${pid} is still there ${Math.round((graceMs + 5000) / 1000)} s later.`);
+      // Its turn ends all the same, but not as one whose processes are known gone: a run clock voids its run.
+      unkilled?.();
       finish();
     }, graceMs + 5000);
     const watch = setInterval(() => {

@@ -38,8 +38,8 @@ async function seeded(page, handle) {
 }
 
 /** Marks the session working in state, as #463 measured it, and waits for its ring in the Agents section to say so. */
-async function working(page, se, state = 'think') {
-  arrange.setSession(app.rt, se.id, { state, ctx: 40, currentStep: 'Working', finishedAt: null });
+async function working(page, se, state = 'think', ctx = 40) {
+  arrange.setSession(app.rt, se.id, { state, ctx, currentStep: 'Working', finishedAt: null });
   await synced(page, app);
   const ring = page.locator(`.agents-sec pb-ring[data-session="${se.id}"][state="${state}"]`);
   await expect(ring).toHaveCount(1);
@@ -82,7 +82,8 @@ async function paintsOver5s(page) {
 const ranFor = (ring) => ring.evaluate((el) => el.getAnimations({ subtree: true }).reduce((ms, a) => ms + Number(a.currentTime ?? 0), 0));
 
 for (const state of ['think', 'gen', 'tool'])
-  test(`PF-2: with one agent working (${state}), neither the transcript nor the page is repainted on each frame over 5 s`, async ({ page }) => {
+  test(`PF-2: with one agent working (${state}), neither the transcript nor the page is repainted on each frame over 5 s`, async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'the paint count comes from Chromium’s DevTools protocol');
     const se = await seeded(page, `paint-${state}`);
     const ring = await working(page, se, state);
     const before = await ranFor(ring);
@@ -118,6 +119,46 @@ test('#463: a thinking ring still moves, with one animation of transform and opa
       .toEqual([]);
   arrange.setSession(app.rt, se.id, { state: 'idle' });
 });
+
+// designs/intent.md, “State is shown by motion, not icons”: thinking is a short bulge of thickness running along a still
+// arc. What moves is a swell, as wide as the arc at its ends and twice as wide in its middle, not a block of one width;
+// on a short arc it is a round blob, as a single swollen segment was, not a spike standing across the arc.
+for (const ctx of [5, 15, 40])
+  test(`#1565: at ${ctx}% context, a thinking ring’s moving piece is a swell twice the arc’s width, not a block or a spike`, async ({ page }) => {
+    const se = await seeded(page, `swell-${ctx}`);
+    const ring = await working(page, se, 'think', ctx);
+    // The outline of every shape in the moving piece, each point as its distance past the arc’s middle line and its
+    // distance along the arc from the ring’s top, both in arc widths.
+    const shape = await ring.evaluate((el) => {
+      const arc = /** @type {SVGCircleElement} */ (el.querySelector('svg[role="img"] .arc'));
+      const r = arc.r.baseVal.value;
+      const sw = Number(arc.getAttribute('stroke-width'));
+      const c = arc.cx.baseVal.value;
+      const points = [];
+      for (const piece of /** @type {NodeListOf<SVGGeometryElement>} */ (el.querySelectorAll('.mover.sweep :is(path, circle)'))) {
+        const total = piece.getTotalLength();
+        for (let i = 0; i < 200; i++) {
+          const p = piece.getPointAtLength((i / 200) * total);
+          points.push({ out: (Math.hypot(p.x - c, p.y - c) - r) / sw, along: (Math.atan2(p.x - c, c - p.y) * r) / sw });
+        }
+      }
+      const spread = (ps, k) => (ps.length ? Math.max(...ps.map((p) => p[k])) - Math.min(...ps.map((p) => p[k])) : 0);
+      return {
+        widest: Math.max(...points.map((p) => p.out)),
+        thick: spread(points, 'out'),
+        long: spread(points, 'along'),
+        wideFor: spread(
+          points.filter((p) => p.out > 0.9),
+          'along',
+        ),
+      };
+    });
+    expect(shape.widest, 'its middle reaches half an arc width past the arc’s edge: twice the arc’s width').toBeCloseTo(1, 1);
+    expect(shape.long, `it runs along the arc at least as far as it stands across it, ${shape.thick.toFixed(2)} widths`).toBeGreaterThan(shape.thick * 0.9);
+    // Long enough to taper, only its middle is that wide.
+    if (ctx >= 40) expect(shape.wideFor, 'and only its middle is that wide: it tapers toward both ends').toBeLessThan(shape.long * 0.5);
+    arrange.setSession(app.rt, se.id, { state: 'idle' });
+  });
 
 test('#463: with reduced motion, every ring holds still, a thinking one included', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });

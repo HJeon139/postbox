@@ -6,6 +6,7 @@
 import { parseMentions } from '../shared/text.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import * as queue from './message-queue.mjs';
+import { refuseWhileHeld } from './run-clock-held.mjs';
 import { sideSession, threadPersona } from './side-threads.mjs';
 import { retireStale } from './wake-cards.mjs';
 
@@ -37,6 +38,8 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   // Refuse before anything is posted or joined: a turn for an agent whose backend isn’t registered couldn’t start (#874).
   rt.placement.refuseUnregisteredSend(mentioned);
   const targets = targetsOf(rt, t, mentioned);
+  // With run clocks on: Send now would start a turn a clock holds, which it would only hold (#1526).
+  if (sendNow && rt.runClock) for (const { se } of targets) refuseWhileHeld(rt, se.id, 'send-now');
   // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
   if (sendNow) for (const { se } of targets) queue.stopForSendNow(rt, se.id);
   // Posted when it’s sent, with one entry per agent it goes to (designs/rooms-at-scale.md, “What an entry is”): a busy

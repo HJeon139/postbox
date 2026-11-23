@@ -43,13 +43,15 @@ test('#623: a wake scheduled while a commit is held is armed', async () => {
 test('#623: a wake scheduled while a commit is held can be canceled, and counts toward the limit', async () => {
   const { env, result, store } = await whileHeld(({ rt, se }) => {
     const first = rt.schedule(se.id, { inMs: 60_000, note: 'one' });
-    const pendingNow = Object.values(rt.store.pending.schedules()).filter((x) => x.sessionId === se.id).length;
+    // Counted as the limit counts it, through the tool, so on main this fails on the behavior, not on a missing read.
+    const rest = [];
+    for (let i = 1; i <= PENDING_WAKES; i++) rest.push(scheduleWakeTool(rt, se.id, { in_minutes: 5 + i, note: `n${i}` }));
+    const pendingNow = 1 + rest.filter((a) => a.ok).length;
     const canceled = cancelWake(rt, se.id, { id: first.id });
-    return { first, pendingNow, canceled, gone: rt.store.pending.schedule(first.id) === undefined };
+    return { first, pendingNow, canceled };
   });
-  assert.equal(result.pendingNow, 1);
+  assert.equal(result.pendingNow, PENDING_WAKES, 'the first counts toward the limit');
   assert.equal(result.canceled.ok, true, result.canceled.message);
-  assert.equal(result.gone, true, 'its removal is read as written too');
   assert.equal(store.state.schedules[result.first.id], undefined, 'it was canceled');
   for (const t of env.rt.timers.values()) clearTimeout(t);
   await store.close();
@@ -93,4 +95,30 @@ test('#623: a Retry of a wake canceled behind a held commit sends the recovery i
   assert.equal(result.note, 'Check what the deploy changed before you continue.');
   for (const t of env.rt.timers.values()) clearTimeout(t);
   await store.close();
+});
+
+test('#623: a Retry behind a held commit doesn’t bring back a wake canceled behind it', async () => {
+  // Integrator review of PR #1578: with the schedule read from the published state, Retry found the canceled wake
+  // still there, marked it running and sent its original instruction; the release then wrote it back.
+  const h = await heldStore();
+  const env = await setup(async () => {}, h.store);
+  const sc = env.rt.schedule(env.se.id, { inMs: 60_000, note: 'deploy the fix' });
+  env.rt.store.emit('schedule', { ...env.rt.s.schedules[sc.id], recoveryNote: 'the canceled wake’s own recovery' });
+  await h.store.flush();
+  h.hold();
+  const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync;
+  let sent;
+  try {
+    env.rt.cancelSchedule(sc.id);
+    sent = prepareScheduledRetry(env.rt, { retry: true, scheduledWakeId: sc.id, note: 'deploy the fix' }, sc.threadId);
+  } finally {
+    h.release();
+    await commit;
+    await h.store.flush();
+  }
+  assert.equal(h.store.state.schedules[sc.id], undefined, 'the canceled wake stays canceled');
+  assert.notEqual(sent.note, 'the canceled wake’s own recovery', 'and Retry sends nothing of the canceled schedule');
+  for (const t of env.rt.timers.values()) clearTimeout(t);
+  await h.store.close();
 });
