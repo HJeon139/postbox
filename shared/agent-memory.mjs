@@ -1,8 +1,8 @@
 // What each backend does with an agent’s memory, as the persona sheet says it in one line (#480): Claude Code and the
 // Agent SDK keep one per agent (#208), here and on a host (#491); Codex’s is off everywhere (#479); Kiro’s is off for
 // an isolated agent on this computer (#479), while on a host each isolated agent has a Kiro home of its own, keeping
-// whatever memory that Kiro is set to, and with your setup it’s that account’s; Antigravity keeps its own for your
-// sign-in (its delete_knowledge tool, agy-bypass.mjs).
+// whatever memory that Kiro is set to, and with your setup it’s that account’s; Antigravity’s, if it keeps any, is your
+// sign-in’s (inferred from its delete_knowledge tool, agy-bypass.mjs, not seen in a turn).
 
 import { MEMORY_CLAUDE_MIN } from './agent-facts.mjs';
 import { olderThan } from './versions.mjs';
