@@ -1,5 +1,6 @@
 // Following the newest message, new content still scrolls in, but never under a button the pointer moved onto, or a
-// click it has started (#1326); and a hold never hides what arrives.
+// click it has started (#1326), even one pressed in the frame the content grows (#1653); and a hold never hides what
+// arrives.
 
 import { expect, test } from '@playwright/test';
 import { app, appDrawn, holdStillApp, open, PICK, ROWS, room, still, watch } from './hold-still-fixture.mjs';
@@ -57,6 +58,44 @@ test('following the newest message, new content scrolls in, but not under a butt
     expect(await view()).toEqual({ mode: 'following', gap: expect.any(Number) });
     expect((await view()).gap, 'at the end').toBeLessThanOrEqual(2);
   });
+});
+
+// #1653: a quick click moves onto a button and presses it with no frame between, and content can grow before the
+// next frame’s callbacks run, as a review’s diagram sized itself in WebKit: the view followed the end, the button moved
+// up from under the press, and the release landed on the text below it, so the click was lost. Here the press and the
+// growth come in one task, so the order holds in every browser. DRAWN (view-skip.mjs), the transcript’s synchronous
+// way of hearing an item draw, stands in for whatever followed first in WebKit, which the instrumented runs didn’t
+// name. Synthetic events make no click, so this checks the hold, not the click: the button stays under the press, and
+// the view goes on to the end once it’s let go.
+test('#1653 following, a press that comes with its move holds the button through growth before the next frame', async ({ page }) => {
+  const { t, tools, say } = room('Hold still: quick press');
+  for (let i = 1; i <= 20; i++) say(LONG(i));
+  tools.show_block({ block: PICK(`pick-${t.id}`) });
+  await open(page, t);
+  await settled(page);
+  const chipTop = () => page.evaluate(() => document.querySelector('[role="radio"][aria-checked]')?.getBoundingClientRect().top ?? NaN);
+  const { pressedAt, moved } = await page.evaluate(() => {
+    const chip = /** @type {HTMLElement} */ (document.querySelector('[role="radio"][aria-checked]'));
+    const r = chip.getBoundingClientRect();
+    const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, pointerType: 'mouse', isPrimary: true };
+    chip.dispatchEvent(new PointerEvent('pointermove', at));
+    chip.dispatchEvent(new PointerEvent('pointerdown', at));
+    const item = /** @type {HTMLElement} */ (chip.closest('.transcript > [data-key]'));
+    item.append(Object.assign(document.createElement('div'), { className: 'pb-test-grow', style: 'height: 160px' }));
+    item.dispatchEvent(new Event('contentvisibilityautostatechange'));
+    return { pressedAt: r.top, moved: chip.getBoundingClientRect().top - r.top };
+  });
+  expect(Math.abs(moved), `the button moved ${moved} px under the press`).toBeLessThan(1);
+  await settled(page);
+  expect(Math.abs((await chipTop()) - pressedAt), 'and still there once the page has drawn, while the press is held').toBeLessThan(1);
+  await page.evaluate(() =>
+    document
+      .querySelector('[role="radio"][aria-checked]')
+      ?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', isPrimary: true })),
+  );
+  await settled(page);
+  const gap = await page.evaluate(() => Math.round(document.documentElement.scrollHeight - scrollY - innerHeight));
+  expect(gap, 'at the end once let go').toBeLessThanOrEqual(2);
 });
 
 // A hold never hides what arrives (#1326’s review): inside an app’s frame the page can’t see the pointer leave or
