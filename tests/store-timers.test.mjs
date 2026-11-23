@@ -36,6 +36,8 @@ const PLACED = {
   'adapters/process-group.mjs': 4, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'ask-question.mjs': 1, // a question’s CARD_WAIT_MS, expireWait: gated (#521)
   'claude-mirror.mjs': 1, // the mirror’s poll of an attached session’s transcript: skips its tick while closed
+  'diagram-parse.mjs': 1, // ends a diagram parse that took too long, by ending its worker: no store (#731)
+  'diagram-parse-worker.mjs': 2, // the timer functions the worker’s stand-in page hands Mermaid: another thread, no store (#731)
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
   'lint-delivery.mjs': 5, // an injected setTimer before a lint turn: a start, held by heldTurn while closed
   'live-buffer.mjs': 1, // a turn’s coalesced session frame, at the end of its tick: sendLive, which holds it behind the store’s held writes

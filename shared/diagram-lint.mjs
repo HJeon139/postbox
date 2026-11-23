@@ -9,6 +9,9 @@
 // diagram renders (app/kit/diagram.js) and reports what this misses. Pure, so the tests and both sides can use it.
 
 import { stripTags } from './markdown-inline.mjs';
+import { mermaidBlocks } from './mermaid-blocks.mjs';
+
+export { mermaidBlocks };
 
 /** The size Postbox draws diagram text at, and the smallest size people can read. */
 export const DIAGRAM_TEXT_PX = 13;
@@ -27,11 +30,6 @@ const WRAP_PX = 200;
 const NODE_PAD = 56;
 const NODE_GAP = 50;
 const RANK_GAP = 50;
-
-/** The closed ```mermaid fences in a Markdown text, in order. */
-export function mermaidBlocks(markdown) {
-  return [...String(markdown ?? '').matchAll(/^ {0,3}```mermaid[^\n]*\n([\s\S]*?)\n {0,3}```/gm)].map((m, index) => ({ index, src: m[1] }));
-}
 
 const clean = (s) =>
   stripTags(
