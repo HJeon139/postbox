@@ -246,6 +246,13 @@ export class Threads {
     return Date.now() - (this.viewing.get(threadId) ?? 0) < VIEWING_MS;
   }
 
+  /** Whether a browser had any thread open, in view, in the last 20 seconds: a page that can run an app’s check (#337). */
+  anyViewing() {
+    const now = Date.now();
+    for (const at of this.viewing.values()) if (now - at < VIEWING_MS) return true;
+    return false;
+  }
+
   /**
    * Adds a reaction to an item, or takes back this reactor’s (server/reactions.mjs, #251).
    * @param {string} threadId @param {string} itemId @param {unknown} emoji @param {{ id: string, handle: string } | null} [by]

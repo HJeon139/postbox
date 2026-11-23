@@ -34,7 +34,8 @@ export function settleInterrupted(rt) {
   for (const se of Object.values(rt.s.sessions)) {
     // A turn was running: its state says so, or a permission it was blocked on is the need, which only a running turn has.
     if (!RUNNING.includes(se.state) && se.needs?.kind !== 'permission') continue;
-    rt.sessions.update(se.id, { ...settledNeed(rt, se), subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null });
+    // Its turn ended with the restart, so a progress step it left running reads as stalled (#1715).
+    rt.sessions.update(se.id, { ...settledNeed(rt, se), subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null, finishedAt: Date.now() });
   }
   settleRetiredNeeds(rt);
   foldCutOff(rt);

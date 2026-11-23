@@ -161,7 +161,7 @@ Postbox shows blocks the person answers with a click. Every time you reply, whet
 - Questions for the person → a form, one field per question, not questions in prose. For “Who will read it, and how long?”: fields [{ id: "reader", label: "Who will read it?", kind: "text" }, { id: "words", label: "How many words?", kind: "number" }].
 - A draft to approve (a document, a spec, a message to send) → a review block { format: "markdown", content: the draft }, and a one-line reply. After comments, update_block with previous set to the old text, so the person sees a diff.
 - Data the person would sort or filter (a scan of datasets, candidates and their traits) → a table block with sortable columns, not a Markdown table.
-- A job of several steps that takes minutes → a progress block, with steps such as { id: "read", label: "Read the papers", state: "running", progress: { done: 3, total: 40, unit: "papers" } }. Move it on with update_block as items finish, at least every minute, and close every step as done or failed before your turn ends; one left running shows as stalled. Give each parallel subagent its own step.
+- A job of several steps that takes minutes → a progress block, with steps such as { id: "read", label: "Read the papers", state: "running", progress: { done: 3, total: 40, unit: "papers" } }. Move it on with update_block as items finish, and close every step as done or failed before your turn ends; one left running shows as stalled. Give each parallel subagent its own step.
 - A write outside this conversation (a document, an issue, a message, through any tool) → first its draft in a review block, even when asked to create it; make the call once the person approves, unless they said to publish directly.
 - Something destructive or costly → first, a confirm that says exactly what will happen.
 - Anything else → Markdown.
@@ -235,6 +235,21 @@ Plain English, sentence case, American spelling, curly quotes and apostrophes (�
  */
 const isReview = (event) =>
   !event.sent && (typeof event.from === 'string' || typeof event.values?.verdict === 'string') && Array.isArray(event.values?.comments);
+
+/**
+ * What the block’s agent does about another agent’s review (#133). On a review the person already answered (#716), a
+ * revision or a new comment in a thread asks them again, so it’s told only a thread’s status change keeps their answer.
+ * On one withdrawn or dismissed since, any update asks again.
+ * @param {any} event
+ */
+function reviewedNote(event) {
+  const where = 'Each comment is on the block now, by its threadId.';
+  if (event.closed)
+    return `${where} This block is closed, so it no longer asks the person: any update_block to it but an outcome, even one that only resolves a comment, asks them again.`;
+  if (event.answered)
+    return `${where} The person already answered this block: changing only status to “resolved” in update_block’s threads? keeps their answer; adding a reply, changing its content or sending it back unchanged asks them again.`;
+  return `${where} Revise with update_block, and keep each one in the block’s threads? with status “resolved” once you’ve handled it. The block still waits on the person.`;
+}
 
 /**
  * Writes one Postbox message as the text of a turn for the agent: the turn’s envelope (designs/508, “Delivering a
@@ -319,10 +334,8 @@ function formatBody(message, pathOf) {
               .map((c) => `- ${commentAt(c)}: ${c.text}`)
               .join('\n')
           : '',
-        // Another agent’s review (#133): its comments are on the block now, and the person still decides.
-        message.event.from
-          ? 'Each comment is on the block now, by its threadId. Revise with update_block, and keep each one in the block’s threads? with status “resolved” once you’ve handled it. The block still waits on the person.'
-          : '',
+        // Another agent’s review (#133): its comments are on the block now; reviewedNote says where the block stands with the person.
+        message.event.from ? reviewedNote(message.event) : '',
         // The person’s review (#1143): their comments are threads now, and they can’t resolve one, so the agent does.
         !message.event.from && isReview(message.event) && message.event.values.comments.some((c) => c?.threadId)
           ? `Each comment is on the block now, by its threadId, and only you can resolve it: once you’ve handled one, keep it in update_block’s threads? with status: "resolved". Up to ${REVIEW_THREADS_OPEN} can be open at once.`

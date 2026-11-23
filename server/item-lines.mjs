@@ -38,7 +38,9 @@ function blockContent(it) {
       else out.push(b.format === 'code' ? `${b.filename ? `${b.filename}:\n` : ''}${fenced(b.content ?? '', b.language)}` : String(b.content ?? ''));
       // With its id, so the block's agent can resolve a thread its revision fixed (update_block's threads, #791).
       for (const th of b.threads ?? [])
-        out.push(`Comments on ${commentAt(th)} (${th.status}, thread ${th.id}):\n${lines(th.comments.map((c) => `${commenter(c.author)}: ${c.text}`))}`);
+        out.push(
+          `Comments on ${commentAt(th)} (${th.status}, thread ${th.id}):\n${lines(th.comments.map((c) => `${commenter(c.author)}${c.edited ? ' (correcting their earlier comment in this thread)' : ''}: ${c.text}`))}`,
+        );
       break;
     case 'card':
       if (b.body) out.push(b.body);

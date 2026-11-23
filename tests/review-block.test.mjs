@@ -286,10 +286,9 @@ test('#133: what review_block refuses, and that nothing reaches the block or its
   assert.equal(item().reviews, undefined);
   await settle(rt);
   assert.equal(adapter.calls.length, calls, 'nobody was told');
-  // Once the person answers, it takes no more comments.
-  rt.act(t.id, item().id, 'submit', { verdict: 'approve', comments: [] }, 1);
-  await settle(rt);
-  assert.match(tool({ blockId: 'plan', comments: [{ line: 1, text: 'x' }] }).message, /@researcher’s plan is answered already, so it takes no more comments/);
+  // A review its agent withdrew takes no more comments.
+  arrange.setItem(rt, t.id, item().id, { closed: { by: 'agent', handle: 'researcher', at: Date.now() } });
+  assert.match(tool({ blockId: 'plan', comments: [{ line: 1, text: 'x' }] }).message, /@researcher’s plan is closed, so it takes no more comments/);
 });
 
 test('#179: an app’s values are never read out as review comments, whatever they hold (#51)', () => {
