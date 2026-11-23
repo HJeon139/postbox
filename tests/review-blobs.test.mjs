@@ -82,7 +82,8 @@ test('#780 a refusal that settles while an ordinary put of the same bytes is mid
   const plain = blobs.put(bytes);
   // Bounded by real time, so a build that never counts it fails here rather than hanging the gate.
   await untilTurns(() => !!blobs.writing?.size, 'the write counted');
-  // Its stat has found the file, and it waits at the folder sync: the gate, not a fixed time, says so (#1657).
+  // It waits at the folder sync, which the gate, not a fixed time, says (#1657). Its stat found the file there, since
+  // the staged put wrote it first.
   await untilTurns(() => !!pause?.reached, 'the ordinary put at its folder sync');
   await blobs.settle([{ sha256: s.sha256, fresh: s.fresh }], false);
   pause = null;
