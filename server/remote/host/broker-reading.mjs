@@ -1,10 +1,11 @@
 // The snapshot’s reading tools on the host (#120): read_conversation and read_message answered by the daemon’s
 // broker (broker.mjs) from the snapshot Postbox sent, as server/runtime.mjs answers them on the laptop.
 
-import { READING } from '../../../shared/limits.mjs';
+import { cutText, partOf } from '../../../shared/text-parts.mjs';
 import { count } from './broker-state.mjs';
 
-const clipText = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+/** As server/helpers.mjs’s clipText: never inside a surrogate pair (#675). @param {string} s @param {number} n */
+const clipText = (s, n) => (s.length > n ? `${cutText(s, n - 1)}…` : s);
 
 /**
  * @typedef {{ id: string, line: string, text: string, blockId?: string }} SnapshotItem
@@ -59,10 +60,8 @@ export function readMessage(snap, args = {}) {
     };
   const full = it.text;
   if (!full) return { ok: false, text: `${it.id} has nothing to read.` };
-  const start = Math.max(0, Math.min(full.length, Math.floor(Number(from) || 0)));
-  if (start >= full.length) return { ok: true, text: `Nothing after character ${count(full.length)}: that’s the end of ${it.id}.` };
-  const end = Math.min(full.length, start + READING.part);
-  if (start === 0 && end === full.length) return { ok: true, text: full };
-  const more = end < full.length ? ` read_message { id: "${it.id}", from: ${end} } reads on.` : '';
-  return { ok: true, text: `${full.slice(start, end)}\n\n(Characters ${count(start + 1)}–${count(end)} of ${count(full.length)}.${more})` };
+  // In parts as the laptop’s read_message cuts them (shared/text-parts.mjs), so a part never ends inside a character (#675).
+  const p = partOf(full, from, { next: (end) => `read_message { id: "${it.id}", from: ${end} }` });
+  if (!p) return { ok: true, text: `Nothing after character ${count(full.length)}: that’s the end of ${it.id}.` };
+  return { ok: true, text: p.whole ? full : `${p.part}\n\n${p.footer}` };
 }
