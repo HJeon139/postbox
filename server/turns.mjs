@@ -166,8 +166,7 @@ export function messageOf(rt, e) {
   if (e.source === 'event') return rt.delivery.carriedFor(e.id) ?? lostEvent(rt, e);
   if (e.source === 'review' && e.message?.event) {
     const it = e.itemId ? rt.store.pending.item(e.threadId, e.itemId) : null;
-    const { answered: _a, closed: _c, ...ev } = e.message.event;
-    return { ...e.message, event: { ...ev, ...blockNow(it) } };
+    return { ...e.message, event: { ...e.message.event, ...blockNow(it) } };
   }
   if (e.message) return plainMessage(e.message) ? { ...e.message, at: e.at, seq: e.seq } : e.message;
   if (e.source === 'person') return personMessage(rt, e);
