@@ -2,6 +2,49 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.43.0 (2026-11-23)
+
+### Features
+
+- **review:** edit a comment you sent, as a correction after it
+- **review:** let the person correct a comment after submitting a review
+
+### Fixes
+
+- **progress:** mark the turn a store outage reset as ended
+- **checks:** read whom a reply goes back to from what the turn took
+- **checks:** skip the reply-form lint for a retry's hand-off to an agent
+- **permissions:** count no command in a statement with a fold
+- **antigravity:** say in Auto's help that edits reach .git with Shell
+- **app:** read a step as stalled when its turn has ended, not after a minute
+- **review:** say an outcome is the update that keeps a closed block answered
+- **review:** tell the block's agent a reviewed block is closed when it is
+- **apps:** credit a check only to the turn whose reply waits for it
+- **app:** show a running progress step as running until its turn ends
+- **review:** refuse a correction to a deleted agent and hide Edit on a withdrawn review
+- **agy:** hold #1710's allowance to what a command reaches with no card
+- **agy:** in Auto with Shell, reads and edits follow the shell's rule
+- **remote:** ask a host again for owed memory removals at each connection
+- **text:** make TABLE_SEP linear and take write-intent code from the render
+- **apps:** tie the check wait to the turn and keep wait state on Apps
+- **review:** make the answered review note exact and derive answered at delivery
+- **server:** count only a reply's own mentions as addressed to an agent
+- **server:** don't ask for a block in a reply addressed to another agent
+- **text:** a heading, quote, list item, fence or rule over a rule starts no table
+- **text:** read code spans once, as the renderer does, for every reader
+- **apps:** keep the check wait's timer referenced, so a test can wait it out
+- **apps:** end a fix the reply carried, settle replaced waits, and wait only for a page in view
+- **apps:** show_app and update_app say how the app's check went
+- **review:** tell the block's agent that a reviewed review is already answered
+- **review:** let a reviewer comment on a review the person already answered
+- **review:** close the correction box when its text is unchanged
+- **remote:** say what a host's card can know about deleted agents' memory
+- **remote:** guard the memory removal in its handler, and show what a host owes
+- **remote:** remove a deleted agent's memory on each host
+- **review:** make a thread under a line an item of the Lines list
+- **review:** after a correction is sent, focus goes to the message box
+- **review:** bound corrections, keep edited the person's, and name the act apart
+
 ## 4.42.0 (2026-11-23)
 
 ### Features
