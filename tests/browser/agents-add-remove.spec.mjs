@@ -18,13 +18,17 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 
-/** A conversation with @librarian alone, open in the page; @indexer is an agent the person has, not in it. */
-async function opened(page) {
+/**
+ * A conversation with `@librarian` alone, or with these others too, open in the page; `@indexer` is an agent the person
+ * has, not in it unless named. @param {any} page @param {string[]} [others]
+ */
+async function opened(page, others = []) {
   const { rt } = app;
   // A retired agent, which + never offers (#1620), made once for the file.
   if (!retiree) retiree = rt.updatePersona(rt.createPersona({ handle: 'retiree' }).id, { retired: true });
   const projectId = Object.values(rt.store.state.projects)[0].id;
-  const t = rt.createThread({ projectId, title: `Shelf ${++n}`, personaIds: [arrange.persona(rt, 'librarian').id] });
+  const personaIds = ['librarian', ...others].map((handle) => arrange.persona(rt, handle).id);
+  const t = rt.createThread({ projectId, title: `Shelf ${++n}`, personaIds });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   return t;
@@ -67,16 +71,35 @@ test.describe('at 1280 px', () => {
     await page.keyboard.press('Enter');
     await expect(section.locator('.agent-rows li', { hasText: 'indexer' }), 'its row, at once').toBeVisible();
     await expect(page.locator('#live'), 'announced').toHaveText('Added @indexer to this conversation');
-    // Focus goes back to the composer, as after any action (app/AGENTS.md).
+    // Focus goes back to the composer, as after any action (designs/intent.md, “Accessibility and keyboard”).
     await expect(page.locator('#composer-input'), 'focus back in the composer').toBeFocused();
     expect(handlesIn(t)).toEqual(['indexer', 'librarian']);
     await expect(page.locator('.sys-line', { hasText: 'indexer joined' })).toBeVisible();
-
     await expect(minus, 'two agents: − is on').toHaveAttribute('aria-disabled', 'false');
-    await minus.focus();
+  });
+});
+
+test.describe('at 1280 px, with two agents', () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+  test('#1620 − by keyboard: Cancel keeps the agent and focus on −, and a remove keeps the persona', async ({ page }) => {
+    const t = await opened(page, ['indexer']);
+    const section = page.locator('.rail section.agents-sec');
+    const minus = section.getByRole('button', { name: 'Remove an agent from this conversation' });
+    await expect(minus, 'two agents: − is on').toHaveAttribute('aria-disabled', 'false');
+    await expect(minus, 'and says nothing about being off').not.toHaveAttribute('aria-description', /.*/);
+    const removeIndexer = async () => {
+      await minus.focus();
+      await page.keyboard.press('Enter');
+      await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @indexer…' }).focus();
+      await page.keyboard.press('Enter');
+    };
+    // Cancel removes no one, and focus goes back to −, where the person was.
+    await removeIndexer();
+    await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Cancel' }).focus();
     await page.keyboard.press('Enter');
-    await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @indexer…' }).focus();
-    await page.keyboard.press('Enter');
+    await expect(minus, 'focus back on − after Cancel').toBeFocused();
+    expect(handlesIn(t)).toEqual(['indexer', 'librarian']);
+    await removeIndexer();
     await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Delete session' }).focus();
     await page.keyboard.press('Enter');
     await expect(section.locator('.agent-rows li', { hasText: 'indexer' })).toHaveCount(0);
