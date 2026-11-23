@@ -44,7 +44,7 @@ test('#1654 the ring beside an agent’s newest message goes to its choice when 
   const [se] = arrange.sessionsIn(rt, t.id);
   const agent = (turnId, fields) => arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, handle: 'researcher', turnId, status: 'done', ...fields });
   arrange.post(rt, t.id, { kind: 'user', text: '@researcher write up how to store a year of click logs.' });
-  const writeUp = agent('turn_A', { text: `## Storing a year of click logs\n\n${'Each day’s logs go to their own file. '.repeat(120)}` });
+  agent('turn_A', { text: `## Storing a year of click logs\n\n${'Each day’s logs go to their own file. '.repeat(120)}` });
   arrange.post(rt, t.id, { kind: 'user', text: '@researcher which partition do you recommend? Ask me with a choice.' });
   const stepsOnly = agent('turn_B', { text: '', activity: { steps: [THOUGHT] } });
   const ask = arrange.post(rt, t.id, { kind: 'block', sessionId: se.id, handle: 'researcher', turnId: 'turn_B', valid: true, block: CHOICE });
@@ -63,6 +63,34 @@ test('#1654 the ring beside an agent’s newest message goes to its choice when 
   await ring.click();
   const landed = () => page.evaluate(() => document.activeElement?.closest('[data-key]')?.getAttribute('data-key') ?? null);
   await expect.poll(landed, { message: 'focus lands in the choice, not the write-up' }).toBe(ask.id);
-  expect(await landed()).not.toBe(writeUp.id);
   await expect(page.locator(`[data-key="${ask.id}"]`), 'and outlines it').toHaveClass(/arrived/);
+});
+
+test('#1654 the same turn ending while the page is open: the ring follows the agent to its choice', async ({ page }) => {
+  const { rt } = app;
+  const projectId = Object.values(rt.store.state.projects)[0].id;
+  const t = rt.createThread({ projectId, title: 'Click logs, live', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  arrange.post(rt, t.id, { kind: 'user', text: '@researcher which partition do you recommend? Ask me with a choice.' });
+  // The turn runs, with the page open: its first part holds a step, then its choice, then its words stream in.
+  arrange.setSession(rt, se.id, { state: 'tool', lastTurnId: 'turn_live' });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const part = { kind: 'agent', sessionId: se.id, handle: 'researcher', turnId: 'turn_live' };
+  const stepsOnly = arrange.post(rt, t.id, { ...part, status: 'done', text: '', activity: { steps: [THOUGHT] } });
+  const ask = arrange.post(rt, t.id, { kind: 'block', sessionId: se.id, handle: 'researcher', turnId: 'turn_live', valid: true, block: CHOICE });
+  const last = arrange.post(rt, t.id, { ...part, status: 'streaming', text: 'Pick a partition above.' });
+  await synced(page, app);
+  // The turn ends in the server's order (turn-finish.mjs): its parts settle first, then the session says it needs you.
+  arrange.setItem(rt, t.id, last.id, { status: 'done' });
+  arrange.setSession(rt, se.id, { state: 'needs', needs: { kind: 'block', itemId: ask.id, text: CHOICE.title } });
+  await synced(page, app);
+  await expect(page.locator(`[data-key="${stepsOnly.id}"]`), 'the steps-only part is hidden once the turn ends').toBeHidden();
+  const ring = page.locator(`[data-key="${ask.id}"] .who pb-ring[data-session="${se.id}"]`);
+  await expect(ring, 'the choice now names the speaker, with the ring that follows').toHaveAttribute('state', 'needs');
+  await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
+  await ring.click();
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.closest('[data-key]')?.getAttribute('data-key') ?? null), { message: 'focus lands in the choice' })
+    .toBe(ask.id);
 });

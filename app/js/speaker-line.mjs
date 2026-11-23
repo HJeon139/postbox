@@ -50,6 +50,10 @@ export function latestReply(threadId, sessionId) {
 const latest = new Map();
 client.on((ch) => {
   if (ch.type === 'load') latest.clear();
+  // A session's change can hide a finished part of its turn (drawsNothing reads whether the turn is still live), and
+  // the server sends it after the turn's last item event, so the session's latest reply is found again (#1654).
+  const sessionId = ch.type === 'session' || ch.type === 'session.patch' ? ch.data?.id : null;
+  if (sessionId) for (const key of latest.keys()) if (key.endsWith(`\n${sessionId}`)) latest.delete(key);
   const threadId = ch.type.startsWith('item.') ? ch.data?.threadId : null;
   if (!threadId) return;
   for (const key of latest.keys()) if (key.startsWith(`${threadId}\n`)) latest.delete(key);

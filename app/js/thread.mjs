@@ -136,6 +136,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     nodes.set(id, n);
     if (old && win) replacedNode(win, old, n);
     back();
+    // An item that now draws nothing, or something again, moves the speaker line to or from the one after it (#1654).
+    if (old && old.hidden !== n.hidden && list[i + 1]) rerender(list[i + 1].id);
   };
   // The nodes a rebuild keeps where they are, while it runs (resync-keep.mjs, #987).
   let held = new Map();
