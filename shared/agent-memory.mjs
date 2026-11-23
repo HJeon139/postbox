@@ -33,6 +33,6 @@ export function memoryLine(backend, { usesHostSetup, remote } = {}, { claudeCode
   if (backend === 'claude-code' || backend === 'agent-sdk') return OWN;
   if (backend === 'codex') return 'Memory: off. Codex keeps one memory for everything it runs, so Postbox turns it off.';
   if (backend === 'kiro-cli') return kiroLine(usesHostSetup === false, Boolean(remote));
-  if (backend === 'antigravity-cli') return 'Memory: Antigravity’s own, kept for your sign-in and shared with every Antigravity agent and your own sessions.';
+  if (backend === 'antigravity-cli') return 'Memory: if Antigravity keeps any, it’s your sign-in’s, shared with every Antigravity agent and your own sessions.';
   return null;
 }

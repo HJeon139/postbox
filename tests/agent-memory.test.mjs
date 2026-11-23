@@ -13,7 +13,7 @@ test('#480 each backend’s memory line', () => {
   assert.equal(memoryLine('codex'), 'Memory: off. Codex keeps one memory for everything it runs, so Postbox turns it off.');
   assert.equal(
     memoryLine('antigravity-cli'),
-    'Memory: Antigravity’s own, kept for your sign-in and shared with every Antigravity agent and your own sessions.',
+    'Memory: if Antigravity keeps any, it’s your sign-in’s, shared with every Antigravity agent and your own sessions.',
   );
   assert.equal(memoryLine('mock'), null);
 });
