@@ -15,6 +15,7 @@ import {
   PERMISSIONS,
   selectBackend,
 } from '/shared/agent-facts.mjs';
+import { memoryLine } from '/shared/agent-memory.mjs';
 
 import { hostMarker, mockMarker } from './agent-facts.mjs';
 import { boilerplateRow } from './boilerplate-row.mjs';
@@ -175,7 +176,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
               'select.select',
               {
                 id: `${idp}-b`,
-                'aria-describedby': `${idp}-b-help`,
+                'aria-describedby': memoryLine(st.backend, st, client.config.versions) ? `${idp}-b-help ${idp}-b-mem` : `${idp}-b-help`,
                 onchange: (e) => {
                   selectBackend(st, e.target.value, client.config);
                   // Where it runs: only a backend that can run on a host keeps one, and one that isn’t on this
@@ -197,6 +198,8 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
             icon('down'),
           ),
       h('span.help', { id: `${idp}-b-help` }, BACKENDS.find(([id]) => id === st.backend)?.[2] ?? ''),
+      // What it does with memory (#480): its own, off, yours or none.
+      memoryLine(st.backend, st, client.config.versions) ? h('span.help', { id: `${idp}-b-mem` }, memoryLine(st.backend, st, client.config.versions)) : null,
     ),
     real && capsOf(st.backend).remote && (hosts.length || !local.has(st.backend))
       ? placeField(st, paint, { idp, hosts, here: local.has(st.backend), name: BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend })
