@@ -11,7 +11,10 @@ export const CHECK_WAIT_MS = 12_000;
 /** @type {Map<string, Set<(check: any) => void>>} */
 const waiting = new Map();
 const key = (appId, version) => `${appId}@${version}`;
-/** Whether a page is open that can run a check: set by server/index.mjs from its live streams. */
+/**
+ * Whether a page can run a check: one showing a conversation, in view, pinged in the last 20 seconds (Threads.anyViewing).
+ * A page in a background tab runs no checks (app/js/app-check.mjs), so it doesn’t count. Set by server/index.mjs.
+ */
 let pagesOpen = () => false;
 
 /** @param {() => boolean} fn */
@@ -25,6 +28,18 @@ export const awaited = (appId, version) => (waiting.get(key(appId, version))?.si
 /** The version’s check has a result: every reply waiting for it has it. @param {string} appId @param {number} version @param {any} check */
 export function settleWaits(appId, version, check) {
   for (const done of [...(waiting.get(key(appId, version)) ?? [])]) done(check);
+}
+
+/**
+ * The app’s versions other than `current` won’t be checked: a newer one replaced them, or the app was retired. Every
+ * reply waiting for one has that. @param {string} appId @param {number | null} current  null when the app was retired
+ */
+export function settleUnchecked(appId, current) {
+  const status = current === null ? 'retired' : 'replaced';
+  for (const k of [...waiting.keys()]) {
+    const [id, v] = [k.slice(0, k.lastIndexOf('@')), Number(k.slice(k.lastIndexOf('@') + 1))];
+    if (id === appId && v !== current) settleWaits(appId, v, { status, problems: [] });
+  }
 }
 
 /**
@@ -65,6 +80,8 @@ export function checkLine(version, check) {
   if (check.status === 'passed') return `v${version} passed its check, and the person sees it.`;
   if (check.status === 'fixing')
     return `v${version}’s check found problems, so the person doesn’t see it yet. Fix them in a new version. ${wait}\n${listed(check)}`;
+  if (check.status === 'replaced') return `v${version} was replaced by a newer version before its check ran.`;
+  if (check.status === 'retired') return `The app was retired before v${version}’s check ran.`;
   if (check.status === 'crashed') return `v${version} still fails with a script error, so it shows as crashed:\n${listed(check)}`;
   return `v${version} is shown, with these notes from its check:\n${listed(check)}`;
 }

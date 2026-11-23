@@ -9,6 +9,7 @@ import { awaited, checkLine, checksRunIn, withCheck } from '../server/app-check-
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
+import { settle } from './blocks-fixture.mjs';
 
 /** The check’s finding the agent fixes, as the page reports it (app/kit/check-text.js). */
 const FAINT = { code: 'low-contrast', message: 'Text contrast 1.79:1 in the subtitle (needs 4.5:1).' };
@@ -90,4 +91,50 @@ test('#337 the reply’s line for each result', () => {
     'v3 is shown, with these notes from its check:\n- low-contrast: Text contrast 1.79:1 in the subtitle (needs 4.5:1).',
   );
   assert.match(checkLine(3, { status: 'crashed', problems: [{ code: 'script-error', message: 'x is not defined' }] }), /^v3 still fails with a script error/);
+});
+
+test('#337 a fix the reply carried ends with the turn that heard it, so the app doesn’t stay “fixing”', async () => {
+  const s = shown();
+  checksRunIn(() => true);
+  try {
+    // A turn of the agent’s: it shows a version that fails, hears it in the reply, and ends without a new one.
+    s.rt.adapters.get('mock').deliver = async (_session, _message, ctx) => {
+      const r = ctx.tools.update_app({ id: s.r.appId, code: '<p>v2</p>', summary: 'bigger labels' });
+      const reply = withCheck('update_app', r, null);
+      s.rt.appCheck(s.r.appId, { version: 2, problems: [FAINT] });
+      await reply;
+    };
+    s.rt.sendMessage(s.rt.s.apps[s.r.appId].threadId, { text: '@reviewer fix it' });
+    for (let i = 0; i < 100 && s.rt.s.apps[s.r.appId].check.status !== 'note'; i++) await sleep(10);
+    await settle(s.rt);
+    assert.equal(s.rt.s.apps[s.r.appId].check.status, 'note', 'out of fixing once the turn that heard it ended');
+    assert.deepEqual(s.sent(), [], 'no app-check message');
+  } finally {
+    checksRunIn(() => false);
+  }
+});
+
+test('#337 a reply waiting for a version that a newer one replaced, or whose app was retired, hears so at once', async () => {
+  const s = shown();
+  checksRunIn(() => true);
+  try {
+    const v1 = withCheck('show_app', s.r, null);
+    s.tools.update_app({ id: s.r.appId, code: '<p>v2</p>', summary: 'again' });
+    assert.match((await v1).message, /v1 was replaced by a newer version before its check ran\./);
+    const v2 = withCheck('update_app', { ok: true, appId: s.r.appId, version: 2, message: 'Saved v2.' }, null);
+    s.tools.retire_app({ id: s.r.appId, reason: 'Replaced.' });
+    assert.match((await v2).message, /The app was retired before v2’s check ran\./);
+  } finally {
+    checksRunIn(() => false);
+  }
+});
+
+test('#337 only a page in view counts: one that pinged a conversation in the last 20 seconds', () => {
+  const s = shown();
+  const threadId = s.rt.s.apps[s.r.appId].threadId;
+  assert.equal(s.rt.threads.anyViewing(), false, 'no page has pinged');
+  s.rt.threads.view(threadId);
+  assert.equal(s.rt.threads.anyViewing(), true);
+  s.rt.threads.viewing.set(threadId, Date.now() - 21_000);
+  assert.equal(s.rt.threads.anyViewing(), false, 'a page that stopped pinging, as a background tab does');
 });

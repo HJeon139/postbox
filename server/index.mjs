@@ -183,9 +183,9 @@ export async function start({
   };
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
-  const { streams, stop: stopStreams, stream, headers, pages } = liveStreams(store, undefined, { running: rt.running });
-  // A saved app’s reply waits for its check only while a page is open to run it (#337).
-  checksRunIn(pages);
+  const { streams, stop: stopStreams, stream, headers } = liveStreams(store, undefined, { running: rt.running });
+  // A saved app’s reply waits for its check only while a page in view can run it (#337).
+  checksRunIn(() => rt.threads.anyViewing());
   const search = searchOf(store);
   let offlineUntil = 0;
 

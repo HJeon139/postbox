@@ -8,7 +8,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { INTENT_CHARS, LIMITS } from '../shared/limits.mjs';
 import { wordCount } from '../shared/text.mjs';
 import { appReceipt } from './app-check-status.mjs';
-import { awaited, settleWaits } from './app-check-wait.mjs';
+import { awaited, settleUnchecked, settleWaits } from './app-check-wait.mjs';
 import { notYours } from './app-retire.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
 import { HELD_BY_EVERY_AGENT, hostTool } from './host-tool.mjs';
@@ -90,8 +90,11 @@ function checked(apps, appId, { version, problems = [] }) {
   const fixable = clean.filter((p) => p.code !== 'no-answer' && p.code !== 'check-error');
   const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
   if (app.check.attempt === 0 && blocking.length && apps.store.state.sessions[app.sessionId]) {
-    apps.store.emit('app', { ...app, check: { status: 'fixing', attempt: 1, problems: fixable } });
-    if (!awaited(appId, version)) apps.send(app.sessionId, { kind: 'app-check', appId, problems: fixable }, { threadId: app.threadId });
+    // heard: a reply waiting for this check carries the problems, so no app-check turn comes; the turn that made the
+    // version ends the fix instead (endHeardFixes).
+    const heard = awaited(appId, version);
+    apps.store.emit('app', { ...app, check: { status: 'fixing', attempt: 1, problems: fixable, ...(heard ? { heard } : {}) } });
+    if (!heard) apps.send(app.sessionId, { kind: 'app-check', appId, problems: fixable }, { threadId: app.threadId });
     return { status: 'fixing' };
   }
   const notes = clean.every((p) => APP_WARNINGS.has(p.code));
@@ -120,12 +123,14 @@ function checked(apps, appId, { version, problems = [] }) {
 export const fixEnded = (app) => (app.check.problems?.some((p) => p.code === 'script-error') ? 'crashed' : 'note');
 
 /**
- * No app-check turn will fix the agent’s apps now: each still fixing shows with its note, or crashed (#1664).
- * @param {{ store: any }} rt @param {string} sessionId
+ * No app-check turn will fix the agent’s apps now: each still fixing shows with its note, or crashed (#1664). With
+ * heardOnly, only those whose problems a show_app or update_app reply carried (#337).
+ * @param {{ store: any }} rt @param {string} sessionId @param {{ heardOnly?: boolean }} [o]
  */
-export function endFixes(rt, sessionId) {
+export function endFixes(rt, sessionId, { heardOnly = false } = {}) {
   for (const app of Object.values(rt.store.pending.apps()))
-    if (app.sessionId === sessionId && app.check.status === 'fixing') rt.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
+    if (app.sessionId === sessionId && app.check.status === 'fixing' && (!heardOnly || app.check.heard))
+      rt.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
 }
 
 /**
@@ -269,6 +274,8 @@ export function updateApp(apps, sessionId, turn, threadId, endSegment, { id, cod
     check: { status: 'pending', attempt: app.check.attempt },
   };
   apps.store.emit('app', next);
+  // A reply still waiting for an earlier version’s check won’t get one now (#337).
+  settleUnchecked(id, next.current);
   // A new version always comes to the newest point, where the agent says what changed (#49).
   let moved = false;
   if (followsConversation({ type: 'app' })) {

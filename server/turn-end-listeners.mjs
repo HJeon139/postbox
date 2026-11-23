@@ -59,4 +59,7 @@ export function listenTurnEnd(rt) {
  */
 function fixOver(rt, turn) {
   if (turn.kind === 'app-check') endFixes(rt, turn.sessionId);
+  // A fix whose problems the turn heard in its show_app or update_app reply (#337) has no app-check turn of its own:
+  // the turn that heard them ends it, with or without a new version.
+  else endFixes(rt, turn.sessionId, { heardOnly: true });
 }
