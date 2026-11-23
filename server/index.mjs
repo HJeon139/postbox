@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
+import { appAnimating } from './app-animating.mjs';
 import { openLink } from './app-links.mjs';
 import { clickEvent, noteApp } from './app-notes.mjs';
 import { publishApp } from './app-publish.mjs';
@@ -379,13 +380,14 @@ export async function start({
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
     const stored = await storedFileRoute(store, blobs, path, req.method);
     if (stored) return raw(res, 200, stored.bytes, stored.headers);
-    if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|note|state|query|open|publish)$/)) && req.method === 'POST') {
+    if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|note|state|query|open|publish|animating)$/)) && req.method === 'POST') {
       const id = decodePath(m[1]);
       if (m[2] === 'open') {
         hereAlone(req, 'Links from apps open');
         return send(res, 200, await openLink(rt, id, body.url, { run: openUrl }));
       }
       if (m[2] === 'publish') return send(res, 200, publishApp(rt, id, body.data));
+      if (m[2] === 'animating') return send(res, 200, appAnimating(rt, id, body.version));
       if (m[2] === 'check') return send(res, 200, rt.appCheck(id, body));
       // A click’s send starts a turn; any other is a note for the agent’s next one (#1488, app/js/app-send.mjs).
       if (m[2] === 'event') return send(res, 200, clickEvent(rt, id, body.action, body.values ?? {}));

@@ -164,6 +164,7 @@ export function sandboxPage({ origin, ancestor, app, version, theme, check }) {
 ${css()}
 <script>${inline('kit/drawn.js', '</script')}</script>
 <script data-init="${esc(JSON.stringify(init))}">${inline('kit/kit.js', '</script')}</script>
+<script>${inline('kit/frames.js', '</script')}</script>
 <script>${inline('kit/links.js', '</script')}</script>
 <script>${inline('kit/publish.js', '</script')}</script>
 <script>${inline('kit/send.js', '</script')}</script>
