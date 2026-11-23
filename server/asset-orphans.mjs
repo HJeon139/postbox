@@ -1,9 +1,10 @@
 // The asset folder’s pass at load (#516 S3, designs/architecture/assets.md, “Assets”), after the store holds its folder and has
 // read the log, before any tool accepts a write. A file is deleted only on positive evidence: a committed prune or
 // erase released its hash (assetReleases), and no version in any room still keeps it. A file nothing names and nothing
-// released (a write that never committed, or metadata an older Postbox dropped) is kept and counted, never deleted:
-// deleting by absence would turn any version the state lost into bytes lost for good. Only at load, since deleting
-// while Postbox runs could race a write of the same bytes, which finds the file already there (server/blobs.mjs).
+// released (a write cut off before its commit, or metadata an older Postbox dropped) is kept and counted, never deleted:
+// deleting by absence would turn any version the state lost into bytes lost for good. The load deletes only released
+// files; while Postbox runs, the one delete is a refused write removing the file it made, which the store’s holds keep
+// from racing a write of the same bytes (server/blobs.mjs, #706).
 
 import { readdir, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';

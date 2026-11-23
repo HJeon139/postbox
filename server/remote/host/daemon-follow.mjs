@@ -8,6 +8,7 @@ import { READ_CHUNK } from './daemon-constants.mjs';
 import { readExit, sizeOf } from './daemon-files.mjs';
 import { fail, send } from './daemon-reply.mjs';
 import { followerEnds, forgetSilence, turnRunning, unkilled } from './daemon-running.mjs';
+import { relayedEnded } from './relay.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
 /** @typedef {import('./daemon-constants.mjs').Follower} Follower */
@@ -214,6 +215,7 @@ async function run(fl) {
         // Its process may still run there, so the laptop leaves its resume to the person (#872).
         await send(c, 'ended', { turn, exit, size, ...(!exit && unkilled(d, turn) ? { unkilled: true } : {}) });
       }
+      relayedEnded(d, turn);
       if (exit) d.cleanup.turnEnded(turn).catch((e) => d.log(`Cleaning turn ${turn} failed: ${e.message}`));
       return;
     }

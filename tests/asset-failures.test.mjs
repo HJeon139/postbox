@@ -66,7 +66,7 @@ test('F2: putting the bytes fails: nothing is published, no draft is left, and t
   assert.deepEqual(Object.keys(store.state.assets), []);
 });
 
-test('F3: the bytes are put, then the commit is refused: the state is unchanged and the file is kept, unclaimed', async (t) => {
+test('F3: the bytes are put, then the commit is refused: the state is unchanged and the file it put is removed (#706)', async (t) => {
   const f = await folder(t);
   const store = await f.reopen();
   const a = await writeAsset(store, f.blobs, req({ name: 'a.md', bytes: text('one') }));
@@ -74,12 +74,9 @@ test('F3: the bytes are put, then the commit is refused: the state is unchanged 
   const stale = await writeAsset(store, f.blobs, req({ id: a.id, base: 1, bytes: text('mine') }));
   assert.equal(stale.code, 'stale');
   assert.equal(store.state.assets[a.id].versions.length, 2);
-  assert.equal(f.files().length, 3, 'the refused write’s bytes are on disk, named by nothing');
-  const warned = [];
-  const swept = await sweepAssets(store, f.blobs, { warn: (l) => warned.push(l) });
-  assert.deepEqual([swept.deleted, swept.unclaimed.count], [[], 1]);
-  assert.equal(f.files().length, 3, 'kept, not deleted');
-  assert.match(warned.join('\n'), /found 1 file \(4 bytes\) in the asset folder that no asset names.*They’re kept/);
+  assert.equal(f.files().length, 2, 'only the two versions’ files are on disk');
+  const swept = await sweepAssets(store, f.blobs, { warn: () => {} });
+  assert.deepEqual([swept.deleted, swept.unclaimed.count], [[], 0]);
 });
 
 test('F4: Postbox stops after the bytes are put, before the commit: the next load keeps the file and counts it', async (t) => {

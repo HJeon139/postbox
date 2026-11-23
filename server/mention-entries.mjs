@@ -67,8 +67,8 @@ function replayKey(turn, handle) {
 export function wakeMentioned(rt, turn) {
   for (const h of turn.mentioned ?? []) {
     const p = rt.personas.byHandle(h);
-    const conv = rt.threads.lineage(turn.threadId).at(-1);
-    const target = p && rt.sessions.in(conv).find((x) => x.personaId === p.id && !x.retiredFork);
+    const conv = rt.threads.conversationToWrite(turn.threadId);
+    const target = p && rt.sessions.pendingIn(conv).find((x) => x.personaId === p.id && !x.retiredFork);
     if (target) rt.delivery.wake(target.id);
   }
 }

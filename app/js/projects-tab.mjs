@@ -1,8 +1,10 @@
-// Settings’ Projects tab: each project’s name and folder, the repository a push you ask for goes to, and a form that
-// adds a project. Moved out of app/js/sheets.mjs.
+// Settings’ Projects tab: each project’s name and folder, the repository a push you ask for goes to, its Delete (#119),
+// and a form that adds a project. Moved out of app/js/sheets.mjs.
 
 import { api, client } from './client.mjs';
 import { h, icon } from './dom.mjs';
+import { heard } from './go-when-there.mjs';
+import { deleteProjectButton } from './project-delete.mjs';
 import { toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -38,7 +40,11 @@ export function projectsTab(paint) {
     h(
       'ul.list-rows',
       Object.values(S().projects).map((p) =>
-        h('li.project-row', h('div.row-flex', icon('folder', 'dim'), h('b', p.name), h('span.small.dim.mono.grow', p.folder)), pushField(p)),
+        h(
+          'li.project-row',
+          h('div.row-flex', icon('folder', 'dim'), h('b', p.name), h('span.small.dim.mono.grow', p.folder), deleteProjectButton(p, paint)),
+          pushField(p),
+        ),
       ),
     ),
     h(
@@ -54,8 +60,10 @@ export function projectsTab(paint) {
           type: 'button',
           onclick: () =>
             api('/api/projects', { name: name.value, folder: folder.value })
-              .then(() => {
+              .then(async (made) => {
                 toast({ title: `Created ${name.value || 'the project'}` });
+                // Once the page has heard of it, so the tab lists it, and the only project’s Delete turns on (#119).
+                await heard(() => S().projects[made.id]);
                 paint();
               })
               .catch((e) => toast({ title: 'Couldn’t create the project', text: e.message, level: 'blocking' })),

@@ -74,6 +74,8 @@ export function begin(rts, turn, hostId, adapter) {
 export async function prepare(rts, turn, ctx, message) {
   const rt = rts.rt;
   const live = /** @type {Live} */ (turn.remote);
+  // What the host says of the turn outside its stream, such as a relay it lost (turns-relay.mjs), shows as its step.
+  live.step = (s) => ctx.activity(s);
   const se = rt.s.sessions[turn.sessionId];
   const persona = ctx.persona;
   const host = rt.s.hosts?.[live.hostId];

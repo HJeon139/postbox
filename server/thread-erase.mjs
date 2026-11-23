@@ -2,6 +2,8 @@
 // last agent (#320). Kept apart from server/runtime.mjs, which is at its size; it takes the runtime first. It reads the
 // threads and sessions pending, as the deletes that call it do: one made behind a held commit is erased too.
 
+import { dropSchedulesOf } from './scheduled-wakes.mjs';
+
 /**
  * Erases these threads, their sessions and their apps, deepest first. `stopped` names sessions whose kept jobs were
  * stopped already, so none is signaled twice.
@@ -19,6 +21,7 @@ export function eraseThreads(rt, ids, why, stopped = []) {
       // A turn it still has would run on for a session that’s gone.
       if (rt.turns?.has(sid)) rt.stop(sid, { silent: true });
       rt.stopMirrorFor(sid);
+      dropSchedulesOf(rt, sid);
       rt.sessions.remove(sid);
     }
     for (const app of Object.values(rt.store.pending.apps())) if (app.threadId === id) rt.store.emit('remove', { kind: 'app', id: app.id });

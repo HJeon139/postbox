@@ -5,7 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import { app, appDrawn, growApp, holdStillApp, open, PICK, PICTURE, ROWS, room, scrollTo, still, stream, watch } from './hold-still-fixture.mjs';
-import { synced } from './postbox.mjs';
+import { settled, synced } from './postbox.mjs';
 import { LONG } from './view-read-fixture.mjs';
 
 holdStillApp(test, 'hold-still');
@@ -105,4 +105,31 @@ test('reading, a button under the pointer stays under it while a block above it 
     await page.mouse.up();
     await expect(chip).toHaveAttribute('aria-checked', 'true');
   });
+});
+
+// Reading, a press takes no hold of its own (#1653’s fix takes one only while following): what grew above the button
+// since the last frame is put back first, as before, so the release lands on the button. The growth and the press come
+// in one task, so no frame runs between them.
+test('reading, a press right after a block above grew takes no hold of its own, and the button comes back under it', async ({ page }) => {
+  const { t, tools, say } = room('Hold still: reading press');
+  for (let i = 1; i <= 10; i++) say(LONG(i));
+  tools.show_block({ block: PICK(`pick-${t.id}`) });
+  for (let i = 11; i <= 30; i++) say(LONG(i));
+  await open(page, t);
+  const chip = page.getByRole('radio', { name: 'The claims' });
+  await scrollTo(page, chip, 400);
+  const box = /** @type {{ x: number, y: number, width: number, height: number }} */ (await chip.boundingBox());
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await settled(page);
+  const pressedAt = await chip.evaluate((n) => {
+    const r = n.getBoundingClientRect();
+    const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, pointerType: 'mouse', isPrimary: true };
+    const item = /** @type {HTMLElement} */ (n.closest('.transcript > [data-key]'));
+    item.prepend(Object.assign(document.createElement('div'), { className: 'pb-test-grow', style: 'height: 160px' }));
+    n.dispatchEvent(new PointerEvent('pointerdown', at));
+    return r.top;
+  });
+  await settled(page);
+  const moved = (await chip.evaluate((n) => n.getBoundingClientRect().top)) - pressedAt;
+  expect(Math.abs(moved), `the button is ${moved} px from the press`).toBeLessThan(1);
 });

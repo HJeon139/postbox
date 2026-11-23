@@ -11,7 +11,7 @@ import { clip } from './helpers.mjs';
  */
 export function postUserMessage(rt, threadId, { text, attachments }, to, marks = {}) {
   const item = rt.threads.addItem(threadId, { kind: 'user', text, attachments, to, ...marks });
-  rt.threads.patch(rt.threads.lineage(threadId).at(-1), { hops: 0 });
+  rt.threads.patch(rt.threads.conversationToWrite(threadId), { hops: 0 });
   return { item };
 }
 
