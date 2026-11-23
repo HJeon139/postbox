@@ -81,3 +81,24 @@ test('#706: a refused write that replaced a damaged file a version names leaves 
   assert.equal(stale.code, 'stale');
   assert.equal((await f.blobs.get(sha)).toString(), 'one', 'the put made it whole, and the refusal didn’t remove it');
 });
+
+test('#706: two refused writes of the same bytes, the second put after the first’s, leave no file', async (t) => {
+  const f = await folder(t);
+  const { store } = f;
+  const a = await twoVersions(f);
+  /** @type {Promise<any> | null} */
+  let second = null;
+  // The second write starts once the first’s bytes are on disk, so its put finds them there; the first is refused first.
+  const racing = {
+    put: async (/** @type {Buffer} */ bytes, /** @type {any} */ opts) => {
+      const r = await f.blobs.put(bytes, opts);
+      second ??= writeAsset(store, f.blobs, req({ id: a.id, base: 1, bytes: text('same'), author: 'critic' }));
+      return r;
+    },
+    settle: (/** @type {any} */ puts, /** @type {boolean} */ keep) => f.blobs.settle(puts, keep),
+  };
+  const first = await writeAsset(store, /** @type {any} */ (racing), req({ id: a.id, base: 1, bytes: text('same') }));
+  assert.deepEqual([first.code, (await second)?.code], ['stale', 'stale']);
+  assert.equal(f.files().length, 2, 'neither refused write left its bytes');
+  assert.deepEqual([f.blobs.held.size, f.blobs.kept.size, f.blobs.orphaned.size], [0, 0, 0]);
+});

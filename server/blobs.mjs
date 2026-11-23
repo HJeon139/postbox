@@ -16,6 +16,8 @@ export class Blobs {
     /** @type {Map<string, number>} */ this.held = new Map();
     /** @type {Set<string>} */ this.kept = new Set();
     /** @type {Map<string, Promise<void>>} */ this.dropping = new Map();
+    // Bytes a refused staged put wrote while another staged put still held them: the last hold to go removes them.
+    /** @type {Set<string>} */ this.orphaned = new Set();
     // Ordinary puts in flight, by SHA-256: a refused staged call never removes bytes one of them is writing or wrote.
     /** @type {Map<string, number>} */ this.writing = new Map();
   }
@@ -133,11 +135,13 @@ export class Blobs {
       const left = (this.held.get(sha256) ?? n) - n;
       if (left > 0) {
         this.held.set(sha256, left);
+        if (fresh && !keep) this.orphaned.add(sha256);
         continue;
       }
       this.held.delete(sha256);
       const keptBySomeone = this.kept.delete(sha256);
-      if (keptBySomeone || !fresh || this.writing.has(sha256)) continue;
+      const wrote = this.orphaned.delete(sha256) || fresh;
+      if (keptBySomeone || !wrote || this.writing.has(sha256)) continue;
       const gone = unlink(this.pathOf(sha256)).catch(() => {});
       this.dropping.set(sha256, gone);
       await gone;
