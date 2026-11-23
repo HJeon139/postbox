@@ -12,7 +12,7 @@ import { httpError } from './helpers.mjs';
 export function deleteProject(rt, projectId) {
   const p = rt.store.pending.project(projectId);
   if (!p) throw httpError(404, 'That project doesn’t exist. It may have been deleted.');
-  if (Object.keys(rt.store.state.projects).length < 2)
+  if (Object.keys(rt.store.pending.projects()).length < 2)
     throw httpError(409, 'This is the only project, and Postbox opens on one. Add another project, then delete this one.');
   // Each conversation’s own delete takes its topic and side threads with it.
   const conversations = Object.values(rt.store.pending.threads()).filter((t) => t.projectId === projectId && !t.parentId);

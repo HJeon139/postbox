@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { projectsRoute } from '../server/project-routes.mjs';
 import * as arrange from './arrange.mjs';
 import { setup } from './side-threads-fixture.mjs';
+import { setup as heldSetup, heldStore } from './stop-reply-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const remove = (f, id) => projectsRoute(f.rt, `/api/projects/${id}`, 'DELETE', {}, new URLSearchParams());
@@ -45,4 +46,35 @@ test('#119 a project that doesn’t exist is refused with a 404', async () => {
   const f = twoProjects();
   await assert.rejects(remove(f, 'p9'), { status: 404 });
   assert.ok(f.store.state.projects.p1 && f.store.state.projects.p2);
+});
+
+/** fn run on a runtime whose store holds its next commit, with projects p1 and p2 published first (#1292’s class). */
+async function whileHeld(fn) {
+  const h = await heldStore();
+  const env = await heldSetup(async () => {}, h.store);
+  h.store.emit('project', { id: 'p2', name: 'Q', folder: tempDir('pb-project-') });
+  await h.store.flush();
+  h.hold();
+  const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync;
+  try {
+    await fn(env);
+  } finally {
+    h.release();
+    await commit;
+    await h.store.flush();
+  }
+  return h.store;
+}
+
+test('#119 behind a held commit, a delete counts the projects as written: the last one is still refused', async () => {
+  const store = await whileHeld(async ({ rt }) => {
+    await projectsRoute(rt, '/api/projects/p1', 'DELETE', {}, new URLSearchParams());
+    await assert.rejects(projectsRoute(rt, '/api/projects/p1', 'DELETE', {}, new URLSearchParams()), { status: 404 }, 'gone already');
+    await assert.rejects(projectsRoute(rt, '/api/projects/p2', 'DELETE', {}, new URLSearchParams()), { status: 409 }, 'the last');
+    // And no conversation starts in the project that was just deleted.
+    assert.throws(() => rt.createThread({ projectId: 'p1', title: 'Late' }), { status: 404 });
+  });
+  assert.deepEqual(Object.keys(store.state.projects), ['p2']);
+  assert.ok(!Object.values(store.state.threads).some((t) => t.projectId === 'p1'));
 });
