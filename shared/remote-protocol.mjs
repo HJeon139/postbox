@@ -88,6 +88,9 @@
 //   It’s new in this version of the protocol without a new version number: a daemon from before it refuses the line
 //   as a message it doesn’t carry (`error`, code `bad-message`, with no `re`, worded as refusesType reads it), and
 //   Postbox suggests the last list it kept and says the host’s Postbox is older (#1304, #1318).
+// - `forget { persona }` asks the daemon to remove a deleted persona’s memory folder, ~/.postbox-remote/memory/<persona>,
+//   and nothing else; `forgotten` answers it, also when there was none. Also new without a version number: a daemon
+//   from before it refuses it as `models`’ do, and the removal stays owed until the host runs this version (#491).
 //
 // This module is the protocol’s one entry point, and its parts are the remote-protocol-*.mjs modules beside it, one
 // concern each: constants, checks (single values), parts (what several messages carry), files (the host’s), the

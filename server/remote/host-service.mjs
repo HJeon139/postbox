@@ -6,6 +6,7 @@
 // for rooms at scale with the rest of Turns, are reached only through `hostTurns`.
 
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './host-admin.mjs';
+import { oweForget, watchForgets } from './host-forget.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, setHostKeepUpdated, watchHosts } from './host-status.mjs';
 
 /**
@@ -68,9 +69,15 @@ export class Hosts {
     return hostStatus(this, id);
   }
 
-  /** Keeps each host’s status in the state for the page, from when Postbox listens. */
+  /** Keeps each host’s status in the state for the page, from when Postbox listens, and sends each its removals. */
   watch() {
     watchHosts(this);
+    watchForgets(this);
+  }
+
+  /** A persona was deleted: each host removes its memory there, now or when it next connects (#491). @param {string} personaId */
+  forgetPersona(personaId) {
+    oweForget(this, personaId);
   }
 
   /** @param {string} id */
