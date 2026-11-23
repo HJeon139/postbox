@@ -6,7 +6,7 @@ import { itemOf, noteReplaced, positionOf } from './item-index.mjs';
 import { CLOCK_EVENTS } from './run-clock.mjs';
 import { applyTurnArchive } from './state-archive.mjs';
 import { ASSET_EVENTS, ownAssetRooms } from './state-assets.mjs';
-import { putHost, putHostStatus } from './state-hosts.mjs';
+import { putHost, putHostForget, putHostStatus } from './state-hosts.mjs';
 import { foldedStep } from './step-fold.mjs';
 
 /**
@@ -37,6 +37,8 @@ export function emptyState() {
     // Each host’s connection as the host manager last reported it (#120): { state, failure, welcome, lastHeard }.
     // Live state, like a session’s: the server replaces it at each start, since the link it described is gone.
     hostStatus: map(),
+    // Per host, the deleted personas whose memory folder there Postbox still has to remove (#491): [persona id].
+    hostForgets: map(),
     // Each backend’s usage of its quota as its harness last reported it (#442, shared/quota-key.mjs’s key): the person’s
     // own figures, for the composer’s quota line. { id, backend, host, status, windows: [{ name, used, resetsAt }], seenAt }.
     quota: map(),
@@ -104,6 +106,7 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   'schedules',
   'hosts',
   'hostStatus',
+  'hostForgets',
   // The person’s own usage figures, which reach only their page on this computer (designs/architecture/adapters.md).
   'quota',
   'work',
@@ -195,6 +198,7 @@ export const EVENTS = Object.freeze({
   notify: { apply: () => {}, public: true },
   host: { apply: putHost, public: true },
   'host.status': { apply: putHostStatus, public: true },
+  'host.forget': { apply: putHostForget, public: true },
   quota: { apply: put('quota'), public: true },
   ...ASSET_EVENTS,
   ...CLOCK_EVENTS,

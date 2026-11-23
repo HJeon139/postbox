@@ -145,6 +145,13 @@ export const CASES = {
     remove: { ok: {}, bad: [[{ force: true }, /“force” isn’t a field of remove/]] },
     // No argv: the daemon runs the signInCheck hello sent, so a check can’t name another program.
     check: { ok: {}, bad: [[{ argv: ['klist', '-s'] }, /“argv” isn’t a field of check/]] },
+    forget: {
+      ok: { persona: 'pe_AbCdEf123456' },
+      bad: [
+        [{ persona: '../x' }, /forget\.persona must be an ID/],
+        [{}, /needs “persona”/],
+      ],
+    },
     // No program or path: the daemon runs the one its welcome reported for the harness.
     models: {
       ok: { harness: 'claude-code' },
@@ -221,6 +228,10 @@ export const CASES = {
         [{ ok: 'no', code: 1, at: 5 }, /checked\.ok must be true or false/],
         [{ ok: true, code: 0 }, /checked needs “at”/],
       ],
+    },
+    forgotten: {
+      ok: { persona: 'pe_AbCdEf123456' },
+      bad: [[{ persona: '' }, /forgotten\.persona must be an ID/]],
     },
     listed: {
       ok: { harness: 'codex', models: ['gpt-6.1-sol', 'gpt-5.6-terra'] },

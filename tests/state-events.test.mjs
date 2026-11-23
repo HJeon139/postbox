@@ -201,6 +201,7 @@ const ADDED_SINCE = [
   'app.publish',
   'app.note',
   'app.notes.dropped',
+  'host.forget',
   'app.notes.read',
   'clock.started',
   'clock.paused',

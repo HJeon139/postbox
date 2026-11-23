@@ -671,7 +671,10 @@ export class Runtime {
       // Read again each time: deleting one can erase others, as its conversation goes with it, side threads too.
       if (this.store.pending.session(sid)) this.deleteSession(sid);
     }
-    return this.personas.remove(id);
+    const removed = this.personas.remove(id);
+    // Its memory on a host is that host’s to remove (#491).
+    this.hostService.forgetPersona(id);
+    return removed;
   }
 
   // ── Remote hosts (#120): server/remote/placement.mjs and host-service.mjs ──────────

@@ -18,6 +18,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { asksForWrites } from '../../shared/hook-modes.mjs';
+import { memoryFolderName } from '../../shared/memory-folders.mjs';
 import { agentPlugins } from './agent-plugin.mjs';
 import { readRules } from './attached-files.mjs';
 import { postboxSkillsOn, skillDenies, skillOverrides } from './skill-config.mjs';
@@ -130,12 +131,10 @@ export function settingsFor(persona, memoryDir = null) {
  * @param {string} root  where memory folders go: Postbox’s data folder’s, or its folder on a host
  * @param {{ id?: string, handle: string }} persona @param {{ id?: string } | null | undefined} project
  */
-export const memoryFolder = (root, persona, project) => `${personaMemory(root, persona)}/${part(project?.id || 'no-project')}`;
+export const memoryFolder = (root, persona, project) => `${personaMemory(root, persona)}/${memoryFolderName(project?.id || 'no-project')}`;
 
 /** A persona’s memory folders for every project, which deleting it removes (Personas.remove, server/personas.mjs). */
-export const personaMemory = (root, persona) => `${root}/${part(persona.id || persona.handle)}`;
-// Ids are Postbox’s own (newId); anything else in one is replaced, so it stays one folder under root.
-const part = (v) => String(v).replace(/[^\w-]/g, '_');
+export const personaMemory = (root, persona) => `${root}/${memoryFolderName(persona.id || persona.handle)}`;
 
 /**
  * What both Claude adapters pass from a turn’s context: the rules the person allowed once or for this conversation

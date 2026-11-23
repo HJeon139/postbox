@@ -82,6 +82,25 @@ test('deleting a persona from its sheet takes it and its sessions at once, and t
   await expect.soft(page.locator('#toasts').getByRole('button', { name: /Undo/ }), 'no Undo').toHaveCount(0);
 });
 
+// #491: an agent on a host loses its memory there too: the confirm says it goes, and every host owes its removal,
+// which each is sent when Postbox next connects to it (server/remote/host-forget.mjs).
+test('deleting an agent that runs on a host says its memory there goes, and each host owes its removal', async ({ page }) => {
+  const { p } = withAgent('onhost');
+  const host = app.rt.addHost({ name: 'build-box.example' });
+  app.store.emit('persona', { ...app.rt.persona(p.id), remote: { hostId: host.id } });
+  await page.goto(`${app.origin}/`);
+  await synced(page, app);
+  await page.evaluate((pid) => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', pid)), p.id);
+  await page.getByRole('button', { name: 'Delete…' }).click();
+  const ask = page.getByRole('alertdialog', { name: 'Delete onhost?' });
+  const goes = ask.locator('.field', { hasText: 'This erases' });
+  await expect.soft(goes).toContainText('Its memory on hosts, each when Postbox next connects to it');
+  await expect.soft(ask.locator('.field', { hasText: 'This stays' })).not.toContainText('host');
+  await ask.getByRole('button', { name: 'Delete onhost' }).click();
+  await expect.poll(() => app.store.state.hostForgets?.[host.id]).toEqual([p.id]);
+  app.store.emit('host', { id: host.id, removed: true });
+});
+
 // #1530: a dialog whose body scrolls takes focus there, so a keyboard can scroll it (axe’s scrollable-region-focusable),
 // and one that fits isn’t a stop to Tab through. Whether a given dialog scrolls depends on the window and the fonts
 // (macOS’s made the delete confirm’s scroll at 375 px, CI’s didn’t), so the body is made to scroll by capping its
