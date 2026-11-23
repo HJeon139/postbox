@@ -1,18 +1,29 @@
 // Which messages in a transcript name their speaker: a line with the agent’s ring, its handle and the time.
 
+import { recordMoved } from './activity-paint.mjs';
 import { client, itemsOf } from './client.mjs';
 
-// A reply replaced by its replay (#120: a turn on a host attached again after a restart) shows nothing, so the replay
-// after it names its speaker.
-const speaker = (it) =>
-  it.kind === 'user' ? 'you' : (it.kind === 'agent' && it.status !== 'replaced') || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null;
+/**
+ * Whether the transcript draws nothing for a reply: one replaced by its replay (#120, a turn on a host attached again
+ * after a restart), or a finished turn’s first part with only steps, whose record shows with its words below. Such a
+ * reply has no speaker line, so the next part of its turn names the speaker (#1654). @param {any} it @param {string} threadId
+ */
+export const drawsNothing = (it, threadId) => it.kind === 'agent' && (it.status === 'replaced' || recordMoved(it, threadId));
+
+/** @param {any} it @param {string} threadId */
+function speaker(it, threadId) {
+  if (it.kind === 'user') return 'you';
+  if (it.kind === 'agent') return drawsNothing(it, threadId) ? null : `s:${it.sessionId}`;
+  return it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null;
+}
 // One turn’s items share a sender line; a later turn of the same agent gets its own, and so does a wake it sent from
 // another turn (its fromTurnId) (#135). An item from before turns were kept, or no turn made, goes with the one before.
 const turnOf = (it) => it.turnId ?? it.fromTurnId;
 const sameTurn = (a, b) => !turnOf(a) || !turnOf(b) || turnOf(a) === turnOf(b);
 
-/** Whether a message names its speaker, given the one before it. */
-export const namesSpeaker = (it, prev) => !(prev && speaker(prev) && speaker(prev) === speaker(it) && prev.kind !== 'voice' && sameTurn(prev, it));
+/** Whether a message names its speaker, given the one before it. @param {any} it @param {any} prev @param {string} threadId */
+export const namesSpeaker = (it, prev, threadId) =>
+  !(prev && speaker(prev, threadId) && speaker(prev, threadId) === speaker(it, threadId) && prev.kind !== 'voice' && sameTurn(prev, it));
 
 /**
  * The id of a session’s latest message in a thread that names its speaker: the line whose ring and status words follow
@@ -26,7 +37,7 @@ export function latestReply(threadId, sessionId) {
   let found = null;
   for (let i = list.length - 1; i >= 0 && !found; i--) {
     const it = list[i];
-    if (it.sessionId === sessionId && speaker(it)?.startsWith('s:') && namesSpeaker(it, list[i - 1])) found = it.id;
+    if (it.sessionId === sessionId && speaker(it, threadId)?.startsWith('s:') && namesSpeaker(it, list[i - 1], threadId)) found = it.id;
   }
   latest.set(key, found);
   return found;

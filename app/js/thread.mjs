@@ -4,7 +4,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
 import { laterParts } from './activity-live.mjs';
-import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch, recordMoved } from './activity-paint.mjs';
+import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch } from './activity-paint.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
 import { paintOfflineQueue } from './agent-queue.mjs';
@@ -39,7 +39,7 @@ import { adopt, clearBut, keepable, noteDrawn, standIn } from './resync-keep.mjs
 import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, confirmDelete, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
-import { namesSpeaker } from './speaker-line.mjs';
+import { drawsNothing, namesSpeaker } from './speaker-line.mjs';
 import { systemLine } from './system-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
@@ -406,7 +406,7 @@ function messageActions(node, it, ctx) {
 }
 
 function renderItem(it, prev, ctx) {
-  const showWho = namesSpeaker(it, prev);
+  const showWho = namesSpeaker(it, prev, ctx.threadId);
   switch (it.kind) {
     case 'user': {
       return h(
@@ -423,7 +423,7 @@ function renderItem(it, prev, ctx) {
     }
     case 'agent': {
       // Replayed whole from the host after a restart (#120), or only steps whose record shows with the words: nothing.
-      if (it.status === 'replaced' || recordMoved(it, ctx.threadId)) return h('div.col.replaced', { hidden: true });
+      if (drawsNothing(it, ctx.threadId)) return h('div.col.replaced', { hidden: true });
       const node = h(
         'div.col.turn',
         showWho ? who(it, ctx) : null,
