@@ -87,3 +87,26 @@ test('#995 a run’s record keeps whether the agent drew first and its first pic
   assert.deepEqual(record?.pictureJudges, { usd: 0.3 });
   assert.equal('firstPicture' in (readRun(runDir(t, { scenario: 'delivery' })) ?? {}), false, 'a run without one gets none');
 });
+
+// #1697: a Kiro run’s report gave 0.82 Kiro credits, and its run.json had kiroCredits: null, since runRecord never
+// read them. run.json records what the report says, from the same Kiro streams.
+test('#1697 a live run’s run.json records the Kiro credits its report gives', (t) => {
+  const turn = (usage) => ({ data: { update: { _meta: { kiro: { kind: 'turn_completion', promptTurnSummaries: [{ unit: 'credit', usage }] } } } } });
+  const record = (kiroStreams) =>
+    runRecord({
+      root: process.cwd(),
+      dir: runDir(t, {}),
+      scenario: { title: 'Trial', phases: [{ title: 'One' }] },
+      name: 'trial',
+      opt: {},
+      started: 0,
+      steps: 1,
+      cap: 1,
+      tester: { spent: 0 },
+      facts: { streams: [], kiroStreams },
+      coverage: [],
+      git: () => null,
+    });
+  assert.equal(record([{ handle: 'kiro', events: [turn(0.5), turn(0.32)] }]).cost.kiroCredits, 0.82);
+  assert.equal(record([]).cost.kiroCredits, null, 'a run with no Kiro turns records none');
+});
