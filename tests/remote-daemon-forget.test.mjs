@@ -7,6 +7,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
+import { forget } from '../server/remote/host/daemon-forget.mjs';
 import { encode, hostPaths, message, PROTOCOL_VERSION } from '../shared/remote-protocol.mjs';
 import { readMessages } from './fake-daemon.mjs';
 import { inProcessDaemon } from './remote-broker-daemon-setup.mjs';
@@ -61,15 +62,53 @@ test('#491 a persona with no memory there, or a host with no memory folder, is f
   assert.equal(existsSync(join(memory, 'pe_stays')), true);
 });
 
-test('#491 an id with characters a folder name replaces names the folder Postbox made, inside memory/', async (t) => {
+test('#491 an id a folder name would change is refused, and nothing is removed', async (t) => {
   const { msgs, send, memory } = await daemon(t);
-  // setup.mjs’s personaMemory makes `a.b:c` into `a_b_c`.
+  // setup.mjs’s personaMemory would make `a.b:c` into `a_b_c`; Postbox’s own ids (newId) never need that.
   remembered(memory, 'a_b_c');
-  remembered(memory, 'a');
   send('forget', { persona: 'a.b:c' });
-  await msgs.next('forgotten');
-  assert.equal(existsSync(join(memory, 'a_b_c')), false);
-  assert.equal(existsSync(join(memory, 'a', 'pr_1', 'MEMORY.md')), true, 'nothing beside it');
+  const refused = await msgs.next('error');
+  assert.equal(refused.re, 'forget');
+  assert.equal(existsSync(join(memory, 'a_b_c', 'pr_1', 'MEMORY.md')), true);
+});
+
+test('#491 the handler itself never removes memory/ or anything beside it, whatever reaches it', async (t) => {
+  const { p, memory } = await daemon(t);
+  remembered(memory, 'pe_stays');
+  /** @type {string[]} */
+  const out = [];
+  const c = /** @type {any} */ ({ closed: false, output: { write: (/** @type {string} */ line) => out.push(line) } });
+  const d = /** @type {any} */ ({ p, log: () => {} });
+  // Past the wire’s check, as a caller in this process could pass them.
+  for (const persona of ['', '..', '.', 'a/b', '../memory', undefined]) await forget(d, c, /** @type {any} */ ({ persona }));
+  assert.equal(existsSync(join(memory, 'pe_stays', 'pr_1', 'MEMORY.md')), true);
+  assert.equal(out.length, 6);
+  assert.ok(
+    out.every((l) => JSON.parse(l).type === 'error' && JSON.parse(l).re === 'forget'),
+    out.join(''),
+  );
+});
+
+test('#491 a forget before the hello is refused, and removes nothing', async (t) => {
+  const home = hostHome('pbfg-');
+  const p = hostPaths(home, VERSION);
+  mkdirSync(p.root, { recursive: true, mode: 0o700 });
+  writeFileSync(p.token, TOKEN, { mode: 0o600 });
+  const { daemon: d } = inProcessDaemon(home);
+  t.after(async () => {
+    d.close();
+    await rm(home, { recursive: true, force: true });
+  });
+  await d.start();
+  const memory = join(p.root, 'memory');
+  remembered(memory, 'pe_gone');
+  const input = new PassThrough();
+  const output = new PassThrough();
+  d.connect({ input, output });
+  const msgs = readMessages(output);
+  input.write(encode(message('postbox-to-daemon', 'forget', { persona: 'pe_gone' })));
+  assert.equal((await msgs.next('error')).code, 'not-ready');
+  assert.equal(existsSync(join(memory, 'pe_gone')), true);
 });
 
 test('#491 a memory/ that is a link isn’t followed: nothing is removed, and Postbox hears why', async (t) => {

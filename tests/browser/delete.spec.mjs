@@ -84,7 +84,7 @@ test('deleting a persona from its sheet takes it and its sessions at once, and t
 
 // #491: an agent on a host loses its memory there too: the confirm says it goes, and every host owes its removal,
 // which each is sent when Postbox next connects to it (server/remote/host-forget.mjs).
-test('deleting an agent that runs on a host says its memory there goes, and each host owes its removal', async ({ page }) => {
+test('deleting an agent that runs on a host says its memory there goes, and its host’s card shows it until removed', async ({ page }) => {
   const { p } = withAgent('onhost');
   const host = app.rt.addHost({ name: 'build-box.example' });
   app.store.emit('persona', { ...app.rt.persona(p.id), remote: { hostId: host.id } });
@@ -94,10 +94,17 @@ test('deleting an agent that runs on a host says its memory there goes, and each
   await page.getByRole('button', { name: 'Delete…' }).click();
   const ask = page.getByRole('alertdialog', { name: 'Delete onhost?' });
   const goes = ask.locator('.field', { hasText: 'This erases' });
-  await expect.soft(goes).toContainText('Its memory on hosts, each when Postbox next connects to it');
+  await expect.soft(goes).toContainText('Its memory on hosts, each the next time Postbox connects there, once the host runs this version');
   await expect.soft(ask.locator('.field', { hasText: 'This stays' })).not.toContainText('host');
   await ask.getByRole('button', { name: 'Delete onhost' }).click();
   await expect.poll(() => app.store.state.hostForgets?.[host.id]).toEqual([p.id]);
+  // The host’s card says its memory is still there until the host removes it.
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('hosts')));
+  const card = page.locator(`[data-status="${host.id}"]`);
+  await expect.soft(card).toContainText('A deleted agent’s memory is still on this host.');
+  app.store.emit('host.forget', { id: host.id, drop: [p.id] });
+  await expect.soft(card).not.toContainText('deleted agent');
   app.store.emit('host', { id: host.id, removed: true });
 });
 

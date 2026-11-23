@@ -200,3 +200,43 @@ test('#491 removing a host drops what it owed, and a host removed before the rem
   store.emit('host.forget', { id: 'ho_b', add: ['pe_later'] });
   assert.equal(store.state.hostForgets.ho_b, undefined);
 });
+
+test('#491 a host that can’t remove it now says why, keeps it owed, and is asked again on its next connection', async (t) => {
+  const errors = t.mock.method(console, 'error', () => {});
+  // As daemon-forget.mjs answers a memory/ that isn’t a real folder.
+  const refusal = {
+    type: 'error',
+    code: 'internal',
+    re: 'forget',
+    message: '~/.postbox-remote/memory isn’t a folder, so the daemon removed nothing from it. Remove it on the host.',
+  };
+  const { store, manager, hosts } = rig({ answer: () => refusal });
+  watchForgets(hosts);
+  oweForget(hosts, 'pe_gone');
+  await settled();
+  assert.deepEqual(store.state.hostForgets.ho_a, ['pe_gone']);
+  assert.match(
+    String(errors.mock.calls[0]?.arguments[0]),
+    /a\.example couldn’t remove a deleted agent’s memory: .*isn’t a folder.* Postbox asks again when it next connects\./,
+  );
+  manager.emit('status', 'ho_a');
+  await settled();
+  assert.equal(manager.links.get('ho_a').sent.length, 1, 'not asked again on that connection');
+});
+
+test('#491 a forgotten for a persona owed but not asked on this send settles nothing', async () => {
+  const { store, manager, hosts } = rig({ answer: () => null });
+  watchForgets(hosts);
+  oweForget(hosts, 'pe_gone');
+  store.emit('host.forget', { id: 'ho_a', add: ['pe_other'] });
+  await settled();
+  const l = manager.links.get('ho_a');
+  // pe_other was owed while pe_gone’s send waited, so it isn’t asked yet: a stray answer for it settles nothing.
+  assert.deepEqual(
+    l.sent.map((/** @type {any} */ m) => m.persona),
+    ['pe_gone'],
+  );
+  l.emit('message', { type: 'forgotten', persona: 'pe_other' });
+  await settled();
+  assert.deepEqual(store.state.hostForgets.ho_a, ['pe_gone', 'pe_other']);
+});
