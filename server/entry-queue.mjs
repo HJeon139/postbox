@@ -85,7 +85,7 @@ export function cancelEntry(rt, threadId, entryId) {
   const e = rt.delivery.cancel(se.id, entryId);
   if (e?.source === 'person') return removedUnread(rt, e);
   if (!e?.from) return;
-  const sender = rt.sessions.in(rt.threads.lineage(e.threadId).at(-1)).find((/** @type {any} */ x) => x.handle === e.from);
+  const sender = rt.sessions.pendingIn(rt.threads.conversationToWrite(e.threadId)).find((/** @type {any} */ x) => x.handle === e.from);
   const said = clip(rt.store.pending.item(e.threadId, e.itemId)?.text ?? '', 120);
   if (sender && !sender.retiredFork) rt.sessions.tell(sender.id, `The person removed your message (“${said}”) before it was answered. Carry on without it.`);
 }

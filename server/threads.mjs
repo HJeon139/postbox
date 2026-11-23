@@ -183,6 +183,15 @@ export class Threads {
   }
 
   /**
+   * The conversation a thread belongs to, as memory will hold it, for a write it decides (#623): a topic opened behind
+   * a held commit, and its conversation, aren’t published yet, so lineage reads them as written.
+   * @param {string} threadId
+   */
+  conversationToWrite(threadId) {
+    return this.lineage(threadId, (id) => this.store.pending.thread(id)).at(-1);
+  }
+
+  /**
    * Every thread of a thread’s conversation: its lineage first, then the conversation’s other side and topic threads.
    * What read_conversation { thread } and read_message may read.
    * @param {string} threadId
