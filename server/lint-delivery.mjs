@@ -22,8 +22,9 @@ export function sendLint(checks, turnId) {
     const pending = Object.values(checks.store.pending.apps()).filter(
       (app) => app.sessionId === entry.sessionId && app.check.status === 'pending' && !app.retired,
     );
-    // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
-    if (wait > 0 && pending.length && now() < until) {
+    // An app this agent showed is still being checked in the browser, or a check of the turn’s own still runs (holdLint,
+    // the server’s Mermaid parse): what they find joins this lint turn.
+    if (wait > 0 && (pending.length || entry.holds > 0) && now() < until) {
       entry.timer = setTimer(send, wait);
       entry.timer.unref?.();
       return;
@@ -47,7 +48,7 @@ export function sendLint(checks, turnId) {
 function lintEntry(checks, sessionId, turnId) {
   let e = checks.lints.get(turnId);
   if (!e) {
-    e = { sessionId, kind: null, ended: false, sent: false, problems: [], timer: null, threadId: null };
+    e = { sessionId, kind: null, ended: false, sent: false, problems: [], timer: null, threadId: null, holds: 0 };
     checks.lints.set(turnId, e);
     // Only recent turns can still get a lint turn.
     for (const [k, old] of checks.lints) {
@@ -57,6 +58,22 @@ function lintEntry(checks, sessionId, turnId) {
     }
   }
   return e;
+}
+
+/**
+ * A check of the turn’s own that’s still running holds its lint turn, as an app still being checked does, up to
+ * LINT_WAIT_MAX_MS (#731, the server’s Mermaid parse). Returns its release, which does nothing after the first call.
+ * @param {any} checks @param {string} turnId
+ */
+export function holdLint(checks, turnId) {
+  const e = checks.lints.get(turnId);
+  if (!e || e.sent) return () => {};
+  e.holds++;
+  let held = true;
+  return () => {
+    if (held) e.holds--;
+    held = false;
+  };
 }
 
 /** The turn ended: its lint turn goes once the browser has had a moment to report. */

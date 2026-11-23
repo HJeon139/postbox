@@ -17,12 +17,13 @@
 // Host status events aren’t read: the host stays connected throughout.
 
 import { agentTurns, hostIdOf, itemsUnderTest } from './remote-facts.mjs';
+import { placeOf } from './room-events.mjs';
 
 /** The history’s session events with a remote turn on one host, in order. @param {any} f @param {string} hostId */
 const onHostEvents = (f, hostId) =>
   (f.events ?? [])
     .filter((e) => e?.type === 'session' && e.data?.remoteTurn?.hostId === hostId && typeof e.data.remoteTurn.turn === 'string')
-    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+    .sort((a, b) => placeOf(a) - placeOf(b))
     .map((e) => ({ sessionId: e.data.id, ...e.data.remoteTurn }));
 
 /**

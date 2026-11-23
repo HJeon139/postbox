@@ -1,0 +1,294 @@
+// An agent’s run clock (shared/run-clock.mjs, server/run-clock.mjs): the store keeps its budget and what it used, each
+// turn of a clocked agent carries its line and records clock.turn, and at its budget Postbox records clock.expired,
+// stops the running turn and starts no other. No real timer runs: node:test’s mock timers stand in for setTimeout,
+// setInterval and Date in every test, and time moves only when a test ticks it. The turns are the Stop tests’ scripted
+// adapter, whose steps settle on the event loop’s turns (setImmediate), not on time.
+
+import assert from 'node:assert/strict';
+import { afterEach, beforeEach, mock, test } from 'node:test';
+import { formatMessage } from '../server/adapters/guide.mjs';
+import { armClock, clockAction, clockTurn, rearmClocks } from '../server/run-clock.mjs';
+import { clockElapsed, clockLine } from '../shared/run-clock.mjs';
+import { apply, emptyState, PUBLIC_EVENT_TYPES } from '../shared/state.mjs';
+import { waitingEntries } from './arrange.mjs';
+import { clocked as setup } from './run-clock-fixture.mjs';
+import { slowToExit } from './stop-fixture.mjs';
+
+const T0 = 1_800_000_000_000;
+beforeEach(() => mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: T0 }));
+afterEach(() => mock.timers.reset());
+/** Lets the scripted turns settle, then moves the mock clock on by `ms`, and lets what that fires settle. */
+async function sleep(ms) {
+  const turns = async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+  };
+  await turns();
+  mock.timers.tick(ms);
+  await turns();
+}
+const at = (ms) => () => T0 + ms;
+const clockEvents = (store) => store.since(0).filter((e) => e.type.startsWith('clock.'));
+
+test('the store counts a clock’s running time and leaves out the time the person paused it', () => {
+  const s = emptyState();
+  apply(s, 'clock.started', { sessionId: 'se_1', threadId: 'th_1', budgetMs: 60_000, at: T0 });
+  apply(s, 'clock.paused', { sessionId: 'se_1', at: T0 + 10_000 });
+  assert.equal(clockElapsed(s.clocks.se_1, T0 + 40_000), 10_000);
+  apply(s, 'clock.resumed', { sessionId: 'se_1', at: T0 + 40_000 });
+  assert.equal(clockElapsed(s.clocks.se_1, T0 + 45_000), 15_000);
+  // Never past the budget, however late it’s read.
+  assert.equal(clockElapsed(s.clocks.se_1, T0 + 999_000), 60_000);
+  apply(s, 'clock.expired', { sessionId: 'se_1', at: T0 + 90_000 });
+  assert.deepEqual(
+    { ...s.clocks.se_1 },
+    {
+      sessionId: 'se_1',
+      threadId: 'th_1',
+      budgetMs: 60_000,
+      usedMs: 60_000,
+      since: null,
+      state: 'expired',
+      startedAt: T0,
+      expiredAt: T0 + 90_000,
+      stopping: [],
+    },
+  );
+});
+
+test('every clock event reaches /api/stream, as a public event type', () => {
+  for (const type of ['clock.started', 'clock.paused', 'clock.resumed', 'clock.turn', 'clock.expired']) assert.ok(PUBLIC_EVENT_TYPES.includes(type), type);
+});
+
+test('the clock’s line is the last thing a turn’s message says, in whole seconds of elapsed and budget', () => {
+  const { rt, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  const line = clockLine(rt.store.state.clocks[se.id], T0 + 12_900);
+  assert.equal(line, '[Postbox] Run clock: elapsed 12s / budget 60s. At the budget, Postbox stops your turn and starts no other.');
+  // clockTurn puts it last in the background, where every backend’s formatMessage writes it last.
+  const said = formatMessage(clockTurn(rt, se.id, 'turn_1', { kind: 'user', text: 'Go on.', facts: 'Facts.', context: ['Background.'] }, at(12_900)));
+  assert.ok(said.endsWith(`Background.\n\n${line}`), said);
+  const input = formatMessage(clockTurn(rt, se.id, 'turn_2', { kind: 'input', text: 'Entries.', facts: 'Facts.' }, at(12_900)));
+  assert.ok(input.endsWith(`\n\n${line}`), input);
+});
+
+test('each turn of a clocked agent carries its elapsed time, which goes up, and the stream records it', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, () => Date.now() - 5_000);
+  rt.sendMessage(t.id, { text: 'first' });
+  await sleep(10);
+  // Started 5 s ago here, so the second turn reads at least 25 s: the first one’s clock moved 20 s back.
+  store.state.clocks[se.id].since -= 20_000;
+  rt.sendMessage(t.id, { text: 'second' });
+  await sleep(10);
+  const lines = adapter.calls.map((c) => c.message.context.at(-1));
+  assert.match(lines[0], /^\[Postbox\] Run clock: elapsed [5-6]s \/ budget 60s\. /);
+  assert.match(lines[1], /^\[Postbox\] Run clock: elapsed 2[5-6]s \/ budget 60s\. /);
+  const turns = clockEvents(store).filter((e) => e.type === 'clock.turn');
+  assert.equal(turns.length, 2);
+  assert.ok(turns[1].data.elapsedMs > turns[0].data.elapsedMs);
+  assert.equal(turns[0].data.budgetMs, 60_000);
+  assert.equal(typeof turns[0].data.turnId, 'string');
+});
+
+test('an agent with no clock gets no line and no clock event', async () => {
+  const { rt, store, adapter, t } = setup();
+  rt.sendMessage(t.id, { text: 'hello' });
+  await sleep(10);
+  assert.doesNotMatch(JSON.stringify(adapter.calls[0].message), /Run clock/);
+  assert.deepEqual(clockEvents(store), []);
+});
+
+test('at its budget the clock expires, the running turn stops, and no new turn starts', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  // Date is the mock clock’s, so the clock and its timer read the same time.
+  const now = Date.now();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 });
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work until stopped.' });
+  await sleep(5);
+  assert.ok(rt.turns.has(se.id));
+  // The clock’s own timer fires as the mock clock passes 60 s.
+  await sleep(59_000);
+  assert.equal(store.state.clocks[se.id].state, 'running', 'not before its budget');
+  await sleep(1_000);
+  assert.equal(store.state.clocks[se.id].state, 'expired');
+  assert.equal(turn.reason?.name, 'AbortError');
+  const reply = store.items(t.id).findLast((i) => i.kind === 'agent');
+  assert.equal(reply.status, 'stopped');
+  turn.exit();
+  await sleep(10);
+  rt.sendMessage(t.id, { text: 'One more thing.' });
+  await sleep(10);
+  assert.equal(adapter.calls.length, 1, 'no turn after the clock expired');
+  assert.equal(rt.turns.has(se.id), false);
+  const expired = clockEvents(store).filter((e) => e.type === 'clock.expired');
+  assert.equal(expired.length, 1);
+  // The mock clock reads the end of the tick that fired it: 60 s, plus the 5 ms the turn took to start.
+  const late = expired[0].data.at - now;
+  assert.ok(late >= 60_000 && late <= 60_005, String(late));
+});
+
+test('a clock that ran out while Postbox was down expires as it starts', () => {
+  const { rt, store, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(30_000));
+  assert.equal(store.state.clocks[se.id].state, 'running');
+  rearmClocks(rt, at(60_000));
+  assert.equal(store.state.clocks[se.id].state, 'expired');
+});
+
+test('the person’s clock actions refuse a bad budget, a second start and a pause of nothing, and change nothing', () => {
+  const { rt, store, se } = setup();
+  for (const budgetS of [0, -1, 1.5, '60', 30 * 86_400 + 1])
+    assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS }, at(0)), { status: 422 }, String(budgetS));
+  assert.throws(() => clockAction(rt, se.id, { action: 'pause' }, at(0)), { status: 409 });
+  assert.throws(() => clockAction(rt, se.id, { action: 'reset' }, at(0)), { status: 422 });
+  assert.deepEqual(clockEvents(store), []);
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 600 }, at(1_000)), { status: 409 });
+  assert.equal(store.state.clocks[se.id].budgetMs, 60_000);
+  assert.throws(() => clockAction(rt, se.id, { action: 'resume' }, at(1_000)), { status: 409 });
+  clockAction(rt, se.id, { action: 'pause' }, at(10_000));
+  // Paused: the timer is cleared, so a check long after doesn’t expire it.
+  armClock(rt, se.id, at(500_000));
+  assert.equal(store.state.clocks[se.id].state, 'paused');
+  assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(1_000)), { status: 409 });
+});
+
+test('a pause stops the running turn, what the agent is sent meanwhile waits in its inbox, and the resume starts it', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 600 });
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work until paused.' });
+  await sleep(5);
+  clockAction(rt, se.id, { action: 'pause' });
+  await sleep(1);
+  assert.equal(turn.reason?.name, 'AbortError', 'the pause stopped the turn');
+  turn.exit();
+  await sleep(10);
+  rt.sendMessage(t.id, { text: 'Sent while paused.' });
+  await sleep(10);
+  assert.equal(adapter.calls.length, 1, 'no turn while paused');
+  assert.deepEqual(
+    waitingEntries(rt, se.id).map((e) => store.item(t.id, e.itemId)?.text),
+    ['Sent while paused.'],
+  );
+  clockAction(rt, se.id, { action: 'resume' });
+  await sleep(10);
+  assert.equal(adapter.calls.length, 2);
+  assert.match(JSON.stringify(adapter.calls[1].message), /Sent while paused\./);
+  assert.match(adapter.calls[1].message.context.at(-1), /^\[Postbox\] Run clock: elapsed 0s \/ budget 600s\. /);
+});
+
+test('a message sent after the clock expired stays waiting in the inbox, never taken by a turn that didn’t run', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(61_000));
+  rt.sendMessage(t.id, { text: 'Too late.' });
+  await sleep(10);
+  assert.equal(adapter.calls.length, 0);
+  const inbox = store.state.inbox[se.id] ?? [];
+  assert.deepEqual(
+    inbox.map((e) => e.state),
+    ['waiting'],
+  );
+});
+
+test('as Postbox starts again, each running clock marks where its record resumes, with its elapsed time', () => {
+  const { rt, store, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(20_000));
+  const restored = clockEvents(store).filter((e) => e.type === 'clock.restored');
+  assert.deepEqual(
+    restored.map((e) => e.data),
+    [{ sessionId: se.id, elapsedMs: 20_000, budgetMs: 60_000, at: T0 + 20_000 }],
+  );
+  clockAction(rt, se.id, { action: 'pause' }, at(21_000));
+  rearmClocks(rt, at(30_000));
+  assert.equal(clockEvents(store).filter((e) => e.type === 'clock.restored').length, 1, 'a paused clock marks nothing');
+});
+
+test('an agent gets one clock per conversation, so a second timed run can’t start with the first in its context', () => {
+  const { rt, store, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(61_000));
+  assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(70_000)), { status: 409 });
+  assert.equal(store.state.clocks[se.id].state, 'expired', 'the second clock didn’t start');
+  assert.equal(clockEvents(store).filter((e) => e.type === 'clock.started').length, 1);
+});
+
+test('a clock doesn’t start over messages already waiting in the agent’s inbox', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work on this.' });
+  await sleep(5);
+  rt.sendMessage(t.id, { text: 'From before the run, waiting while the agent is busy.' });
+  await sleep(5);
+  assert.ok(waitingEntries(rt, se.id).length > 0);
+  assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0)), { status: 409 });
+  assert.equal(store.state.clocks?.[se.id], undefined);
+  rt.stop(se.id);
+  turn.exit();
+  await sleep(10);
+});
+
+test('a clock doesn’t start while the agent is working, even with nothing waiting', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work on this.' });
+  await sleep(5);
+  assert.deepEqual(waitingEntries(rt, se.id), []);
+  assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0)), { status: 409 });
+  // Stopped but still exiting counts as working too.
+  rt.stop(se.id);
+  assert.throws(() => clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0)), { status: 409 });
+  assert.equal(store.state.clocks?.[se.id], undefined);
+  turn.exit();
+  await sleep(10);
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  assert.equal(store.state.clocks[se.id].state, 'running');
+});
+
+test('an agent’s handoff waiting in the inbox when the clock expires still waits, as the expiry’s line says', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 });
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work until the clock runs out.' });
+  await sleep(5);
+  // Another agent’s handoff, as a mention entry, while the agent works (server/mention-entries.mjs’s send).
+  store.emit('item.add', {
+    threadId: t.id,
+    item: { id: 'it_handoff', at: Date.now(), kind: 'agent', handle: 'critic', text: '@developer, over to you.' },
+  });
+  rt.delivery.send({ sessionId: se.id, threadId: t.id, source: 'mention', itemId: 'it_handoff', from: 'critic' });
+  await sleep(61_000);
+  assert.equal(store.state.clocks[se.id].state, 'expired');
+  turn.exit();
+  await sleep(10);
+  const handoff = (store.state.inbox[se.id] ?? []).find((e) => e.itemId === 'it_handoff');
+  assert.equal(handoff.state, 'waiting', 'not stopped by the expiry');
+});
+
+test('a slash command’s turn and a host turn attached again record no clock.turn, since they get no line', () => {
+  // formatMessage gives neither a background (server/adapters/guide.mjs), so a clock.turn would say a turn was told
+  // where its clock is when it wasn’t.
+  const { rt, store, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  const slash = { kind: 'user', text: '/review', slash: true };
+  const attach = { kind: 'user', text: '', attach: 'host-turn-1' };
+  assert.equal(clockTurn(rt, se.id, 'turn_s', slash, at(1_000)), slash);
+  assert.equal(clockTurn(rt, se.id, 'turn_a', attach, at(2_000)), attach);
+  assert.deepEqual(
+    clockEvents(store).filter((e) => e.type === 'clock.turn'),
+    [],
+  );
+  // A plain message still carries its line and records clock.turn.
+  const plain = clockTurn(rt, se.id, 'turn_p', { kind: 'user', text: 'go' }, at(3_000));
+  assert.match(plain.context.at(-1), /^\[Postbox\] Run clock: /);
+  assert.equal(clockEvents(store).filter((e) => e.type === 'clock.turn').length, 1);
+});

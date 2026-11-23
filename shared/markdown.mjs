@@ -13,6 +13,7 @@
 // right after it, closed by its </details>, folds its Markdown away (agents use it to hide an exercise's
 // answer). The tags must be exactly these, with no attributes; anything else, or an unclosed tag, is text.
 
+import { mapCodeSpans } from './code-spans.mjs';
 import { escapeHtml, glossaryRegex, inline, mentionRegex } from './markdown-inline.mjs';
 import { displayMath } from './math.mjs';
 
@@ -231,8 +232,8 @@ function details(lines, i) {
       fence = opens[1];
       continue;
     }
-    // A tag inside `code` is text, so it neither opens nor closes.
-    const masked = line.replace(/`[^`]*`/g, (m) => ' '.repeat(m.length));
+    // A tag inside a code span of any backtick run is text, so it neither opens nor closes (#1601).
+    const masked = mapCodeSpans(line, (_code, span) => ' '.repeat(span.length));
     for (const tag of masked.matchAll(/<(\/?)details>/g)) {
       depth += tag[1] ? -1 : 1;
       if (depth === 0) {

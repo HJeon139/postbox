@@ -21,6 +21,7 @@ import { createStreamMapper, forkPointMissing, resultError, windowFor } from './
 import { agentFolder, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
+import { recordOnce } from './prompt-sent.mjs';
 import { listCommands } from './sdk-commands.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
 import {
@@ -123,10 +124,12 @@ export function sdkForkPoint(state) {
 /**
  * What a turn’s init message tells its session: the skills and commands with their descriptions and argument hints
  * (#67), once the session is up, where init’s list (names only, from the stream mapper) stands if the SDK can’t say;
- * and the SDK’s session id, kept for the next turn to resume.
+ * the SDK’s session id, kept for the next turn to resume; and that its CLI started on the query’s prompt (#1528).
  * @param {any} q  the running query @param {any} m  its init message @param {any} ctx
+ * @param {() => void} started  records the query’s prompt, at its first init only (server/adapters/prompt-sent.mjs)
  */
-function noteInit(q, m, ctx) {
+function noteInit(q, m, ctx, started) {
+  started();
   listCommands(q, m, ctx);
   if (m.session_id && m.session_id !== ctx.state.sdkSessionId) {
     ctx.saveState({ sdkSessionId: m.session_id, fork: null });
@@ -202,7 +205,7 @@ export class AgentSdkAdapter {
       if (!child || !exited) return;
       // The background jobs the runtime asked to keep running, as for the Claude Code backend.
       const keep = Array.isArray(ctx.signal.reason?.keepJobs) ? ctx.signal.reason.keepJobs : [];
-      stopping = stopTurn(child, { keep, exited, ...procs }).then((r) => {
+      stopping = stopTurn(child, { keep, exited, ...procs, unkilled: ctx.unkilled }).then((r) => {
         for (const k of r.kept) ctx.job?.({ id: k.id, kept: true, pgid: k.pgid, groups: k.groups });
         return r;
       });
@@ -237,10 +240,11 @@ export class AgentSdkAdapter {
       const q = this.sdk.query({ prompt, options });
       // A background job’s own Stop, while the CLI waits for it.
       ctx.control?.({ ...liveControl(q, persona.permissionMode ?? 'auto'), stopJob: (job) => stopJobUnder(child, job, procs) });
+      const started = recordOnce(ctx, { guide, text: prompt });
       for await (const m of q) {
         record(JSON.stringify(m));
         mapper.push(m);
-        if (m.type === 'system' && m.subtype === 'init') noteInit(q, m, ctx);
+        if (m.type === 'system' && m.subtype === 'init') noteInit(q, m, ctx, started);
       }
     } catch (e) {
       if (ctx.signal.aborted) return;

@@ -2,6 +2,7 @@
 // how it ended on the host decides its state (done, signin, interrupted, lost, hung or stopping) and what the person
 // sees.
 
+import { clockStopConfirmed } from '../run-clock.mjs';
 import { needHost, releaseHost } from './turns-need.mjs';
 import { endOrphanCards } from './turns-prompts.mjs';
 import { caughtUp } from './turns-replay.mjs';
@@ -50,7 +51,9 @@ function endedHow(rts, live, se, err) {
     return remoteError(`Sign-in needed on ${name}. Sign in there, then resume @${se.handle}.`, { state: 'signin', hostId: live.hostId });
   }
   if (live.exit === null && live.unkilled) {
-    // Its process there may still run (#872): resuming would run a second agent beside it, so the person resumes it.
+    // Its process there may still run (#872): resuming would run a second agent beside it, so the person resumes it. A
+    // timed run can’t count what it may still do, asked to stop or not (the daemon’s silence ceiling), so it’s void (#1526).
+    if (rts.rt.runClock && live.current) clockStopConfirmed(rts.rt, se.id, live.current, rts.now(), 'unkilled');
     updateRemote(rts, se.id, { state: 'interrupted', at: rts.now(), resume: { why: 'interrupted', at: rts.now(), unkilled: true } });
     return remoteError(
       `Interrupted on ${name}: the agent stopped answering, and its process there didn’t stop when it was killed. Check it there, then resume @${se.handle}.`,

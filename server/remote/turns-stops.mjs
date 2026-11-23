@@ -2,9 +2,10 @@
 // on until the daemon says it’s over, so the stop is kept on the session, the host is needed, and the stop goes again
 // at each welcome. Removing a host waits for these (confirmStops), and renaming one refuses while any is left (busyOn).
 
+import { clockStopConfirmed } from '../run-clock.mjs';
 import { hostOf } from './placement.mjs';
 import { linkOf, listen, needHost, releaseHost } from './turns-need.mjs';
-import { openCards } from './turns-prompts.mjs';
+import { openCards } from './turns-prompt-cards.mjs';
 import { ON_HOST, send, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
@@ -40,7 +41,9 @@ export function askStop(rts, sessionId, hostId, turn, { send: now = true, state 
   // The person’s Stop: its open cards learn it, so whichever message ends them tells the agent the Stop withdrew the
   // request, not the person refusing it (#853). Any other stop (a sign-in end, an errored end, a hung stop, the
   // restart’s re-ask) leaves them, so the agent hears it expired (#721).
-  if (byPerson) for (const card of openCards(rts, turn)) rts.rt.threads.patchItem(card.threadId, card.it.id, { stoppedBy: 'you' });
+  // A question’s blocks (#1059) aren’t cards: they stay asking.
+  if (byPerson)
+    for (const card of openCards(rts, turn)) if (card.it.kind === 'permission') rts.rt.threads.patchItem(card.threadId, card.it.id, { stoppedBy: 'you' });
   if (now) sendStop(rts, turn);
   return true;
 }
@@ -57,12 +60,19 @@ export function sendStop(rts, turn) {
   return Boolean(link?.connected) && send(link, 'stop', { turn });
 }
 
-/** The daemon says a turn Postbox asked to stop is over, or isn’t there. @param {RemoteTurns} rts @param {string} turn */
-export function stopConfirmed(rts, turn) {
+/**
+ * The daemon says a turn Postbox asked to stop is over, or isn’t there. unkilled: it said the turn’s runner outlived its
+ * kill (#872), so the turn may still be working there.
+ * @param {RemoteTurns} rts @param {string} turn @param {boolean} [unkilled]
+ */
+export function stopConfirmed(rts, turn, unkilled = false) {
   const s = rts.stopping.get(turn);
   if (!s) return;
   rts.stopping.delete(turn);
   dropStop(rts, s.sessionId, turn);
+  // With run clocks on, a clock that paused or expired while this turn could still run on the host hears it’s over. One
+  // whose runner outlived its kill may still be working, so its timed run is void, as for a CLI here (#1526).
+  if (rts.rt.runClock) clockStopConfirmed(rts.rt, s.sessionId, turn, rts.now(), unkilled ? 'unkilled' : undefined);
   releaseHost(rts, s.hostId);
   for (const w of s.waiters) w();
 }

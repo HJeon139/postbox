@@ -4,7 +4,7 @@
 
 import { positionOf } from '../shared/item-index.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
-import { sideSession, threadPersona } from './side-threads.mjs';
+import { presentIn, sideSession, threadPersona } from './side-threads.mjs';
 
 /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
 export function shareToConversation(rt, topicId, itemId) {
@@ -63,12 +63,20 @@ function summaryWriter(rt, t, handle) {
   const name = handle?.trim().replace(/^@/, '').toLowerCase();
   if (t.kind === 'topic') {
     if (name) throw httpError(400, 'A topic thread’s summary is written by its own agent: leave out the agent’s name.');
+    // Its agent deleted since: another still in the conversation writes it, never a fresh session of the one deleted.
     return threadPersona(rt, t);
   }
   const pair = String(t.pair ?? '').split('|');
-  const chosen = name ? pair.find((x) => x.toLowerCase() === name) : pair.find((x) => x !== t.woke);
+  const chosen = name ? pair.find((x) => x.toLowerCase() === name) : null;
   if (name && !chosen) throw httpError(400, `@${clip(name, 40)} isn’t in this side thread. Name ${pair.map((x) => `@${x}`).join(' or ')}.`);
-  return rt.personas.byHandle(chosen ?? t.woke ?? '');
+  // Only one in the conversation writes it, as the side thread’s menu offers: sideSession would make one that isn’t there
+  // a fresh session, deleted or gone any other way (#283).
+  const here = presentIn(rt, t);
+  const left = pair.filter((x) => here.has(x));
+  const both = pair.map((x) => `@${x}`).join(' and ');
+  if (!left.length) throw httpError(409, `${both} are no longer in this conversation. @-mention one there to bring it back, then ask again.`);
+  if (chosen && !left.includes(chosen)) throw httpError(409, `@${chosen} is no longer in this conversation. Ask @${left[0]} to write the summary.`);
+  return here.get(chosen ?? left.find((x) => x !== t.woke) ?? left[0]);
 }
 
 /**

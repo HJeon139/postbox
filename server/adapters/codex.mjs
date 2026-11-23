@@ -211,6 +211,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
     cwd,
     ...permissions,
   });
+  ctx.prompt?.({ guide, text: inputText }); // turn/start accepted it (server/turn-prompt.mjs, #1528)
   // A persona on Codex’s default names none: the model Codex opened the thread with is the one that runs (#1315).
   return { started, model: model ?? opened?.model ?? null };
 }
@@ -395,7 +396,7 @@ export class CodexAdapter {
       rl.close();
       // The turn ends once the app-server's whole group has exited: SIGINT, then SIGKILL. Until then the session reads
       // stopping, so the next turn can't resume this Codex thread beside a process that's still running it (#126).
-      if (!exited) await (await stopTurn(child, { exited: exitedP, kill: this.kill, list: this.list })).gone;
+      if (!exited) await (await stopTurn(child, { exited: exitedP, kill: this.kill, list: this.list, unkilled: ctx.unkilled })).gone;
     }
   }
 }

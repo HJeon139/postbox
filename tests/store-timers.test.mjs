@@ -36,6 +36,8 @@ const PLACED = {
   'adapters/process-group.mjs': 4, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'ask-question.mjs': 1, // a question’s CARD_WAIT_MS, expireWait: gated (#521)
   'claude-mirror.mjs': 1, // the mirror’s poll of an attached session’s transcript: skips its tick while closed
+  'diagram-parse.mjs': 1, // ends a diagram parse that took too long, by ending its worker: no store (#731)
+  'diagram-parse-worker.mjs': 2, // the timer functions the worker’s stand-in page hands Mermaid: another thread, no store (#731)
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
   'lint-delivery.mjs': 5, // an injected setTimer before a lint turn: a start, held by heldTurn while closed
   'live-buffer.mjs': 1, // a turn’s coalesced session frame, at the end of its tick: sendLive, which holds it behind the store’s held writes
@@ -45,6 +47,8 @@ const PLACED = {
   'net-fetch.mjs': 1, // net.fetch’s deadline, which ends a fetch: no store
   'net-fetch-line.mjs': 1, // the wait between patches of a fetch’s activity step: gated, skips its patch while closed
   'permission-cards.mjs': 1, // expireWait: gated
+  'turn-run.mjs': 1, // a microtask: a host turn attached again while its run clock holds the agent is stopped as its adapter follows it; Stop is allowed while closed
+  'run-clock.mjs': 2, // a run clock’s expiry, and its timers’ type: stops the turn, which is allowed while closed; its record waits through whenWritable, and Retry re-arms it
   'remote/host-admin.mjs': 1, // a wait: no store
   'remote/host-status.mjs': 1, // a microtask after a host event publishes host status: an emit, memory-only while closed like stream text (I1)
   'remote/hosts-models.mjs': 3, // the wait for a host’s model list: a connection, no store
@@ -118,7 +122,16 @@ async function sites(dir, rel = '') {
 }
 
 /** Files whose row says the callback is gated: each must carry the rule in its source, so it can’t be dropped silently. */
-const GATED = ['ask-question.mjs', 'claude-mirror.mjs', 'kept-jobs.mjs', 'net-fetch-line.mjs', 'permission-cards.mjs', 'thread-summary.mjs', 'turn-stop.mjs'];
+const GATED = [
+  'ask-question.mjs',
+  'claude-mirror.mjs',
+  'kept-jobs.mjs',
+  'net-fetch-line.mjs',
+  'permission-cards.mjs',
+  'run-clock.mjs',
+  'thread-summary.mjs',
+  'turn-stop.mjs',
+];
 const RULE = /\bstore\.writable\b|\bwhenWritable\(|\bgated\(/;
 
 test('every file whose timers table row says “gated” checks the store, defers through whenWritable or runs through gated()', async () => {

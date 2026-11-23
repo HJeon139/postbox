@@ -1,11 +1,13 @@
-# Runs Postbox’s checks on every pull request, every merge group of GitHub’s merge queue, and every push to main. See
-# designs/architecture/code-quality.md, “Code quality”.
+# Runs Postbox’s checks on every pull request and every push to main, and is ready for merge groups of GitHub’s merge
+# queue, which this repository can’t use until it moves to an organization (designs/engineering-practices.md, “The
+# gate”). See designs/architecture/code-quality.md, “Code quality”.
 name: check
 
 on:
   pull_request:
-  # The merge queue waits for the required checks on each merge group: main’s tip with the pull requests ahead in the
-  # queue and this one merged on top. No paths filter here, so every group reports every required check.
+  # Ready for a move to an organization, where the merge queue would wait for the required checks on each merge group:
+  # main’s tip with the pull requests ahead in the queue and this one merged on top. No paths filter here, so every group
+  # would report every required check. Until then the integrator merges in batches (designs/review-guide.md).
   merge_group:
   push:
     branches: [main]
@@ -32,11 +34,11 @@ jobs:
     # It takes under a minute; a hung step would otherwise hold the runner for GitHub’s default of 360.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The whole history and its tags: commit messages are checked against the base, and versions against tags.
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -75,7 +77,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         with:
           # The base branch too, to tell what the pull request or the merge group changed.
@@ -135,8 +137,8 @@ jobs:
         pass: [plain, late]
         shard: [1, 2, 3, demo-1, demo-2]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -156,13 +158,13 @@ jobs:
           # (playwright.config.mjs); each shard uploads its own copy, below.
           POSTBOX_STREAM_LAG: ${{ matrix.pass == 'late' && '300' || '' }}
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: check-logs-${{ matrix.pass }}-${{ matrix.shard }}
           path: check-logs/
           retention-days: 14
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-traces-${{ matrix.pass }}-${{ matrix.shard }}
           path: test-results/
@@ -202,8 +204,8 @@ jobs:
     timeout-minutes: 20
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -214,7 +216,7 @@ jobs:
         run: node tools/shoot-app.mjs
       # About 40 MB a run, kept 5 days. A run that broke partway uploads what it took.
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: screenshots
           path: screenshots/latest/app/

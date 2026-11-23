@@ -17,8 +17,9 @@ export function needsAfter(rt, se, turn, items) {
   const open = items.filter(
     (it) => it.kind === 'block' && it.turnId === turn.id && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered,
   );
-  const waiting = se.keptId ? items.find((it) => it.id === se.keptId) : null;
-  if (!open.length && waiting && !waiting.answered) open.push(waiting);
+  const waiting = rt.turnService.asks.keptBlock(se);
+  // It counts as the need wherever it is (#647), but as this thread’s activity only when it’s here (#228).
+  if (!open.length && waiting && !waiting.answered && items.some((it) => it.id === waiting.id)) open.push(waiting);
   const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
   const viewing = rt.threads.isViewing(turn.threadId);
   const topic = turn.threadId !== se.threadId && rt.store.pending.thread(turn.threadId)?.kind === 'topic' ? turn.threadId : null;
@@ -41,7 +42,11 @@ export function needsAfter(rt, se, turn, items) {
     unread: topic ? se.unread : viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
     stopAsk: null,
   }));
-  if (needs && (needs.kind === 'block' || needs.kind === 'toolask')) rt.threads.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
+  // The block the turn kept was already the need before this turn: a turn that didn’t change it raises no new alert,
+  // and falls through to the notices below (designs/developing.md, “Design habits”, 12). Asking it again gives it this
+  // turn’s id (block-update.mjs, #69), which is a change the person hears of.
+  const changed = needs && (needs.itemId !== se.keptId || waiting?.turnId === turn.id);
+  if (changed && (needs.kind === 'block' || needs.kind === 'toolask')) rt.threads.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
   else if (mentionsYou && !viewing) rt.threads.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
   else if (turn.said && !viewing) rt.threads.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);
   return { open, viewing, topic };

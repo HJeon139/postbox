@@ -2,6 +2,155 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.40.1 (2026-11-23)
+
+### Fixes
+
+- **apps:** a Stop that stops a waiting app check lets go of its app
+- **uat:** stop waiting on apps once the bound stops the run, and report a run that throws
+- **apps:** let go of an app’s fixing when its app-check turn stops or fails
+- **run-clock:** say what a clock's lines did for an idle or local agent
+- **run-clock:** add a holding clock's line once across restarts
+
+## 4.40.0 (2026-11-23)
+
+### Features
+
+- **uat:** export a UAT run as ATIF v1.8 trajectories
+- **app:** say in the persona sheet what each backend does with memory
+- **review:** edit a draft comment in place before you submit
+
+### Fixes
+
+- **text:** end a quote's line at a lone carriage return
+- **app:** hedge Antigravity's memory line, since its store is unverified
+- **markdown:** end a fence's line at a lone carriage return too
+- **markdown:** end a span's line at a lone carriage return, and keep it linear
+- **personas:** say a Kiro agent on a host keeps memory only if Kiro does
+- **markdown:** skip the fence scan when a message has no fence
+- **markdown:** pair code spans only within a line, as the renderer does
+- **review:** name a draft comment's place in its Edit, Delete and edit box
+- **app:** say an older Claude Code's and Antigravity's memory is yours too
+- **app:** say what memory a persona really has on a host, Antigravity and older Claude Code
+- **uat:** name the epoch of a stream gap that came after a restart
+- **uat:** keep a step with no time, without a timestamp, instead of losing the run's trajectories
+- **uat:** order the jobs trigger and the legacy move merge by epoch, then seq
+- **uat:** place a turn's later prompt after what the turn showed before it was sent
+- **uat:** compare the checks' events across a restart's new epoch
+- **review:** keep text set aside by Edit until its own place is reopened
+- **review:** give focus back only to the box that had it, and follow set-aside text
+- **review:** leave focus where the person put it when a new comment's box repaints
+- **review:** keep a new comment's text and the person's focus when Edit opens
+- **review:** keep one box open, and never drop what was typed in an edit
+- **markdown:** let a list marker open a fence but never close one
+- **markdown:** read code spans as the renderer does in mentions, disclosures and the lint
+
+## 4.39.0 (2026-11-23)
+
+### Features
+
+- **guide:** ask agents to start each option's description with what it makes
+
+### Fixes
+
+- **diagrams:** take a reply's diagrams from the renderer's own output
+- **diagrams:** check each diagram in a reply once
+- **diagrams:** hold a turn's lint turn while the server parses its diagrams
+- **diagrams:** read a reply's Mermaid fences as the renderer draws them
+- **guide:** say plainly that each option is listed in the fallback
+- **diagrams:** send the diagrams queued behind a hung parse to a new worker
+- **diagrams:** check each reply's Mermaid syntax on the server
+
+## 4.38.0 (2026-11-22)
+
+### Features
+
+- **uat:** stop every run at a cap on agent turns and wall time, on any harness
+- **uat:** a run clock per agent for timed trials, off unless POSTBOX_RUN_CLOCK=1
+
+### Fixes
+
+- **uat:** void a timed run when a host turn ends unkilled though no stop was asked
+- **uat:** poll the state without its items for the run's watch
+- **uat:** keep where a run stopped at its bound through a recheck
+- **uat:** give the runner's own reads of Postbox a limit, so a stalled one unwinds the run
+- **uat:** time a bounded run's grace from Postbox's last answer, not the deadline
+- **uat:** run the cleanup for a run still held in a wait past its wall time
+- **uat:** keep a bounded run's deadline on its own timer, so a hung state read can't hold it
+- **uat:** stop a bounded run on time without the state, and count every turn start
+- **uat:** record no clock.turn for a turn that gets no clock line
+- **uat:** void a timed run when a restart drops a host stop it can't ask again
+- **uat:** word Send now's refusal for a queued message, and say how a timed run resumes
+- **uat:** void a timed run when a host says the turn it stopped outlived its kill
+- **uat:** count a bounded run's minutes to its watch's end, and say when it stopped
+- **uat:** refuse Send now on a queued message while its run clock holds, and drop turns after expiry
+- **uat:** refuse Retry and Send now while a run clock holds the agent, and drop held turns
+- **uat:** a reply a run clock stopped says the clock stopped it
+- **uat:** stop a host turn attached again while its run clock holds the agent
+
+## 4.37.0 (2026-11-22)
+
+### Features
+
+- **uat:** record each turn's exact prompt and guide, only in UAT recording mode
+
+### Fixes
+
+- **uat:** record an Agent SDK query's prompt once, at its first init
+- **uat:** record Antigravity's rules file once agy started, and note a restarted host turn's gap
+
+## 4.36.7 (2026-11-22)
+
+### Fixes
+
+- **review:** size a diagram's frame to its drawing, so a taller start doesn't stick
+- **review:** start a redrawn diagram at its height, so a press on Submit isn't lost
+- **remote:** a handed-over question becomes the need only when its turn ends
+- **remote:** hand a host question over only at the host's own limit
+- **threads:** read a persona's missing createdAt as 0 in the legacy left check
+- **threads:** don't hold an older handle-only "left" line against a newer agent
+- **remote:** hand a host question over only when its limit ends it
+- **threads:** tell a deleted agent apart from a new one with its handle
+- **remote:** keep a host question's answers when the host ends it
+- **threads:** don't ask to add back an agent the person deleted
+- **needs:** alert again when the wake asks its kept block again
+- **remote:** an ended host question no longer counts as open
+- **remote:** a host question nobody answers stays open, as here
+- **remote:** end a call whose answer already reached the agent
+- **remote:** deliver a question's answer once after a restart
+- **remote:** ask AskUserQuestion on a host as choice blocks
+- **needs:** raise no repeat alert for the block a wake's turn kept
+- **needs:** keep a block in a topic thread as the need when a wake's turn ends
+- **threads:** choose a side thread's summary writer from those present
+- **threads:** read a thread's conversation as written to find who left
+- **threads:** never bring back a deleted agent to write or answer
+
+## 4.36.6 (2026-11-22)
+
+### Fixes
+
+- **uat:** mark a quoted literal $ or ~ with ./ rather than a backslash
+- **uat:** keep what quotes stop the shell expanding literal in the workspace check
+- **view-app:** stop saying the agent needs you once you press Download
+- **diagrams:** read on after a directive that closes on the header’s line
+- **uat:** read a word in quoted and unquoted parts as one, as the shell does
+- **diagrams:** skip a directive over lines before reading the diagram’s type
+- **uat:** see a step into the runs' temp folder however macOS spells it
+- **diagrams:** read the diagram’s type from its first line, not any line
+- **diagrams:** read state notes only in state diagrams, in one pass over the lines
+- **diagrams:** match notes as Mermaid does, and keep the label patterns linear
+- **diagrams:** keep notes and slanted-shape labels that start like a block as written
+- **uat:** name the main clone from git, not from a folder called uat-runs
+- **uat:** record where a run's agents worked from the start, and keep it through a recheck
+- **uat:** count a step into the runs' temp folder as outside the workspace
+- **diagrams:** leave a class diagram’s arrows and annotations alone
+- **diagrams:** keep class relation, state-name and other block-start labels as written
+- **diagrams:** keep each line of a Markdown-string label that starts like a list item as written
+- **diagrams:** show a label that starts like a list item as written
+- **uat:** refuse a temp folder inside the checkout, and leave none behind when setup fails
+- **uat:** keep the workspace once Postbox stops, never throw doing it, and recheck against its path
+- **uat:** put a run's workspace outside the Postbox checkout, and keep it in the run's folder
+
 ## 4.36.5 (2026-11-22)
 
 ### Fixes
