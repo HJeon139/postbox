@@ -18,17 +18,17 @@ const RAIL_W = 248;
 /** Below this width the pane covers the conversation instead (workbench.css). */
 const NARROW = 768;
 /**
- * The width the column and the pane share: the window’s, less a classic scroll bar. It’s kept until the window or the
- * root’s width changes, since reading it lays out whatever is pending, the whole transcript after a change (#619).
- * @type {number | null}
+ * The width the column and the pane share: the window’s, less a classic scroll bar. It’s kept while the window’s width
+ * stays the same, since reading it lays out whatever is pending, the whole transcript after a change (#619). The
+ * window’s own width is checked on every read, as fit() reads it anyway: a resize event comes only at the next frame,
+ * and a pane opened before it would fit the old window.
+ * @type {{ window: number, width: number } | null}
  */
-let roomWidth = null;
-const roomW = () => (roomWidth ??= document.documentElement.clientWidth);
-// Registered on import, before any pane’s own resize listener, so that one reads the new width.
-if (typeof addEventListener === 'function')
-  addEventListener('resize', () => {
-    roomWidth = null;
-  });
+let kept = null;
+const roomW = () => {
+  if (kept?.window !== innerWidth) kept = { window: innerWidth, width: document.documentElement.clientWidth };
+  return kept.width;
+};
 // A classic scroll bar showing or going changes the root’s width without a resize. The root grows taller with every
 // new item, so only a change of width forgets it: the root has no padding, so its box is as wide as clientWidth. The
 // observer reports after the layout that changed it, so a pane that opened in the meantime kept the old width: an open
@@ -39,7 +39,7 @@ if (typeof ResizeObserver === 'function')
     if (entry.contentRect.width === rootBox) return;
     const first = rootBox < 0;
     rootBox = entry.contentRect.width;
-    roomWidth = null;
+    kept = null;
     if (!first) dispatchEvent(new Event('pb-room-width'));
   }).observe(document.documentElement);
 
