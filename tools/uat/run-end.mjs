@@ -4,14 +4,18 @@
 // spend the reserve on pictures and leave its findings unverified.
 
 /**
- * @param {{ report: () => Promise<void>, review: (() => Promise<unknown>) | null, judge: () => Promise<void> }} o
- *   report: writes the report with the budget so far; review: verifies and files the findings, or null with --verify no
- *   and --file no; judge: the picture judges
+ * @param {{ refresh: () => unknown, report: () => Promise<void>, review: (() => Promise<unknown>) | null, judge: () => Promise<void> }} o
+ *   refresh: reads what the agents spent again; report: writes the report with the budget so far; review: verifies and
+ *   files the findings, or null with --verify no and --file no; judge: the picture judges
  */
-export async function endRun({ report, review, judge }) {
+export async function endRun({ refresh, report, review, judge }) {
+  // A turn the budget let finish may report after the run’s last wait, which doesn’t wait on a turn with a card open:
+  // each report reads the agents’ streams when it’s written, as the budget does, so they give one total (#1696).
+  refresh();
   await report();
   if (review) await review();
   await judge();
+  refresh();
   await report();
 }
 
