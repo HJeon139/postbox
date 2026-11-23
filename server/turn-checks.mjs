@@ -14,18 +14,19 @@ import { backTo } from './reply-back.mjs';
  * The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
  * never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
  * @param {import('./check-service.mjs').Checks} checks @param {any} turn @param {any} se
+ * @param {any[]} [took]  the entries the turn took
  */
-export function endChecks(checks, turn, se) {
+export function endChecks(checks, turn, se, took = []) {
   const stalled = stallSteps(checks, turn, se);
   if (turn.kind === 'lint') return quietLint(checks, turn, se);
   // The diagrams reported before this turn: its own, which the estimate may flag now, still get their syntax checked.
   const before = new Set(checks.store.state.sessions[se.id]?.diagramsLinted ?? []);
-  endLint(checks, turn, [...checkTurn(checks, turn, se), ...stalled]);
+  endLint(checks, turn, [...checkTurn(checks, turn, se, took), ...stalled]);
   syntaxCheck(checks, turn, before).catch((e) => console.error(`Postbox couldn’t check a diagram’s syntax; the page still reports it: ${e.message}`));
 }
 
 /** The server’s checks over a finished turn. */
-export function checkTurn(checks, turn, se) {
+export function checkTurn(checks, turn, se, took = []) {
   const lineage = checks.threads.lineage(turn.threadId);
   const items = lineage.flatMap((id) => checks.store.pending.items(id));
   const apps = Object.values(checks.store.pending.apps()).filter((a) => lineage.includes(a.threadId));
@@ -45,7 +46,7 @@ export function checkTurn(checks, turn, se) {
   // whose mentions woke the turn, as reply-back decides it.
   const own = checks.store.pending.items(turn.threadId);
   const shown = own.filter((it) => it.kind === 'block' && it.valid && it.turnId === turn.id).map((it) => it.block.type);
-  const toAgent = Boolean(turn.addressed) || (turn.backTo ?? backTo(turn.asked?.message?.entries ?? [])).length > 0;
+  const toAgent = Boolean(turn.addressed) || (turn.backTo ?? backTo(took)).length > 0;
   problems.push(...blockProblems(turn.said, shown, own.findLast((it) => it.kind === 'user')?.text ?? '', { toAgent }));
   return problems;
 }

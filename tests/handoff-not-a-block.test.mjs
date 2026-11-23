@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { blockProblems } from '../server/checks.mjs';
 import { settle, setup } from './blocks-fixture.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 // The recorded hand-off's shape: 49 lines, “please re-review” at the start, the PR's head, what changed and the checks.
 const HANDOFF = [
@@ -99,6 +100,65 @@ test('#1695 a reply that goes back to the agent that woke it, naming no one, get
   adapter.next.push(async (c) => c.text('@lead what changed in #1656 since my review?'));
   adapter.next.push(async (c) => c.text(HANDOFF.replace('@critic, please', 'Please')));
   rt.sendMessage(t.id, { text: '@critic check with lead' });
+  await settle(rt);
+  const answer = store.items(t.id).findLast((it) => it.kind === 'agent' && it.sessionId === leadSession.id && it.text?.startsWith('Please'));
+  assert.deepEqual(answer?.wentBack, ['critic'], 'the answer went back to critic');
+  assert.deepEqual(
+    lints()
+      .flatMap((c) => c.message.problems.map((p) => p.code))
+      .filter((c) => c.endsWith('-in-prose')),
+    [],
+    'no reply-form problem',
+  );
+});
+
+test('#1695 Send now on an agent’s waiting mention: the answer goes back to it, and gets no reply-form lint', async () => {
+  const { rt, store, t, adapter } = setup();
+  const lead = rt.createPersona({ handle: 'lead' });
+  rt.ensureSession(t.id, lead.id);
+  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
+  const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
+  const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
+  // @lead is busy, so @critic’s mention of it waits.
+  let release;
+  const gate = new Promise((r) => (release = r));
+  adapter.next.push(async (c) => {
+    await gate;
+    c.text('Busy work done.');
+  });
+  rt.sendMessage(t.id, { text: '@lead do the long thing' });
+  await untilTurns(() => adapter.calls.some((c) => c.sessionId === leadSession.id), 'lead’s turn under way');
+  adapter.next.push(async (c) => c.text('@lead what changed in #1656 since my review?'));
+  rt.sendMessage(t.id, { text: '@critic check with lead' });
+  const waiting = () => rt.delivery.waiting(leadSession.id).find((e) => e.source === 'mention');
+  await untilTurns(() => !!waiting(), 'critic’s mention waiting for lead');
+  adapter.next.push(async (c) => c.text(HANDOFF.replace('@critic, please', 'Please')));
+  const sent = rt.sendQueuedNow(t.id, waiting().id);
+  release();
+  await sent;
+  await settle(rt);
+  const answer = store.items(t.id).findLast((it) => it.kind === 'agent' && it.sessionId === leadSession.id && it.text?.startsWith('Please'));
+  assert.deepEqual(answer?.wentBack, ['critic'], 'the answer went back to critic');
+  assert.deepEqual(
+    lints()
+      .flatMap((c) => c.message.problems.map((p) => p.code))
+      .filter((c) => c.endsWith('-in-prose')),
+    [],
+    'no reply-form problem',
+  );
+});
+
+// The turn itself carries whom it goes back to when it took no entries: a retry (#1541), or a host turn continued (#1538).
+test('#1695 a turn that carries whom its reply goes back to gets no reply-form lint', async () => {
+  const { rt, store, t, adapter } = setup();
+  const lead = rt.createPersona({ handle: 'lead' });
+  rt.ensureSession(t.id, lead.id);
+  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
+  const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
+  const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
+  adapter.next.push(async (c) => c.text(HANDOFF.replace('@critic, please', 'Please')));
+  const message = { kind: 'agent', from: '@critic', text: 'What changed in #1656?', backTo: ['critic'], entriesWait: true };
+  rt.turnService.run(leadSession.id, message, { threadId: t.id });
   await settle(rt);
   const answer = store.items(t.id).findLast((it) => it.kind === 'agent' && it.sessionId === leadSession.id && it.text?.startsWith('Please'));
   assert.deepEqual(answer?.wentBack, ['critic'], 'the answer went back to critic');
