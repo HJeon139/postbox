@@ -30,10 +30,9 @@ export function reviewBlock(apps, sessionId, args) {
   if ('message' in found) return found;
   const { it, where } = found;
   if (it.sessionId === sessionId) return no(`${it.block.id} is your own review block: add or answer its threads with update_block.`);
-  if (it.closed || it.answered)
-    return no(
-      `@${it.handle}’s ${it.block.id} is ${it.closed ? 'closed' : 'answered'} already, so it takes no more comments. Say what you’d change in a message instead.`,
-    );
+  // An answered review still takes a reviewer’s comments, under the person’s answer, without reopening it (#716): a
+  // read of a design the person approved belongs on the block. A closed one, withdrawn or dismissed, doesn’t.
+  if (it.closed) return no(`@${it.handle}’s ${it.block.id} is closed, so it takes no more comments. Say what you’d change in a message instead.`);
   const problems = comments.flatMap((c, i) => [...commentErrors(c, `comments[${i}]`), ...placeError(it.block, c, i)]);
   if (problems.length) return no(`Nothing was added: ${problems.slice(0, 5).join(' ')}`);
 
@@ -62,7 +61,7 @@ export function reviewBlock(apps, sessionId, args) {
   const n = added.length;
   return {
     ok: true,
-    message: `Added ${n} comment${n === 1 ? '' : 's'} to @${it.handle}’s ${it.block.id} (revision ${revision}). ${heard} The block still waits on the person.`,
+    message: `Added ${n} comment${n === 1 ? '' : 's'} to @${it.handle}’s ${it.block.id} (revision ${revision}). ${heard} ${it.answered ? 'The person already answered it, and your comments don’t reopen it.' : 'The block still waits on the person.'}`,
   };
 }
 
