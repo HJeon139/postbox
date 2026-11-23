@@ -61,3 +61,15 @@ test('resuming an existing thread uses the persona version supplied by the runti
   assert.match(resumed.params.developerInstructions, /Use concise Markdown in every handoff\./);
   assert.doesNotMatch(resumed.params.developerInstructions, /Keep handoffs readable\./);
 });
+
+// A resume that returns the thread's whole history can outgrow a host's 8 MiB line, and then never answers (#1705).
+// Recorded with codex-cli 0.171.0.978: with excludeTurns the answer keeps its thread id and model, lists no turns, and
+// Codex sends no deprecationNotice for full-history hydration.
+test('resuming a thread asks Codex for no past turns, as a fork does', async () => {
+  const seen = [];
+  const adapter = new CodexAdapter({ spawnImpl: () => fakeAppServer(seen) });
+  await adapter.deliver({}, { kind: 'user', text: 'Continue.' }, context({ codexThreadId: 'thr_existing' }));
+  const resumed = seen.find((request) => request.method === 'thread/resume');
+  assert.equal(resumed.params.threadId, 'thr_existing');
+  assert.equal(resumed.params.excludeTurns, true, 'the resume answer must not carry the thread’s history');
+});

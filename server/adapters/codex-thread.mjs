@@ -33,7 +33,8 @@ export async function openCodexThread(ctx, request, { sourceThreadId, fork, cwd,
     return { opened: await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true, ...openConfig }), fresh: false };
   if (!sourceThreadId) return { opened: await start(), fresh: false };
   try {
-    return { opened: await request('thread/resume', { threadId: sourceThreadId, cwd, ...openConfig }), fresh: false };
+    // Without excludeTurns the answer holds the thread's whole history: past a host's 8 MiB line it never arrives (#1705).
+    return { opened: await request('thread/resume', { threadId: sourceThreadId, cwd, excludeTurns: true, ...openConfig }), fresh: false };
   } catch (error) {
     // -32600 is a generic invalid request, with no missing-rollout discriminator. Match the recorded text and exact
     // thread id deliberately: a broader regex would discard saved history on unrelated resume errors (#587).
