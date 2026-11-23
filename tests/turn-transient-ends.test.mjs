@@ -125,7 +125,7 @@ test('#1713 a turn that started a tool goes again too, told to check what ran be
   assert.match(retried, /Check what those calls changed or sent before you repeat any of them/);
 });
 
-test('#1713 a retry Postbox couldn’t start ends the wait: the row says failed, and the reply keeps its Retry', async () => {
+test('#1713 a retry Postbox couldn’t start ends the wait and needs the person, and the reply keeps its Retry', async () => {
   const f = room();
   await overloadedOnce(f);
   const failed = f.store.items(f.t.id).find((i) => i.kind === 'agent' && i.sessionId === f.beta.id);
@@ -143,6 +143,7 @@ test('#1713 a retry Postbox couldn’t start ends the wait: the row says failed,
   assert.equal(f.se().autoRetry ?? null, null);
   assert.equal(f.se().currentStep, 'Failed');
   assert.equal(agentState(f.se(), f.store.state).state, 'failed');
+  assert.equal(needsYouNow(f.se()), true, 'nothing else starts it again, so it needs the person');
   const reply = f.store.item(f.t.id, failed.id);
   assert.equal(reply.status, 'failed');
   assert.equal(reply.note ?? null, null, 'its note no longer says when it would try');
@@ -158,4 +159,29 @@ test('#1713 a retry its backend refused for quota ends the wait, and waits for t
   await settle(f.rt);
   assert.equal(f.se().autoRetry ?? null, null);
   assert.notEqual(agentState(f.se(), f.store.state).state, 'retrying');
+});
+
+test('#1713 a tool-started turn whose retry was refused takes back its line to check what ran', async () => {
+  const f = room();
+  f.adapter.next.push(async (/** @type {any} */ ctx) => {
+    ctx.activity?.({ id: 'tu1', label: 'Bash: git push', state: 'running', kind: 'tool' });
+    throw withTransient(new Error('API Error: 529 Overloaded'), 529);
+  });
+  f.rt.sendMessage(f.t.id, { text: '@beta push it' });
+  await settle(f.rt);
+  f.rt.turnService.retry = async () => {
+    throw Object.assign(new Error('the backend is gone'), { status: 500 });
+  };
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    f.waits.shift()();
+    await settle(f.rt);
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(
+    (f.se().context ?? []).some((/** @type {string} */ x) => /Check what those calls changed/.test(x)),
+    false,
+  );
 });

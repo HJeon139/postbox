@@ -172,8 +172,8 @@ export const PENDING = {
   'turn-quota.mjs': ['quotaKey', 'sessionsOn', 'quotaName', 'quotaMoved'],
   // The count of a provider’s failures in a row, which decides whether a turn tries again or stops; the wait and its
   // reply forgetWait clears, only if there is one; and whether a wait’s end, or a refused retry, still belongs to the
-  // session’s wait: each maybe held behind a commit (#1713).
-  'turn-transient.mjs': ['forgetWait', 'forgetWait', 'transientRetry', 'armRetry', 'armRetry'],
+  // session’s wait (retryRefused): each maybe held behind a commit (#1713).
+  'turn-transient.mjs': ['forgetWait', 'forgetWait', 'transientRetry', 'armRetry', 'retryRefused'],
   // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
   'turn-stop.mjs': ['stop', 'turnExited'],
   'stop-record.mjs': ['recordStopped'], // the stopped turn’s segments still streaming, maybe held behind a commit (#602)

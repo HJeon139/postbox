@@ -115,14 +115,11 @@ function armRetry(rt, sessionId, threadId, itemId, at) {
     if (rt.closing || se?.autoRetry?.itemId !== itemId || se.state !== 'failed') return;
     // A turn that started work before its provider failed: its retry is told to check what ran before repeating it,
     // as a scheduled wake’s recovery is (designs/508/design.md, “Record lifecycles”).
-    if (se.autoRetry.started?.length) rt.sessions.tell(sessionId, checkWhatRan(se.autoRetry));
+    const told = se.autoRetry.started?.length ? checkWhatRan(se.autoRetry) : null;
+    if (told) rt.sessions.tell(sessionId, told);
     Promise.resolve()
       .then(() => rt.turnService.retry(threadId, itemId))
-      .catch((/** @type {any} */ e) => {
-        // 409: the reply isn’t failed any more, so there’s nothing to try again. Anything else leaves it failed.
-        if (e?.status !== 409) console.warn(`Postbox couldn’t retry @${rt.s.sessions[sessionId]?.handle ?? sessionId}’s turn: ${e?.message ?? e}`);
-        if (rt.store.pending.session(sessionId)?.autoRetry?.itemId === itemId) forgetWait(rt, sessionId, { currentStep: 'Failed' });
-      });
+      .catch((/** @type {any} */ e) => retryRefused(rt, sessionId, threadId, itemId, told, e));
   };
   const wait = Math.max(0, at - Date.now());
   if (rt.config?.retryAfter) return rt.config.retryAfter(wait, fire);
@@ -132,6 +129,25 @@ function armRetry(rt, sessionId, threadId, itemId, at) {
   }, wait);
   timer.unref?.();
   rt.watchdogs.add(timer);
+}
+
+/**
+ * The retry at a wait’s end was refused. Its line to check what ran is taken back, as no turn went again. A 409 says
+ * the reply isn’t failed any more, so nothing is owed. Anything else leaves the agent failed with nothing to start it
+ * again, so it needs the person, as after its tries run out (#1713). Read pending: it decides the writes.
+ * @param {any} rt @param {string} sessionId @param {string} threadId @param {string} itemId
+ * @param {string | null} told  the line the retry was to read @param {any} e
+ */
+function retryRefused(rt, sessionId, threadId, itemId, told, e) {
+  if (told) rt.sessions.update(sessionId, (now) => ({ context: (now.context ?? []).filter((/** @type {string} */ x) => x !== `[Postbox] ${told}`) }));
+  const se = rt.store.pending.session(sessionId);
+  if (se?.autoRetry?.itemId !== itemId) return;
+  if (e?.status === 409) return forgetWait(rt, sessionId, { currentStep: 'Failed' });
+  console.warn(`Postbox couldn’t retry @${se.handle}’s turn: ${e?.message ?? e}`);
+  const text = `Postbox couldn’t try this turn again: ${e?.message ?? e}`;
+  const needs = { kind: 'failed', itemId, text, ...rt.sessions.awayFrom(se, threadId) };
+  forgetWait(rt, sessionId, { currentStep: 'Failed', needs });
+  rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, text, threadId);
 }
 
 /** After a restart: each wait a failed session was in starts again, for what’s left of it. @param {any} rt */

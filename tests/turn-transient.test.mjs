@@ -105,6 +105,7 @@ test('#1713 three tries in a row run out: the person is told, as of any failed t
   const last = repliesOf(f).at(-1);
   assert.match(last.note, /overloaded \(529\) on 4 tries in a row, so Postbox stopped trying/);
   assert.equal(last.transient, undefined, 'its callout is an alert again, as any failure’s');
+  for (const r of repliesOf(f).slice(0, -1)) assert.equal(r.transient?.at ?? null, null, 'no earlier reply still says it will try again');
 
   const line = f.store.items(f.t.id).find((i) => i.kind === 'system' && i.variant === 'retries-out');
   assert.ok(line, 'one line in the room says so');
