@@ -2,7 +2,8 @@
 // thread, so a write to a room with no thread is refused as `no-conversation`, saying it was deleted (#724), and leaves
 // no room index or kept file behind.
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -62,12 +63,13 @@ test('a conversation erased between the bytes being stored and the commit: the w
   // The bytes are stored first, then the commit checks the room: here the conversation's erase lands in between, as
   // deleting it emits (server/thread-erase.mjs).
   const racing = {
-    put: async (/** @type {Buffer} */ bytes) => {
-      const r = await real.put(bytes);
+    put: async (/** @type {Buffer} */ bytes, /** @type {any} */ opts) => {
+      const r = await real.put(bytes, opts);
       store.emit('asset.erase', { room: 'c1', at: 5 });
       store.emit('remove', { kind: 'thread', id: 'c1' });
       return r;
     },
+    settle: (/** @type {any} */ puts, /** @type {boolean} */ keep) => real.settle(puts, keep),
   };
   const late = await writeAsset(store, /** @type {any} */ (racing), {
     kind: 'write',
@@ -81,4 +83,5 @@ test('a conversation erased between the bytes being stored and the commit: the w
   assert.equal(store.state.assetRooms?.c1, undefined, 'no index rebuilt for the erased conversation');
   assert.deepEqual(Object.keys(store.state.assets), []);
   assert.deepEqual(kept(store.state), []);
+  assert.equal(existsSync(real.pathOf(createHash('sha256').update('two').digest('hex'))), false, 'its bytes went with it (#706)');
 });
