@@ -18,6 +18,9 @@ const STATUS_WORDS = { 429: 'was rate limiting requests', 529: 'was overloaded' 
 /** What the provider did, after its subject: “was overloaded (529)”. @param {number} status */
 const didWhat = (status) => `${STATUS_WORDS[/** @type {429|529} */ (status)] ?? 'had a server error'} (${status})`;
 
+/** Whether a turn started a tool of its own: a step that isn’t a thought, words, or a subagent’s. @param {any} turn */
+const startedTools = (turn) => (turn.steps ?? []).some((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said');
+
 /** A wait in words: 30 s, 2 min. @param {number} ms */
 const waitWords = (ms) => (ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60_000)} min`);
 
@@ -35,6 +38,9 @@ const delaysOf = (rt) => rt.config?.transientRetryMs ?? TRANSIENT_RETRY.delaysMs
  */
 export function transientRetry(rt, se, turn, failure) {
   if (failure?.kind !== 'transient' || turn.asked?.message?.scheduledWakeId) return null;
+  // A turn that started a tool may have written, pushed or sent something: resending it could do that again, so it
+  // fails as any turn does, and the person decides on Retry (critic’s review of PR #1717).
+  if (startedTools(turn)) return null;
   const tries = rt.store.pending.session(se.id)?.autoRetry?.tries ?? 0;
   const delays = delaysOf(rt);
   if (tries >= delays.length) return { status: failure.status, tries, at: null, delayMs: 0 };
@@ -80,7 +86,9 @@ export function afterTransient(rt, se, turn, r, itemId) {
 function armRetry(rt, sessionId, threadId, itemId, at) {
   const fire = () => {
     // Only the wait the session is still in: a later failure, a Dismiss, a Stop or a turn that went well ended this one.
-    if (rt.closing || rt.store.pending.session(sessionId)?.autoRetry?.itemId !== itemId) return;
+    // And only while the agent is still failed: a turn the person started meanwhile moved past this one.
+    const se = rt.store.pending.session(sessionId);
+    if (rt.closing || se?.autoRetry?.itemId !== itemId || se.state !== 'failed') return;
     Promise.resolve()
       .then(() => rt.turnService.retry(threadId, itemId))
       .catch((/** @type {any} */ e) => {

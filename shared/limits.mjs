@@ -116,7 +116,9 @@ export const QUIET = Object.freeze({
 /**
  * A turn its provider failed for a while, such as 529 Overloaded (#1713, server/turn-transient.mjs), goes again on its
  * own after each of these waits, one per try, with Retry as the person’s: at most three tries in a row, over about ten
- * minutes, before the agents waiting on it hear it didn’t answer.
+ * minutes, before the agents waiting on it hear it didn’t answer. Only a turn that started no tool: one that did fails
+ * as any turn does. A scheduled wake’s turn isn’t under this bound: it recovers through its schedule’s own backoff
+ * (server/scheduled-wakes.mjs), as after a dropped network: waits that double from 1 s up to 5 min, for up to an hour.
  */
 export const TRANSIENT_RETRY = Object.freeze({ delaysMs: Object.freeze([30_000, 2 * 60_000, 8 * 60_000]) });
 

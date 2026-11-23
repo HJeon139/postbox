@@ -85,3 +85,33 @@ test('#1713 Stop of the retried turn ends the count', async () => {
   await settle(f.rt);
   assert.equal(f.se().autoRetry ?? null, null);
 });
+
+test('#1713 a turn the person started meanwhile moves past the failed one: the wait’s end runs nothing', async () => {
+  // Critic’s review of PR #1717: the person wrote something new while the agent waited, and that turn still ran when
+  // the wait ended; the old turn went again after it, a turn the person had moved past.
+  const f = room();
+  await overloadedOnce(f);
+  const work = held();
+  f.adapter.next.push(work.step);
+  f.rt.sendMessage(f.t.id, { text: '@beta new task instead' });
+  await sleep(5);
+  const calls = f.adapter.calls.length;
+  f.waits.shift()();
+  work.release();
+  await settle(f.rt);
+  assert.equal(f.adapter.calls.length, calls, 'only the person’s new turn ran');
+});
+
+test('#1713 a turn that started a tool before its provider failed isn’t sent again on its own', async () => {
+  // Critic’s review of PR #1717: a resend could repeat a write, a push or an @-mention the failed attempt already made.
+  const f = room();
+  f.adapter.next.push(async (/** @type {any} */ ctx) => {
+    ctx.activity?.({ id: 'tu1', label: 'Bash: git push', state: 'running', kind: 'tool' });
+    throw withTransient(new Error('API Error: 529 Overloaded'), 529);
+  });
+  f.rt.sendMessage(f.t.id, { text: '@beta push it' });
+  await settle(f.rt);
+  assert.equal(f.waits.length, 0, 'no wait to try again');
+  assert.equal(f.se().autoRetry ?? null, null);
+  assert.equal(needsYouNow(f.se()), true, 'it needs the person, as any failed turn does');
+});
