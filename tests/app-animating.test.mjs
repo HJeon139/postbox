@@ -54,3 +54,21 @@ test('#438 a report for an unknown app is refused, and one for a retired app or 
   assert.deepEqual(appAnimating(s.rt, s.appId, 1), { ok: true, told: false });
   assert.deepEqual(s.heard(), []);
 });
+
+test('#438 a report while Postbox can’t save, or for an app whose agent left its room, tells no one', () => {
+  const s = shown();
+  s.rt.store.writable = false;
+  assert.deepEqual(appAnimating(s.rt, s.appId, 1), { ok: true, told: false }, 'while Postbox can’t save');
+  s.rt.store.writable = true;
+  assert.deepEqual(s.heard(), []);
+  const room = s.rt.createThread({
+    projectId: 'p1',
+    title: 'R',
+    personaIds: [s.rt.createPersona({ handle: 'critic' }).id, s.rt.createPersona({ handle: 'lead' }).id],
+  });
+  const critic = arrange.agentIn(s.rt, room.id, 'critic');
+  const { appId } = s.rt.toolsFor(critic.id).show_app({ title: 'Clock', code: '<canvas></canvas>' });
+  s.rt.deleteSession(critic.id);
+  assert.ok(s.rt.store.state.apps[appId], 'its app stays in the room');
+  assert.deepEqual(appAnimating(s.rt, appId, 1), { ok: true, told: false }, 'its agent left the room');
+});
