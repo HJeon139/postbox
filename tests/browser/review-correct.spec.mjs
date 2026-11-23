@@ -90,3 +90,11 @@ test('#858 Send correction with the text as it was closes the box as Cancel does
   room.app.rt.toolsFor(sessionOf('drafter').id).update_block({ block: { id: blockId, withdraw: 'Superseded by the new plan.' } });
   await expect(block.getByRole('button', { name: /^Edit your sent comment/ })).toHaveCount(0);
 });
+
+test('#858 a review whose agent was deleted offers no Edit, and keeps the comment as sent', async ({ page }) => {
+  const { block, sessionOf } = await sent(page, 'Deleted agent');
+  await room.idle();
+  room.app.rt.deleteSession(sessionOf('drafter').id);
+  await expect(block.getByRole('button', { name: /^Edit your sent comment/ })).toHaveCount(0);
+  await expect(block.locator('.rv-thread .c'), 'the comment stays').toHaveCount(1);
+});
