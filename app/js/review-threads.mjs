@@ -6,6 +6,7 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { authorName } from '/shared/review-comments.mjs';
 import { h, icon, plural, trusted } from './dom.mjs';
 import { commentBox, placeKey, placeOf, quoted } from './review-comment-box.mjs';
+import { correctButton, correctionBox, correctionOf, lastMine } from './review-correct.mjs';
 import { parkComment, saveEdit } from './review-draft.mjs';
 import { revisionOf } from './review-view.mjs';
 
@@ -18,15 +19,20 @@ const on = (b, x, key) => (b.format === 'app' ? x.anchor === key : x.line === ke
  */
 export function threadBox(key, env) {
   const { b, d, done } = env;
-  const parts = (b.threads ?? []).filter((t) => on(b, t, key)).map(threadOf);
+  const parts = (b.threads ?? []).filter((t) => on(b, t, key)).map((t) => threadOf(t, env));
   for (const c of d.comments.filter((x) => on(b, x, key))) parts.push(draftOf(c, env));
   if (!done && d.composing === key) parts.push(composer(key, env));
   return parts;
 }
 
-/** A thread the agent keeps on the block: who said what, and whether it’s resolved. @param {any} t */
-function threadOf(t) {
+/**
+ * A thread the agent keeps on the block: who said what, and whether it’s resolved. The person’s last comment in it has
+ * Edit, which corrects it (#858); a correction shows as edited, after what they sent. @param {any} t @param {any} env
+ */
+function threadOf(t, env) {
   const resolved = t.status === 'resolved';
+  const mine = lastMine(t);
+  const open = correctionOf(env.itemId).correcting === t.id;
   return h(
     'div.rv-thread',
     { class: resolved ? 'resolved' : '' },
@@ -39,10 +45,13 @@ function threadOf(t) {
           h('b', authorName(c.author).replace(/^@/, '')),
           i === 0 ? h('span.status-tag', { class: resolved ? 'ok' : 'open' }, resolved ? [icon('check', 'i-sm'), 'Resolved'] : 'Open') : null,
           i === 0 ? quoted(t.quote) : null,
+          c.edited ? h('span.status-tag', 'Edited') : null,
+          i === mine && !open ? correctButton(t, env) : null,
         ),
         h('div', { html: trusted(renderMarkdown(c.text)) }),
       ),
     ),
+    open ? correctionBox(t, env) : null,
   );
 }
 

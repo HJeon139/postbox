@@ -108,7 +108,9 @@ export function renderReview(b, item, ctx, kit) {
 
   const threadsAt = (key) => (b.threads ?? []).filter((t) => (b.format === 'app' ? t.anchor === key : t.line === key));
   const draftsAt = (key) => d.comments.filter((c) => (b.format === 'app' ? c.anchor === key : c.line === key));
-  const threadBox = (key) => threadsFor(key, { b, d, done, rerender, closeComposer });
+  // correct: the person’s correction of a comment they sent (#858), which doesn’t answer the block again.
+  const correct = (threadId, text) => ctx.act('correct', { threadId, text });
+  const threadBox = (key) => threadsFor(key, { b, d, done, rerender, closeComposer, correct, itemId: item.id });
 
   if (b.format === 'app') box.append(reviewApp(b, { d, done, rerender, threadBox }));
   else if (mode === 'preview') {
