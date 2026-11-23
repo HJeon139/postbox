@@ -59,7 +59,7 @@ export function hostsPanel() {
 function listen(p) {
   const off = client.on((ch) => {
     if (!p.root.isConnected) return stop();
-    if (ch.type === 'host.status') {
+    if (ch.type === 'host.status' || ch.type === 'host.forget') {
       paintStatus(p, ch.data?.id);
       syncKeepUpdated(p, ch.data?.id);
     } else if (['host', 'project', 'persona', 'load'].includes(ch.type)) p.paint();

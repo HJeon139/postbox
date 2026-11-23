@@ -169,3 +169,13 @@ test('a conversation has something to link only with a live asset in its room or
   apply(s, 'work.add', { convId: 'th_c', entry: { id: 'wf_c', kind: 'file', path: '/p/c.mjs', rel: 'c.mjs' } });
   assert.equal(hasRefs(s, 'th_c'), true);
 });
+
+test('#1659 a reply’s inline code is read as the page draws it: an escaped backtick leaves the next run as text', () => {
+  const s = room();
+  // The page reads \`a` ` as text then a span of one space, so `cite.mjs` after it is no span (renderMarkdown).
+  const items = [said(1, 'see `notes/plan.md` and \\`a` `cite.mjs`')];
+  assert.deepEqual(
+    relevantRefs(s, 'th_a', items).map((r) => r.name),
+    ['notes/Plan.md'],
+  );
+});

@@ -28,6 +28,7 @@ const TYPES = [
   'notify',
   'host',
   'host.status',
+  'host.forget',
   'quota',
   // A conversation’s assets (#516 S3): metadata only, never an asset’s contents.
   'asset',
@@ -85,7 +86,7 @@ test('every key of the state is either public or private, never both and never n
   const keys = [...Object.keys(emptyState()), ...LAZY_STATE_KEYS];
   assert.deepEqual([...PUBLIC_STATE_KEYS, ...PRIVATE_STATE_KEYS].sort(), [...keys].sort());
   for (const k of PUBLIC_STATE_KEYS) assert.equal(PRIVATE_STATE_KEYS.includes(k), false, k);
-  assert.equal(PUBLIC_STATE_KEYS.length, 22);
+  assert.equal(PUBLIC_STATE_KEYS.length, 23);
   assert.deepEqual(LAZY_STATE_KEYS, ['clocks']);
   assert.deepEqual(PRIVATE_STATE_KEYS, ['published', 'appNotes']);
 });

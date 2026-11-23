@@ -41,7 +41,7 @@ export function listenTurnEnd(rt) {
   // listeners after it read.
   bus.on('turn.ended', (end) => Object.assign(end, needsAfter(rt, end.se, end.turn, end.items)));
   // O, Checks: stalled steps, then a lint turn or a quiet lint.
-  bus.on('turn.ended', ({ turn, se }) => rt.checks.endTurn(turn, se));
+  bus.on('turn.ended', ({ turn, se }) => rt.checks.endTurn(turn, se, rt.delivery.takenBy(se.id, turn.id)));
   // P, Threads: a reply in a topic the person isn’t viewing counts there (#228).
   bus.on('turn.ended', ({ turn, open, viewing, topic }) => {
     if (topic && !viewing && (turn.said || open.length)) rt.threads.patch(topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));

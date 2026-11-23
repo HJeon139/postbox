@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 const line = (/** @type {any} */ o) => `${JSON.stringify(o)}\n`;
 const delta = (/** @type {string} */ itemId, /** @type {string} */ text) => ({ method: 'item/agentMessage/delta', params: { itemId, delta: text } });
@@ -37,7 +38,7 @@ async function midTurn() {
     pathOf: () => null,
   };
   const turn = adapter.deliver({}, { kind: 'user', text: 'go' }, ctx).catch((/** @type {any} */ e) => e);
-  while (!seen.some((x) => x.method === 'turn/start')) await new Promise((r) => setImmediate(r));
+  await untilTurns(() => seen.some((x) => x.method === 'turn/start'), 'turn/start sent');
   for (const m of STREAM) child.stdout.write(line(m));
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(said.text, 'Looking at the files in the', 'B waits while A is open and mid-sentence');

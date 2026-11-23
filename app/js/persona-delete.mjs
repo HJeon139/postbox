@@ -66,18 +66,11 @@ function whatGoes(p) {
         li(false, `${p.handle}, its instructions and its settings`),
         li(false, `Its ${plural(sessions.length, 'session')}, as deleting each would: a conversation it’s alone in goes with it`),
         li(false, 'What it remembered: its own memory, in every project'),
+        // A host removes it when Postbox next connects there with this version on the host (#491); its card says so meanwhile.
+        p.remote?.hostId ? li(false, 'Its memory on hosts, each the next time Postbox connects there, once the host runs this version') : null,
       ),
     ),
-    h(
-      'div.field',
-      h('span.label', 'This stays'),
-      h(
-        'ul.what-goes',
-        li(true, 'Other agents, and their memory'),
-        li(true, 'Files in the project folders'),
-        p.remote?.hostId ? li(true, 'Its memory on the host it runs on: Postbox can’t remove a host’s files yet') : null,
-      ),
-    ),
+    h('div.field', h('span.label', 'This stays'), h('ul.what-goes', li(true, 'Other agents, and their memory'), li(true, 'Files in the project folders'))),
     h('p.small.dim', 'It goes at once. This can’t be undone. A new agent with the same name starts with no memory.'),
   ];
 }
