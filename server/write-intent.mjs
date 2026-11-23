@@ -14,6 +14,7 @@
 // fails is a card.
 
 import { randomBytes } from 'node:crypto';
+import { codeSpansIn } from '../shared/code-spans.mjs';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
@@ -75,8 +76,15 @@ const squash = (s) =>
     .trim();
 const wordsOf = (s) => norm(s).match(/[\p{L}\p{N}][\p{L}\p{N}'._/#-]*/gu) ?? [];
 
-/** The code in a confirm’s statement: each fenced block and each `inline` span, as written. */
-const codeIn = (statement) => [...String(statement ?? '').matchAll(/```[^\n]*\n([\s\S]*?)```|`([^`\n]+)`/g)].map((m) => m[1] ?? m[2]);
+/**
+ * The code in a confirm’s statement: each fenced block, then each inline span as the page draws it (#1659).
+ * @param {unknown} statement
+ */
+function codeIn(statement) {
+  const s = String(statement ?? '');
+  const FENCED = /```[^\n]*\n([\s\S]*?)```/g;
+  return [...[...s.matchAll(FENCED)].map((m) => m[1]), ...codeSpansIn(s.replace(FENCED, ' '))];
+}
 
 /**
  * What the person asked for in this turn: the messages they typed that started it, and the confirm they confirmed, at

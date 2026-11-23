@@ -40,6 +40,15 @@ test('a confirm that shows the exact command lets it run with no model; one that
   assert.equal(shown.prompts.length, 0, 'a confirm turn has no typed words to judge');
   const declined = await setup();
   assert.deepEqual(await afterBlock(declined, confirm(statement), ['cancel', {}], [CREATE]), [false]);
+  // #1659: inline code as the page draws it. A double-backtick span shows the command; one after an escaped backtick
+  // is no span on the page (the escape leaves the next run as text), so it shows nothing to confirm.
+  const comment = bash('gh pr create --title "feat(now): what each agent is doing now" --body "Closes #508."');
+  const doubled = await setup();
+  const inline = `Run \`\` ${comment.input.command} \`\` now.`;
+  assert.deepEqual(await afterBlock(doubled, confirm(inline), ['confirm', {}], [comment]), [true]);
+  const escaped = await setup();
+  const notCode = `Not \\\`a\` \`${comment.input.command}\` this.`;
+  assert.deepEqual(await afterBlock(escaped, confirm(notCode), ['confirm', {}], [comment]), [false]);
 });
 
 test('#557’s review: words an agent writes in a block it shows are never the person’s, whatever they claim', async () => {

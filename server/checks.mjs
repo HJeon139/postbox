@@ -9,6 +9,7 @@
 //   { kind: 'app', id, title }           an app the agent showed
 //   { kind: 'block', id, title }         a block the agent showed
 
+import { mapCodeSpans } from '../shared/code-spans.mjs';
 import { lintTerms, numberedTerms } from './lint.mjs';
 
 /** @typedef {{ kind: string, [k: string]: any }} Scope */
@@ -251,11 +252,11 @@ const HTML_TAGS = new Set(
  * @returns {Problem[]}
  */
 export function rawHtmlProblems(text) {
-  const prose = String(text ?? '')
+  const fenced = String(text ?? '')
     .replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm, ' ')
-    .replace(/^(?: {4}|\t).*$/gm, ' ')
-    .replace(/`+[^`]*`+/g, ' ')
-    .replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, ' ');
+    .replace(/^(?: {4}|\t).*$/gm, ' ');
+  // Code spans as the page reads them (#1659): a run pairs only with its own length, on its own line.
+  const prose = mapCodeSpans(fenced, () => ' ').replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, ' ');
   const found = new Set();
   for (const m of prose.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)(\s[^<>]*)?\/?>/g)) {
     const name = m[1].toLowerCase();
