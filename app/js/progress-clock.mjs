@@ -5,9 +5,19 @@ import { formatDuration } from '/shared/text.mjs';
 import { client } from './client.mjs';
 import { dayOf, timeOf } from './dom.mjs';
 
-/** A step still marked running looks stalled when its agent has stopped working and the block hasn’t moved for a minute. */
-const STALE_MS = 60000;
-const WORKING = new Set(['think', 'gen', 'tool']);
+/**
+ * Whether a step still marked running has stopped going: its agent's turn has ended (finishedAt), with no background
+ * job kept running for it, or the agent is gone. How long since its last update says nothing (#1715): a long step
+ * under a live turn, one waiting on the person's card included, runs on. The server marks a step stalled at its turn's
+ * end (stallSteps, turn-checks.mjs); this covers a turn that ended where it couldn't, such as a restart or a host's
+ * turn interrupted. @param {string | undefined} sessionId
+ */
+function turnEnded(sessionId) {
+  const se = sessionId ? client.state.sessions[sessionId] : null;
+  if (!se) return true;
+  const kept = (se.jobs ?? []).some((/** @type {any} */ j) => j.kept && j.state === 'running');
+  return se.finishedAt != null && !kept;
+}
 
 /** Whether a progress block has a step still going, so its times move. @param {Element} node */
 export const isRunning = (node) => node.querySelector('[data-since-kind="running"], [data-since-kind="stalled"]') !== null;
@@ -19,12 +29,9 @@ export const isRunning = (node) => node.querySelector('[data-since-kind="running
 export function tickProgress(node) {
   const now = Date.now();
   const live = isRunning(node);
-  const se = client.state.sessions[node.dataset.progress];
-  const idle = !se || !WORKING.has(se.state);
-  const stale = idle && now - Number(node.dataset.updatedAt) > STALE_MS;
+  const stale = turnEnded(node.dataset.progress);
   for (const el of node.querySelectorAll('[data-since]')) {
     const ms = Math.max(1000, now - Number(el.dataset.since));
-    const li = el.closest('li');
     if (el.dataset.sinceKind === 'updated' && !live) {
       const at = Number(el.dataset.since);
       el.textContent = `Updated ${timeOf(at)}`;
@@ -33,6 +40,7 @@ export function tickProgress(node) {
     else if (el.dataset.sinceKind === 'stalled' || stale)
       el.textContent = `No update for ${formatDuration(Math.max(1000, now - Number(node.dataset.updatedAt)))}`;
     else el.textContent = formatDuration(ms);
+    const li = el.closest('li');
     if (li && el.dataset.sinceKind === 'running') {
       li.classList.toggle('stale', stale);
       li.querySelector('.g')?.setAttribute('aria-label', stale ? 'Stalled' : 'Running');
