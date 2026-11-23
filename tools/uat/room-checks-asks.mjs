@@ -156,10 +156,12 @@ function needsMismatches(f) {
  * Whether a block was shown by its agent’s turn that’s still running: a turn clears `finishedAt` as it starts and sets
  * it as it ends. That turn’s own end decides whether its block needs you (server/card-needs.mjs, turnsOf), so a run
  * that reads the room mid-turn, as it does when it hands a block to the tester while the agent works (#289), finds no
- * need yet on any backend.
+ * need yet on any backend. Not an AskUserQuestion’s block shown here (#521): its call waits on the person, so it needs
+ * you mid-turn. One on a host may be let go mid-turn by the host’s own limit (#1059), so it’s judged at the turn’s end.
  * @param {any} it  @param {any} se
  */
-const shownByRunningTurn = (it, se) => it.kind === 'block' && Boolean(it.turnId) && it.turnId === se.lastTurnId && !se.finishedAt;
+const shownByRunningTurn = (it, se) =>
+  it.kind === 'block' && (!it.question || Boolean(it.remote)) && Boolean(it.turnId) && it.turnId === se.lastTurnId && !se.finishedAt;
 
 /**
  * Whether the ask a ring points at is settled: a wake card or a permission card that’s no longer open (one that
