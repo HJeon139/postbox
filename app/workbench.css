@@ -893,6 +893,8 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .dialog.held { height: calc(100vh - 32px); }
 .dialog.held .d-body { flex: 1; }
 .dialog .d-head { padding: 14px 16px 10px; display: flex; align-items: flex-start; gap: 10px; }
+/* A long title or folder path wraps inside the head rather than running past the dialog (#119). */
+.dialog .d-head > .grow { min-width: 0; overflow-wrap: anywhere; }
 .dialog .d-body { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
 .dialog .d-body > *, .dialog [role="tabpanel"] > * { min-width: 0; }
 /* Inside a dialog, a row’s folder or path wraps where it must (#1497). */

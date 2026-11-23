@@ -96,7 +96,9 @@ function whatGoes(p) {
         'ul.what-goes',
         li(
           false,
-          `${plural(conversations.length, 'conversation')}, as deleting each would: ${plural(messages, 'message')}, ${plural(apps, 'app')} and ${plural(topics, 'topic or side thread', 'topic or side threads')}`,
+          conversations.length
+            ? `${plural(conversations.length, 'conversation')}, as deleting each would: ${plural(messages, 'message')}, ${plural(apps, 'app')} and ${plural(topics, 'topic or side thread', 'topic or side threads')}`
+            : 'The project itself: it has no conversations',
         ),
         li(false, 'The agents’ sessions in them, and their context'),
       ),
