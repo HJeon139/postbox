@@ -585,8 +585,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .progress li .g { margin-top: 2px; }
 .progress li[data-s="pending"] .t { color: var(--dim); }
 .progress li[data-s="failed"] .t { color: var(--text); }
-.progress li[data-s="stalled"] .t { color: var(--dim); }
-.progress li[data-s="stalled"] .p-bar i { background: var(--dim); }
+.progress li[data-s="stalled"] .t, .progress li.stale .t { color: var(--dim); }
+.progress li.stale .g-running { animation: none; color: var(--dim); }
+.progress li[data-s="stalled"] .p-bar i, .progress li.stale .p-bar i { background: var(--dim); }
 .progress .p-count { display: block; margin-top: 2px; }
 .progress .p-bar { display: block; margin-top: 6px; max-width: 320px; }
 .bar { height: 4px; border-radius: 999px; background: var(--chip); overflow: hidden; }
