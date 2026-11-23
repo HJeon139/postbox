@@ -57,6 +57,7 @@ test('a confirm that shows the exact command lets it run with no model; one that
     `[Review the release notes](https://example.com/\`${cmd}\`)`,
     `$x + \`${cmd}\` = y$`,
     `    \`\`\`\n    ${cmd}\n    \`\`\``,
+    `Tidy the notes?\n\n<details><summary>More</summary>\n\n\`${cmd}\`\n\n</details>`,
   ]) {
     const s = await setup();
     assert.deepEqual(await afterBlock(s, confirm(hidden), ['confirm', {}], [comment]), [false], hidden);

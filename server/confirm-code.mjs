@@ -13,5 +13,7 @@ const HTML_ENT = { '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&amp;
  */
 export function codeIn(statement) {
   const html = renderMarkdown(String(statement ?? ''));
+  // A fold hides its code until it’s opened, so a statement with one shows no command.
+  if (html.includes('<details>')) return [];
   return [...html.matchAll(/<code(?:\s[^>]*)?>([\s\S]*?)<\/code>/g)].map((m) => m[1].replace(/&(?:lt|gt|quot|#39|amp);/g, (e) => HTML_ENT[e]));
 }
