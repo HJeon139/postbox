@@ -71,7 +71,8 @@ function framesIn(data) {
  * its newest install try, so the run can tell how often Postbox installed there by itself.
  * @param {string} origin
  * It keeps every live frame too, unnumbered, as it came: a running turn’s progress isn’t stored between commit points
- * (designs/architecture/live-progress.md), so a check of what reached the browser reads them beside the events (#722).
+ * (designs/architecture/live-progress.md), so the ATIF trajectories read a tool call’s input and output from them. They
+ * aren’t storage, so the #722 scan for an asset’s content outside its file doesn’t read them (#1655).
  * @returns {{ events: () => any[], live: () => any[], hostStates: () => { at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[], gaps: () => { after: number, at: number }[], close: () => void }}
  */
 export function followEvents(origin) {

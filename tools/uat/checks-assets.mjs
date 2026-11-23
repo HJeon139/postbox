@@ -101,21 +101,6 @@ function logPlaces(log) {
   });
 }
 
-/**
- * The live frames the run’s stream received, each with which of its paths are someone’s own words: a step frame as the
- * step an item.patch would carry, a session frame as a session’s patch. A step’s input, output and diff, and the
- * glimpse, reach the browser only on these while a turn runs (designs/architecture/live-progress.md).
- * @param {any[]} frames
- */
-function liveParts(frames) {
-  return frames.map((f, i) => ({
-    where: `live frame #${i + 1}`,
-    type: `live.${f.kind}`,
-    data: f,
-    own: f.kind === 'step' ? (/** @type {string} */ path) => path.startsWith('step.') && wordStep(f.step) : sessionOwn,
-  }));
-}
-
 /** The state’s parts, each with which of its paths are someone’s own words: its items, its sessions, and the rest. */
 function stateParts(state, where) {
   if (!state) return [];
@@ -129,17 +114,14 @@ function stateParts(state, where) {
 }
 
 /**
- * Every copy of an asset’s content in the run’s records outside its blob file: the log, the live frames, the snapshot
- * and the final state. Each says which file, where, under which key, in which form, and whether it’s someone’s own words.
+ * Every copy of an asset’s content in the run’s records outside its blob file: the log, the snapshot and the final
+ * state. Each says which file, where, under which key, in which form, and whether it’s someone’s own words. The live
+ * frames aren’t among them: they’re transient and never stored, so a running step’s preview of a write_asset call
+ * that carries the asset’s text is no copy (#1655, designs/architecture/live-progress.md).
  * @param {any} facts
  */
 export function contentCopies(facts) {
-  const parts = [
-    ...logPlaces(facts.store?.log ?? []),
-    ...liveParts(facts.live ?? []),
-    ...stateParts(facts.store?.snapshot, 'snapshot'),
-    ...stateParts(facts.state, 'state'),
-  ];
+  const parts = [...logPlaces(facts.store?.log ?? []), ...stateParts(facts.store?.snapshot, 'snapshot'), ...stateParts(facts.state, 'state')];
   return (facts.store?.files ?? []).flatMap(({ sha, bytes }) => {
     const needles = needlesOf(bytes);
     if (!needles.text.length && !needles.encoded.length) return [];
