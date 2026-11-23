@@ -37,6 +37,13 @@ const step = (now) => { document.getElementById('t').textContent = String(++n); 
 const start = () => { until = performance.now() + 600; requestAnimationFrame(step); };
 start();
 </script>`;
+/** A loop whose every frame takes 250 ms, as #438’s grows toward when its history is never trimmed. */
+const SLOW = `<main style="padding:12px"><p id="t">0</p></main>
+<script>
+let n = 0;
+const step = () => { const end = performance.now() + 250; while (performance.now() < end); document.getElementById('t').textContent = String(++n); requestAnimationFrame(step); };
+requestAnimationFrame(step);
+</script>`;
 /** The kit’s 30 s, for this spec. */
 const IDLE_MS = 1500;
 /** A loop that draws until 1 s after the last click, as a drag or a game draws while the person plays. */
@@ -124,4 +131,9 @@ test('#438 a loop that rests longer than the kit’s gap each time is never repo
   await expect.poll(now, { timeout: 15_000 }).toBeGreaterThan(at + IDLE_MS * 3);
   await expect(frame.locator('#t'), 'it animates').not.toHaveText('0');
   expect(heard()).toEqual([]);
+});
+
+test('#438 a loop whose every frame is slow is reported all the same', async ({ page }) => {
+  const { heard } = await shown(page, 'Slow', SLOW);
+  await expect.poll(heard, { message: 'its agent hears it', timeout: 15_000 }).toEqual([expect.stringContaining('Your app “Slow” v1 kept animating')]);
 });
