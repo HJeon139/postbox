@@ -5,7 +5,8 @@
 // when it retries (shared/agent-state.mjs), its reply says so without an alert, and nothing blocking is raised, as the
 // person could do no more than Retry (#1218’s rule). The count runs across the tries in a row (`autoRetry` on the
 // session) and ends with any turn of the session that doesn’t fail. Once the tries run out, the agents whose messages
-// the turn took hear in the room that it didn’t answer, so they can send the work elsewhere; the person isn’t asked.
+// the turn took hear in the room that it didn’t answer, so they can send the work elsewhere, and the agent needs the
+// person as after any failure (the owner’s decision on #1713): nothing else would start it again.
 //
 // A wait is a timer in rt.watchdogs, which close() clears; a restart arms it again from the session (armAutoRetries),
 // for what’s left of the wait, so the reply’s note stays true. A scheduled wake’s turn isn’t retried here: its failure
@@ -72,23 +73,20 @@ export function transientRetry(rt, se, turn, failure) {
 }
 
 /**
- * What the failed reply keeps: a note that says what happens next, and `transient`, which keeps its callout quiet.
+ * What the failed reply keeps: a note that says what happens next, and, while it waits, `transient`, which keeps its
+ * callout quiet. Once the tries ran out the callout is an alert, as any failure’s: the agent needs the person.
  * @param {{ status: number, tries: number, at: number | null, delayMs: number }} r
  */
 export function transientMarks(r) {
-  const note =
-    r.at === null
-      ? `The provider ${didWhat(r.status)} on ${r.tries + 1} tries in a row, so Postbox stopped trying. Retry tries again.`
-      : `The provider ${didWhat(r.status)}, so Postbox will try again in ${waitWords(r.delayMs)}.`;
-  return { note, transient: { status: r.status, at: r.at } };
+  if (r.at === null) return { note: `The provider ${didWhat(r.status)} on ${r.tries + 1} tries in a row, so Postbox stopped trying. Retry tries again.` };
+  return { note: `The provider ${didWhat(r.status)}, so Postbox will try again in ${waitWords(r.delayMs)}.`, transient: { status: r.status, at: r.at } };
 }
 
 /**
- * The session’s fields while it waits to try again, or once the tries ran out, in place of a need for the person.
- * @param {{ status: number, tries: number, at: number | null, started?: string[] }} r @param {string} threadId @param {string} itemId
+ * The session’s fields while it waits to try again, in place of a need for the person.
+ * @param {{ status: number, tries: number, at: number, started?: string[] }} r @param {string} threadId @param {string} itemId
  */
 export function transientSession(r, threadId, itemId) {
-  if (r.at === null) return { needs: null, autoRetry: null, currentStep: 'Failed' };
   const started = r.started?.length ? { started: r.started } : {};
   return { needs: null, autoRetry: { tries: r.tries, at: r.at, status: r.status, threadId, itemId, ...started }, currentStep: 'Retrying' };
 }

@@ -75,7 +75,7 @@ So Kiro gets no bar. Antigravity’s adapter asks `/usage` as a turn starts, at 
 
 ## A provider’s passing failure: the turn goes again on its own
 
-**Decision** (23 November 2026, for [#1713](https://github.com/HJeon139/postbox/issues/1713)). When a harness reports that its provider failed in a way that passes, such as 529 Overloaded or 429, the turn goes again on its own after 30 s, 2 min and 8 min ([`shared/limits.mjs`](../../shared/limits.mjs), `TRANSIENT_RETRY`). The adapter marks the error from the harness’s own status field (Claude Code’s and the Agent SDK’s `api_error_status`), never from its words ([`server/harness-failure.mjs`](../../server/harness-failure.mjs), `withTransient`). While it waits, the agent’s row says when it retries, its reply says so without an alert, and nothing asks the person, who could do no more than Retry (#1218’s rule). A turn that had started a tool goes again too, told first to check what those calls changed or sent. A scheduled wake’s turn isn’t retried this way.
+**Decision** (23 November 2026, for [#1713](https://github.com/HJeon139/postbox/issues/1713)). When a harness reports that its provider failed in a way that passes, such as 529 Overloaded or 429, the turn goes again on its own after 30 s, 2 min and 8 min ([`shared/limits.mjs`](../../shared/limits.mjs), `TRANSIENT_RETRY`). The adapter marks the error from the harness’s own status field (Claude Code’s and the Agent SDK’s `api_error_status`), never from its words ([`server/harness-failure.mjs`](../../server/harness-failure.mjs), `withTransient`). While it waits, the agent’s row says when it retries, its reply says so without an alert, and nothing asks the person, who could do no more than Retry (#1218’s rule). A turn that had started a tool goes again too, told first to check what those calls changed or sent. A scheduled wake’s turn isn’t retried this way. Once three tries in a row fail, Postbox stops: the agent needs the person, with the usual alert and notice, as nothing else would start it again (the owner’s decision), and the agents whose messages it took hear so in the room.
 
 ```mermaid
 stateDiagram-v2
@@ -83,7 +83,7 @@ stateDiagram-v2
   Waiting --> Running: the wait ends (Retry)
   Waiting --> Failed: Dismiss, Stop, another failure, a refused Retry
   Running --> Done: the turn goes well, and the count ends
-  Waiting --> RanOut: three tries in a row
+  Waiting --> NeedsYou: three tries in a row fail
 ```
 
 **Where it is built** [`server/turn-transient.mjs`](../../server/turn-transient.mjs) decides the wait, arms it in `rt.watchdogs` and again after a restart, and ends it (`forgetWait`); [`server/turn-finish.mjs`](../../server/turn-finish.mjs) calls it when a turn fails; [`shared/agent-state.mjs`](../../shared/agent-state.mjs) gives the row its `retrying` state.

@@ -72,19 +72,22 @@ function settleReplies(rt, turn, items, err) {
 /**
  * The session failed, and needs the person, who hears it at once. Out of quota, it doesn’t need them, who can’t act on
  * it before the reset (#442): its row says so, its reply without an alert, and the backend’s one notice. Failed for its
- * provider (#1713), it doesn’t either, who could do no more than Retry: it tries again on its own, or, with its tries
- * run out, the agents waiting on it hear so (turn-transient.mjs).
+ * provider (#1713), it doesn’t either while it tries again on its own, as the person could do no more than Retry. Once
+ * its tries run out it needs them as any failed turn does, the owner’s decision, as nothing else starts it again; the
+ * agents waiting on it hear so too (turn-transient.mjs).
  * @param {any} rt @param {any} se
  * @param {any} turn @param {{ target: string, message: string, failure: any, transient: any }} why
  */
 function markFailed(rt, se, turn, { target, message, failure, transient }) {
   const quota = failure?.kind === 'quota' ? outOfQuota(rt, se, failure.until, turn.threadId) : null;
-  // Any failure but a provider’s ends a wait to try again: the agent needs the person, or waits for its quota (#1713).
-  if (!transient) forgetWait(rt, se.id);
+  // Only a provider’s failure with tries left waits to try again. Any other failure ends the wait: the agent needs the
+  // person, or waits for its quota (#1713).
+  const waits = transient && transient.at !== null;
+  if (!waits) forgetWait(rt, se.id);
   /** @type {Record<string, any>} */
   let need = { needs: { kind: 'failed', itemId: target, text: message, ...rt.sessions.awayFrom(se, turn.threadId) } };
   if (quota) need = { quota, needs: null };
-  else if (transient) need = transientSession(transient, turn.threadId, target);
+  else if (waits) need = transientSession(transient, turn.threadId, target);
   rt.sessions.update(se.id, {
     state: 'failed',
     currentStep: 'Failed',
@@ -96,7 +99,7 @@ function markFailed(rt, se, turn, { target, message, failure, transient }) {
   });
   if (quota) rt.threads.patchItem(turn.threadId, target, { outOfQuota: true });
   else if (transient) afterTransient(rt, se, turn, transient, target);
-  else rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+  if (!quota && !waits) rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
 }
 
 /** What a reply lost to the network says, as Postbox sends what its turn took once more (#466). */

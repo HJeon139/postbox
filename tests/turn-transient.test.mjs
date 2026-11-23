@@ -81,7 +81,7 @@ test('#1713 at the end of the wait the turn goes again, and a turn that goes wel
   assert.equal(agentState(se, f.store.state).state, 'idle');
 });
 
-test('#1713 three tries in a row run out: the agent that waited hears it in the room, and still nobody is asked', async () => {
+test('#1713 three tries in a row run out: the person is told, as of any failed turn, and the agent that waited hears it', async () => {
   const f = room();
   f.adapter.next.push(overloaded(), overloaded(), overloaded(), overloaded());
   f.rt.delivery.send({ sessionId: f.beta.id, threadId: f.t.id, source: 'mention', text: '@beta check the dates', from: 'alpha' });
@@ -96,10 +96,15 @@ test('#1713 three tries in a row run out: the agent that waited hears it in the 
   assert.deepEqual(f.waits, [], 'no fourth try');
   const se = f.store.state.sessions[f.beta.id];
   assert.equal(se.state, 'failed');
-  assert.equal(needsYouNow(se), false, 'not a needs-you: the person could do no more than Retry');
-  assert.deepEqual(f.blocking(), []);
-  assert.equal(agentState(se, f.store.state).state, 'failed', 'its row says failed, no longer retrying');
-  assert.match(repliesOf(f).at(-1).note, /overloaded \(529\) on 4 tries in a row, so Postbox stopped trying/);
+  // The owner’s decision on #1713: once Postbox stops trying, the agent would stay failed with nothing to start
+  // it again, so the person is told, as of any failed turn.
+  assert.equal(needsYouNow(se), true, 'it needs the person, who alone can start it again');
+  assert.equal(f.blocking().length, 1, 'one blocking notice, at the run-out only');
+  assert.equal(se.autoRetry ?? null, null);
+  assert.equal(agentState(se, f.store.state).state, 'failed', 'its row says failed, as any failed turn’s, no longer retrying');
+  const last = repliesOf(f).at(-1);
+  assert.match(last.note, /overloaded \(529\) on 4 tries in a row, so Postbox stopped trying/);
+  assert.equal(last.transient, undefined, 'its callout is an alert again, as any failure’s');
 
   const line = f.store.items(f.t.id).find((i) => i.kind === 'system' && i.variant === 'retries-out');
   assert.ok(line, 'one line in the room says so');
