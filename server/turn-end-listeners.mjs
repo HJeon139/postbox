@@ -29,12 +29,14 @@ export function listenTurnEnd(rt) {
   // J, Checks: its progress steps still running show as failed, so an error isn’t read as a stall, unless the turn goes
   // on as a resend or on its host, when they stall (#98, #664).
   bus.on('turn.failed', ({ turn, se, resends }) => rt.checks.stallLeftRunning(turn, se, failedHow(turn, se, resends)));
-  // M, Apps: an app-check turn that ended without a new version shows the app with a note, or crashed (#964).
-  bus.on('turn.ended', ({ turn, se }) => {
-    if (turn.kind !== 'app-check') return;
-    for (const app of Object.values(rt.store.pending.apps()))
-      if (app.sessionId === se.id && app.check.status === 'fixing') rt.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
+  // M, Apps, for a turn that failed or was stopped: its fix is over too, unless what it took goes again as a resend
+  // (#1664). A shutdown’s stop raises no turn.stopping, so the restart reopens the turn, and the app stays fixing.
+  bus.on('turn.failed', ({ turn, resends }) => {
+    if (!resends) fixOver(rt, turn);
   });
+  bus.on('turn.stopping', ({ turn }) => fixOver(rt, turn));
+  // M, Apps: an app-check turn that ended without a new version shows the app with a note, or crashed (#964).
+  bus.on('turn.ended', ({ turn }) => fixOver(rt, turn));
   // N, Asks: what the person needs, the session’s state and unread count, and a notification. What it finds, the
   // listeners after it read.
   bus.on('turn.ended', (end) => Object.assign(end, needsAfter(rt, end.se, end.turn, end.items)));
@@ -48,4 +50,15 @@ export function listenTurnEnd(rt) {
   bus.on('turn.ended', ({ turn, se }) => {
     if (turn.threadId !== se.threadId) rt.summaries.settleThread(turn.threadId);
   });
+}
+
+/**
+ * An app-check turn is over without a new version: the app its agent was fixing shows with a note, or crashed if its
+ * script threw (#964). Whether the turn ended, failed or was stopped, nothing else moves the app out of fixing (#1664).
+ * @param {any} rt @param {any} turn
+ */
+function fixOver(rt, turn) {
+  if (turn.kind !== 'app-check') return;
+  for (const app of Object.values(rt.store.pending.apps()))
+    if (app.sessionId === turn.sessionId && app.check.status === 'fixing') rt.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
 }
