@@ -13,10 +13,11 @@
 // A ring at rest, state="rest", says only whose it is: the ring beside an agent’s earlier reply, whose state and
 // context show beside its latest one (#622). It draws its track alone, in the idle color.
 //
-// An agent out of quota (#442), state="quota", holds still in the idle color: it isn’t an alarm. A ring is a button to
+// An agent out of quota (#442), state="quota", holds still in the idle color: it isn’t an alarm. Nor is one whose turn
+// its provider failed and Postbox tries again on its own (#1713), state="retrying". A ring is a button to
 // what its agent needs only when the agent needs the person now (needs="you", from shared/needs.mjs).
 
-import { quotaOut } from '/shared/agent-state.mjs';
+import { quotaOut, retryingNow } from '/shared/agent-state.mjs';
 import { needsYouNow } from '/shared/needs.mjs';
 import { ringWhere } from './remote.mjs';
 
@@ -30,6 +31,7 @@ const STATE_WORD = {
   failed: 'Failed',
   stopping: 'Stopping',
   quota: 'Out of quota',
+  retrying: 'Retrying',
 };
 const STATE_VAR = { idle: '--st-idle', think: '--st-think', gen: '--st-gen', tool: '--st-tool', needs: '--accent', failed: '--alert' };
 const RING_SIZES = { xs: [4.5, 1.75, 3, 2], sm: [6, 2, 3.5, 2], lg: [10, 3, 5, 3] };
@@ -193,6 +195,17 @@ class PbRing extends HTMLElement {
 if (!customElements.get('pb-ring')) customElements.define('pb-ring', PbRing);
 
 /**
+ * The state a session’s ring shows: out of quota, or retrying on its own, a failed or idle agent’s ring says so, and
+ * isn’t the alert color of a failure the person can act on.
+ */
+function ringState(se) {
+  const resting = !se.state || se.state === 'idle' || se.state === 'failed';
+  if (resting && quotaOut(se)) return 'quota';
+  if (retryingNow(se)) return 'retrying';
+  return se.state ?? 'idle';
+}
+
+/**
  * A ring element for a session, or updates an existing one in place (keeps its animation running). It draws once for
  * all the attributes that changed, not once for each: a session change moves state and context together (#622).
  */
@@ -206,9 +219,7 @@ export function ringFor(se, size = 'sm', el = null) {
   };
   el.holding = true;
   set('name', se.handle);
-  // Out of quota, a failed or idle agent’s ring says so, and isn’t the alert color of a failure the person can act on.
-  const resting = !se.state || se.state === 'idle' || se.state === 'failed';
-  set('state', resting && quotaOut(se) ? 'quota' : (se.state ?? 'idle'));
+  set('state', ringState(se));
   set('needs', needsYouNow(se) ? 'you' : '');
   set('ctx', se.ctx != null ? String(se.ctx) : 'unknown');
   set('subs', subsAttr(se.subagents));
