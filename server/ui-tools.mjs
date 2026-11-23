@@ -5,7 +5,7 @@
 
 import { readApp } from './app-publish.mjs';
 import { bringToConversation } from './bring.mjs';
-import { noteAnswer } from './empty-reply.mjs';
+import { notedTools } from './empty-reply.mjs';
 import { reactTool } from './reactions.mjs';
 import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import { recordedTools } from './scheduled-wakes.mjs';
@@ -24,7 +24,8 @@ export function toolsFor(rt, sessionId, turn = null) {
   };
   // Where the turn speaks: its session’s thread, or the side thread it answers in (#110).
   const threadId = () => turn?.threadId ?? se().threadId;
-  return recordedTools(rt, turn, {
+  // Each call is noted on the turn as it returns, a call in Postbox’s own process (the mock) included (#1591).
+  const tools = {
     /** @param {{ block: any }} args @param {{ files?: AppFile[] }} [given]  data files Postbox read for show_app (#54) */
     show_block(args, given = {}) {
       return rt.apps.showBlock(sessionId, { turn, se, threadId, endSegment, tools: this }, args, given);
@@ -44,13 +45,8 @@ export function toolsFor(rt, sessionId, turn = null) {
     },
     read_app: (args) => readApp(rt, sessionId, args),
     define_term: (args) => defineTerm(rt, { turn, se, threadId }, args),
-    // A reaction answers: a turn that ends an exchange with one owes no reply (#1523), from any backend, a turn in
-    // Postbox’s own process (the mock) included, which MCP’s noteAnswer doesn’t see.
-    react(args) {
-      const r = reactTool(rt.threads, se(), args);
-      noteAnswer(turn, 'react', r);
-      return r;
-    },
+    // A reaction answers: a turn that ends an exchange with one owes no reply (#1523), from any backend (notedTools).
+    react: (args) => reactTool(rt.threads, se(), args),
     propose_agent: (args) => proposeAgent(rt, sessionId, { turn, se, threadId, endSegment }, args),
     schedule_wake: (args) => scheduleWakeTool(rt, sessionId, args),
     cancel_wake: (args) => cancelWake(rt, sessionId, args),
@@ -70,7 +66,9 @@ export function toolsFor(rt, sessionId, turn = null) {
     ask_for_tool(args = {}) {
       return askForTool(rt, sessionId, args, endSegment, threadId());
     },
-  });
+  };
+  // Noted inside, recorded outside: a tool that calls another through `this` reaches the bare one, so both count it once.
+  return recordedTools(rt, turn, notedTools(turn, tools));
 }
 
 /**

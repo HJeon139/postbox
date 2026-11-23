@@ -105,5 +105,9 @@ function onlyBounces(turn) {
   return asked.length > 0 && asked.every((/** @type {any} */ e) => e.source === 'mention' && e.bounce === true);
 }
 
-/** Whether a turn took a step: not a subagent’s, a thought or narration (turn-held.mjs counts the same). @param {any} turn */
-const tookStep = (turn) => (turn.steps ?? []).some((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said');
+/**
+ * Whether a turn took a step: not a subagent’s, a thought or narration (turn-held.mjs counts the same), nor a call to
+ * one of Postbox’s own tools, which is work only when the tool acted (`acted`; tool-gate.mjs, isOwnWork). @param {any} turn
+ */
+const tookStep = (turn) =>
+  (turn.steps ?? []).some((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said' && !turn.postboxSteps?.has(s.id));

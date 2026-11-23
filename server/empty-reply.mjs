@@ -5,7 +5,7 @@
 // of it at its next turn.
 
 import { endedExchange } from './reply-back.mjs';
-import { NO_ANSWER } from './tool-gate.mjs';
+import { isOwnWork, NO_ANSWER } from './tool-gate.mjs';
 
 /**
  * The turns that owe a reply: a message from the person or from another agent. Others may end quietly: an event (a
@@ -15,15 +15,35 @@ const ASKED = new Set(['user', 'agent']);
 
 /**
  * Marks a turn that answered through one of Postbox’s tools that act, such as a reaction or a term, which leave no
- * item of the turn’s own. server/mcp.mjs and a host’s calls (remote/turns-tools.mjs) both call it. `acted` marks one
- * that did more than react: Postbox’s tools aren’t steps (tool-labels.mjs, QUIET), and a turn that showed or changed
- * something had work to report, so its reply goes back (reply-back.mjs, endedExchange).
+ * item of the turn’s own. server/mcp.mjs and a host’s calls (remote/turns-tools.mjs) both call it, and so does a call
+ * in Postbox’s own process (notedTools). `acted` marks one that did work (tool-gate.mjs, isOwnWork): a turn that showed
+ * or changed something has it to report, so its reply goes back (reply-back.mjs, endedExchange).
  * @param {any} turn  the turn the call came from, or null @param {string} name @param {any} r  the tool’s result
  */
 export function noteAnswer(turn, name, r) {
   if (!turn || NO_ANSWER.has(name) || (r?.ok === false && !r?.waiting)) return;
   turn.answered = true;
-  if (name !== 'react') turn.acted = true;
+  if (isOwnWork(name)) turn.acted = true;
+}
+
+/**
+ * A turn’s Postbox tools, each noting its answer as it returns, for a call made in Postbox’s own process, as the mock
+ * backend makes them: MCP and a host note theirs once Postbox has read the call’s files, and noting twice changes
+ * nothing. A tool that calls another (show_app, update_app) is noted once, as the call the agent made.
+ * @param {any} turn @param {Record<string, Function>} tools
+ */
+export function notedTools(turn, tools) {
+  if (!turn) return tools;
+  const raw = { ...tools };
+  for (const [name, fn] of Object.entries(raw))
+    tools[name] = (/** @type {any[]} */ ...args) => {
+      const r = fn.apply(raw, args);
+      // A promise is noted when it settles; one that rejects answered nothing, and its caller hears why.
+      if (typeof r?.then === 'function') void r.then((/** @type {any} */ done) => noteAnswer(turn, name, done)).catch(() => {});
+      else noteAnswer(turn, name, r);
+      return r;
+    };
+  return tools;
 }
 
 /**

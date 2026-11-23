@@ -226,6 +226,49 @@ test('#1591: a discussion in words only ends at the fifth message, unless an age
   assert.ok(heard(named.adapter, 'beta', 'agreed: split, edge for public.'), turnsOf(named.adapter));
 });
 
+test('#1591: reading the room through a tool that shows as a step is no more work than reading it through one that doesn’t', async () => {
+  // list_assets shows as a step and read_conversation doesn’t (tool-labels.mjs, QUIET): a display choice, which made a
+  // turn that listed assets, then wrote “nothing to add”, count as one that did work, however often.
+  const looks = (text) => ({ text, reads: true });
+  const plays = {
+    alpha: [{ text: '@beta the plan is at v2.' }, looks('Nothing to add.'), looks('Still nothing to add.')],
+    beta: [{ text: 'Acknowledged.' }, looks('Nothing from me either.')],
+  };
+  const { store, rt, adapter, t } = room(plays);
+  rt.sendMessage(t.id, { text: '@alpha tell beta where the plan is' });
+  await settle(rt);
+  assert.equal(turnsOf(adapter), 'alpha beta alpha beta alpha');
+  assert.equal(replies(store, t).at(-1).wentBack, undefined);
+});
+
+test('#1591: a turn that showed a block through a tool call in Postbox’s own process did work, so its reply goes back', async () => {
+  // The mock backend calls Postbox’s tools directly, where MCP’s and a host’s calls are noted as they return.
+  const pick = {
+    type: 'choice',
+    version: 1,
+    title: 'Pick',
+    fallback: 'Pick one',
+    prompt: 'Which?',
+    options: [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+    ],
+  };
+  const plays = {
+    alpha: [{ text: '@beta which layout?' }, { text: 'Two options, then.' }, { text: 'Here they are.', shows: pick }, { text: '' }],
+    beta: [{ text: 'Either works.' }, { text: 'Show me both.' }, { text: 'The second.' }],
+  };
+  const { store, rt, t } = room(plays);
+  rt.sendMessage(t.id, { text: '@alpha agree a layout with beta' });
+  await settle(rt);
+  const went = Object.fromEntries(replies(store, t).map((i) => [i.text, i.wentBack]));
+  assert.ok(
+    store.items(t.id).some((i) => i.kind === 'block'),
+    'the block is shown',
+  );
+  assert.deepEqual(went['Here they are.'], ['beta'], 'alpha’s second reply in a row after a reply came back, but not one that only wrote');
+});
+
 test('#1591: a turn that acted through one of Postbox’s tools did work, and one that only reacted or read didn’t', () => {
   // Postbox’s own tools show as what they make, not as steps (tool-labels.mjs, QUIET), so the turn keeps a mark.
   const back = { source: 'mention', from: 'alpha', bounce: true };

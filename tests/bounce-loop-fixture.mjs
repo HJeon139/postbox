@@ -52,6 +52,10 @@ class Recorded {
     if (waker && play.personReacts) this.rt.threads.toggleReaction(se.threadId, waker.id, '👍', null);
     // Work of its own: a tool call that shows as a step, which a reaction doesn’t (tool-labels.mjs, QUIET).
     if (play.step) ctx.activity({ id: `step-${this.calls.length}`, label: 'Ran npm test', state: 'done' });
+    // One of Postbox’s read tools that shows as a step, as the harness reports it (harness-tools.mjs).
+    if (play.reads) ctx.activity({ id: `read-${this.calls.length}`, label: 'list assets (postbox)', state: 'done', postbox: true });
+    // One of Postbox’s tools that acts, called in Postbox’s own process, as the mock backend calls them.
+    if (play.shows) ctx.tools.show_block({ block: { ...play.shows, id: `pick-${this.calls.length}` } });
     if (play.text) ctx.text(play.text);
     if (play.fail) throw new Error('Claude Code exited with code 1.');
     // Still at work, so what comes back meanwhile waits, and the next turn takes it together.
