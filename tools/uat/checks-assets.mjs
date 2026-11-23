@@ -2,8 +2,8 @@
 // room index or asset outlives its conversation, and no turn of a deleted conversation runs on past its delete. They
 // read the store the run left (facts.store: its log, its snapshot and its asset files, readStore in
 // tools/uat/run-files.mjs), the state, the turns’ streams, and when the tester deleted a conversation
-// (facts.probes.conversation). The page’s stream and /api/state are built from the store’s events, so the log, the
-// snapshot and the state cover what the browser could see.
+// (facts.probes.conversation). The log, the snapshot and the state are everything Postbox stores; live frames reach the
+// browser while a turn runs but are never stored, so they aren’t read here (#1655).
 
 /** The shortest line of an asset’s text looked for: a shorter one, such as a heading of one word, is everywhere. */
 export const MIN_TEXT = 24;

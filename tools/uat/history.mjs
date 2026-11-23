@@ -231,8 +231,8 @@ export function readHistory(dir) {
 }
 
 /**
- * Saves what the checks read of the stream, for --recheck: the events, as Postbox’s own log can lose its first segments
- * to a snapshot, and the live frames, which no log keeps. @param {string} dir @param {{ events: any[], live?: any[] }} facts
+ * Saves what the run kept of the stream: the events, which --recheck reads, as Postbox’s own log can lose its first
+ * segments to a snapshot, and the live frames, which no log keeps and the ATIF trajectories read. @param {string} dir @param {{ events: any[], live?: any[] }} facts
  */
 export async function writeHistory(dir, facts) {
   const jsonl = (/** @type {any[]} */ list) => list.map((e) => JSON.stringify(e)).join('\n') + (list.length ? '\n' : '');

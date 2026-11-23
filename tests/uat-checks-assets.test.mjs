@@ -201,8 +201,8 @@ test('#1655: a live frame is no store: an asset’s content in a running step’
   const store = { log: [], snapshot: null, files: [{ sha, bytes }] };
   const run = (log) => runChecks({ probes: {}, store: { ...store, log }, state: emptyState(), live: rec.frames }, { only: ['asset-content-in-store'] });
   assert.deepEqual(run([]), [], 'the recorded frames carry the asset’s text, and aren’t storage');
-  // The same text on a stored event is a copy, and still flagged where it is.
-  const stored = run([{ seq: 1, type: 'item.patch', data: { id: 'it_1', patch: { step: { id: 's1', output: rec.asset } } } }]);
+  // A commit point that kept the call’s output (live-progress.md, “Commit points”, drops it) is a copy, flagged where it is.
+  const stored = run([{ seq: 1, type: 'item.patch', data: { id: 'it_1', activityStep: { ...rec.frames[1].step } } }]);
   assert.equal(stored.length, 1, JSON.stringify(stored));
-  assert.match(stored[0].key, /:log #1:item.patch:patch.step.output$/);
+  assert.match(stored[0].key, /:log #1:item\.patch:activityStep\.output$/);
 });

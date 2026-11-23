@@ -67,7 +67,7 @@ test('a run from before the live frames were kept reads none', async () => {
   }
 });
 
-test('--recheck reads a run’s live.jsonl back, and the #722 scan doesn’t count an asset’s content on a live frame as a copy (#1655)', async () => {
+test('a --recheck of a run whose only copy of an asset’s content is on a live frame finds none: frames aren’t stored (#1655)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pb-uat-recheck-'));
   try {
     const text = 'The quarterly figures, as the agent read them from the shared sheet.\n';
@@ -78,7 +78,6 @@ test('--recheck reads a run’s live.jsonl back, and the #722 scan doesn’t cou
     const frame = { kind: 'step', threadId: 'th_main', itemId: 'it_1', rev: 2, step: { id: 's1', state: 'done', output: text } };
     await writeHistory(dir, { events: [], live: [frame] });
     const facts = savedFacts(dir, { state: { threads: {} }, mainId: 'th_main', saved: { findings: [] }, logs: [], hostsRec: null, record: null });
-    assert.deepEqual(facts.live, [frame]);
     const found = runChecks({ probes: {}, ...facts }, { only: ['asset-content-in-store'] });
     assert.deepEqual(found, [], 'a live frame is transient, not a store');
   } finally {
