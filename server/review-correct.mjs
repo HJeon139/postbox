@@ -3,7 +3,7 @@
 // thread, marked edited, and the agent hears it as an event that names the comment it replaces.
 
 import { validateBlock } from '../shared/catalog.mjs';
-import { COMMENT_MAX, PERSON, personNext, threadsError } from '../shared/review-comments.mjs';
+import { COMMENT_MAX, PERSON } from '../shared/review-comments.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
 
 /** The act a correction is, as the page sends it. Like a reaction’s, it can’t be a block’s own action id, which starts
@@ -50,14 +50,11 @@ export function correctComment(rt, threadId, itemId, values) {
 }
 
 /**
- * The review with its corrected threads, within the bounds a review keeps, as the person’s answer is checked
- * (review-person.mjs, personAnswer): a block past them would refuse every update its agent makes.
+ * The review with its corrected threads, within the bounds the catalog keeps for a review (its comments per thread,
+ * its threads and their text): a block past them would refuse every update its agent makes.
  * @param {any} rt @param {any} it @param {any[]} threads
  */
 function keptWith(rt, it, threads) {
-  const full = [];
-  threadsError(threads, full, personNext(it.handle));
-  if (full.length) throw httpError(422, `Your correction wasn’t sent. ${full.join(' ')}`);
   const v = validateBlock({ ...it.block, threads }, { imageOrigins: rt.apps.config.imageOrigins });
   if (!v.ok)
     throw httpError(

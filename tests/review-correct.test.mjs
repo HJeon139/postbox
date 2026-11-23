@@ -88,7 +88,7 @@ test('#858 only the person’s own comment on a review can be corrected, with wo
       () => s.rt.act(s.t.id, s.item().id, '@correct', values),
       (e) => e.status === status && words.test(e.message),
     );
-  refused({ threadId: s.threadId, text: '   ' }, 422, /empty/);
+  refused({ threadId: s.threadId, text: '   ' }, 422, /^The correction is empty\./);
   refused({ threadId: s.threadId, text: 'x'.repeat(4001) }, 422, /longer than 4000/);
   refused({ threadId: 'no-such-thread', text: 'Hm.' }, 404, /isn’t a comment of yours/);
   // A thread of the agent’s own, with no comment of the person’s in it.
@@ -148,4 +148,19 @@ test('#858 an agent can’t mark a comment of its own edited, and a withdrawn re
     () => s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'Too late.' }),
     (e) => e.status === 409 && /@researcher withdrew this review/.test(e.message),
   );
+});
+
+test('#858 a correction on a block that isn’t a review, or from a retired session’s review, is refused', async () => {
+  const s = await answered();
+  const choice = { id: 'pick', type: 'choice', version: 1, fallback: 'Pick one', options: [{ id: 'a', label: 'A' }] };
+  assert.equal(s.rt.toolsFor(s.se.id).show_block({ block: choice }).ok, true);
+  const picked = s.rt.store.items(s.t.id).find((i) => i.kind === 'block' && i.block.id === 'pick');
+  assert.throws(
+    () => s.rt.act(s.t.id, picked.id, '@correct', { threadId: s.threadId, text: 'Hm.' }),
+    (e) => e.status === 409 && /^Only a comment on a review can be corrected\./.test(e.message),
+  );
+  arrange.setSession(s.rt, s.se.id, { retiredFork: true });
+  assert.throws(() => s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'Too late.' }), /retired|fork/i);
+  assert.equal(s.item().block.threads[0].comments.length, 1, 'nothing was added');
+  assert.deepEqual(await s.events(), []);
 });
