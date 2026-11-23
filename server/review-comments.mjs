@@ -1,7 +1,8 @@
 // review_block (#133): an agent comments on another agent’s review block in its conversation, in the comment shape the
 // person’s review uses (shared/review-comments.mjs). Each comment becomes an open thread on the draft, with the agent’s
 // handle as its author, where the person’s comments go. The block’s agent hears them as an event, so it can revise and
-// resolve them; the block still waits on the person, who decides. A revision that leaves one of those threads out keeps
+// resolve them; a waiting block still waits on the person, who decides, while an answered review takes comments without
+// reopening it and a closed one refuses (#716). A revision that leaves one of those threads out keeps
 // it, following its line or quote into the new text, so a reviewer’s comment never vanishes from the draft: the block’s
 // agent resolves it instead.
 
@@ -45,14 +46,14 @@ export function reviewBlock(apps, sessionId, args) {
   const revision = it.revision ?? 1;
   const review = { handle: se.handle, ...(verdict ? { verdict } : {}), revision, threads: added.map((c) => c.threadId), at: Date.now() };
   apps.threads.patchItem(where, it.id, { block: v.block, reviews: [...(it.reviews ?? []), review] });
-  // answered: the person already answered it, so its agent hears that a revision would ask them again (#716).
+  // answered is read when the turn takes the entry (turns.mjs, messageOf), so a revision in the answer’s own turn before
+  // the review is delivered doesn’t leave a stale answered: true on the event (#716).
   const event = {
     blockId: it.block.id,
     revision,
     action: 'review',
     values: { ...(verdict ? { verdict } : {}), comments: added },
     from: se.handle,
-    ...(it.answered ? { answered: true } : {}),
   };
   let heard = `@${it.handle} hears them now, and can revise.`;
   try {

@@ -153,6 +153,11 @@ export function messageOf(rt, e) {
   // A plain message carries its place, to sort in a batch; one with a turn of its own is given as it was sent.
   // An app’s event rides in memory; after a restart, its voice line is what’s left of it (app-entries.mjs).
   if (e.source === 'event') return rt.delivery.carriedFor(e.id) ?? lostEvent(rt, e);
+  if (e.source === 'review' && e.message?.event) {
+    const it = e.itemId ? rt.store.pending.item(e.threadId, e.itemId) : null;
+    const { answered: _a, ...ev } = e.message.event;
+    return { ...e.message, event: { ...ev, ...(it?.answered ? { answered: true } : {}) } };
+  }
   if (e.message) return plainMessage(e.message) ? { ...e.message, at: e.at, seq: e.seq } : e.message;
   if (e.source === 'person') return personMessage(rt, e);
   if (!e.itemId) return { kind: 'notice', text: e.text, at: e.at, seq: e.seq };

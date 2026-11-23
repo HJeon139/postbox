@@ -238,12 +238,13 @@ const isReview = (event) =>
 
 /**
  * What the block’s agent does about another agent’s review (#133). On a review the person already answered (#716), a
- * revision would ask them again, so it’s told resolving keeps their answer. @param {any} event
+ * revision or a new comment in a thread asks them again, so it’s told only a thread’s status change keeps their answer.
+ * @param {any} event
  */
 function reviewedNote(event) {
   const where = 'Each comment is on the block now, by its threadId.';
   if (event.answered)
-    return `${where} The person already answered this block: resolving one in update_block’s threads? keeps their answer, while changing its content asks them again.`;
+    return `${where} The person already answered this block: changing only status to “resolved” in update_block’s threads? keeps their answer; adding a reply or changing its content asks them again.`;
   return `${where} Revise with update_block, and keep each one in the block’s threads? with status “resolved” once you’ve handled it. The block still waits on the person.`;
 }
 
