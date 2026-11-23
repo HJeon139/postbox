@@ -12,6 +12,23 @@
 export const READ_TOOLS = new Set(['read_conversation', 'read_message', 'search_conversation', 'list_assets', 'read_asset', 'search_assets', 'read_app']);
 
 /**
+ * Postbox’s tools that answer no one: they read, ask, or keep something for later (a wake, a term). A turn that called
+ * nothing else still owes its reply.
+ */
+export const NO_ANSWER = new Set([...READ_TOOLS, 'permission_prompt', 'schedule_wake', 'cancel_wake', 'define_term']);
+
+/**
+ * Whether a call to one of Postbox’s tools is work its turn has to report: it acted, and did more than react. The one
+ * place that says so (#1591): a turn that only replies coming back woke, and that did no work, may end its exchange
+ * (reply-back.mjs, endedExchange). What shows as a step (tool-labels.mjs, QUIET) is a display choice and decides no
+ * wake: list_assets shows and read_conversation doesn’t, and neither is work. @param {string} name  the tool’s own name
+ */
+export const isOwnWork = (name) => !NO_ANSWER.has(name) && name !== 'react';
+
+/** The tool’s own name, when a harness’s call is to Postbox’s server (mcp__postbox__react), else null. @param {unknown} name */
+export const postboxTool = (name) => /^mcp__postbox__(.+)$/.exec(String(name ?? ''))?.[1] ?? null;
+
+/**
  * The cause to refuse a tool with while the store is closed, or null when it may run.
  * @param {any} rt @param {string} name @returns {string | null}
  */

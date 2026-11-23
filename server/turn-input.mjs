@@ -92,31 +92,41 @@ function place(/** @type {{ id: string, kind?: string, title?: string }} */ thre
 }
 
 /**
- * Where the reply goes as well as posting (#1518): back to the agents whose mentions started the turn, a reply that
- * came back included (#1523), unless it @-mentions an agent. Nothing for any other turn.
- * @param {Entry[]} entries
+ * Where the reply goes as well as posting (#1518): back to the agents whose mentions started the turn, unless it
+ * @-mentions an agent. Nothing for any other turn. A turn only replies that came back woke is told how its exchange
+ * ends, as reply-back.mjs and mention-entries.mjs end it: a reaction to the reply ends it whatever the turn writes
+ * (#1553), and so does its second reply in a row to the same agent that only writes (#1591), which this one would be
+ * for the agents in `wroteOnly`. The person’s Retry still owes its reply (empty-reply.mjs), which goes back.
+ * @param {Entry[]} entries @param {string[]} wroteOnly  whom the agent’s last replies here, which only wrote, were for
  */
-function replyGoes(entries) {
+function replyGoes(entries, wroteOnly) {
   const to = backTo(entries);
   if (!to.length) return '.';
   const goes = ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.`;
-  // Answering a reply that came back (#1553): a reaction to it ends the exchange. So does ending at once with nothing,
-  // as empty-reply.mjs’s endedExchange allows (#1543): not in the person’s Retry, nor after a step of the turn’s own.
   const asked = entries.filter((e) => e.source !== 'notice');
   if (!asked.every((e) => e.bounce === true)) return goes;
-  const react = `${goes} If the exchange is done, react to the reply: then what you write doesn’t go back, so @-mention an agent that must act next.`;
+  const react = 'If the exchange is done, react to the reply: then nothing you write this turn wakes its sender, even by name.';
   // A Retry’s entries carry whom its failed reply woke, as retryMarks (turns.mjs) reads them.
-  return entries.some((e) => Array.isArray(e.woken)) ? react : `${react} If you do nothing else, you can also end without writing anything.`;
+  if (entries.some((e) => Array.isArray(e.woken))) return `${goes} ${react}`;
+  const end = `${react} You can also end without writing anything.`;
+  // Per exchange: only the agents its last reply in words went to. The others get this one as any reply.
+  const names = (/** @type {string[]} */ hs) => hs.map((h) => `@${h}`).join(' and ');
+  const again = to.filter((h) => wroteOnly.includes(h));
+  if (!again.length) return `${goes} ${end}`;
+  const rest = to.filter((h) => !wroteOnly.includes(h));
+  const first = rest.length ? ` and goes back to ${names(rest)}. @-mention another agent to hand off to them instead.` : '.';
+  const second = `Your last reply to ${names(again)} only wrote, so this one goes back to ${names(again)} only if you do work this turn (more than reading the room and reacting)`;
+  return `${first} ${second}: a second in a row to the same agent that only writes doesn’t wake it, so @-mention whoever must act on it or answer it. ${end}`;
 }
 
 /** The first part: the entries, with where the reply posts and goes, and what waits elsewhere. */
-function entriesPart({ entries, thread, read, waitingElsewhere }) {
+function entriesPart({ entries, thread, read, waitingElsewhere, wroteOnly }) {
   const n = entries.length;
   const one = waitingElsewhere === 1;
   const more = waitingElsewhere
     ? ` ${count(waitingElsewhere)} more ${one ? 'waits in another thread, and starts' : 'wait in other threads, and start'} your next turn.`
     : '';
-  const head = `[Postbox] ${count(n)} ${n === 1 ? 'message' : 'messages'} for you ${place(thread)}. Your reply posts there${replyGoes(entries)}${more}`;
+  const head = `[Postbox] ${count(n)} ${n === 1 ? 'message' : 'messages'} for you ${place(thread)}. Your reply posts there${replyGoes(entries, wroteOnly)}${more}`;
   return [head, ...entries.map((/** @type {Entry} */ e) => entryLine(e, read))].join('\n\n');
 }
 
@@ -151,12 +161,13 @@ function tailPart({ tail, notes, thread }) {
  * @param {string | null} [input.root]  the message a topic thread is about, on the agent’s first turn there
  * @param {number} [input.waitingElsewhere]  entries waiting in other threads
  * @param {string[]} [input.stopped]  ids of entries the person’s Stop kept from starting a turn
+ * @param {string[]} [input.wroteOnly]  whom the agent’s last replies in the thread, which only wrote, were for (reply-back.mjs)
  */
-export function turnInput({ entries, thread, read, tail = [], notes = [], root = null, waitingElsewhere = 0, stopped = [] }) {
+export function turnInput({ entries, thread, read, tail = [], notes = [], root = null, waitingElsewhere = 0, stopped = [], wroteOnly = [] }) {
   const halted = stopped.length
     ? `[Postbox] The person stopped you before a turn started from ${stopped.map((id) => `[${id}]`).join(', ')}. read_message reads one.`
     : null;
-  return [root && `[Postbox] ${root}`, entriesPart({ entries, thread, read, waitingElsewhere }), halted, tailPart({ tail, notes, thread })]
+  return [root && `[Postbox] ${root}`, entriesPart({ entries, thread, read, waitingElsewhere, wroteOnly }), halted, tailPart({ tail, notes, thread })]
     .filter(Boolean)
     .join('\n\n');
 }

@@ -7,6 +7,7 @@ import { SENDING, TURN_INPUT } from '../shared/limits.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
 import { lostEvent } from './app-entries.mjs';
 import { newerElsewhere } from './newer-waiting.mjs';
+import { wroteOnlyTo } from './reply-back.mjs';
 import { threadRefs } from './send-message.mjs';
 import { newId } from './store.mjs';
 import { combineMessages, plainMessage } from './turn-batch.mjs';
@@ -85,7 +86,7 @@ export function inputOf(rt, se, { entries, as }, where) {
   const root = inThread.root ?? room.root;
   // A newer message from one of its senders waiting in another thread is named, so it can read that one first (#734).
   const notes = [...newerElsewhere(rt, se.id, threadId, entries), ...room.notes];
-  const text = turnInput({ entries, thread, read, tail, notes, root, waitingElsewhere: elsewhere });
+  const text = turnInput({ entries, thread, read, tail, notes, root, waitingElsewhere: elsewhere, wroteOnly: wroteOnlyTo(rt, se, where) });
   const attachments = entries.flatMap((e) => (e.itemId ? (rt.store.pending.item(e.threadId, e.itemId)?.attachments ?? []) : []));
   // The threads the person’s messages link to, each with how to read it (threadRefs, #121), ride with it.
   const links = entries.flatMap((e) => (e.source === 'person' && e.itemId ? threadRefs(rt, e.threadId, read(e.itemId) ?? '') : []));
