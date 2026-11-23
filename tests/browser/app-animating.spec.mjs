@@ -86,6 +86,11 @@ async function shown(page, title, code) {
 }
 
 test('#438 an app whose loop draws on with no input is reported to its agent once, and the person sees nothing', async ({ page }) => {
+  /** @type {string[]} */
+  const reports = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/animating')) reports.push(r.url());
+  });
   const { heard, frame, now } = await shown(page, 'Forever', FOREVER);
   await expect(frame.locator('#t'), 'the loop runs').not.toHaveText('0');
   await expect.poll(heard, { message: 'its agent hears it' }).toEqual([expect.stringContaining('Your app “Forever” v1 kept animating for 30 seconds')]);
@@ -93,6 +98,7 @@ test('#438 an app whose loop draws on with no input is reported to its agent onc
   const at = await now();
   await expect.poll(now, { timeout: 15_000 }).toBeGreaterThan(at + IDLE_MS * 2);
   expect(heard(), 'once').toHaveLength(1);
+  expect(reports, 'the page reported it once').toHaveLength(1);
   await expect(page.locator('.app-holder .app-note'), 'nothing for the person').toHaveCount(0);
 });
 
