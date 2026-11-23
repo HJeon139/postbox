@@ -21,11 +21,15 @@ const READS = new Set([...READ_TOOLS, 'permission_prompt', 'schedule_wake', 'can
 
 /**
  * Marks a turn that answered through one of Postbox’s tools that act, such as a reaction or a term, which leave no
- * item of the turn’s own. server/mcp.mjs and a host’s calls (remote/turns-tools.mjs) both call it.
+ * item of the turn’s own. server/mcp.mjs and a host’s calls (remote/turns-tools.mjs) both call it. `acted` marks one
+ * that did more than react: Postbox’s tools aren’t steps (tool-labels.mjs, QUIET), and a turn that showed or changed
+ * something had work to report, so its reply goes back (reply-back.mjs, endedExchange).
  * @param {any} turn  the turn the call came from, or null @param {string} name @param {any} r  the tool’s result
  */
 export function noteAnswer(turn, name, r) {
-  if (turn && !READS.has(name) && (r?.ok !== false || r?.waiting)) turn.answered = true;
+  if (!turn || READS.has(name) || (r?.ok === false && !r?.waiting)) return;
+  turn.answered = true;
+  if (name !== 'react') turn.acted = true;
 }
 
 /**

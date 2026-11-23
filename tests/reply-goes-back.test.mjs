@@ -1,7 +1,8 @@
 // #1518: an agent @-mentioned with a question that answers without @-mentioning back left its asker asleep, and the
 // room’s work stopped. A turn only agents’ mentions started, whose replies @-mention no one, goes back to the agents
-// that woke it. #1523: every time, however many bounces came before; an agent ends the exchange with a reaction, and
-// the room’s chain limit is the backstop (designs/intent.md, the agents-waking row).
+// that woke it. #1523: every time, however many bounces came before, while the agents are at work; an agent ends the
+// exchange with a reaction, or with a turn a reply coming back woke that only writes (#1591), and the room’s chain
+// limit is the backstop (designs/intent.md, the agents-waking row).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -23,6 +24,12 @@ const reacts = (f) => async (/** @type {any} */ c, /** @type {any} */ _m, /** @t
   const last = f.store.items(c.thread.id).findLast((x) => x.kind === 'agent' && x.sessionId !== se.id && x.text);
   const r = c.tools.react({ id: last.id, emoji: '👍' });
   assert.equal(r.ok, true, r.message);
+};
+
+/** A turn that did work of its own, then said so: a step, which a reaction or reading the room isn’t. @param {string} text */
+const worked = (text) => async (/** @type {any} */ c) => {
+  c.activity({ id: `step-${text}`, label: 'Read CHANGELOG.md', state: 'done' });
+  c.text(text);
 };
 
 /** Runs scripted turns until the room is quiet, however many wakes chain. @param {any} f */
@@ -48,10 +55,10 @@ test('#1518 a reply that @-mentions no one goes back to the agent whose mention 
   assert.deepEqual(replyOf(f, 'It’s CHANGELOG.md, at the root.').wentBack, ['alpha']);
 });
 
-test('#1523 every bounce goes back: a chain of four replies that name no one goes back and forth until one reacts', async () => {
+test('#1523 every bounce goes back: a chain of four replies from agents at work, that name no one, goes back and forth until one reacts', async () => {
   const f = setup();
   f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
-  for (const text of ['It’s CHANGELOG.md.', 'Which section?', 'Under Unreleased.', 'Done, it’s there.']) f.adapter.next.push(async (c) => c.text(text));
+  for (const text of ['It’s CHANGELOG.md.', 'Which section?', 'Under Unreleased.', 'Done, it’s there.']) f.adapter.next.push(worked(text));
   f.adapter.next.push(reacts(f));
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
   await quiet(f);
@@ -63,17 +70,18 @@ test('#1523 every bounce goes back: a chain of four replies that name no one goe
   assert.deepEqual(replyOf(f, 'Which section?').wentBack, ['beta']);
   assert.deepEqual(replyOf(f, 'Under Unreleased.').wentBack, ['alpha']);
   assert.deepEqual(replyOf(f, 'Done, it’s there.').wentBack, ['beta']);
-  // Each woken agent is told where its reply goes, after a bounce as before one.
-  assert.match(turnsOf(f, 'alpha')[1].message.text, /Your reply posts there and goes back to @beta\. @-mention another agent to hand off to them instead\./);
-  assert.match(turnsOf(f, 'beta')[2].message.text, /Your reply posts there and goes back to @alpha\./);
+  // Each woken agent is told where its reply goes: back to its asker, and after a bounce, back once it has done work.
+  assert.match(turnsOf(f, 'beta')[0].message.text, /Your reply posts there and goes back to @alpha\. @-mention another agent to hand off to them instead\./);
+  assert.match(turnsOf(f, 'alpha')[1].message.text, /Your reply posts there\. It goes back to @beta only if you do work this turn/);
+  assert.match(turnsOf(f, 'beta')[2].message.text, /Your reply posts there\. It goes back to @alpha only if you do work this turn/);
 });
 
 test('#1523 a reaction ends a chain where a reply would go on: after two bounces, a turn that only reacts wakes no one', async () => {
   const f = setup();
   f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
   f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md.'));
-  // A reply here, after a bounce, goes back to beta: one bounce per chain (#1518) would have stopped it.
-  f.adapter.next.push(async (c) => c.text('Which section?'));
+  // A reply here, after a bounce and work of its own, goes back to beta: one bounce per chain (#1518) would have stopped it.
+  f.adapter.next.push(worked('Which section?'));
   f.adapter.next.push(reacts(f));
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
   await quiet(f);

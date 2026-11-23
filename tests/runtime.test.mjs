@@ -303,10 +303,13 @@ test('#372, #1518, #1523: agents wake each other in the conversation, with no si
   const said = store.items(t.id).filter((i) => i.kind === 'agent');
   assert.equal(said.map((i) => `@${i.handle}: ${i.text}`).join(' | '), '@alpha: Which editions? | @beta: Editions are fine.');
   // #1518 reverses #372 here: beta’s reply mentioned no one, so it goes back to alpha, and alpha’s would go back to
-  // beta (#1523), so alpha reacts instead.
+  // beta after work of its own (#1523, #1591), so alpha reacts instead.
   assert.deepEqual(said[1].wentBack, ['alpha']);
   assert.equal(adapter.calls.map((c) => c.sessionId).join(), [beta.id, alpha.id].join());
-  assert.match(adapter.calls[1].message.text, /Your reply posts there and goes back to @beta\. .*\n\n.*@beta, .*: Editions are fine\.$/);
+  assert.match(
+    adapter.calls[1].message.text,
+    /Your reply posts there\. It goes back to @beta only if you do work this turn .*\n\n.*@beta, .*: Editions are fine\.$/,
+  );
   assert.equal(store.state.sessions[alpha.id].agentMessages[0].other, 'beta');
 });
 

@@ -92,22 +92,25 @@ function place(/** @type {{ id: string, kind?: string, title?: string }} */ thre
 }
 
 /**
- * Where the reply goes as well as posting (#1518): back to the agents whose mentions started the turn, a reply that
- * came back included (#1523), unless it @-mentions an agent. Nothing for any other turn.
+ * Where the reply goes as well as posting (#1518): back to the agents whose mentions started the turn, unless it
+ * @-mentions an agent. Nothing for any other turn. A turn only replies that came back woke is told how its exchange
+ * ends, as reply-back.mjs and mention-entries.mjs end it: its reply goes back only after work of its own (#1523,
+ * #1591), and a reaction to the reply ends the exchange whatever it writes (#1553). The person’s Retry still owes its
+ * reply (empty-reply.mjs), which goes back.
  * @param {Entry[]} entries
  */
 function replyGoes(entries) {
   const to = backTo(entries);
   if (!to.length) return '.';
-  const goes = ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.`;
-  // Answering a reply that came back (#1553): a reaction to it ends the exchange. So does ending at once with nothing,
-  // as empty-reply.mjs’s endedExchange allows (#1543): not in the person’s Retry, nor after a step of the turn’s own.
+  const them = to.map((h) => `@${h}`).join(' and ');
+  const goes = ` and goes back to ${them}. @-mention another agent to hand off to them instead.`;
   const asked = entries.filter((e) => e.source !== 'notice');
   if (!asked.every((e) => e.bounce === true)) return goes;
-  // The reaction ends it whatever the words name (mention-entries.mjs, #1591), so the line no longer says to @-mention.
-  const react = `${goes} If the exchange is done, react to the reply: then nothing you write this turn wakes its sender, even by name.`;
+  const react = 'If the exchange is done, react to the reply: then nothing you write this turn wakes its sender, even by name.';
   // A Retry’s entries carry whom its failed reply woke, as retryMarks (turns.mjs) reads them.
-  return entries.some((e) => Array.isArray(e.woken)) ? react : `${react} If you do nothing else, you can also end without writing anything.`;
+  if (entries.some((e) => Array.isArray(e.woken))) return `${goes} ${react}`;
+  const only = `. It goes back to ${them} only if you do work this turn (more than reading here and reacting)`;
+  return `${only}: if you only write, it wakes no one, so @-mention whoever must act on it or answer it. ${react} You can also end without writing anything.`;
 }
 
 /** The first part: the entries, with where the reply posts and goes, and what waits elsewhere. */

@@ -62,9 +62,8 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
   say('Fixed. @beta check again, please.');
   say('All good now.');
   say('Thanks.');
-  say('You’re welcome.');
   rt.sendMessage(t.id, { text: '@alpha fix the arithmetic gap' });
-  for (let i = 0; i < 20 && store.items(t.id).filter((x) => x.kind === 'agent').length < 6; i++) await settle(rt);
+  for (let i = 0; i < 20 && store.items(t.id).filter((x) => x.kind === 'agent').length < 5; i++) await settle(rt);
   await settle(rt);
   const agents = store.items(t.id).filter((x) => x.kind === 'agent');
   assert.deepEqual(
@@ -75,7 +74,6 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
       ['alpha', 'Fixed. @beta check again, please.'],
       ['beta', 'All good now.'],
       ['alpha', 'Thanks.'],
-      ['beta', 'You’re welcome.'],
     ],
     'each turn’s message once',
   );
@@ -84,16 +82,16 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
     store.items(t.id).filter((x) => !['user', 'agent', 'block', 'shared'].includes(x.kind)),
     [],
   );
-  // From beta’s “All good now.” on, each answer named no one, so each went back (#1518, every time since #1523).
+  // beta’s “All good now.” named no one, so it went back to alpha, whose mention asked for it (#1518).
   assert.deepEqual(
     agents.filter((x) => x.hop).map((x) => x.hop),
-    [1, 2, 3, 4, 5, 6],
-    'six agent wakes in the chain',
+    [1, 2, 3, 4],
+    'four agent wakes in the chain',
   );
-  // Each answer that named no one went back (#1518, #1523), and alpha’s reaction to the last ended it.
+  // alpha’s thanks, from a turn that reply woke and that only wrote, ended the exchange: it woke no one (#1591).
   assert.deepEqual(
     agents.slice(3).map((x) => x.wentBack),
-    [['alpha'], ['beta'], ['alpha']],
+    [['alpha'], undefined],
   );
   assert.equal(store.state.threads[t.id].hops, 0, 'so its count starts again');
   assert.equal(Object.values(store.state.threads).filter((x) => x.kind === 'side').length, 0);
