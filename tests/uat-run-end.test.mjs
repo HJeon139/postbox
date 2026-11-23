@@ -2,9 +2,14 @@
 // would spend the after-run reserve still verifies its findings.
 
 import assert from 'node:assert/strict';
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { RunBudget } from '../tools/uat/budget.mjs';
+import { agentsSpent, dollarFolders, dollarStreams, streamResults } from '../tools/uat/cost.mjs';
 import { endRun } from '../tools/uat/run-end.mjs';
+import { readSpend } from '../tools/uat/run-files.mjs';
 
 /** A capped run’s budget with $1 left, and an ask that spends all it’s allowed. */
 function capped() {
@@ -23,6 +28,7 @@ test('#995 a capped run verifies its findings before the picture judges can spen
   const { asked, ask } = capped();
   const order = [];
   await endRun({
+    refresh: () => {},
     report: async () => {
       order.push('report');
     },
@@ -47,7 +53,7 @@ test('#995 judging first would have left the verifier nothing: the order is what
 
 test('#995 a run with --verify no and --file no still judges, and writes the report after', async () => {
   const order = [];
-  await endRun({ report: async () => void order.push('report'), review: null, judge: async () => void order.push('judge') });
+  await endRun({ refresh: () => {}, report: async () => void order.push('report'), review: null, judge: async () => void order.push('judge') });
   assert.deepEqual(order, ['report', 'judge', 'report']);
 });
 
@@ -86,4 +92,36 @@ test('#1664 an end that fails as well is logged, and the run fails with what thr
     lines.some((l) => /The verifier refused/.test(l)),
     lines.join('\n'),
   );
+});
+
+// #1696: an Agent SDK run stopped at its budget while a turn the budget let finish was at work. The report and run.json
+// said the agents spent $0.72, from the streams read before that turn reported, and the budget in the same files $0.84,
+// read live. The run reads the agents’ streams again before each report, so both give one total.
+test('#1696 each report reads what the agents spent as the budget does, after a turn at work reports', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'uat-run-end-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const paths = {
+    streams: join(root, 'cc'),
+    sdkStreams: join(root, 'sdk'),
+    kiroStreams: join(root, 'kiro'),
+    agyStreams: join(root, 'agy'),
+    codexStreams: join(root, 'codex'),
+  };
+  for (const folder of Object.values(paths)) mkdirSync(folder);
+  const result = (usd) => `${JSON.stringify({ type: 'result', total_cost_usd: usd })}\n`;
+  writeFileSync(join(paths.sdkStreams, '1-researcher.jsonl'), result(0.72));
+  writeFileSync(join(paths.sdkStreams, '2-researcher.jsonl'), '');
+  const budget = new RunBudget({ cap: 10, testerShare: 1, agentsShare: 8, now: () => 0 });
+  budget.track({ streams: streamResults(...dollarFolders(paths)), tester: { spent: 0 } });
+  const facts = readSpend(paths);
+  const reports = [];
+  await endRun({
+    refresh: () => Object.assign(facts, readSpend(paths)),
+    report: async () => void reports.push({ usage: agentsSpent(dollarStreams(facts)), budget: budget.spent().agents }),
+    review: async () => appendFileSync(join(paths.sdkStreams, '2-researcher.jsonl'), result(0.12)),
+    judge: async () => {},
+  });
+  const last = reports.at(-1);
+  assert.ok(Math.abs((last?.usage ?? 0) - 0.84) < 1e-9, `the last report’s usage line: ${last?.usage}`);
+  assert.ok(Math.abs((last?.budget ?? 0) - 0.84) < 1e-9, `its budget: ${last?.budget}`);
 });
