@@ -13,7 +13,7 @@ export const PENDING = {
   // made, whose transcript mirror starts following.
   'claude-mirror.mjs': ['mirror', 'pollMirror'],
   'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
-  'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
+  'restart-sweep.mjs': ['settleFixing', 'settleRetiredNeeds', 'cardOf'], // an app left fixing, settled by whether its app-check entry still runs, a sweep that writes back (#1664); the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
   'ask-question.mjs': ['handOver'], // a host question’s blocks this turn answered, whose answers go on when the host ends its call (#1059)
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
@@ -149,7 +149,7 @@ export const PENDING = {
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left
   'turn-end-work.mjs': ['workLine'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
-  'turn-end-listeners.mjs': ['listenTurnEnd'], // an app-check turn’s apps at its end, a sweep that writes back, maybe held behind a commit (#796)
+  'turn-end-listeners.mjs': ['fixOver'], // an app-check turn’s apps at its end, failure or stop (#1664), a sweep that writes back, maybe held behind a commit (#796)
   'turn-finish.mjs': ['endTurn'], // a turn’s end: its own items, maybe held behind a commit (#796)
   'turn-needs.mjs': ['needsAfter'], // the thread a turn’s reply count goes to, maybe held behind a commit (#796)
   // The quota marks that decide a mark or its clearing, and the persona that says whose quota it is, each maybe held

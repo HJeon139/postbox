@@ -50,3 +50,40 @@ test('#995 a run with --verify no and --file no still judges, and writes the rep
   await endRun({ report: async () => void order.push('report'), review: null, judge: async () => void order.push('judge') });
   assert.deepEqual(order, ['report', 'judge', 'report']);
 });
+
+// #1664: in the Kiro wall-time run of batch 4, the wait after a step pressed Stop on a page that had none, which threw
+// out of the run before its end: no report.md, findings.json or run.json. A run that throws still writes them.
+test('#1664 a run that throws before its end still writes its report, with the failure as a finding, then fails', async () => {
+  const { endFailedRun } = /** @type {any} */ (await import('../tools/uat/run-end.mjs'));
+  assert.equal(typeof endFailedRun, 'function', 'the runner has an end for a run that threw');
+  const findings = new Map();
+  const written = [];
+  const thrown = new Error('In the page: Error: No Stop control is visible.');
+  await assert.rejects(
+    endFailedRun(thrown, {
+      findings,
+      step: 1,
+      end: async () => void written.push('report.md', 'findings.json', 'run.json', [...findings.values()]),
+      log: () => {},
+    }),
+    (e) => e === thrown,
+  );
+  assert.deepEqual(written.slice(0, 3), ['report.md', 'findings.json', 'run.json']);
+  const [failed] = /** @type {any[]} */ (written[3]);
+  assert.equal(failed.check, 'run-failed');
+  assert.match(failed.evidence, /No Stop control is visible/);
+});
+
+test('#1664 an end that fails as well is logged, and the run fails with what threw first', async () => {
+  const { endFailedRun } = /** @type {any} */ (await import('../tools/uat/run-end.mjs'));
+  const lines = [];
+  const thrown = new Error('In the page: Error: No Stop control is visible.');
+  const end = async () => {
+    throw new Error('The verifier refused.');
+  };
+  await assert.rejects(endFailedRun(thrown, { findings: new Map(), step: 3, end, log: (l) => lines.push(l) }), (e) => e === thrown);
+  assert.ok(
+    lines.some((l) => /The verifier refused/.test(l)),
+    lines.join('\n'),
+  );
+});

@@ -265,3 +265,34 @@ test('the run’s last wait, after a budget stop, isn’t held by a card left op
   assert.ok(r.took < 10_000, `the wait ended at ${r.took} ms, not at the 900 s limit`);
   assert.equal(d.at.stop, null, 'and it pressed no Stop');
 });
+
+/**
+ * #1664: the Kiro wall-time run of batch 4 (uat-runs/2026-11-23T06-31-18-b4-trial-kiro). The bound stopped @researcher
+ * while it fixed its app, the app stayed “fixing” with the agent idle, and the wait sat on it for the whole turn
+ * timeout, then pressed Stop on a page that had none and threw, so the run wrote no report.
+ */
+function fixingApp() {
+  return async () => {
+    const se = { id: 'se_uMs2hiO8', handle: 'researcher', threadId: 'th_main', state: 'idle' };
+    const apps = { app_woirjn7q: { id: 'app_woirjn7q', threadId: 'th_main', check: { status: 'fixing', attempt: 1 } } };
+    return { state: { threads: { th_main: { id: 'th_main', members: [se.id] } }, sessions: { [se.id]: se }, apps, items: { th_main: [] } } };
+  };
+}
+
+test('#1664 once the run’s bound has stopped it, the wait isn’t held by an app left fixing', async (t) => {
+  const d = fakeDriver();
+  const r = await onFakeClock(t, async () => {
+    const out = await settle(ctx(fixingApp(), { d, stopped: () => true }));
+    return { out, took: Date.now() };
+  });
+  assert.equal(r.out, null, 'not a turn past the time limit');
+  assert.ok(r.took < 10_000, `the wait ended at ${r.took} ms, not at the 900 s limit`);
+  assert.equal(d.at.stop, null, 'and it pressed no Stop');
+});
+
+test('#1664 a wait past its time limit with no Stop on screen says so, rather than failing the run', async (t) => {
+  const d = fakeDriver({ doneAt: 0 });
+  const out = await onFakeClock(t, () => settle(ctx(fixingApp(), { d, opt: { 'turn-timeout': '60' } })));
+  assert.match(out, /after 60 s/);
+  assert.match(out, /No Stop control is visible/);
+});
