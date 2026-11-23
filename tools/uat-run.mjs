@@ -33,7 +33,7 @@ import { launch, sleep } from './browser.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { lastCheckPass, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { failsRun } from './uat/checks-postbox.mjs';
-import { streamResults } from './uat/cost.mjs';
+import { dollarFolders, streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
 import { attachmentFile } from './uat/fixtures.mjs';
@@ -198,7 +198,7 @@ async function main() {
     scenario.summary += await setUpRemote(scenario, { dir, page, threadId: mainThread, log }); // `- seed: git-remote` (#305)
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
-    budget.track({ streams: streamResults(paths.streams, paths.sdkStreams), tester, log });
+    budget.track({ streams: streamResults(...dollarFolders(paths)), tester, log });
     const system = systemPrompt({ scenario, issues });
     const labels = new Map(); // item key → I1…
     const keys = new Map(); // I1… → item key

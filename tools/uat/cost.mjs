@@ -49,6 +49,9 @@ export const agentsSpent = (streams) => turnCosts(streams).reduce((a, t) => a + 
  */
 export const dollarStreams = (facts) => [...(facts.streams ?? []), ...(facts.sdkStreams ?? [])];
 
+/** The folders those streams are recorded in, for streamResults. @param {{ streams: string, sdkStreams: string }} paths */
+export const dollarFolders = (paths) => [paths.streams, paths.sdkStreams];
+
 /**
  * The tokens Codex used over a run’s turns, in and out. Codex reports no cost. Its count runs on for a thread from
  * turn to turn, so each thread’s largest total is taken, and the threads are added up. The largest, not the last

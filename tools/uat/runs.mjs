@@ -156,7 +156,7 @@ export function runRecord({
     title: scenario.title,
     kind: isTargeted(scenario) ? 'targeted' : 'exploratory',
     ...gitInfo(root, git),
-    agents: { model: streamModel(facts.streams) ?? flag('agent-model'), effort: 'agentEffort' in facts ? facts.agentEffort : flag('agent-effort') },
+    agents: { model: streamModel(dollarStreams(facts)) ?? flag('agent-model'), effort: 'agentEffort' in facts ? facts.agentEffort : flag('agent-effort') },
     testerModel: flag('tester-model'),
     steps,
     stepCap: cap,

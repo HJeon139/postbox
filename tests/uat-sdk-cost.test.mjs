@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { runBudget } from '../tools/uat/budget.mjs';
-import { streamResults } from '../tools/uat/cost.mjs';
+import { dollarFolders, streamResults } from '../tools/uat/cost.mjs';
 import { writeReport } from '../tools/uat/report.mjs';
 import { runRecord } from '../tools/uat/runs.mjs';
 
@@ -38,7 +38,7 @@ test('the fixture’s session only grows, to the $1.31 the run didn’t count', 
 test('the budget’s live read counts the Agent SDK’s turns, in its total and by agent', (t) => {
   const dir = runFolder(t);
   const budget = runBudget({ cap: 9, testerShare: 2 });
-  budget.track({ streams: streamResults(join(dir, 'streams'), join(dir, 'streams', 'sdk')), tester: { spent: 0 } });
+  budget.track({ streams: streamResults(...dollarFolders({ streams: join(dir, 'streams'), sdkStreams: join(dir, 'streams', 'sdk') })), tester: { spent: 0 } });
   assert.equal(Math.round(budget.spent().agents * 100) / 100, spent);
   const summary = budget.summary();
   assert.equal(summary?.spent.agents, spent);
@@ -64,6 +64,8 @@ test('a run’s record counts the Agent SDK’s dollars in the agents’ cost', 
     git: () => null,
   });
   assert.equal(r.cost.agents, spent);
+  // The model the agent ran, from its own streams, not the runner’s --agent-model.
+  assert.equal(r.agents.model, 'claude-opus-5-5');
 });
 
 test('the report’s usage line counts the Agent SDK’s dollars', async (t) => {
