@@ -39,7 +39,7 @@ test('#1553: two Claude agents that write “I’m not replying” instead of re
   const answering = adapter.calls.filter((c) => c.handle === 'critic').at(-1);
   assert.match(
     answering.text,
-    /If the exchange is done, react to the reply: then what you write doesn’t go back, so @-mention an agent that must act next\. If you do nothing else, you can also end without writing anything\./,
+    /If the exchange is done, react to the reply: then nothing you write this turn wakes its sender, even by name\. If you do nothing else, you can also end without writing anything\./,
   );
 });
 

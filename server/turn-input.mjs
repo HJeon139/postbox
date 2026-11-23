@@ -104,7 +104,8 @@ function replyGoes(entries) {
   // as empty-reply.mjs’s endedExchange allows (#1543): not in the person’s Retry, nor after a step of the turn’s own.
   const asked = entries.filter((e) => e.source !== 'notice');
   if (!asked.every((e) => e.bounce === true)) return goes;
-  const react = `${goes} If the exchange is done, react to the reply: then what you write doesn’t go back, so @-mention an agent that must act next.`;
+  // The reaction ends it whatever the words name (mention-entries.mjs, #1591), so the line no longer says to @-mention.
+  const react = `${goes} If the exchange is done, react to the reply: then nothing you write this turn wakes its sender, even by name.`;
   // A Retry’s entries carry whom its failed reply woke, as retryMarks (turns.mjs) reads them.
   return entries.some((e) => Array.isArray(e.woken)) ? react : `${react} If you do nothing else, you can also end without writing anything.`;
 }
