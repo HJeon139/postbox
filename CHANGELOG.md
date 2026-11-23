@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.40.2 (2026-11-23)
+
+### Fixes
+
+- **uat:** read the agents' model and the budget's folders where the Agent SDK records too
+- **markdown:** skip holding code spans in text with none
+- **uat:** keep an AskUserQuestion's mid-turn choice in the needs-mismatch check
+- **uat:** count the Agent SDK's dollars in a run's budget and report
+- **markdown:** keep a code span's code as typed in plain text
+- **uat:** skip needs-mismatch for a block its still-running turn showed
+
 ## 4.40.1 (2026-11-23)
 
 ### Fixes
