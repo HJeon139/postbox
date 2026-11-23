@@ -19,6 +19,7 @@
 //   d.interrupt(turn, o?)  the runner is gone with no exit.json (a reboot, a SIGKILL): `ended` with exit null
 //   d.appendIn(turn, text) a new in.jsonl line (a write the daemon made, or one a test plays late), sent to followers
 //   d.caughtUp(turn, log)  sends a `caught-up` held back by holdCaughtUp
+//   d.relay(turn, version, state)  says a turn under an older Postbox wasn’t relayed (off) or lost its relay (lost)
 //   d.tool(turn, name, args, id?) / d.prompt(turn, request?, id?) / d.expire(turn, id)   queue the shim’s events; the
 //                          first two return the ID. A shim picks IDs per turn, so two turns may use the same one: the
 //                          fake keys what’s waiting by (turn, id), as the real daemon does. d.expireUnrecorded(turn, id)
@@ -276,6 +277,13 @@ function shimMethods(d) {
       d.prompts.set(key(turn, id), { turn, id, entry, request });
       toDriver(d, (c) => send(d, c, 'prompt', { id, turn, entry, request }));
       return id;
+    },
+    /**
+     * The daemon couldn’t relay a turn left under an older Postbox (off), or its relay ended while it ran (lost, #759).
+     * @param {string} turn @param {string} version @param {'off' | 'lost'} state
+     */
+    relay(turn, version, state) {
+      toDriver(d, (c) => send(d, c, 'relay', { turn, version, state }));
     },
     /** The host denied a waiting prompt at permissionWaitMax. @param {string} turn @param {string} id */
     expire(turn, id) {
