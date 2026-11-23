@@ -2,6 +2,34 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.42.0 (2026-11-23)
+
+### Features
+
+- **app:** delete a project from Settings › Projects
+- **app:** add and remove a conversation's agents from the Agents header
+- **server:** add an agent the person has to a conversation
+
+### Fixes
+
+- **settings:** list a created project once the page has heard of it
+- **assets:** remove bytes two refused writes of the same content left behind
+- **assets:** keep a damaged file a refused write made whole again
+- **assets:** remove the bytes a refused asset write put
+- **app:** take the press-time hold only while following the end
+- **app:** take hold of a pressed button the moment it's pressed
+- **server:** cancel a deleted session's scheduled wakes with it
+- **uat:** say live frames are saved for ATIF, not scanned for asset copies
+- **uat:** don't count live-frame tool previews as stored asset content
+- **app:** dim an off Delete project…, and count a project's every thread
+- **server:** count only live agents for −'s last-agent refusal
+- **app:** return focus to the composer after the Agents header's − removes one
+- **app:** dim the Agents header's − while it's off
+- **app:** never add a retired agent from the Agents header's +
+- **app:** name the agent when − can't remove it
+- **app:** never let the Agents header's − erase a conversation
+- **app:** keep the last agent and retired sessions out of + and −
+
 ## 4.41.0 (2026-11-23)
 
 ### Features
