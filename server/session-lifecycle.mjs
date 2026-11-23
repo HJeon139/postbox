@@ -3,6 +3,7 @@
 // Moved out of server/runtime.mjs; Runtime keeps a method of the same name that delegates here.
 
 import { httpError } from './helpers.mjs';
+import { dropSchedulesOf } from './scheduled-wakes.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { eraseThreads } from './thread-erase.mjs';
 
@@ -57,6 +58,7 @@ export function deleteSession(rt, sessionId) {
     // Which agent left, by its persona as well as its handle: a new agent given the handle wasn’t deleted (#283).
     rt.threads.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle, personaId: se.personaId });
   }
+  dropSchedulesOf(rt, sessionId);
   rt.sessions.remove(sessionId);
   return { handle: se.handle };
 }
