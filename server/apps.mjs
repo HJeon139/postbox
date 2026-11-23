@@ -90,7 +90,7 @@ function checked(apps, appId, { version, problems = [] }) {
   const fixable = clean.filter((p) => p.code !== 'no-answer' && p.code !== 'check-error');
   const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
   const liveTurn = apps.running.turnOf(app.sessionId);
-  const heard = !!liveTurn && !liveTurn.abort?.signal?.aborted && awaited(apps, appId, version);
+  const heard = !!liveTurn && !liveTurn.abort?.signal?.aborted && awaited(apps, appId, version, liveTurn);
   if (app.check.attempt === 0 && blocking.length && apps.store.state.sessions[app.sessionId]) {
     // heard: a reply waiting for this check on a live turn carries the problems, so no app-check turn comes; the turn
     // that made the version ends the fix instead (fixOver).

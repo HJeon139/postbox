@@ -3,7 +3,7 @@
 // carries isn’t sent again as a message; one the wait gave up on still comes as one. With no page open, the reply
 // returns at once.
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
+import { EventEmitter, getEventListeners } from 'node:events';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { awaited, checkLine, withCheck } from '../server/app-check-wait.mjs';
@@ -89,7 +89,7 @@ test('#337 with a page open, the reply waits for the check through handleMcp and
 
 test('#337 a check that takes longer than the wait: the reply says problems come as a message and read_message reads the result', async () => {
   const s = shown();
-  const r = await withCheck(s.rt.apps, 'show_app', s.r, null, 30);
+  const r = await withCheck(s.rt.apps, 'show_app', s.r, null, null, 30);
   assert.match(
     r.message,
     new RegExp(
@@ -129,8 +129,10 @@ test('#337 stopping the turn during the wait releases the wait and sends a late 
   for (let i = 0; i < 50 && (!started || !awaited(s.rt.apps, s.r.appId, 2)); i++) await sleep(5);
   assert.equal(awaited(s.rt.apps, s.r.appId, 2), true);
   // Stop the turn while update_app is still waiting for v2’s check.
+  const stoppedAt = Date.now();
   s.rt.requestStop(s.se.id);
   const reply = await callPromise;
+  assert.ok(Date.now() - stoppedAt < 2000, 'the stop releases it, not the wait’s own 12 s timer');
   assert.match(reply.result.content[0].text, /v2’s check is still running/);
   assert.equal(awaited(s.rt.apps, s.r.appId, 2), false);
   await settle(s.rt);
@@ -142,18 +144,55 @@ test('#337 stopping the turn during the wait releases the wait and sends a late 
   assert.equal(s.rt.s.apps[s.r.appId].check.status, 'note', 'the app-check turn finished and moved the app out of fixing');
 });
 
+test('#337 a check a reply waits for in an ended turn is not heard by the next turn: it comes as a message', async () => {
+  const s = shown();
+  let turns = 0;
+  /** @type {(() => void) | null} */
+  let endB = null;
+  s.setDeliver(async (_se, m) => {
+    if (m.kind === 'app-check') return;
+    turns++;
+    if (turns === 1) {
+      // Turn A calls update_app and ends while the call still waits: its response never closes.
+      const token = arrange.turnToken(s.rt, s.se.id);
+      const res = new EventEmitter();
+      const call = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'update_app', arguments: { id: s.r.appId, code: '<p>v2</p>' } } };
+      void handleMcp(s.rt, s.se.id, call, token, /** @type {any} */ (res));
+      for (let i = 0; i < 50 && !awaited(s.rt.apps, s.r.appId, 2); i++) await sleep(5);
+      return;
+    }
+    // Turn B runs until the test ends it.
+    await new Promise((r) => {
+      endB = () => r(undefined);
+    });
+  });
+  s.rt.sendMessage(s.t.id, { text: '@reviewer update' });
+  await settle(s.rt);
+  assert.equal(awaited(s.rt.apps, s.r.appId, 2), true, 'turn A’s reply still waits');
+  s.rt.sendMessage(s.t.id, { text: '@reviewer next' });
+  for (let i = 0; i < 50 && !endB; i++) await sleep(5);
+  assert.ok(endB, 'turn B is running');
+  s.rt.appCheck(s.r.appId, { version: 2, problems: [FAINT] });
+  assert.equal(s.rt.s.apps[s.r.appId].check.heard, undefined, 'turn B never saw the check');
+  assert.equal(awaited(s.rt.apps, s.r.appId, 2), false, 'turn A’s wait has the result');
+  /** @type {any} */ (endB)();
+  for (let i = 0; i < 100 && !s.sent().length; i++) await sleep(5);
+  assert.equal(s.sent().length, 1, 'it comes as an app-check message once turn B ends');
+  await settle(s.rt);
+});
+
 test('#337 an already-aborted signal, an already-closed response, or a closing socket releases the wait without waiting for the timer', async () => {
   const s = shown();
   const ac = new AbortController();
   ac.abort();
   const started = Date.now();
-  const r1 = await withCheck(s.rt.apps, 'show_app', s.r, ac.signal, 10_000);
+  const r1 = await withCheck(s.rt.apps, 'show_app', s.r, ac.signal, null, 10_000);
   assert.ok(Date.now() - started < 500, 'already-aborted signal returns at once');
   assert.match(r1.message, /still running/);
   assert.equal(s.rt.apps.waiting.size, 0);
 
   const res = new EventEmitter();
-  const p = withCheck(s.rt.apps, 'show_app', s.r, res, 10_000);
+  const p = withCheck(s.rt.apps, 'show_app', s.r, res, null, 10_000);
   assert.equal(awaited(s.rt.apps, s.r.appId, 1), true);
   res.emit('close');
   const r2 = await p;
@@ -162,11 +201,20 @@ test('#337 an already-aborted signal, an already-closed response, or a closing s
   assert.equal(s.rt.apps.waiting.size, 0);
 });
 
+test('#337 a settled wait leaves no listener on the turn’s signal or the response', async () => {
+  const s = shown();
+  const ac = new AbortController();
+  const res = new EventEmitter();
+  // Three waits that time out, as calls in one turn would.
+  for (let i = 0; i < 3; i++) assert.match((await withCheck(s.rt.apps, 'show_app', s.r, [ac.signal, res], null, 5)).message, /still running/);
+  assert.deepEqual([getEventListeners(ac.signal, 'abort').length, res.listenerCount('close')], [0, 0]);
+});
+
 test('#337 a result that arrived before the wait starts returns at once, and warnings carried by the reply do not trigger a duplicate lint turn', async () => {
   const s = shown();
   s.rt.appCheck(s.r.appId, { version: 1, problems: [] });
   const started = Date.now();
-  const passed = await withCheck(s.rt.apps, 'show_app', s.r, null, 10_000);
+  const passed = await withCheck(s.rt.apps, 'show_app', s.r, null, null, 10_000);
   assert.ok(Date.now() - started < 500);
   assert.match(passed.message, /v1 passed its check, and the person sees it\./);
 
@@ -213,7 +261,7 @@ test('#337 a fix the reply carried ends with the turn that heard it, while an un
   s.rt.store.emit('app', { ...s.rt.s.apps[other.appId], check: { status: 'fixing', attempt: 1, problems: [FAINT] } });
   s.setDeliver(async (_session, _message, ctx) => {
     const r = ctx.tools.update_app({ id: s.r.appId, code: '<p>v2</p>', summary: 'bigger labels' });
-    const reply = withCheck(s.rt.apps, 'update_app', r, null);
+    const reply = withCheck(s.rt.apps, 'update_app', r, null, s.rt.turns.get(s.se.id));
     s.rt.appCheck(s.r.appId, { version: 2, problems: [FAINT] });
     await reply;
   });
