@@ -10,6 +10,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const folders = [];
@@ -56,7 +57,7 @@ export async function setup() {
     });
     rt.sendMessage(t.id, { text: 'deploy it' });
     const card = () => store.pending.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
-    for (let i = 0; i < 100 && !card(); i++) await new Promise(setImmediate);
+    await untilTurns(() => !!card(), 'the card');
     assert.ok(card(), 'the card shows');
     return { card: card(), answers };
   };
