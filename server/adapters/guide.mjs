@@ -334,7 +334,7 @@ function formatBody(message, pathOf) {
               .map((c) => `- ${commentAt(c)}: ${c.text}`)
               .join('\n')
           : '',
-        // Another agent’s review (#133): its comments are on the block now, and the person still decides.
+        // Another agent’s review (#133): its comments are on the block now; reviewedNote says where the block stands with the person.
         message.event.from ? reviewedNote(message.event) : '',
         // The person’s review (#1143): their comments are threads now, and they can’t resolve one, so the agent does.
         !message.event.from && isReview(message.event) && message.event.values.comments.some((c) => c?.threadId)
