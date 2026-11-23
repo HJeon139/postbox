@@ -34,8 +34,9 @@ export const PENDING = {
   'turn-service.mjs': ['retryEntries'], // whether the session a Retry wakes is still failed, maybe written behind a held commit (#1429)
   'queue-convert.mjs': ['convertOne', 'convertOne', 'notDelivered'], // the agents a stored queue's row waited for or came from, and the item an earlier conversion posted for it, read as the start's writes leave them (#1423)
   // A wake's schedule, maybe just scheduled, changed or removed behind a held commit: arming its timer, firing it,
-  // recording its tools, settling or canceling it, and the per-agent limit each decide a write (#623); and a Retry's
-  // wake line, whose recovery note may be held with its cancel.
+  // recording its tools, settling or canceling it, and the per-agent limit each decide a write (#623); a Retry's wake
+  // line, whose recovery note may be held with its cancel; and the wakes a deleted session leaves, any of them maybe
+  // scheduled behind a held commit (#1670).
   'schedule-tools.mjs': ['cancelWake', 'scheduleWakeTool'],
   'scheduled-wakes.mjs': [
     'armWake',
@@ -48,6 +49,7 @@ export const PENDING = {
     'settleScheduledWake',
     'cancelWakeSchedule',
     'noteScheduledTurn',
+    'dropSchedulesOf',
     'dropScheduledWake',
   ],
   // the item a repeated send's first try posted, and its conversation, either maybe behind a held commit (#1138, #1292)
@@ -103,8 +105,9 @@ export const PENDING = {
   // conversation’s newest clock line, maybe just added, whether a holding clock still needs one.
   'run-clock-notes.mjs': ['clockNote', 'repairClockNote', 'repairClockNote'],
   // The members a delete keeps its room for, maybe joined behind a held commit (#796); the session it deletes, and the
-  // threads a conversation’s delete covers, any of them maybe made there too. Every lookup comes before any change.
-  'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
+  // threads a conversation’s delete covers, any of them maybe made there too; and whether each other member is a retired
+  // fork, for −’s last-agent refusal (#1620). Every lookup comes before any change.
+  'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
   // An agent changed or deleted, and a deleted agent’s sessions, any of them maybe made behind a held commit.
   'personas.mjs': ['update', 'remove'],
   // The project a delete takes, the projects it counts so the last one stays, and its conversations, any of them maybe
@@ -136,7 +139,6 @@ export const PENDING = {
     'endChain',
     'endChain',
     'dropWakes',
-    'sideSession',
     'threadPersona',
     'threadPersona',
     'deletedFrom',
