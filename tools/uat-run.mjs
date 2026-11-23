@@ -65,7 +65,7 @@ import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, mainCheckout, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
-import { staleNoter } from './uat/stale-notes.mjs';
+import { midTurnAnswerer, staleNoter } from './uat/stale-notes.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
 import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
@@ -208,24 +208,8 @@ async function main() {
     // A targeted phase ends when its triggers have happened, or at its step cap (tools/uat/triggers.mjs).
     const startPhase = phase;
     const goals = phaseGoals(scenario, { cap: phaseCap, start: phase, log });
-    const blockById = (st, id) =>
-      Object.values(st?.items ?? {})
-        .flatMap((list) => list ?? [])
-        .find((x) => x?.id === id);
     const noteStale = staleNoter({ d, facts, timeline, log }); // the page’s refused stale answers (#123)
-    // An answer while the agent works (an interrupt that answers), to cause #123’s refusals: the page answers the
-    // revision it showed, whatever the agent has done since.
-    const answerMidTurn = async (it) => {
-      const key = keys.get(it.item);
-      if (!key) throw new Error(`There’s no item ${it.item}.`);
-      const now = blockById((await api('/api/state')).state, key);
-      if (now?.kind === 'block') facts.probes.answers.push({ key, revision: now.revision ?? 1, at: Date.now() });
-      if (it.verdict) await d.review(key, { verdict: it.verdict, comments: it.comments ?? [] });
-      else await d.act(key, { fills: it.fills ?? [], choose: it.choose ?? [], button: it.button ?? null });
-      await sleep(1000);
-      await noteStale();
-      return `Answered ${it.item}${now?.revision ? ` (at revision ${now.revision} when you answered)` : ''} while the agent worked.`;
-    };
+    const answerMidTurn = midTurnAnswerer({ d, api, keys, facts, noteStale }); // an answer while the agent works (#123)
     // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
     const hostFault = (spec) => (hr ? fault(hr, spec, page, d.input) : localRestart({ postbox, page, log, input: d.input }, spec));
     let lastAction = null;
