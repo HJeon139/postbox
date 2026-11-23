@@ -10,8 +10,8 @@ const S = () => client.state;
 const LAST = 'This is the only project, and Postbox opens on one. Add another project, then delete this one.';
 
 /**
- * The project row’s Delete project… button. With one project it’s off, still takes focus, and says why, as the Agents
- * header’s − does. @param {any} p  the project @param {() => void} paint  draws the tab again
+ * The project row’s Delete project… button. With one project it’s off: dimmed (workbench.css, .btn[aria-disabled]),
+ * still in the tab order, and it says why. @param {any} p  the project @param {() => void} paint  draws the tab again
  */
 export function deleteProjectButton(p, paint) {
   const last = Object.keys(S().projects).length < 2;
@@ -43,8 +43,10 @@ export function confirmDeleteProject(p, paint) {
         'button.btn.danger',
         {
           type: 'button',
-          onclick: () =>
-            api(`/api/projects/${p.id}`, null, 'DELETE')
+          onclick: (/** @type {MouseEvent} */ e) => {
+            // One delete: a second click would ask for a project already gone, and report that as a failure.
+            /** @type {HTMLButtonElement} */ (e.currentTarget).disabled = true;
+            return api(`/api/projects/${p.id}`, null, 'DELETE')
               .then(async () => {
                 dlg.close();
                 // Once the page has heard it’s gone, so the page under Settings doesn’t open a conversation of it.
@@ -58,7 +60,8 @@ export function confirmDeleteProject(p, paint) {
                 // Some of its conversations may be gone already: the tab shows what’s left.
                 paint();
                 toast({ title: 'Couldn’t delete the project', text: e.message, level: 'blocking' });
-              }),
+              });
+          },
         },
         'Delete project',
       ),
@@ -78,7 +81,10 @@ function shows(projectId) {
 /** What deleting a project erases and what it keeps, as deleting a conversation lists them. @param {any} p */
 function whatGoes(p) {
   const conversations = threadsOf(p.id);
-  const messages = conversations.reduce((n, t) => n + (headerOf(t.id).count ?? 0), 0);
+  // Every thread in it goes, a conversation’s topic and side threads with it (server/threads.mjs gives them its project).
+  const threads = Object.values(S().threads).filter((t) => t.projectId === p.id);
+  const messages = threads.reduce((n, t) => n + (headerOf(t.id).count ?? 0), 0);
+  const topics = threads.length - conversations.length;
   const apps = Object.values(S().apps).filter((a) => S().threads[a.threadId]?.projectId === p.id).length;
   const li = (ok, text) =>
     h('li', h(`span.i.i-${ok ? 'check' : 'x'}.i-sm`, { style: { color: ok ? 'var(--good)' : 'var(--alert-ink)' }, 'aria-hidden': 'true' }), h('span', text));
@@ -88,7 +94,10 @@ function whatGoes(p) {
       h('span.label', 'This erases'),
       h(
         'ul.what-goes',
-        li(false, `Its ${plural(conversations.length, 'conversation')}, as deleting each would: ${plural(messages, 'message')} and ${plural(apps, 'app')}`),
+        li(
+          false,
+          `${plural(conversations.length, 'conversation')}, as deleting each would: ${plural(messages, 'message')}, ${plural(apps, 'app')} and ${plural(topics, 'topic or side thread', 'topic or side threads')}`,
+        ),
         li(false, 'The agents’ sessions in them, and their context'),
       ),
     ),
