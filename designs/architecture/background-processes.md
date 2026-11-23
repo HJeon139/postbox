@@ -118,7 +118,7 @@ Postbox starts every harness process with two variables in its environment: `POS
   - its parent is init or the subreaper;
   - it belongs to the user running the harness on that machine (its real uid, `ruid`, matches the harness’s).
 
-**Why case (b) binds: the owner’s decision.** Case (b) gives no tie to the harness that Postbox observed. The marker is the process’s own account, and the start time and parent show only timing. The integrator asked for it in the [fourth-round review of #1615](https://github.com/HJeon139/postbox/pull/1615#pullrequestreview-6011596385). Critic disagreed, and the owner decided in the room on 22 November 2026 that it binds:
+**Why case (b) binds: the owner’s decision.** Case (b) gives no tie to the harness that Postbox observed. The marker is the process’s own account, and the start time and parent show only timing. The integrator asked for it in the [fourth-round review of #1615](https://github.com/HJeon139/postbox/pull/1615#pullrequestreview-6011596385). Critic disagreed, and the owner decided in the room on 22 November 2026 ([the direction comment](https://github.com/HJeon139/postbox/pull/1615#issuecomment-7075169319)) that it binds:
 - **The reasoning:** a forged marker can only come from a process of the person’s own user. That process can already signal these processes, so a forger gains at most a spurious wake for the agent the marker names.
 - **The concern weighed against it:** permission to send a Unix signal isn’t, by itself, authority for Postbox to wake an agent or to offer a Stop across sessions.
 
