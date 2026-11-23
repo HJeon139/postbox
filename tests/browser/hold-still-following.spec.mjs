@@ -94,6 +94,32 @@ test('#1653 following, a press that comes with its move holds the button through
   expect(gap, 'at the end once let go').toBeLessThanOrEqual(2);
 });
 
+// The same with a real press and release, which do make a click (#1653’s symptom): the pointer rests on the button
+// aiming at nothing, as after a wheel turn, so no hold is there from the move, and the item grows inside the press.
+test('#1653 following, a real click lands on a button whose item grows as it’s pressed', async ({ page }) => {
+  const { t, tools, say } = room('Hold still: quick click');
+  for (let i = 1; i <= 20; i++) say(LONG(i));
+  tools.show_block({ block: PICK(`pick-${t.id}`) });
+  await open(page, t);
+  await settled(page);
+  const chip = page.getByRole('radio', { name: 'The corpus' });
+  const box = /** @type {{ x: number, y: number, width: number, height: number }} */ (await chip.boundingBox());
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.evaluate(() => window.dispatchEvent(new WheelEvent('wheel')));
+  await settled(page);
+  await page.evaluate(() => {
+    const grow = (/** @type {Event} */ e) => {
+      const item = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('.transcript > [data-key]'));
+      item.append(Object.assign(document.createElement('div'), { className: 'pb-test-grow', style: 'height: 160px' }));
+      item.dispatchEvent(new Event('contentvisibilityautostatechange'));
+    };
+    document.addEventListener('pointerdown', grow, { capture: true, once: true });
+  });
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(chip).toHaveAttribute('aria-checked', 'true');
+});
+
 // A hold never hides what arrives (#1326’s review): inside an app’s frame the page can’t see the pointer leave or
 // click, so a pointer resting on an app doesn’t hold the view while following; and while a pointer resting on a
 // button holds it, the replies below count on Jump to latest, and the view goes on to them once the pointer leaves.
