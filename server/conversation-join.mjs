@@ -15,7 +15,7 @@ import { httpError, retiredError } from './helpers.mjs';
  */
 export function joinConversation(rt, threadId, personaId, { brief = null, joined = null, line = false } = {}) {
   // As written: a topic, or its conversation, opened behind a held commit isn’t published yet (#1292).
-  const conv = rt.threads.lineage(threadId, (id) => rt.store.pending.thread(id)).at(-1);
+  const conv = rt.threads.conversationToWrite(threadId);
   const had = rt.sessions.pendingIn(conv).find((x) => x.personaId === personaId);
   if (had?.retiredFork) throw retiredError(had);
   if (had) return had;

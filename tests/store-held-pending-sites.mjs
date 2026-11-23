@@ -22,9 +22,6 @@ export const PENDING = {
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
   'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
-  // The conversation a persona joins, and its session there, either maybe made behind a held commit (#1292): every
-  // way in, a topic’s mention and the Agents header’s + (#1620).
-  'conversation-join.mjs': ['joinConversation'],
   'delivery.mjs': ['send', 'sessionIds', 'inbox', 'ready', 'take', 'postedSince'], // the sessions with inboxes, an inbox's entries, its session and an entry's item, maybe just made, decide each entry's next state and the wake (#796's class)
   // the handle of the agent that already has a message the person edits, its recipients, and the agents an edit leaves
   // out, maybe written behind a held commit; the text of the message the person removed, for its sender; and whom the
