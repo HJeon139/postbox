@@ -83,9 +83,9 @@ test('#1591: agents that write “I’m ending without a reply” end at the sec
   assert.deepEqual(
     said.slice(2).map((i) => [i.handle, i.wentBack, i.wordsOnly]),
     [
-      ['researcher', ['critic'], true],
-      ['critic', ['researcher'], true],
-      ['researcher', undefined, true],
+      ['researcher', ['critic'], ['critic']],
+      ['critic', ['researcher'], ['researcher']],
+      ['researcher', undefined, ['critic']],
     ],
   );
   assert.equal(said.at(-1).text, "Nothing here is for me to act on, so I'm ending without a reply.", 'its line still posts');

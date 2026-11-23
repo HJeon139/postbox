@@ -19,17 +19,23 @@ export function backTo(entries) {
 }
 
 /**
- * The end of a turn that went well: if it named no agent, its last reply goes back to whom backTo says, through
- * agentWake, so the chain limit counts it and a card asks past it. An agent no longer in the conversation is skipped,
- * since only the person adds one. The reply keeps whom it went to now (`wentBack`), which the transcript shows under it.
+ * Whom the reply of a turn that went well goes back to, decided as the turn ends and before anything it took settles:
+ * if it named no agent, its last reply goes back to whom backTo says. An agent no longer in the conversation is
+ * skipped, since only the person adds one. An agent’s second reply in a row to the same agent that only writes ends
+ * their exchange, whatever line it closes with (#1591), so it goes back to the others only.
+ *
+ * The reply keeps whom a turn that only wrote meant it for (`wordsOnly`), on its item, where the agent’s next turn in
+ * the thread reads it, after a restart too. It is written here, not when the reply goes: the agent’s next turn may
+ * start, and be told where its own reply goes, before this one has gone (round 3 of the review of PR #1724: told
+ * “goes back to @beta and @gamma”, a reply went back to gamma alone). So the mark names the agents the exchange had
+ * already ended with, which keeps it ended, and one the chain limit then holds the reply from.
  * @param {any} rt @param {any} turn @param {any} se @param {any[]} took  the entries the turn took
+ * @returns {{ reply: any, to: string[] } | null}  the reply and whom it goes back to, or null when it goes back to no one
  */
-export function replyBack(rt, turn, se, took) {
+export function planBack(rt, turn, se, took) {
   // turn.named: a reply or an open_topic of this turn @-mentioned an agent, even one that couldn’t be woken, or it
   // reviewed an agent’s block, which hands off to its author.
-  if (turn.endErr || turn.named || turn.summarizeTo) return;
-  // An agent’s second reply in a row to the same agent that only writes ends their exchange, whatever line it closes
-  // with (#1591): `ended` are the agents this one would have gone back to, and doesn’t.
+  if (turn.endErr || turn.named || turn.summarizeTo) return null;
   const wordsOnly = endedExchange(turn);
   const had = wordsOnly ? wroteOnlyTo(rt, se, turn.threadId, turn.id) : [];
   const conv = rt.threads.conversationToWrite(turn.threadId);
@@ -38,12 +44,22 @@ export function replyBack(rt, turn, se, took) {
   // it continues would have (#1538), and a retry of one that took none as the failed turn would have (#1541).
   const asked = turn.backTo ?? backTo(took);
   const open = asked.filter((h) => h !== se.handle && here(h) && !endedByReaction(rt, se, took, h, turn.startedAt));
-  const ended = open.filter((h) => had.includes(h));
-  const to = open.filter((h) => !had.includes(h));
-  if (!open.length) return;
+  if (!open.length) return null;
   // Text with words: a harness may stream only whitespace around a tool call, such as a reaction, which is no reply.
   const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text?.trim());
-  if (!reply) return;
+  if (!reply) return null;
+  if (wordsOnly) rt.threads.patchItem(turn.threadId, reply.id, { wordsOnly: open });
+  return { reply, to: open.filter((h) => !had.includes(h)) };
+}
+
+/**
+ * The reply goes back to whom planBack decided, through agentWake, so the chain limit counts it and a card asks past
+ * it. The reply keeps whom it went to now (`wentBack`), which the transcript shows under it.
+ * @param {any} rt @param {any} turn @param {any} se @param {{ reply: any, to: string[] } | null} plan
+ */
+export function replyBack(rt, turn, se, plan) {
+  if (!plan?.to.length) return;
+  const { reply, to } = plan;
   const replyIn = turn.threadId !== se.threadId ? turn.threadId : null;
   const went = [];
   for (const h of to) {
@@ -51,16 +67,12 @@ export function replyBack(rt, turn, se, took) {
     // Only one that went: a bounce past the chain limit waits on the card, which shows it, and may never go.
     if (r.ok) went.push(h);
   }
-  // The reply keeps that its turn only wrote, on its item, where the agent’s next turn in the thread reads it, after a
-  // restart too. One that went back to no one keeps it as well, so the run isn’t broken and the exchange stays ended.
-  // Not one that reached no one and ended nothing, as when the chain limit holds it.
-  const mark = { ...(went.length ? { wentBack: went } : {}), ...(wordsOnly && (went.length || ended.length) ? { wordsOnly: true } : {}) };
-  if (Object.keys(mark).length) rt.threads.patchItem(turn.threadId, reply.id, mark);
+  if (went.length) rt.threads.patchItem(turn.threadId, reply.id, { wentBack: went });
 }
 
 /**
  * The agents whose exchange with this one its next reply that only writes ends (#1591): those its last replies in the
- * thread went back to, as far back as each came from a turn that only wrote. The count belongs to an
+ * thread were for, as far back as each came from a turn that only wrote. The count belongs to an
  * exchange, not to the agent: a lead that answered beta in words still answers gamma in words (round 2 of the review
  * of PR #1724). One such reply is delivered, since it may be a follow-up question, its answer, a reviewer’s “ship it”
  * or a hand-off in words, which Postbox can’t tell from a thanks without reading it. A second in a row to the same
@@ -74,8 +86,8 @@ export function wroteOnlyTo(rt, se, threadId, turnId = null) {
   const mine = rt.store.pending
     .items(threadId)
     .filter((/** @type {any} */ x) => x.kind === 'agent' && x.sessionId === se.id && x.turnId !== turnId && x.text?.trim());
-  const from = mine.findLastIndex((/** @type {any} */ x) => x.wordsOnly !== true) + 1;
-  return [...new Set(mine.slice(from).flatMap((/** @type {any} */ x) => x.wentBack ?? []))];
+  const from = mine.findLastIndex((/** @type {any} */ x) => !Array.isArray(x.wordsOnly)) + 1;
+  return [...new Set(mine.slice(from).flatMap((/** @type {any} */ x) => x.wordsOnly))];
 }
 
 /**

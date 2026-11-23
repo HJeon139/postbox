@@ -102,6 +102,40 @@ test('#1591: work, then words to the same agent, starts that exchange’s count 
   assert.deepEqual(said['Good, that closes it.'], ['beta']);
 });
 
+test('#1591: a turn that starts as the agent’s last one ends is told whom its reply won’t go back to', async () => {
+  // Round 3 of the review of PR #1724: gamma’s and beta’s replies waited while alpha wrote its thanks to delta, so
+  // alpha’s next turn started as that one ended, and its first line was built before the thanks was marked.
+  const plays = {
+    alpha: [
+      { text: '@beta which file? @gamma which test? @delta which doc?' },
+      { text: 'Which section?' },
+      { text: 'Thanks delta.', busyMs: 90 },
+      { text: 'Both clear.' },
+      END,
+    ],
+    beta: [{ text: 'CHANGELOG.md.' }, { text: 'Under Unreleased.', busyMs: 20 }, END],
+    gamma: [{ text: 'tests/unit.', busyMs: 45 }, work('')],
+    delta: [{ text: 'README.', busyMs: 10 }, END],
+  };
+  const { store, rt, adapter, t } = room(plays);
+  rt.sendMessage(t.id, { text: '@alpha ask all' });
+  await settle(rt);
+  const line = adapter.calls.filter((c) => c.handle === 'alpha')[3].text.split('\n')[0];
+  assert.deepEqual(replies(store, t).find((i) => i.text === 'Both clear.')?.wentBack, ['gamma']);
+  assert.match(line, /goes back to @gamma\. .*Your last reply to @beta only wrote/);
+});
+
+test('#1591: a reply that only wrote, which the chain limit holds, is marked for the agent it waits to reach', async () => {
+  const plays = { alpha: [{ text: '@beta which file?' }, { text: 'Which section?' }], beta: [{ text: 'CHANGELOG.md.' }] };
+  const { store, rt, t } = room(plays);
+  rt.threads.patch(t.id, { chainLimit: 2 });
+  rt.sendMessage(t.id, { text: '@alpha ask beta' });
+  await settle(rt);
+  assert.ok(heldOnCard(store, t), 'the third wake in the chain waits on the card');
+  const held = replies(store, t).find((i) => i.text === 'Which section?');
+  assert.deepEqual([held.wordsOnly, held.wentBack], [['beta'], undefined]);
+});
+
 const read = () => 'A reply.';
 const back = (from, n) => ({ id: `en_${n}`, threadId: 'th_1', itemId: `it_${n}`, source: 'mention', from, at: 0, bounce: true });
 const firstLine = (entries, wroteOnly) => turnInput({ entries, thread: { id: 'th_1', kind: 'room' }, read, wroteOnly }).split('\n')[0];
