@@ -108,5 +108,7 @@ test('#1697 a live run’s run.json records the Kiro credits its report gives', 
       git: () => null,
     });
   assert.equal(record([{ handle: 'kiro', events: [turn(0.5), turn(0.32)] }]).cost.kiroCredits, 0.82);
+  // On a half cent, the report prints toFixed(2): 0.105 reads “0.10”, where Math.round gave 0.11.
+  assert.equal(record([{ handle: 'kiro', events: [turn(0.105)] }]).cost.kiroCredits, Number((0.105).toFixed(2)));
   assert.equal(record([]).cost.kiroCredits, null, 'a run with no Kiro turns records none');
 });

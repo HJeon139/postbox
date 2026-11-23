@@ -175,7 +175,7 @@ export function runRecord({
       agents: Math.round(agents * 100) / 100,
       tester: Math.round((tester.spent ?? 0) * 100) / 100,
       // What the report’s usage line gives, from the same streams (#1697).
-      kiroCredits: credits ? Math.round(credits * 100) / 100 : null,
+      kiroCredits: credits ? Number(credits.toFixed(2)) : null,
       ...(others.length ? { noCostFrom: others } : {}),
     },
     coverage,
