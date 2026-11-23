@@ -5,19 +5,13 @@
 // of it at its next turn.
 
 import { endedExchange } from './reply-back.mjs';
-import { READ_TOOLS } from './tool-gate.mjs';
+import { NO_ANSWER } from './tool-gate.mjs';
 
 /**
  * The turns that owe a reply: a message from the person or from another agent. Others may end quietly: an event (a
  * block answered or dismissed, a review, an app’s send), a scheduled wake, a lint pass or an app check.
  */
 const ASKED = new Set(['user', 'agent']);
-
-/**
- * Postbox’s tools that answer no one: they read, ask, or keep something for later (a wake, a term). A turn that called
- * nothing else still owes its reply.
- */
-const READS = new Set([...READ_TOOLS, 'permission_prompt', 'schedule_wake', 'cancel_wake', 'define_term']);
 
 /**
  * Marks a turn that answered through one of Postbox’s tools that act, such as a reaction or a term, which leave no
@@ -27,7 +21,7 @@ const READS = new Set([...READ_TOOLS, 'permission_prompt', 'schedule_wake', 'can
  * @param {any} turn  the turn the call came from, or null @param {string} name @param {any} r  the tool’s result
  */
 export function noteAnswer(turn, name, r) {
-  if (!turn || READS.has(name) || (r?.ok === false && !r?.waiting)) return;
+  if (!turn || NO_ANSWER.has(name) || (r?.ok === false && !r?.waiting)) return;
   turn.answered = true;
   if (name !== 'react') turn.acted = true;
 }

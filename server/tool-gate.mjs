@@ -12,6 +12,12 @@
 export const READ_TOOLS = new Set(['read_conversation', 'read_message', 'search_conversation', 'list_assets', 'read_asset', 'search_assets', 'read_app']);
 
 /**
+ * Postbox’s tools that answer no one: they read, ask, or keep something for later (a wake, a term). A turn that called
+ * nothing else still owes its reply.
+ */
+export const NO_ANSWER = new Set([...READ_TOOLS, 'permission_prompt', 'schedule_wake', 'cancel_wake', 'define_term']);
+
+/**
  * The cause to refuse a tool with while the store is closed, or null when it may run.
  * @param {any} rt @param {string} name @returns {string | null}
  */
