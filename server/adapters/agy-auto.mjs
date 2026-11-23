@@ -284,9 +284,9 @@ export function autoAllows(name, args, where) {
 
 /**
  * Whether Auto runs this call because the persona’s own tools allow it (#416, option A, the person’s pick of 8 Nov
- * 2026): Antigravity’s Auto works like Run everything for the tools its persona has. With shell, any command runs, so
- * the hook’s guards on .git and Antigravity’s own files hold only for the edit tools, not for a command that reaches
- * the same files; the one command guard left is PROTECTED_CMD’s card for a command naming them (agy-hook.mjs). With
+ * 2026): Antigravity’s Auto works like Run everything for the tools its persona has. With shell, any command runs, and
+ * the hook’s read and edit tools follow it anywhere, .git included (#1710); what’s left is PROTECTED_CMD’s card for a
+ * command naming Antigravity’s own files, a card for a read of them, and a refusal for an edit (agy-hook.mjs). With
  * web.fetch, any search or fetch runs. An MCP tool outside Postbox runs; one that publishes is refused before this
  * for a persona that can’t publish (publishingCall). Nothing else judges these calls: Claude Code keeps its
  * classifier and Codex its auto_review, but agy has no Auto of its own on this account.

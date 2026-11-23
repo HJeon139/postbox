@@ -3,7 +3,8 @@
 // --dangerously-skip-permissions in Ask me, Auto or Accept edits. It allows safe calls for the mode, denies edits to
 // Postbox’s plugin, this script or ~/.gemini/antigravity-cli, and asks the person through Postbox’s permission_prompt
 // MCP tool for the rest. In Auto it also allows routine commands, gh’s issue and pull request commands, web searches
-// and public fetches, and MCP tools outside Postbox (server/adapters/agy-auto.mjs), and asks before an edit in .git.
+// and public fetches, and MCP tools outside Postbox (server/adapters/agy-auto.mjs); with Shell, reads and edits anywhere
+// but Antigravity’s own files (#1710), and without it, asks before an edit in .git.
 // Fails closed to { decision: "deny", reason } on any error; never outputs ask, force_ask or empty stdout, which agy
 // fails open on under --dangerously-skip-permissions.
 
@@ -71,6 +72,10 @@ export function decideAgyTool(
   // Antigravity’s files asks.
   if (mode === 'auto' && !PROTECTED_CMD.test(command) && (autoAllows(name, args, { roots, cwd, home, isProtected }) || personaAllows(name, args, tools)))
     return { decision: 'allow' };
+  // With shell, a read or an edit follows the shell’s rule too (#1710): a command reaches any file with no card, so a
+  // card for the same read or edit protected nothing. A read naming Antigravity’s own files still asks, as a command
+  // naming them does (PROTECTED_CMD), and an edit to them was refused above.
+  if (mode === 'auto' && tools.includes('shell') && (WRITE_TOOLS.has(name) || shellRead(name, args, isProtected))) return { decision: 'allow' };
   if (mcp) {
     if (server === 'postbox_postbox') return { decision: 'allow' };
     const input = args.Arguments && typeof args.Arguments === 'object' ? args.Arguments : {};
@@ -90,6 +95,12 @@ export function decideAgyTool(
   return { decision: 'ask', toolName: name, input: args };
 }
 
+/** A read tool’s call naming only paths that aren’t Antigravity’s own. @param {string} name @param {any} args @param {(p: string) => boolean} isProtected */
+function shellRead(name, args, isProtected) {
+  const paths = pathArgs(args);
+  return READ_TOOLS.has(name) && paths.length > 0 && paths.every((p) => typeof p === 'string' && !isProtected(p));
+}
+
 function protectedWrite(args, { cwd, scriptPath, home }) {
   const paths = pathArgs(args);
   return !paths.length || paths.some((p) => isProtectedPath(p, { cwd, scriptPath, home }));
@@ -103,7 +114,8 @@ function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
   const paths = pathArgs(args);
   if (protectedWrite(args, { cwd, scriptPath, home }))
     return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
-  // In Auto, an edit in .git asks: its config and hooks could name a program the routine git commands would run.
+  // In Auto without shell, an edit in .git asks: its config and hooks could name a program the routine git commands
+  // would run. With shell, the edit never gets here (#1710).
   const gitEdit = (/** @type {string} */ p) => mode === 'auto' && intoGit(p, cwd, home);
   const asks = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, roots, { cwd, home }) || gitEdit(p));
   if (!asks && (mode === 'auto' || mode === 'acceptEdits')) return { decision: 'allow' };
