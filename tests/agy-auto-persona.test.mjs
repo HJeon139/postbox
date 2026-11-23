@@ -6,7 +6,7 @@
 // for what a command can do with no card protected nothing; .git edits ask only without shell.
 
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { decideAgyTool, runAgyHook } from '../server/adapters/agy-hook.mjs';
@@ -106,6 +106,16 @@ test('#1710 in Auto with shell, a read or an edit anywhere runs as the shell’s
   assert.equal(call('read_file', { Path: settings }, SHELL).decision, 'ask', 'a read of agy’s settings');
   assert.equal(call('write_to_file', { TargetFile: settings }, SHELL).decision, 'deny');
   assert.equal(call('write_to_file', { TargetFile: join(ws, '.agents', 'plugins', 'postbox', 'hooks.json') }, SHELL).decision, 'deny');
+  // A call naming two paths, one of them agy’s: the one decides. And one with no path field it knows.
+  assert.equal(call('grep_search', { SearchPath: home, Path: settings, Query: 'x' }, SHELL).decision, 'ask', 'two paths, one agy’s');
+  assert.equal(call('read_file', { File: settings }, SHELL).decision, 'ask', 'no path field');
+  // Through a link into agy’s folder, and a .agents folder outside the agent’s: a command naming either gets a card.
+  mkdirSync(join(home, '.gemini', 'antigravity-cli'), { recursive: true });
+  symlinkSync(join(home, '.gemini', 'antigravity-cli'), join(home, 'agy-link'));
+  assert.equal(call('read_file', { Path: join(home, 'agy-link', 'settings.json') }, SHELL).decision, 'ask', 'a link into agy’s folder');
+  const other = join(home, 'other', '.agents', 'rules', 'x.md');
+  assert.equal(call('read_file', { Path: other }, SHELL).decision, 'ask', 'a .agents read outside');
+  assert.equal(call('write_to_file', { TargetFile: other }, SHELL).decision, 'ask', 'a .agents edit outside');
   // Only the read and edit tools: a tool Postbox doesn’t know still asks, though it names a path.
   assert.equal(call('delete_everything', { Path: join(home, 'notes.txt') }, SHELL).decision, 'ask', 'an unknown tool');
   // Without shell the folder rule protects something, so it holds; and only Auto changes.

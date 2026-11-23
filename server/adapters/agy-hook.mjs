@@ -73,9 +73,10 @@ export function decideAgyTool(
   if (mode === 'auto' && !PROTECTED_CMD.test(command) && (autoAllows(name, args, { roots, cwd, home, isProtected }) || personaAllows(name, args, tools)))
     return { decision: 'allow' };
   // With shell, a read or an edit follows the shell’s rule too (#1710): a command reaches any file with no card, so a
-  // card for the same read or edit protected nothing. A read naming Antigravity’s own files still asks, as a command
-  // naming them does (PROTECTED_CMD), and an edit to them was refused above.
-  if (mode === 'auto' && tools.includes('shell') && (WRITE_TOOLS.has(name) || shellRead(name, args, isProtected))) return { decision: 'allow' };
+  // card for the same read or edit protected nothing. One naming a path a command would get a card for (PROTECTED_CMD),
+  // or Antigravity’s own, goes on to the rules below, as a command naming it does; an edit to them was refused above.
+  if (mode === 'auto' && tools.includes('shell') && (READ_TOOLS.has(name) || WRITE_TOOLS.has(name)) && shellReach(args, isProtected))
+    return { decision: 'allow' };
   if (mcp) {
     if (server === 'postbox_postbox') return { decision: 'allow' };
     const input = args.Arguments && typeof args.Arguments === 'object' ? args.Arguments : {};
@@ -95,10 +96,14 @@ export function decideAgyTool(
   return { decision: 'ask', toolName: name, input: args };
 }
 
-/** A read tool’s call naming only paths that aren’t Antigravity’s own. @param {string} name @param {any} args @param {(p: string) => boolean} isProtected */
-function shellRead(name, args, isProtected) {
+/**
+ * Whether a file call names only paths a shell command could reach with no card: at least one, each a string that
+ * PROTECTED_CMD wouldn’t card in a command and that isn’t Antigravity’s own (#1710).
+ * @param {any} args @param {(p: string) => boolean} isProtected
+ */
+function shellReach(args, isProtected) {
   const paths = pathArgs(args);
-  return READ_TOOLS.has(name) && paths.length > 0 && paths.every((p) => typeof p === 'string' && !isProtected(p));
+  return paths.length > 0 && paths.every((p) => typeof p === 'string' && !PROTECTED_CMD.test(p) && !isProtected(p));
 }
 
 function protectedWrite(args, { cwd, scriptPath, home }) {
