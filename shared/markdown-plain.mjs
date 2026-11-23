@@ -50,7 +50,8 @@ export function toPlainText(src) {
   // asterisks and brackets aren’t read as emphasis or links, and put back after (#1673). The asterisks of 10**9 or 2*n
   // stay as typed while emphasis goes, as rendering keeps them (#793).
   const mark = freeMark(text);
-  const hold = freeMark(text + mark);
+  // Most text has no code span: then nothing is held.
+  const hold = text.includes('`') ? freeMark(text + mark) : '';
   /** @type {string[]} */
   const codes = [];
   const kept = withoutFences(text).replace(/<\/?(details|summary)>/g, ' ');
@@ -63,11 +64,11 @@ export function toPlainText(src) {
     .replace(/(\*\*|__|~~|\*|_)(?=\S)([\s\S]*?\S)\1/g, '$2');
   // Code goes back before the kept asterisks do, since a hold can begin with the mark when the text holds every
   // private-use character (freeMark).
-  return plain
-    .split(hold)
-    .map((part, i) => (i % 2 ? codes[Number(part)] : part))
-    .join('')
-    .replaceAll(mark, '*')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const back = codes.length
+    ? plain
+        .split(hold)
+        .map((part, i) => (i % 2 ? codes[Number(part)] : part))
+        .join('')
+    : plain;
+  return back.replaceAll(mark, '*').replace(/\s+/g, ' ').trim();
 }
