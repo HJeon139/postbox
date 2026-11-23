@@ -87,8 +87,8 @@ export const PENDING = {
   'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
   // With run clocks on (#1526): every decision on a run clock (its route, its timer, a turn’s line, Delivery’s hold),
   // on the clock as held writes will leave it; the session its route names, which a held delete may have removed; and
-  // the host stops its pause or expiry waits on, which the stop itself just wrote; and, as Postbox starts again, the
-  // session whose agent’s host the restored line names, which may have been made just before the stop.
+  // the host stops its pause or expiry waits on, which the stop itself just wrote; and, as Postbox starts or Retry
+  // reloads, the session whose agent’s host the restored line names, read as clockNote reads it.
   'run-clock-install.mjs': ['installRunClock'],
   'run-clock.mjs': ['clockOf', 'unconfirmedStops', 'clockAction', 'rearmClocks'],
   // Whether a turn is kept for the resume: its clock may have expired behind a held commit, and then it can never run.
