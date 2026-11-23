@@ -8,6 +8,24 @@ import { tempDir } from './temp-dirs.mjs';
 /** The Codex tests’ work root, a temp folder of the test file’s: the adapter makes folders in it (#823). */
 export const CODEX_ROOT = tempDir('postbox-codex-test-');
 
+/** turn/start’s answer, then the turn’s end unless it holds. @param {any} child @param {any} req @param {any} o */
+function answerStart(child, req, { hold, error, then }) {
+  child.stdout.write(`${JSON.stringify({ id: req.id, result: { turn: { id: 'turn_fake', status: 'inProgress' } } })}\n`);
+  if (hold) return;
+  // A turn that fails: Codex reports why in an error notification, then ends the turn as failed, or exits.
+  if (error)
+    setImmediate(() => {
+      child.stdout.write(`${JSON.stringify({ method: 'error', params: { error: { message: error } } })}\n`);
+      if (then === 'complete') child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'failed' } } })}\n`);
+      else child.emit('close', 1);
+    });
+  else
+    setImmediate(() => {
+      child.stdout.write(`${JSON.stringify({ method: 'item/agentMessage/delta', params: { delta: 'reply' } })}\n`);
+      child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'completed' } } })}\n`);
+    });
+}
+
 export function fakeAppServer(
   seen,
   { hold = false, error = null, then = 'complete', mcpServers = [], threadError = (_req) => null, cut = (_req) => false } = {},
@@ -53,21 +71,7 @@ export function fakeAppServer(
         child.stdout.write(`${JSON.stringify({ id: req.id, result: { thread: { id } } })}\n`);
       }
       if (req.method === 'turn/start') {
-        child.stdout.write(`${JSON.stringify({ id: req.id, result: { turn: { id: 'turn_fake', status: 'inProgress' } } })}\n`);
-        if (hold) continue;
-        // A turn that fails: Codex reports why in an error notification, then ends the turn as failed, or exits.
-        if (error)
-          setImmediate(() => {
-            child.stdout.write(`${JSON.stringify({ method: 'error', params: { error: { message: error } } })}\n`);
-            if (then === 'complete')
-              child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'failed' } } })}\n`);
-            else child.emit('close', 1);
-          });
-        else
-          setImmediate(() => {
-            child.stdout.write(`${JSON.stringify({ method: 'item/agentMessage/delta', params: { delta: 'reply' } })}\n`);
-            child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'completed' } } })}\n`);
-          });
+        answerStart(child, req, { hold, error, then });
       }
     }
   });
