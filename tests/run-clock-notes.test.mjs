@@ -116,3 +116,38 @@ test('a lost pause line comes back after an earlier pause and resume, which had 
   rearmClocks(rt, at(40_000));
   assert.deepEqual(changes(store, t), ['started', 'paused', 'resumed', 'paused']);
 });
+
+test('an expiry while the agent is idle doesn’t say Postbox stopped it, nor does a pause', () => {
+  const { rt, store, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  clockAction(rt, se.id, { action: 'pause' }, at(10_000));
+  clockAction(rt, se.id, { action: 'resume' }, at(20_000));
+  armClock(rt, se.id, at(90_000));
+  const lines = store.items(t.id).filter((i) => i.variant === 'clock');
+  assert.equal(lines[1].text, '@developer’s run clock is paused. Postbox starts no turn of @developer until the clock resumes.');
+  assert.equal(
+    lines[3].text,
+    '@developer’s run clock reached its budget of 60s. Messages to @developer here now wait, and no turn starts; a new timed run goes in a new conversation.',
+  );
+});
+
+test('the line as Postbox starts again doesn’t say an agent on this computer may have worked on a host', () => {
+  const { rt, store, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(30_000));
+  assert.equal(
+    store.items(t.id).findLast((i) => i.variant === 'clock').text,
+    'Postbox started again with @developer’s run clock at 30s of 60s. The time it was down counted.',
+  );
+});
+
+test('the line as Postbox starts again says an agent on a host may have worked through the time it was down', () => {
+  const { rt, store, t, se } = setup();
+  store.emit('persona', { ...rt.personas.forSession(se), remote: { hostId: 'host-1' } });
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(30_000));
+  assert.equal(
+    store.items(t.id).findLast((i) => i.variant === 'clock').text,
+    'Postbox started again with @developer’s run clock at 30s of 60s. The time it was down counted, and @developer may have worked through it on its host.',
+  );
+});
