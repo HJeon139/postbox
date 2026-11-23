@@ -85,3 +85,11 @@ test('#675 a reply cut to replyChars never ends inside a character, the offline 
   assert.ok(offline.endsWith(OFFLINE_NOTE));
   assert.ok(!endsHalf(offline.slice(0, -OFFLINE_NOTE.length)), 'no first half without its second');
 });
+
+test('#675 the host’s read_message names an unknown id without half a character', () => {
+  const snap = { home: 'th', threads: [{ id: 'th', items: [] }] };
+  // The emoji’s first half is the 79th unit, where clipText(key, 80) cuts before its ellipsis.
+  const r = readMessage(snap, { id: `${'a'.repeat(78)}${EMOJI}z` });
+  assert.equal(r.ok, false);
+  assert.equal(/no item “(.*)…”/.exec(r.text)?.[1], 'a'.repeat(78));
+});
