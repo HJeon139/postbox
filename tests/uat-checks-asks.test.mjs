@@ -225,7 +225,7 @@ test('needs-mismatch fires for a ring left on a choice already answered', () => 
  * 23 November 2026 recorded it when the run handed the choice to the tester mid-turn (#289): the session thinks, its
  * turn hasn’t finished, and it needs nothing yet. That turn’s own end decides its need (server/card-needs.mjs, turnsOf).
  */
-function runningTurnRoom({ ended, question = false }) {
+function runningTurnRoom({ ended, question = false, remote = null }) {
   const r = room();
   r.agent('researcher', { backend: 'agent-sdk' });
   r.add({
@@ -238,6 +238,7 @@ function runningTurnRoom({ ended, question = false }) {
     valid: true,
     block: { id: 'wiki-search-next', type: 'choice', title: 'What next?' },
     ...(question ? { question: true } : {}),
+    ...(remote ? { remote } : {}),
   });
   Object.assign(r.f.state.sessions.se_researcher, { state: ended ? 'idle' : 'think', lastTurnId: 'turn_running', finishedAt: ended ? s(3) : null });
   return r.f;
@@ -259,6 +260,11 @@ test('needs-mismatch fires mid-turn for an AskUserQuestion’s choice, whose cal
     found(runningTurnRoom({ ended: false, question: true }), 'needs-mismatch').map((x) => x.key),
     ['needs-mismatch:it_choice'],
   );
+});
+
+test('needs-mismatch stays silent mid-turn for an AskUserQuestion’s choice on a host, which its limit may let go (#1059)', () => {
+  const remote = { hostId: 'host_box', turn: 'turn_running', prompt: 'hp_1', entry: null, part: 0 };
+  assert.deepEqual(found(runningTurnRoom({ ended: false, question: true, remote }), 'needs-mismatch'), []);
 });
 
 /** @critic’s permission card, open or expired, with its session needing you for it (#721). */
