@@ -46,7 +46,7 @@ export function askToWake(rt, from, parent, p, wake) {
  * @param {{ prose?: boolean }} [opts]  prose: the wake is an @-mention in a turn’s reply
  */
 export function askToAdd(rt, from, parent, p, wake, { prose = false } = {}) {
-  if (rt.sessions.in(parent.id).some((x) => x.personaId === p.id))
+  if (rt.sessions.pendingIn(parent.id).some((x) => x.personaId === p.id))
     return { ok: false, message: `@${p.handle}’s session in this conversation was retired, so it can’t be woken.` };
   if (prose && declinedAdd(rt, parent.id, p.handle))
     return { ok: false, message: `the person chose not to add @${p.handle} to this conversation. Carry on without it, or ask the person.` };
@@ -216,7 +216,7 @@ function answerWaker(rt, se, card, replyIn, text) {
  * @param {{ byPerson?: boolean }} [opts]
  */
 export function retireStale(rt, threadId, target, why, { byPerson = false } = {}) {
-  const conv = rt.threads.lineage(threadId).at(-1);
+  const conv = rt.threads.conversationToWrite(threadId);
   const card = openCard(rt, { id: conv });
   if (!card || card.join || card.to !== target.handle) return;
   rt.threads.patchItem(conv, card.id, { status: 'retired', retiredWhy: why, retiredAt: Date.now() });
@@ -255,7 +255,7 @@ function sendHeld(rt, card, w, confirmed) {
  * @param {any} rt @param {any} se  the agent @param {string} how  what happened to it
  */
 export function dropHeld(rt, se, how) {
-  const conv = rt.threads.lineage(se.threadId).at(-1);
+  const conv = rt.threads.conversationToWrite(se.threadId);
   const card = openCard(rt, { id: conv });
   const mine = (card?.held ?? []).filter((w) => w.to === se.handle);
   if (!mine.length) return;
@@ -297,7 +297,7 @@ export function closeHop(rt, conv, card, how) {
 
 /** The agent that asked is removed (#693): its open card closes. O(items in its conversation). */
 export function closeOwnCard(rt, se, how) {
-  const conv = rt.threads.lineage(se.threadId).at(-1);
+  const conv = rt.threads.conversationToWrite(se.threadId);
   const card = openCard(rt, { id: conv });
   if (card?.fromSessionId === se.id) closeHop(rt, conv, card, how);
 }

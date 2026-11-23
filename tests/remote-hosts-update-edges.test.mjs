@@ -8,17 +8,31 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import test from 'node:test';
 import { FAKE_TOKEN } from './fake-daemon.mjs';
-import { sleep, until, VERSION } from './remote-hosts-fixtures.mjs';
+import { until, VERSION } from './remote-hosts-fixtures.mjs';
 import { BUSY, hangs, readRecord, recordFile, rig } from './remote-hosts-update-fixtures.mjs';
+import { untilTurns } from './until-turns.mjs';
 
-const settle = () => sleep(40);
+/**
+ * Waits for the automatic install under way on h1, if there is one, to end and be acted on: its `done` resolves, then
+ * what the manager chains on it (afterBusy, which may connect), then two turns of the event loop, so a connect it makes
+ * at once, or a turn or two later, has started by the time this returns. No timed wait: a timed one let these races
+ * pass, or fail, by the machine’s load (#1530, #1657). A connect put off on a timer isn’t covered, as no bounded wait
+ * could cover a timer of any length.
+ * @param {any} t
+ */
+async function installSettled(t) {
+  const entry = t.mgr.updating.get('h1');
+  if (entry) await entry.done.then(() => {});
+  for (let turn = 0; turn < 2; turn++) await new Promise((r) => setImmediate(r));
+}
 
 test('#464-b2a: removing a host whose version is missing doesn’t install on it first, consent or not', async () => {
   const t = rig();
   try {
     await t.mgr.setKeepUpdated('h1', true);
     await t.mgr.removeFromHost('h1').catch(() => {});
-    await settle();
+    await installSettled(t);
+    assert.equal(t.mgr.updating.size, 0, 'no install under way');
     assert.equal(t.runs.length, 0, 'Remove’s connect hit the 127, and nothing installed');
     assert.equal(readRecord(t.dataDir).installs.length, 0);
   } finally {
@@ -87,7 +101,6 @@ test('#464-b2a: an automatic install that finds this version already there notes
     await t.mgr.setKeepUpdated('h1', true);
     await t.mgr.connect('h1').catch(() => {});
     await until(() => readRecord(t.dataDir)?.installs?.[0]?.outcome !== 'started' && t.runs.length === 1, 'the install ended');
-    await settle();
     assert.equal(readRecord(t.dataDir).installs[0].outcome, 'present');
   } finally {
     t.done();
@@ -99,11 +112,11 @@ test('#464-b2a: turning the consent off for a host stopped on a 127 doesn’t co
   try {
     const f = await t.mgr.connect('h1').catch((e) => e);
     assert.equal(f.detail.code, 127);
-    await settle();
-    assert.equal(t.mgr.link('h1').state, 'stopped');
+    await until(() => t.mgr.link('h1').state === 'stopped', 'the link stopped on the 127');
     const dials = t.dials.length;
     await t.mgr.setKeepUpdated('h1', false);
-    await settle();
+    await installSettled(t);
+    assert.equal(t.mgr.link('h1').state, 'stopped', 'the link wasn’t asked to connect again');
     assert.equal(t.dials.length, dials, 'no ssh connect for the consent turned off');
   } finally {
     t.done();
@@ -134,22 +147,16 @@ test('#464-b2a: the consent for a host that isn’t configured is refused, and w
   }
 });
 
-/** Waits on the event loop’s turns, not on time, until `fn` holds (#1530: a fixed wait let this race pass on CI). */
-async function turnsUntil(fn, label) {
-  for (let i = 0; i < 5000 && !fn(); i++) await new Promise((r) => setImmediate(r));
-  assert.ok(fn(), `Timed out waiting for ${label}`);
-}
-
 test('#1530: an automatic install that ends after the consent was turned off doesn’t connect', async () => {
   const t = rig({ install: hangs });
   try {
     await t.mgr.connect('h1').catch(() => {});
-    await turnsUntil(() => t.runs.length === 1, 'the automatic install under way');
+    await untilTurns(() => t.runs.length === 1, 'the automatic install under way');
     await t.mgr.setKeepUpdated('h1', false);
     const dials = t.dials.length;
     t.runs[0].answer();
-    await turnsUntil(() => readRecord(t.dataDir)?.installs?.[0]?.outcome !== 'started', 'the install ended');
-    for (let i = 0; i < 50; i++) await new Promise((r) => setImmediate(r));
+    await untilTurns(() => readRecord(t.dataDir)?.installs?.[0]?.outcome !== 'started', 'the install ended');
+    await installSettled(t);
     assert.equal(t.dials.length, dials, 'no ssh connect after the consent was turned off');
   } finally {
     t.done();
@@ -162,7 +169,7 @@ test('#1530: the person’s own Install… still connects at its end, with the c
     await t.mgr.setKeepUpdated('h1', false);
     const dials = t.dials.length;
     await t.mgr.install('h1');
-    await turnsUntil(() => t.dials.length > dials, 'the connect after the install');
+    await untilTurns(() => t.dials.length > dials, 'the connect after the install');
     assert.equal(t.dials.length, dials + 1);
   } finally {
     t.done();
@@ -177,12 +184,12 @@ test('#1530: an automatic install that ends busy after the consent was turned of
   const t = rig({ install: busyLater });
   try {
     await t.mgr.connect('h1').catch(() => {});
-    await turnsUntil(() => t.runs.length === 1, 'the automatic install under way');
+    await untilTurns(() => t.runs.length === 1, 'the automatic install under way');
     await t.mgr.setKeepUpdated('h1', false);
     const dials = t.dials.length;
     t.runs[0].answer();
-    await turnsUntil(() => readRecord(t.dataDir)?.installs?.[0]?.outcome === 'busy', 'the install ended busy');
-    for (let i = 0; i < 50; i++) await new Promise((r) => setImmediate(r));
+    await untilTurns(() => readRecord(t.dataDir)?.installs?.[0]?.outcome === 'busy', 'the install ended busy');
+    await installSettled(t);
     assert.equal(t.dials.length, dials, 'no ssh connect after the consent was turned off');
   } finally {
     t.done();
@@ -193,7 +200,7 @@ test('#1530: the consent turned off counts from the moment it is, before its wri
   const t = rig({ install: hangs });
   try {
     await t.mgr.connect('h1').catch(() => {});
-    await turnsUntil(() => typeof t.runs[0]?.answer === 'function', 'the automatic install under way');
+    await untilTurns(() => typeof t.runs[0]?.answer === 'function', 'the automatic install under way');
     const dials = t.dials.length;
     // In one turn of the event loop: the person turns it off, and the install ends, while the record’s write, a few
     // calls to the file system, is still under way. Which lands first is a race, which code that waits for the write
@@ -202,8 +209,8 @@ test('#1530: the consent turned off counts from the moment it is, before its wri
     const off = t.mgr.setKeepUpdated('h1', false);
     t.runs[0].answer();
     await off;
-    await turnsUntil(() => readRecord(t.dataDir)?.installs?.[0]?.outcome !== 'started', 'the install ended');
-    for (let i = 0; i < 50; i++) await new Promise((r) => setImmediate(r));
+    await untilTurns(() => readRecord(t.dataDir)?.installs?.[0]?.outcome !== 'started', 'the install ended');
+    await installSettled(t);
     assert.equal(t.dials.length, dials, 'no ssh connect after the consent was turned off');
   } finally {
     t.done();

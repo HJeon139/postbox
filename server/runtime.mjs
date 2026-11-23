@@ -719,8 +719,8 @@ export class Runtime {
 
   // ── Session lifecycle: server/session-lifecycle.mjs ─────────────────────────────
 
-  deleteSession(sessionId) {
-    return deleteSession(this, sessionId);
+  deleteSession(sessionId, opts) {
+    return deleteSession(this, sessionId, opts);
   }
   deleteThread(threadId) {
     return deleteThread(this, threadId);

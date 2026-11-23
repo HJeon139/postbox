@@ -237,6 +237,14 @@ function leftOver(rt, sc, states = ['waiting', 'taken']) {
     if (e.source === 'scheduled' && e.message?.scheduledWakeId === sc.id && states.includes(e.state)) rt.delivery.patch(e, { state: 'stopped' });
 }
 
+/**
+ * The wakes still to come for a session being deleted go with it (#1670): left, each would name a session and maybe a
+ * conversation that’s gone, with its timer running, until it fired and found nothing. @param {any} rt @param {string} sessionId
+ */
+export function dropSchedulesOf(rt, sessionId) {
+  for (const sc of Object.values(rt.store.pending.schedules())) if (sc.sessionId === sessionId) finishSchedule(rt, sc, 'canceled');
+}
+
 /** A scheduled wake waiting behind a turn you stopped goes with it (#466): it’s settled, not left running. */
 export function dropScheduledWake(rt, message) {
   const sc = typeof message?.scheduledWakeId === 'string' ? rt.store.pending.schedule(message.scheduledWakeId) : null;

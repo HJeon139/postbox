@@ -60,7 +60,7 @@ import { overdueStop, runBound, watchRun } from './uat/run-bound.mjs';
 import { endFailedRun, endRun } from './uat/run-end.mjs';
 import { runEnv } from './uat/run-env.mjs';
 import { runFacts } from './uat/run-facts.mjs';
-import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi } from './uat/run-files.mjs';
+import { keeper, readReceived, readSpend, readStore, readStreams, readTranscripts, readUi } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, mainCheckout, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { phaseCap, stepCap } from './uat/scenario.mjs';
@@ -226,11 +226,7 @@ async function main() {
     const refreshFacts = async () => {
       facts.state = (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
-      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received), store: readStore(paths.data) });
-      facts.kiroStreams = readStreams(paths.kiroStreams);
-      facts.agyStreams = readStreams(paths.agyStreams);
-      facts.codexStreams = readStreams(paths.codexStreams);
-      facts.sdkStreams = readStreams(paths.sdkStreams);
+      Object.assign(facts, readSpend(paths), { received: readReceived(paths.data, facts.received), store: readStore(paths.data) });
       Object.assign(facts, { events: history.events(), live: history.live(), gaps: history.gaps() });
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
@@ -293,6 +289,7 @@ async function main() {
       const review = { ...REVIEW, dir, scenario, findings: all, timeline, log, verify, file: opt.file !== 'no' };
       const shoot = (label, file) => d.shotItem(keys.get(label), file);
       await endRun({
+        refresh: () => Object.assign(facts, readSpend(paths)),
         report: async () => {
           Object.assign(facts, { budget: budget.summary(), bound: bound.summary(), timing: timing.summary(Date.now() - started) });
           await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });

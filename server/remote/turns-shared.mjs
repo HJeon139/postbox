@@ -41,13 +41,13 @@ export const clock = (at) => new Date(at).toLocaleTimeString('en-US', { hour: '2
  *   exit: { code: number | null, signal: string | null } | null | undefined, unkilled?: boolean, hung: { at: number, text: string } | null,
  *   offset: number, offsetSaved: number, attach: boolean, started: boolean, startSent: boolean, origin: any,
  *   replay: { done: Promise<unknown>, end: () => void } | null,
- *   ceilings: Map<unknown, { at: Promise<unknown>, timer: any, holds: number }> }} Live
+ *   ceilings: Map<unknown, { at: Promise<unknown>, timer: any, holds: number }>, step?: (s: Record<string, unknown>) => void }} Live
  *   exit: the current host turn’s, from `ended` (null: interrupted), undefined until then; unkilled: that `ended` said
  *   its process may still run there (#872); started: the daemon said
  *   `started` (or turn-exists) for it, or it’s attached; startSent: its `start` was written to a connected link;
  *   origin: what it was asked, as se.remoteTurn.origin keeps it (turns-origin.mjs), once prepare has it; replay: its
  *   stream is being read up to where the host has it (turns-replay.mjs); ceilings: the most each prompt waiting for
- *   that read waits, by its claim (turns-replay.mjs, replayCeiling)
+ *   that read waits, by its claim (turns-replay.mjs, replayCeiling); step: adds a step to the turn, from its context
  */
 
 /**
