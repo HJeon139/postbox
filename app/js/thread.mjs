@@ -4,7 +4,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
 import { laterParts } from './activity-live.mjs';
-import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch, recordMoved } from './activity-paint.mjs';
+import { activityParts, drawnStale, hasRecord, paintActivity, paintPatch } from './activity-paint.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
 import { paintOfflineQueue } from './agent-queue.mjs';
@@ -19,7 +19,7 @@ import { quotaLine, releaseQuotaLine } from './composer-quota.mjs';
 import { runsIn } from './composer-runs-in.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, hintMode, placeholderFor, refusal } from './composer-to.mjs';
-import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
+import { $, ago, fill, h, icon, plural, syncList, trusted } from './dom.mjs';
 import { draftAttachments } from './draft-attachments.mjs';
 import { appSig, drawnApp } from './drawn-app.mjs';
 import { failedCallout } from './failed-actions.mjs';
@@ -32,14 +32,14 @@ import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.m
 import { openPermissions } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
-import { replyLine } from './reply-rings.mjs';
 import { stoppedSaid, stoppedTag } from './reply-stop.mjs';
 import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
 import { adopt, clearBut, keepable, noteDrawn, standIn } from './resync-keep.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, confirmDelete, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
-import { namesSpeaker } from './speaker-line.mjs';
+import { drawsNothing, namesSpeaker } from './speaker-line.mjs';
+import { moveSpeakerLine, who } from './speaker-who.mjs';
 import { systemLine } from './system-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
@@ -58,16 +58,9 @@ import { fillWorkRow } from './working-rows.mjs';
 export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
-// What woke the turn (#135): “woken by @critic”, “after @researcher replied in a side thread”, or its scheduled wake.
 /** Where a shell line runs when the conversation has no folder: the agent’s own workspace, unless it’s a mock. */
 const workspaceLine = (se, here) =>
   se ? ['Runs in ', h('b', se.handle), '’s own workspace', here ?? ',', ' as you, with Enter. '] : 'This conversation has no folder to run commands in. ';
-
-function wokeText({ by, reply, in: at, scheduled }) {
-  if (scheduled) return 'woken by a scheduled wake';
-  if (!reply) return `woken by ${by}`;
-  return `after ${by} replied${{ side: ' in a side thread', topic: ' in a thread' }[S().threads[at]?.kind] ?? ''}`;
-}
 
 // ── Transcript ──────────────────────────────────────────────────────────────────────────
 
@@ -136,6 +129,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     nodes.set(id, n);
     if (old && win) replacedNode(win, old, n);
     back();
+    // An item that now draws nothing, or something again, moves the speaker line to or from the one after it (#1654),
+    // in place where it can, so an app there keeps its frame.
+    const next = list[i + 1];
+    if (old && old.hidden !== n.hidden && next && !moveSpeakerLine(nodes.get(next.id), next, list[i], threadId)) rerender(next.id);
   };
   // The nodes a rebuild keeps where they are, while it runs (resync-keep.mjs, #987).
   let held = new Map();
@@ -325,17 +322,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   };
 }
 
-const who = (it, { you = false, threadId = '' } = {}) => {
-  const se = S().sessions[it.sessionId];
-  const ts = h('span.ts', { title: `${dayOf(it.at)} ${timeOf(it.at)}` }, timeOf(it.at));
-  // A turn typed into Claude Code in a terminal, mirrored here, says so.
-  const via = it.via === 'terminal' ? h('span.via', 'from terminal') : null;
-  if (you) return h('div.who', ts, h('b', 'You'), via);
-  const { ring, word } = se ? replyLine(it, se, threadId) : { ring: h('pb-ring', { name: it.handle, state: 'idle', ctx: '0', size: 'xs' }), word: null };
-  const woke = it.woke ? h('span.woke', wokeText(it.woke)) : null;
-  return h('div.who', ring, h('b', it.handle), mockMarker(se), word, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
-};
-
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
 // topic or side thread (#128): “Send to conversation”. React, under every one (#251), on the left (#378). They appear on hover and focus, and always on touch.
 function messageActions(node, it, ctx) {
@@ -406,7 +392,7 @@ function messageActions(node, it, ctx) {
 }
 
 function renderItem(it, prev, ctx) {
-  const showWho = namesSpeaker(it, prev);
+  const showWho = namesSpeaker(it, prev, ctx.threadId);
   switch (it.kind) {
     case 'user': {
       return h(
@@ -423,7 +409,7 @@ function renderItem(it, prev, ctx) {
     }
     case 'agent': {
       // Replayed whole from the host after a restart (#120), or only steps whose record shows with the words: nothing.
-      if (it.status === 'replaced' || recordMoved(it, ctx.threadId)) return h('div.col.replaced', { hidden: true });
+      if (drawsNothing(it, ctx.threadId)) return h('div.col.replaced', { hidden: true });
       const node = h(
         'div.col.turn',
         showWho ? who(it, ctx) : null,
