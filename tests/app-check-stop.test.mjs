@@ -82,7 +82,7 @@ test('#1664 an app-check turn lost to the network keeps the app fixing: what it 
   r.rt.stop(r.se.id, { silent: true, by: 'shutdown' });
 });
 
-test('#1664 a stopped turn that wasn’t the app’s fix keeps it fixing: the app check still waits for the agent', async () => {
+test('#1664 Stop on the turn that showed the app stops its app check, and lets go of fixing', async () => {
   const r = setup();
   const busy = slowToExit({ kept: null });
   r.adapter.next.push(busy);
@@ -91,8 +91,10 @@ test('#1664 a stopped turn that wasn’t the app’s fix keeps it fixing: the ap
   r.rt.toolsFor(r.se.id).show_app({ id: 'jam', title: 'Traffic jam', code: '<p>Jam</p>' });
   r.rt.appCheck('jam', { version: 1, problems: CONTRAST });
   r.rt.requestStop(r.se.id);
-  assert.equal(r.store.state.apps.jam.check.status, 'fixing');
   busy.exit();
+  await sleep(10);
+  assert.equal(r.adapter.calls.length, 1, 'the Stop stopped the app check: no turn fixes the app');
+  assert.equal(r.store.state.apps.jam.check.status, 'note');
 });
 
 /** A second runtime on the same store, as a restart makes one, with the restart’s sweep run. */

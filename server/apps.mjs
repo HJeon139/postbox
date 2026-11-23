@@ -107,6 +107,15 @@ export function appCheck(apps, appId, { version, problems = [] }) {
 export const fixEnded = (app) => (app.check.problems?.some((p) => p.code === 'script-error') ? 'crashed' : 'note');
 
 /**
+ * No app-check turn will fix the agent’s apps now: each still fixing shows with its note, or crashed (#1664).
+ * @param {{ store: any }} rt @param {string} sessionId
+ */
+export function endFixes(rt, sessionId) {
+  for (const app of Object.values(rt.store.pending.apps()))
+    if (app.sessionId === sessionId && app.check.status === 'fixing') rt.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
+}
+
+/**
  * An event an app sends in your voice, which starts its agent’s turn. The browser sends one only for the person’s click
  * or key press in the app, one a click (app/js/app-send.mjs), so there’s no limit to count here and no card to wait
  * on: what an app sends without a click is a note (server/app-notes.mjs, #1488).

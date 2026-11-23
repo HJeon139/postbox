@@ -4,7 +4,7 @@
 // what the turn took is settled, and what waits for the agent goes next. Functions take the Runtime first, as Turns’
 // modules do until the services they reach take its place.
 
-import { fixEnded } from './apps.mjs';
+import { endFixes } from './apps.mjs';
 import { settleScheduledWake } from './scheduled-wakes.mjs';
 import { postSummary } from './share-back.mjs';
 import { failedHow } from './turn-checks.mjs';
@@ -58,7 +58,5 @@ export function listenTurnEnd(rt) {
  * @param {any} rt @param {any} turn
  */
 function fixOver(rt, turn) {
-  if (turn.kind !== 'app-check') return;
-  for (const app of Object.values(rt.store.pending.apps()))
-    if (app.sessionId === turn.sessionId && app.check.status === 'fixing') rt.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
+  if (turn.kind === 'app-check') endFixes(rt, turn.sessionId);
 }
