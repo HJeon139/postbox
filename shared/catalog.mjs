@@ -8,7 +8,7 @@
 import { appFontErrors } from './app-fonts.mjs';
 import { option, options } from './catalog-options.mjs';
 import { INTENT_CHARS, LIMITS, REVIEW_THREADS_MAX } from './limits.mjs';
-import { ANCHOR, anchorError, author, threadsError } from './review-comments.mjs';
+import { ANCHOR, anchorError, author, PERSON, threadsError } from './review-comments.mjs';
 import { bool, described, id, int, jsonOf, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
 import { isSafeUrl, LOCAL_HTTP } from './urls.mjs';
 
@@ -246,6 +246,9 @@ export const SCHEMAS = {
       for (const [i, t] of (b.threads ?? []).entries()) {
         const why = anchorError(t);
         if (why) errs.push(`threads[${i}]: ${why}`);
+        // Edited marks only the person’s correction, which Postbox writes (#858): an agent’s comment never carries it.
+        const marked = (t.comments ?? []).findIndex((c) => c.edited && c.author !== PERSON);
+        if (marked >= 0) errs.push(`threads[${i}].comments[${marked}]: only the person’s correction is marked edited; leave edited out.`);
       }
       threadsError(b.threads, errs);
     },

@@ -44,7 +44,7 @@ async function answered() {
 
 test('#858 a correction follows the person’s comment, marked edited, and the agent hears what it replaces', async () => {
   const s = await answered();
-  assert.deepEqual(s.rt.act(s.t.id, s.item().id, 'correct', { threadId: s.threadId, text: '  Say which papers we index.  ' }), { ok: true });
+  assert.deepEqual(s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: '  Say which papers we index.  ' }), { ok: true });
   assert.deepEqual(
     s.item().block.threads[0].comments.map((c) => [c.author, c.text, c.edited ?? false]),
     [
@@ -65,9 +65,9 @@ test('#858 a correction follows the person’s comment, marked edited, and the a
 
 test('#858 a second correction replaces the first, and one that changes nothing adds nothing', async () => {
   const s = await answered();
-  s.rt.act(s.t.id, s.item().id, 'correct', { threadId: s.threadId, text: 'Second try.' });
-  s.rt.act(s.t.id, s.item().id, 'correct', { threadId: s.threadId, text: 'Third try.' });
-  assert.deepEqual(s.rt.act(s.t.id, s.item().id, 'correct', { threadId: s.threadId, text: 'Third try.' }), { ok: true, unchanged: true });
+  s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'Second try.' });
+  s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'Third try.' });
+  assert.deepEqual(s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'Third try.' }), { ok: true, unchanged: true });
   assert.deepEqual(
     s.item().block.threads[0].comments.map((c) => c.text),
     ['Say what we index.', 'Second try.', 'Third try.'],
@@ -85,7 +85,7 @@ test('#858 only the person’s own comment on a review can be corrected, with wo
   const s = await answered();
   const refused = (values, status, words) =>
     assert.throws(
-      () => s.rt.act(s.t.id, s.item().id, 'correct', values),
+      () => s.rt.act(s.t.id, s.item().id, '@correct', values),
       (e) => e.status === status && words.test(e.message),
     );
   refused({ threadId: s.threadId, text: '   ' }, 422, /empty/);
@@ -101,7 +101,7 @@ test('#858 only the person’s own comment on a review can be corrected, with wo
 
 test('#858 an agent that echoes the threads with a correction in them has its update applied', async () => {
   const s = await answered();
-  s.rt.act(s.t.id, s.item().id, 'correct', { threadId: s.threadId, text: 'Say which papers we index.' });
+  s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'Say which papers we index.' });
   arrange.setItem(s.rt, s.t.id, s.item().id, { answer: { ...s.item().answer, read: true } });
   const echoed = { ...s.item().block.threads[0], status: 'resolved' };
   const r = s.rt.toolsFor(s.se.id).update_block({ block: { ...draft, content: DRAFT.replace('first', 'papers first'), threads: [echoed] } });
@@ -112,5 +112,40 @@ test('#858 an agent that echoes the threads with a correction in them has its up
       ['Say what we index.', false],
       ['Say which papers we index.', true],
     ],
+  );
+});
+
+test('#858 a correction that would take a thread past its 50 comments is refused, and the review stays usable', async () => {
+  const s = await answered();
+  for (let i = 1; i < 50; i++) s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: `Try ${i}.` });
+  assert.equal(s.item().block.threads[0].comments.length, 50);
+  assert.throws(
+    () => s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'One too many.' }),
+    (e) =>
+      e.status === 422 && /Your correction wasn’t sent: this review can’t hold another comment\. .* Ask @researcher to show a new review block/.test(e.message),
+  );
+  assert.equal(s.item().block.threads[0].comments.length, 50, 'nothing was added');
+  arrange.setItem(s.rt, s.t.id, s.item().id, { answer: { ...s.item().answer, read: true } });
+  assert.equal(s.rt.toolsFor(s.se.id).update_block({ block: { ...draft, content: `${DRAFT}\n` } }).ok, true, 'its agent can still update it');
+});
+
+test('#858 a card action with the id “correct” still reaches the agent as a click', async () => {
+  const s = await answered();
+  const card = { id: 'c1', type: 'card', version: 1, fallback: 'Fix it?', actions: [{ id: 'correct', label: 'Correct it' }] };
+  assert.equal(s.rt.toolsFor(s.se.id).show_block({ block: card }).ok, true);
+  const item = s.rt.store.items(s.t.id).find((i) => i.kind === 'block' && i.block.id === 'c1');
+  assert.equal(s.rt.act(s.t.id, item.id, 'correct', {}).ok, true);
+});
+
+test('#858 an agent can’t mark a comment of its own edited, and a withdrawn review takes no correction', async () => {
+  const s = await answered();
+  const marked = { id: 'r1', status: 'open', line: 4, comments: [{ author: '@researcher', text: 'Check the end.', edited: true }] };
+  const shown = s.rt.toolsFor(s.se.id).show_block({ block: { ...draft, id: 'plan-2', threads: [marked] } });
+  assert.equal(shown.ok, false);
+  assert.match(shown.message, /only the person’s correction is marked edited/);
+  arrange.setItem(s.rt, s.t.id, s.item().id, { closed: { by: 'agent', handle: 'researcher', at: Date.now() } });
+  assert.throws(
+    () => s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'Too late.' }),
+    (e) => e.status === 409 && /@researcher withdrew this review/.test(e.message),
   );
 });
