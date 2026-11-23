@@ -1,11 +1,13 @@
-# Runs Postbox’s checks on every pull request, every merge group of GitHub’s merge queue, and every push to main. See
-# designs/architecture/code-quality.md, “Code quality”.
+# Runs Postbox’s checks on every pull request and every push to main, and is ready for merge groups of GitHub’s merge
+# queue, which this repository can’t use until it moves to an organization (designs/engineering-practices.md, “The
+# gate”). See designs/architecture/code-quality.md, “Code quality”.
 name: check
 
 on:
   pull_request:
-  # The merge queue waits for the required checks on each merge group: main’s tip with the pull requests ahead in the
-  # queue and this one merged on top. No paths filter here, so every group reports every required check.
+  # Ready for a move to an organization, where the merge queue would wait for the required checks on each merge group:
+  # main’s tip with the pull requests ahead in the queue and this one merged on top. No paths filter here, so every group
+  # would report every required check. Until then the integrator merges in batches (designs/review-guide.md).
   merge_group:
   push:
     branches: [main]

@@ -81,46 +81,97 @@ for (const mode of ROOM_MODES)
     expect(Math.max(...reads), `rects read per scroll event: ${reads.join(', ')}`).toBeLessThanOrEqual(40);
   });
 
-/** Wheels down from the top in 800 px steps, tracing it, and returns the trace’s total ms per event name. */
-async function traced(page, steps) {
-  await page.evaluate(() => scrollTo(0, 0));
-  await settled(page);
+const STEP = 800;
+const STEPS = 60;
+
+/**
+ * Takes the page to the room’s first reply. With the window on, one scroll to the top shows only the window’s top, and
+ * the window then mounts the replies above it and keeps the view where it was, so it takes several (#1649).
+ */
+async function atRoomTop(page, firstId) {
+  const atTop = () => page.evaluate((id) => scrollY === 0 && !!document.querySelector(`.transcript > [data-key="${CSS.escape(id)}"]`), firstId);
+  await expect
+    .poll(
+      async () => {
+        await page.evaluate(() => scrollTo(0, 0));
+        await settled(page);
+        return atTop();
+      },
+      { message: 'the room’s first reply at the top of the page', timeout: 60_000 },
+    )
+    .toBe(true);
+}
+
+/** Wheels down 60 steps of 800 px, and returns how far the page scrolled. */
+async function wheeled(page) {
   await page.mouse.move(640, 400);
-  const browser = page.context().browser();
-  await browser.startTracing(page, { categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'cc'] });
-  for (let i = 0; i < steps; i++) {
-    await page.mouse.wheel(0, 800);
+  for (let i = 0; i < STEPS; i++) {
+    await page.mouse.wheel(0, STEP);
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   }
+  return page.evaluate(() => Math.round(scrollY));
+}
+
+/**
+ * Wheels down from the room’s first reply, tracing it. Returns how far the page scrolled, and the trace’s count and
+ * total ms per event name.
+ */
+async function traced(page, firstId) {
+  await atRoomTop(page, firstId);
+  const browser = page.context().browser();
+  await browser.startTracing(page, { categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'cc'] });
+  const moved = await wheeled(page);
   const { traceEvents } = JSON.parse((await browser.stopTracing()).toString());
+  /** @type {Record<string, number>} */
+  const count = {};
+  /** @type {Record<string, number>} */
   const ms = {};
-  for (const e of traceEvents) if (e.ph === 'X' && e.dur) ms[e.name] = (ms[e.name] ?? 0) + e.dur / 1000;
-  return ms;
+  for (const e of traceEvents)
+    if (e.ph === 'X' && e.dur) {
+      count[e.name] = (count[e.name] ?? 0) + 1;
+      ms[e.name] = (ms[e.name] ?? 0) + e.dur / 1000;
+    }
+  return { moved, count, ms };
 }
 
 // Dark draws its icons with nothing on them, so it is the measure: on light, a filter per icon (5,000 of them here)
-// made each repaint of a scroll lay out, commit and map the images of every one, about 35 times dark’s cost.
+// made each repaint of a scroll lay out, commit and map the images of every one, about 35 times dark’s cost. With the
+// filter put back (#1649), light painted 3.3 times as often as dark with the window on, and took 4.5 times as long to
+// lay out, commit and map with the whole room, at the same count. So light’s counts are bound to dark’s, and its time
+// to a ratio of dark’s with no fixed slack: before #1649 it was 3 times dark plus 50 ms, which let light take 8 times
+// dark on a fast machine and failed a runner slow enough that dark took 60 ms.
 const COMPOSITING = ['Layerize', 'ProxyImpl::Commit', 'DiscardableImageMap::Generate'];
+const COUNTED = ['ProxyImpl::Commit', 'Paint'];
 
 for (const mode of ROOM_MODES)
   test(`#572: scrolling 1,000 replies on light costs about what it does on dark to lay out and commit, ${mode}`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'the trace comes from Chromium’s DevTools protocol');
     await openAs(page, mode);
     test.setTimeout(180_000);
-    await seeded(page, mode === 'whole room' ? 'icons-whole' : 'icons');
-    /** @type {Record<string, number>} */
-    const cost = {};
+    const t = await seeded(page, mode === 'whole room' ? 'icons-whole' : 'icons');
+    const firstId = app.store.items(t.id)[0].id;
+    /** @type {Record<string, Awaited<ReturnType<typeof traced>>>} */
+    const run = {};
+    // Once over the room first, untraced. The first pass lays out each reply it reaches for the first time and learns
+    // its height, so it commits and lays out more than any pass after it, whichever theme makes it (#1649).
+    await atRoomTop(page, firstId);
+    await wheeled(page);
     for (const theme of /** @type {const} */ (['dark', 'light'])) {
       await page.emulateMedia({ colorScheme: theme });
       // Read in the page, not with a locator: a locator's check that misses takes an aria snapshot of the page, and on
       // 1,000 skipped items that lays each one out, seconds the theme's change then waits behind (#712a).
       await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe(theme);
-      const ms = await traced(page, 60);
-      cost[theme] = Math.round(COMPOSITING.reduce((sum, name) => sum + (ms[name] ?? 0), 0));
+      run[theme] = await traced(page, firstId);
     }
-    const said = `${COMPOSITING.join(' + ')}: light ${cost.light} ms, dark ${cost.dark} ms`;
+    const ms = (theme) => Math.round(COMPOSITING.reduce((sum, name) => sum + (run[theme].ms[name] ?? 0), 0));
+    const counts = (theme) => COUNTED.map((name) => `${run[theme].count[name] ?? 0} ${name}`).join(', ');
+    const said = `light ${counts('light')}; dark ${counts('dark')} (${COMPOSITING.join(' + ')}: light ${ms('light')} ms, dark ${ms('dark')} ms)`;
     test.info().annotations.push({ type: 'measured', description: said });
-    expect(cost.dark, 'the trace recorded the work it measures').toBeGreaterThan(0);
+    // Each theme scrolled the same 60 steps from the same place, or their counts measure different work. Before #1649,
+    // each pass began at the window’s top: dark’s, the first, began near the room’s end and ran out of room after 15
+    // steps, and light’s began further up and scrolled 47, so light did three times the work of the same kind.
+    expect(run.dark.moved, 'dark scrolled every step').toBe(STEPS * STEP);
+    expect(run.light.moved, 'light scrolled every step').toBe(STEPS * STEP);
     // Light still draws each icon with its rim, from a file of its own, and every one of them is there.
     const files = await page.evaluate(() => [
       ...new Set([...document.querySelectorAll('.react-btn')].map((n) => getComputedStyle(n, '::before').backgroundImage)),
@@ -131,5 +182,11 @@ for (const mode of ROOM_MODES)
       expect(url, 'the rimmed copy').toMatch(/-rim-72\.png$/);
       expect((await page.request.get(url)).ok(), `${url} loads`).toBe(true);
     }
-    expect(cost.light, said).toBeLessThanOrEqual(3 * cost.dark + 50);
+    for (const name of COUNTED) {
+      const dark = run.dark.count[name] ?? 0;
+      expect(dark, `the trace recorded ${name}`).toBeGreaterThan(0);
+      expect(run.light.count[name] ?? 0, `${name}: ${said}`).toBeLessThanOrEqual(Math.ceil(1.25 * dark));
+    }
+    expect(ms('dark'), 'the trace recorded the work it times').toBeGreaterThan(0);
+    expect(ms('light'), said).toBeLessThanOrEqual(2 * ms('dark'));
   });

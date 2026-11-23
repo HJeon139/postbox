@@ -112,6 +112,7 @@ Each is one line: the decision, why, and where its detail is.
 - **Only the agent’s process moves to a host:** the adapters, the store and the page stay local, so their assumptions hold ([remote-hosts.md](architecture/remote-hosts.md)).
 - **Native code runs in its own process:** narration and view_app’s browser bring native packages that never run inside the server ([narration.md](architecture/narration.md), [view-app.md](architecture/view-app.md)).
 - **The work ledger is built from tool calls and counted from diffs, and git is only read:** recorded streams, not guesses ([work-ledger.md](architecture/work-ledger.md)).
+- **A run clock is the server’s, and only a timed trial has one:** off unless Postbox starts with `POSTBOX_RUN_CLOCK=1`; the agent learns its budget from its turn’s line, a paused or expired clock holds the agent’s inbox, and while Postbox is down an agent on a host isn’t stopped, which a timed run treats as voiding it ([run-clock.md](architecture/run-clock.md)).
 - **Checks on a reply measure what the reader sees:** a diagram too wide doesn’t fail, it shrinks ([diagram-legibility.md](architecture/diagram-legibility.md)).
 - **A length ceiling only comes down:** the limits are for the reader, and a file that needs to grow is split by concern first ([code-size.md](architecture/code-size.md)).
 - **One folder per concern:** a proposed map of where every module goes, for review before anything moves ([folders.md](architecture/folders.md)).
@@ -153,6 +154,7 @@ Each is one line: the decision, why, and where its detail is.
 | [diagram-legibility.md](architecture/diagram-legibility.md) | The checks on a reply, and the pipeline that brings their findings to the agent |
 | [security-boundaries.md](architecture/security-boundaries.md) | This computer alone, the page’s token, `!` commands, and what reaches the browser |
 | [work-ledger.md](architecture/work-ledger.md) | The work ledger, what a command committed, and Restore |
+| [run-clock.md](architecture/run-clock.md) | Run clocks for timed trials, off by default: state, the turn’s line, holds and stops, and the outage limit |
 | [remote-hosts.md](architecture/remote-hosts.md) | The daemon, its protocol, the shim, turn states, the SSH connection, security and keeping a host up to date |
 | [view-app.md](architecture/view-app.md) | An agent sees its app, in a pinned headless browser |
 | [code-quality.md](architecture/code-quality.md) | The linters and checks, and how an exception is written |

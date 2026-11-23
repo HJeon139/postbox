@@ -13,6 +13,7 @@ import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
+process.env.POSTBOX_RUN_CLOCK = '1'; // so the run clock’s route is there to check (#1526)
 const { start } = await import('../server/index.mjs');
 
 const PORT = 4439;
@@ -62,6 +63,7 @@ const WRITE_ROUTES = {
   'DELETE ^\\/api\\/sessions\\/([^/]+)$': ['/api/sessions/se_none'],
   'POST ^\\/api\\/sessions\\/([^/]+)\\/remove$': ['/api/sessions/se_none/remove'],
   'DELETE ^\\/api\\/sessions\\/([^/]+)\\/stop-ask$': ['/api/sessions/se_none/stop-ask'],
+  'POST ^\\/api\\/sessions\\/([^/]+)\\/clock$': ['/api/sessions/se_none/clock'],
   'POST ^\\/api\\/sessions\\/([^/]+)\\/jobs\\/([^/]+)\\/stop$': ['/api/sessions/se_none/jobs/job_none/stop'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/agent-command$': ['/api/threads/th_none/agent-command'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/shell$': ['/api/threads/th_none/shell'],

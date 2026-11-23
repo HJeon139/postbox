@@ -48,20 +48,26 @@ export function jobRows(it, steps) {
   );
 }
 
+/** A stopped reply’s tag for each stop that isn’t your Stop, by its stopReason. @type {Record<string, (at: string) => string>} */
+const STOPPED_BY = {
+  'send-now': (at) => `Interrupted by Send now at ${at}`,
+  store: (at) => `Stopped at ${at}: Postbox couldn’t save changes`,
+  // A run clock’s, in a timed trial (#1526): the person didn’t press Stop.
+  clock: (at) => `Stopped at ${at}: its run clock reached its budget`,
+  pause: (at) => `Stopped at ${at}: its run clock was paused`,
+};
+
 /**
  * A stopped reply’s tag: what stopped it, from what the server recorded (stopReason). Send now isn’t your Stop, Keep
- * running left its jobs running, and a store that couldn’t save stopped every turn (ST-3). A reply stored before the
- * reason was recorded reads as it always did.
+ * running left its jobs running, a store that couldn’t save stopped every turn (ST-3), and a run clock stops its agent
+ * at its budget or its pause (#1526). A reply stored before the reason was recorded reads as it always did.
  * @returns {any[]}
  */
 export function stoppedTag(it) {
   const at = timeOf(it.stoppedAt ?? it.at);
-  const text =
-    it.stopReason === 'send-now'
-      ? `Interrupted by Send now at ${at}`
-      : it.stopReason === 'store'
-        ? `Stopped at ${at}: Postbox couldn’t save changes`
-        : `Stopped by you at ${at}${it.stopReason === 'kept-jobs' ? ' · its background work kept running' : ''}`;
+  const text = Object.hasOwn(STOPPED_BY, it.stopReason)
+    ? STOPPED_BY[it.stopReason](at)
+    : `Stopped by you at ${at}${it.stopReason === 'kept-jobs' ? ' · its background work kept running' : ''}`;
   // A reply a restart or a store outage cut off before it had words says what its turn held first (held-line.mjs).
   return [heldLine(it), h('span.stopped-tag', text)];
 }

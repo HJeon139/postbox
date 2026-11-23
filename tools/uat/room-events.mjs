@@ -38,6 +38,8 @@ export function keepEvent(seq, type, data, sessions = new Map(), events = EVENTS
         ...(Object.hasOwn(data, 'seenItem') ? { seenItem: data.seenItem ?? null } : {}),
         ...(Object.hasOwn(data, 'stopAsk') ? { stopAsk: data.stopAsk ? { at: data.stopAsk.at ?? null, jobs: data.stopAsk.jobs ?? null } : null } : {}),
         ...(Array.isArray(data.jobs) ? { jobs: data.jobs.slice(0, 50).map(jobOf) } : {}),
+        // The session’s latest turn, which each turn’s start sets: the run’s bound counts turns by it (run-bound.mjs).
+        ...(typeof data.lastTurnId === 'string' ? { lastTurnId: data.lastTurnId } : {}),
         // Who the agent is, when the session has it, for the evidence of a check that names the agent.
         ...(typeof data.handle === 'string' ? { handle: data.handle } : {}),
         // The model and effort its backend reported for its latest turn (ctx.reported, server/turn-context.mjs): the

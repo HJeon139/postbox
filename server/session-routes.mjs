@@ -1,9 +1,10 @@
-// The routes for one session (an agent in a conversation): adding one (#1620), Stop, delete, Stop’s question
-// about background jobs and a job’s own Stop (#129); and deleting a persona, which deletes its sessions (#208). Moved out of server/index.mjs, whose route() keeps one line that
-// calls this.
+// The routes for one session (an agent in a conversation): adding one (#1620), Stop, delete, its run clock, Stop’s
+// question about background jobs and a job’s own Stop (#129); and deleting a persona, which deletes its sessions
+// (#208). Moved out of server/index.mjs, whose route() keeps one line that calls this.
 
 import { joinConversation } from './conversation-join.mjs';
 import { httpError } from './helpers.mjs';
+import { clockAction } from './run-clock.mjs';
 
 /** A route’s answer: its status and its JSON body. */
 const done = (status, body) => ({ status, body });
@@ -24,6 +25,8 @@ export async function sessionRoute(rt, path, method, body) {
   if ((m = path.match(/^\/api\/sessions\/([^/]+)$/)) && method === 'DELETE') return done(200, rt.deleteSession(m[1]));
   // The Agents header’s −: the same delete, refused rather than erase the conversation if it’s the last agent (#1620).
   if ((m = path.match(/^\/api\/sessions\/([^/]+)\/remove$/)) && method === 'POST') return done(200, rt.deleteSession(m[1], { keepConversation: true }));
+  // The agent’s run clock: start, pause or resume (server/run-clock.mjs). Only with run clocks on; else no such route.
+  if (rt.runClock && (m = path.match(/^\/api\/sessions\/([^/]+)\/clock$/)) && method === 'POST') return done(200, clockAction(rt, m[1], body));
   // Stop’s ask about background jobs, dismissed, and a background job’s own Stop (#129).
   if ((m = path.match(/^\/api\/sessions\/([^/]+)\/stop-ask$/)) && method === 'DELETE') {
     rt.dismissStopAsk(m[1]);

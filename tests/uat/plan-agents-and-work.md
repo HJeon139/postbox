@@ -36,7 +36,7 @@ These changes move the controls you use most. Agent settings leave the top bar f
   - `scifact.md` and `hotpotqa.md`: the long-running regression pair.
   - `wikisearch.md`, `announcement.md` and `papersurvey.md`: M1’s exit check, so agents still pick blocks without being asked.
   - `workroom.md`: the new features.
-  - Not `mixedroom.md`: UAT passes are Claude only. Mixed rooms and other backends get an occasional compatibility run (`--compat`), outside wave passes.
+  - Not `mixedroom.md`: a wave pass is Claude only. Mixed rooms and other backends get a compatibility run (`--compat`) occasionally, and in each batch UAT (designs/review-guide.md, “Batch UAT”).
 
 ## Harness work before the run
 

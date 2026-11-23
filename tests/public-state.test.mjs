@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { publicEvent, publicFrame, publicState } from '../server/public-state.mjs';
-import { apply, EVENTS, emptyState, PRIVATE_STATE_KEYS, PUBLIC_EVENT_TYPES, PUBLIC_STATE_KEYS, RESERVED } from '../shared/state.mjs';
+import { apply, EVENTS, emptyState, LAZY_STATE_KEYS, map, PRIVATE_STATE_KEYS, PUBLIC_EVENT_TYPES, PUBLIC_STATE_KEYS, RESERVED } from '../shared/state.mjs';
 import { keepEvent } from '../tools/uat/room-events.mjs';
 
 // The event types on main when the table was made, every one public. Adding, removing or hiding a type is a reviewed
@@ -47,6 +47,14 @@ const TYPES = [
   'app.note',
   'app.notes.dropped',
   'app.notes.read',
+  // An agent’s run clock (shared/run-clock.mjs, #1526): budgets and server times, which the person sees.
+  'clock.started',
+  'clock.paused',
+  'clock.resumed',
+  'clock.turn',
+  'clock.restored',
+  'clock.stopped',
+  'clock.expired',
 ];
 /** The types the page may not see: each reaches it as a cursor (designs/architecture/security-boundaries.md). */
 const PRIVATE_TYPES = ['app.publish', 'app.note', 'app.notes.dropped', 'app.notes.read'];
@@ -73,17 +81,21 @@ test('the stream’s own frame names are never event types', () => {
 });
 
 test('every key of the state is either public or private, never both and never neither', () => {
-  const keys = Object.keys(emptyState());
+  // With the keys an event makes later (LAZY_STATE_KEYS): a run clock’s, which an empty state doesn’t carry (#1526).
+  const keys = [...Object.keys(emptyState()), ...LAZY_STATE_KEYS];
   assert.deepEqual([...PUBLIC_STATE_KEYS, ...PRIVATE_STATE_KEYS].sort(), [...keys].sort());
   for (const k of PUBLIC_STATE_KEYS) assert.equal(PRIVATE_STATE_KEYS.includes(k), false, k);
-  assert.equal(PUBLIC_STATE_KEYS.length, 21);
+  assert.equal(PUBLIC_STATE_KEYS.length, 22);
+  assert.deepEqual(LAZY_STATE_KEYS, ['clocks']);
   assert.deepEqual(PRIVATE_STATE_KEYS, ['published', 'appNotes']);
 });
 
 test('the public state keeps the public keys, as the store’s own values, and drops any other key', () => {
-  const state = { ...emptyState(), records: { r1: { parts: [{ text: 'private words' }] } } };
+  const state = { ...emptyState(), clocks: map(), records: { r1: { parts: [{ text: 'private words' }] } } };
   const out = publicState(state);
   assert.deepEqual(Object.keys(out), PUBLIC_STATE_KEYS);
+  // A state no clock has started in carries no clocks key, so it sends the page nothing for one (#1526).
+  assert.equal(Object.hasOwn(publicState(emptyState()), 'clocks'), false);
   assert.equal(out.items, state.items, 'shallow: the same objects, no copy');
   assert.doesNotMatch(JSON.stringify(out), /private words|records/);
 });

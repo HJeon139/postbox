@@ -4,6 +4,7 @@
 // host’s welcome lists it.
 
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
+import { clockStopConfirmed } from '../run-clock.mjs';
 import { hostOf, unregisteredWhy } from './placement.mjs';
 import { backgroundStopText, waitingOnBackground } from './turns-background.mjs';
 import { releaseHost } from './turns-need.mjs';
@@ -148,6 +149,8 @@ export async function reattach(rts, sessionId) {
     // release, so the host’s link isn’t let go in between (#965).
     const stillThere = listed?.state === 'running' || listed?.unkilled === true;
     if (stillThere) askStop(rts, sessionId, r.hostId, r.turn);
+    // A run clock that listed it as still to stop hears it’s over, since it doesn’t run there (#1526).
+    else if (rt.runClock) clockStopConfirmed(rt, sessionId, r.turn, rts.now());
     releaseHost(rts, r.hostId);
     // Resumed on its own once the backend is back, a second turn could run beside it on the same session, so it waits
     // for the person. One listed as ended, or interrupted and gone, can’t, and a moved one waits anyway (autoResume’s
