@@ -1,6 +1,6 @@
 // The UAT runner keeps every live frame its stream receives (tools/uat/history.mjs): a running turn’s progress isn’t
-// stored between commit points (designs/architecture/live-progress.md), so the #722 scan of what reached the browser
-// reads the frames beside the events, in the run and in a --recheck from its saved files.
+// stored between commit points (designs/architecture/live-progress.md), so the run saves the frames beside the events,
+// and a --recheck reads them back. They aren’t storage: the #722 scan for an asset’s content outside its file skips them (#1655).
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -67,7 +67,7 @@ test('a run from before the live frames were kept reads none', async () => {
   }
 });
 
-test('--recheck reads a run’s live.jsonl into the #722 scan, which flags an asset’s content on a live frame', async () => {
+test('a --recheck of a run whose only copy of an asset’s content is on a live frame finds none: frames aren’t stored (#1655)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pb-uat-recheck-'));
   try {
     const text = 'The quarterly figures, as the agent read them from the shared sheet.\n';
@@ -78,12 +78,8 @@ test('--recheck reads a run’s live.jsonl into the #722 scan, which flags an as
     const frame = { kind: 'step', threadId: 'th_main', itemId: 'it_1', rev: 2, step: { id: 's1', state: 'done', output: text } };
     await writeHistory(dir, { events: [], live: [frame] });
     const facts = savedFacts(dir, { state: { threads: {} }, mainId: 'th_main', saved: { findings: [] }, logs: [], hostsRec: null, record: null });
-    assert.deepEqual(facts.live, [frame]);
     const found = runChecks({ probes: {}, ...facts }, { only: ['asset-content-in-store'] });
-    assert.ok(
-      found.some((f) => f.key.includes('live frame #1')),
-      'flagged on the live frame',
-    );
+    assert.deepEqual(found, [], 'a live frame is transient, not a store');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

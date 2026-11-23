@@ -2,6 +2,7 @@
 // fault edited into it. The fixture is trimmed from two recorded runs of the assets-room scenario
 // (tests/fixtures/uat-assets/recorded-runs.json says which).
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { apply, emptyState } from '../shared/state.mjs';
@@ -192,23 +193,16 @@ test('#722: an agent’s item is its words only where it wrote them; a tool call
   assert.match(where({ log: [added, patch] }).join(' | '), /under item\.patch\.patch\.activity\.steps\.1\.detail/);
 });
 
-test('#722: an asset’s content on a live frame, a call’s output or the glimpse, is flagged where it is', () => {
-  const text = files()
-    .find((x) => x.sha === head.data.version.sha256)
-    .bytes.toString('utf8');
-  const live = [
-    { kind: 'step', threadId: room, itemId: 'it_1', rev: 2, step: { id: 's1', state: 'done', output: text } },
-    { kind: 'session', sessionId: 'se_1', currentStep: text.slice(0, 200) },
-  ];
-  const f = found({ ...facts(), live });
-  assert.deepEqual(
-    [...new Set(f['asset-content-in-store'].map((x) => x.key.split(':').slice(1, 3).join(':')))],
-    ['live frame #1:live.step', 'live frame #2:live.session'],
-  );
-  // A thought is the agent’s own words, and so is the glimpse: quoting an asset there is no copy.
-  const own = [
-    { kind: 'step', threadId: room, itemId: 'it_1', rev: 1, step: { id: 't1', kind: 'thought', detail: text } },
-    { kind: 'session', sessionId: 'se_1', glimpse: text.slice(0, 200) },
-  ];
-  assert.deepEqual(found({ ...facts(), live: own })['asset-content-in-store'], []);
+test('#1655: a live frame is no store: an asset’s content in a running step’s preview is no copy, and one in the log still is', () => {
+  // Recorded from a real run: the step previews of the write_asset call that made the asset (the fixture’s source).
+  const rec = JSON.parse(readFileSync(new URL('./fixtures/uat-assets/needsnav-c-live-asset.json', import.meta.url), 'utf8'));
+  const bytes = Buffer.from(rec.asset, 'utf8');
+  const sha = createHash('sha256').update(bytes).digest('hex');
+  const store = { log: [], snapshot: null, files: [{ sha, bytes }] };
+  const run = (log) => runChecks({ probes: {}, store: { ...store, log }, state: emptyState(), live: rec.frames }, { only: ['asset-content-in-store'] });
+  assert.deepEqual(run([]), [], 'the recorded frames carry the asset’s text, and aren’t storage');
+  // A commit point that kept the call’s output (live-progress.md, “Commit points”, drops it) is a copy, flagged where it is.
+  const stored = run([{ seq: 1, type: 'item.patch', data: { id: 'it_1', activityStep: { ...rec.frames[1].step } } }]);
+  assert.equal(stored.length, 1, JSON.stringify(stored));
+  assert.match(stored[0].key, /:log #1:item\.patch:activityStep\.output$/);
 });
