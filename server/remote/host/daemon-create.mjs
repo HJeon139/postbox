@@ -17,7 +17,7 @@ import { probeLoginPath as defaultProbeLoginPath } from './login-path.mjs';
 import { hostVersion } from './paths.mjs';
 import * as defaultProc from './proc.mjs';
 import { findPrograms as defaultFindPrograms } from './programs.mjs';
-import { closeRelays, connectSocket, RELAY_CHECK_MS } from './relay.mjs';
+import { closeRelays, connectSocket, RELAY_CHECK_MS, RELAY_WELCOME_MS } from './relay.mjs';
 import { ownTurns } from './relay-turns.mjs';
 import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, logindFacts } from './runner-client.mjs';
 
@@ -33,7 +33,7 @@ import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, log
  *   inherits (read at each start, for KIRO_HOME). mono: a monotonic clock, which setting the time doesn’t move, for how
  *   long a runner has been silent (daemon-running.mjs); now is the wall clock, for everything else. connectRelay: opens
  *   a relay’s connection to an older version’s socket (relay.mjs, #759); relayCheckMs: how often a relay looks whether
- *   its turns still run.
+ *   its turns still run; relayWelcomeMs: how long the older daemon has to welcome one.
  */
 export function createDaemon(opts) {
   const { broker, shim, ...o } = withDefaults(opts);
@@ -108,6 +108,7 @@ function withDefaults({
   env = process.env,
   connectRelay = connectSocket,
   relayCheckMs = RELAY_CHECK_MS,
+  relayWelcomeMs = RELAY_WELCOME_MS,
 }) {
   return {
     home,
@@ -138,6 +139,7 @@ function withDefaults({
     env,
     connectRelay,
     relayCheckMs,
+    relayWelcomeMs,
   };
 }
 

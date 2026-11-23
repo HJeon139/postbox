@@ -11,9 +11,9 @@ import { BOOT, VERSION } from './remote-broker-fixtures.mjs';
  * The daemon in-process, with fake runners: a held stdin’s writes are kept in `writes`. Two daemons of different versions
  * on one host share `alive`, the runners running there (tests/remote-relay.test.mjs).
  * connectRelay: the newer one’s connection to the older one’s socket, in-process.
- * @param {string} home @param {{ version?: string, alive?: Set<string>, log?: (line: string) => void, connectRelay?: any, relayCheckMs?: number }} [o]
+ * @param {string} home @param {{ version?: string, alive?: Set<string>, log?: (line: string) => void, connectRelay?: any, relayCheckMs?: number, relayWelcomeMs?: number }} [o]
  */
-export function inProcessDaemon(home, { version = VERSION, alive = new Set(), log = () => {}, connectRelay, relayCheckMs } = {}) {
+export function inProcessDaemon(home, { version = VERSION, alive = new Set(), log = () => {}, connectRelay, relayCheckMs, relayWelcomeMs } = {}) {
   const writes = [];
   let pid = 4000;
   const daemon = createDaemon({
@@ -47,6 +47,7 @@ export function inProcessDaemon(home, { version = VERSION, alive = new Set(), lo
     log,
     connectRelay,
     relayCheckMs,
+    relayWelcomeMs,
     pollMs: 10,
     stopGraceMs: 60_000,
   });

@@ -65,9 +65,11 @@ export function inProcess(socket, serve, sockets) {
 /**
  * One host: daemon A (OLD) on its real socket, and a turn `ta` it started for a Postbox that has since gone, with its
  * shim attached. Daemon B (VERSION) is made and started, with nobody attached yet. `serveA` replaces A’s socket server.
- * `beforeB` runs before B starts, with A’s Postbox gone, for records B finds at its start. relayCheckMs: B’s.
+ * `beforeB` runs before B starts, with A’s Postbox gone, for records B finds at its start. relayCheckMs and
+ * relayWelcomeMs: B’s. `placeSocket` puts something at A’s socket path in place of a listening socket, and may return its cleanup.
  * @param {import('node:test').TestContext} t
- * @param {{ serveA?: (socket: any) => void, beforeB?: (h: { first: any, shim: any }) => Promise<void>, relayCheckMs?: number }} [o]
+ * @param {{ serveA?: (socket: any) => void, beforeB?: (h: { first: any, shim: any, home: string }) => Promise<void>, relayCheckMs?: number,
+ *   relayWelcomeMs?: number, placeSocket?: (path: string, home: string) => (() => void) | void }} [o]
  */
 export async function host(t, o = {}) {
   const home = hostHome('pbrl-');
@@ -83,7 +85,7 @@ export async function host(t, o = {}) {
   const a = inProcessDaemon(home, { version: OLD, alive, log }).daemon;
   const serve = o.serveA ?? ((/** @type {any} */ x) => a.accept(x));
   const connectRelay = inProcess(pA.socket, serve, sockets);
-  const b = inProcessDaemon(home, { version: VERSION, alive, log, connectRelay, relayCheckMs: o.relayCheckMs }).daemon;
+  const b = inProcessDaemon(home, { version: VERSION, alive, log, connectRelay, relayCheckMs: o.relayCheckMs, relayWelcomeMs: o.relayWelcomeMs }).daemon;
   await a.start();
   const first = postbox(a);
   first.send('hello', { version: PROTOCOL_VERSION, token: TOKEN, instance: 'laptop-before'.padEnd(32, '0') });
@@ -96,16 +98,21 @@ export async function host(t, o = {}) {
   // A’s socket is there, as relay.mjs checks before it connects.
   mkdirSync(dirname(pA.socket), { recursive: true });
   const server = createServer((s) => s.destroy());
-  await new Promise((resolve) => server.listen(pA.socket, () => resolve(undefined)));
-  await o.beforeB?.({ first, shim });
-  await b.start();
+  /** @type {(() => void) | void} */
+  let placed;
+  // Before anything here can fail, so a failing step leaves no daemon or server open.
   t.after(async () => {
     for (const s of sockets) s.destroy();
-    await new Promise((resolve) => server.close(() => resolve(undefined)));
+    placed?.();
+    if (server.listening) await new Promise((resolve) => server.close(() => resolve(undefined)));
     a.close();
     b.close();
     await rm(home, { recursive: true, force: true });
   });
+  placed = o.placeSocket?.(pA.socket, home);
+  if (!o.placeSocket) await new Promise((resolve) => server.listen(pA.socket, () => resolve(undefined)));
+  await o.beforeB?.({ first, shim, home });
+  await b.start();
   return { home, work, alive, logs, a, b, first, shim, sockets };
 }
 

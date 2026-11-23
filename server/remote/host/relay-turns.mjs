@@ -21,16 +21,28 @@ async function runnerVersion(d, turn) {
 
 /**
  * The turns of `turns` this daemon’s broker serves: all but those whose runner.json names another version. One with
- * no runner record yet is its own: only this version starts turns now.
+ * no runner record yet is its own: only this version starts turns now. A record that fails its check still names
+ * its version, and one naming another is left to that version: replaying its records here would send its calls and
+ * prompts to Postbox with no way back to its shim.
  * @template {{ turn: string }} T @param {Daemon} d @param {T[]} turns @returns {Promise<T[]>}
  */
 export async function ownTurns(d, turns) {
   const own = [];
   for (const t of turns) {
-    const version = await runnerVersion(d, t.turn);
-    if (!version || version === d.version) own.push(t);
+    const version = await namedVersion(d, t.turn);
+    if (version === null || version === d.version) own.push(t);
   }
   return own;
+}
+
+/** The version a turn’s runner.json names, checked or not, or null when it has none. @param {Daemon} d @param {string} turn */
+async function namedVersion(d, turn) {
+  try {
+    const r = JSON.parse(await fsp.readFile(d.p.turn(turn, TURN_FILES.runner), 'utf8'));
+    return typeof r?.version === 'string' ? r.version : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The running turns under another version, by version. @param {Daemon} d */

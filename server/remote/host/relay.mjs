@@ -32,18 +32,21 @@ import { olderTurns, socketOf, stopped } from './relay-turns.mjs';
 /**
  * @typedef {{ write: (line: string) => void, end: () => void }} RelayLink  one connection to an older daemon
  * @typedef {{ version: string, turns: Set<string>, driver: Conn, settings: Record<string, unknown> | null,
- *   link: RelayLink | null, waiting: string[] | null, ready: boolean, crossed: boolean, unread: Set<string>, done: boolean,
- *   timer: any }} Relay
+ *   link: RelayLink | null, waiting: string[] | null, ready: boolean, crossed: boolean, told: Set<string>, done: boolean,
+ *   timer: any, welcomeTimer: any }} Relay
  *   settings: the driver’s, for the hello, or null. link: once connected; waiting: Postbox’s lines for it until the
  *   older daemon welcomes it, then null: a line it can’t read before then would read as a refused hello. ready: the
- *   older daemon welcomed it; crossed: a frame of its went to Postbox, which may wait on it now. unread: its turns that
- *   sent a frame this daemon couldn’t read. timer: its next look at whether its turns still run.
+ *   older daemon welcomed it; crossed: a frame of its went to Postbox, which may wait on it now. told: its turns Postbox
+ *   has heard are lost while it still relays them. timer: its next look at whether its turns still run; welcomeTimer:
+ *   how long the older daemon has to welcome it.
  */
 
 /** How a relay’s hello says what it is. */
 export const RELAY_PREFIX = 'relay_';
 /** How often a relay looks whether its turns still run, once Postbox no longer reads them. */
 export const RELAY_CHECK_MS = 30_000;
+/** How long the older daemon has to welcome a relay: its own hello looks for programs, which takes seconds at most. */
+export const RELAY_WELCOME_MS = 15_000;
 const UP = new Set(['tool', 'prompt', 'prompt-expired', 'error']);
 const DOWN = new Set(['snapshot', 'snapshot-items', 'answer', 'reply']);
 /** Postbox’s lines a relay holds until its welcome: the snapshot and what follows it, far fewer in practice. */
@@ -51,8 +54,6 @@ const WAITING_MAX = 1000;
 /** Each daemon’s relay instance, the same for all its relays: an older daemon takes a new relay’s hello as the same
  * Postbox back and replaces the old relay, rather than refusing it as busy while the old one is still closing. */
 const instances = /** @type {WeakMap<Daemon, string>} */ (new WeakMap());
-/** Each daemon’s latest plan: a hello that comes while an earlier one still scans wins. */
-const plans = /** @type {WeakMap<Daemon, number>} */ (new WeakMap());
 
 /**
  * A connection to an older daemon’s socket, its lines to onLine, and onClose once it ends.
@@ -74,11 +75,9 @@ export function connectSocket(path, { onLine, onClose }) {
  */
 export async function planRelays(d, c, hello) {
   closeRelays(d);
-  const plan = (plans.get(d) ?? 0) + 1;
-  plans.set(d, plan);
   if (typeof c.instance === 'string' && c.instance.startsWith(RELAY_PREFIX)) return [];
   const byVersion = await olderTurns(d);
-  if (c.closed || d.driver !== c || plans.get(d) !== plan) return [];
+  if (c.closed || d.driver !== c) return [];
   return [...byVersion].map(([version, turns]) => planned(d, c, version, turns, hello?.settings ?? null));
 }
 
@@ -94,9 +93,10 @@ function planned(d, c, version, turns, settings) {
     waiting: [],
     ready: false,
     crossed: false,
-    unread: new Set(),
+    told: new Set(),
     done: false,
     timer: null,
+    welcomeTimer: null,
   };
   d.relays.add(relay);
   for (const t of turns) d.relayed.set(t, relay);
@@ -137,6 +137,12 @@ async function connect(d, relay) {
   if (!instances.has(d)) instances.set(d, `${RELAY_PREFIX}${randomBytes(20).toString('hex')}`);
   const hello = { version: PROTOCOL_VERSION, token, instance: instances.get(d) };
   relay.link.write(encode(message('postbox-to-daemon', 'hello', relay.settings ? { ...hello, settings: relay.settings } : hello)));
+  // A daemon that took the connection but never answers would hold Postbox’s lines for these turns without a word.
+  relay.welcomeTimer = d.timers.setTimeout(() => {
+    if (relay.done || relay.ready) return;
+    d.log(`Postbox ${relay.version}’s daemon didn’t welcome a relay within ${Math.round(d.relayWelcomeMs / 1000)} s.`);
+    endRelay(d, relay, relay.crossed ? 'lost' : 'off');
+  }, d.relayWelcomeMs);
 }
 
 /**
@@ -147,7 +153,11 @@ async function connect(d, relay) {
 function watch(d, relay) {
   relay.timer = d.timers.setTimeout(async () => {
     if (relay.done) return;
-    for (const t of await stopped(d, relay.turns)) relayedEnded(d, t);
+    try {
+      for (const t of await stopped(d, relay.turns)) relayedEnded(d, t);
+    } catch (e) {
+      d.log(`A relay to Postbox ${relay.version} couldn’t look at its turns: ${e.message}`);
+    }
     if (!relay.done) watch(d, relay);
   }, d.relayCheckMs);
 }
@@ -160,6 +170,7 @@ function fromOlder(d, relay, text) {
   const { type, ...body } = r.msg;
   if (!relay.ready && type === 'welcome') {
     relay.ready = true;
+    d.timers.clearTimeout(relay.welcomeTimer);
     for (const line of relay.waiting ?? []) relay.link?.write(line);
     relay.waiting = null;
     return;
@@ -168,6 +179,12 @@ function fromOlder(d, relay, text) {
   // A broker frame may come before the welcome, since the older daemon makes the relay its driver before it answers
   // the hello: it goes on as any other.
   if (!relay.ready && type === 'error' && typeof body.turn !== 'string') return refused(d, relay, body.code);
+  // After the welcome, such an error refuses a line the relay sent, which names no turn: an answer or a reply may be
+  // gone, so every turn of the relay is lost, as Postbox can’t tell which.
+  if (type === 'error' && typeof body.turn !== 'string') {
+    d.log(`Postbox ${relay.version}’s daemon refused a line from a relay: ${body.code}.`);
+    return tellLost(d, relay, relay.turns);
+  }
   if (!UP.has(type) || typeof body.turn !== 'string' || !relay.turns.has(body.turn)) return;
   if (relay.driver.closed || d.driver !== relay.driver) return;
   relay.crossed = true;
@@ -185,9 +202,20 @@ function unreadable(d, relay, text, error) {
   try {
     turn = JSON.parse(text)?.turn;
   } catch {}
-  if (typeof turn !== 'string' || !relay.turns.has(turn) || relay.unread.has(turn)) return;
-  relay.unread.add(turn);
-  if (!relay.driver.closed && d.driver === relay.driver) void send(relay.driver, 'relay', { turn, version: relay.version, state: 'lost' });
+  if (typeof turn === 'string' && relay.turns.has(turn)) tellLost(d, relay, [turn]);
+}
+
+/**
+ * Postbox hears, once for each, that these turns of a relay still relaying have lost something on the way.
+ * @param {Daemon} d @param {Relay} relay @param {Iterable<string>} turns
+ */
+function tellLost(d, relay, turns) {
+  if (relay.driver.closed || d.driver !== relay.driver) return;
+  for (const turn of turns) {
+    if (relay.told.has(turn)) continue;
+    relay.told.add(turn);
+    void send(relay.driver, 'relay', { turn, version: relay.version, state: 'lost' });
+  }
 }
 
 /**
@@ -219,6 +247,7 @@ function endRelay(d, relay, state) {
   if (relay.done) return;
   relay.done = true;
   d.timers.clearTimeout(relay.timer);
+  d.timers.clearTimeout(relay.welcomeTimer);
   d.relays.delete(relay);
   for (const t of relay.turns) if (d.relayed.get(t) === relay) d.relayed.delete(t);
   try {
@@ -257,5 +286,10 @@ export function toOlder(d, m) {
   const line = encode(message('postbox-to-daemon', type, body));
   if (!relay.waiting) relay.link?.write(line);
   else if (relay.waiting.length < WAITING_MAX) relay.waiting.push(line);
+  else {
+    // Never a line dropped without a word: a relay that can’t hold more ends, and its turns say so.
+    d.log(`A relay to Postbox ${relay.version} held ${WAITING_MAX} lines with no welcome.`);
+    endRelay(d, relay, relay.crossed ? 'lost' : 'off');
+  }
   return true;
 }

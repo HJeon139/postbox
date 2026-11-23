@@ -13,11 +13,11 @@ import { endCard } from './turns-prompts.mjs';
 /** The step of a turn that was never relayed. @param {string} version @param {string} host */
 export const relayOffText = (version, host) =>
   `This turn started under Postbox ${version} on ${host}. Its blocks, messages and questions after the update can’t reach this conversation.`;
-/** The step of a turn whose relay ended while it ran. @param {string} host */
-export const relayLostText = (host) =>
-  `Postbox lost its link to this turn’s older Postbox on ${host}. A question or block it sent meanwhile may not have arrived.`;
+/** The step of a turn whose relay ended while it ran. @param {string} version @param {string} host */
+export const relayLostText = (version, host) =>
+  `Postbox lost its link to Postbox ${version} on ${host}, which this turn runs under. A question or block it sent meanwhile may not have arrived.`;
 /** What a card says when its turn’s relay ended. */
-export const RELAY_LOST_CARD = 'Postbox lost its link to the older Postbox this turn runs under, so this can’t be answered any more.';
+export const RELAY_LOST_CARD = 'Postbox lost its link to the Postbox version this turn runs under, so this can’t be answered any more.';
 
 /**
  * @param {RemoteTurns} rts @param {string} hostId
@@ -25,7 +25,7 @@ export const RELAY_LOST_CARD = 'Postbox lost its link to the older Postbox this 
  */
 export function onRelay(rts, hostId, m) {
   const host = rts.rt.s.hosts?.[hostId]?.name ?? 'its host';
-  const label = m.state === 'off' ? relayOffText(m.version, host) : relayLostText(host);
+  const label = m.state === 'off' ? relayOffText(m.version, host) : relayLostText(m.version, host);
   // One step for each state: a relay lost twice says so once.
   rts.byTurn.get(m.turn)?.step?.({ id: `relay-${m.state}-${m.turn}`, label, state: 'failed' });
   if (m.state !== 'lost') return;

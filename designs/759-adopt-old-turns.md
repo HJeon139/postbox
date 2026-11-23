@@ -48,14 +48,18 @@ sequenceDiagram
 9. **Ending.** A relay closes when A has no running turn left, or when A’s socket goes. B looks every 30 seconds whether a relayed turn has ended or been interrupted, so a relay ends even when Postbox doesn’t read that turn; a scan that can’t read the turn folders ends nothing. A then idles out on its own schedule.
 10. **Fallback: the notice.** Postbox adds a line to the turn itself, in one of two wordings:
     - **Never relayed** (the protocol differs, A is busy with another Postbox, or its socket refuses): “This turn started under Postbox A on <host>. Its blocks, messages and questions after the update can’t reach this conversation.”
-    - **Relay interrupted:** “Postbox lost its link to this turn’s older Postbox on <host>. A question or block it sent meanwhile may not have arrived.”
+    - **Relay interrupted:** “Postbox lost its link to Postbox A on <host>, which this turn runs under. A question or block it sent meanwhile may not have arrived.” It names the version rather than calling it older: after a downgrade, the turn runs under a newer one.
 
     That keeps the issue’s first “done when” for every case.
-11. **B’s own broker leaves A’s turns alone.** At its start, B’s broker replays only its own turns’ records, so A’s queued calls and prompts reach Postbox only through A, and their answers can only go back there.
+11. **B’s own broker leaves A’s turns alone.** At its start, B’s broker replays only its own turns’ records, so A’s queued calls and prompts reach Postbox only through A, and their answers can only go back there. A `runner.json` that fails its check but names another version is left to that version too; such a turn isn’t relayed either.
 12. **Before the welcome.** B plans its relays before it welcomes Postbox, so the snapshot Postbox sends once welcomed goes to A. The relay holds Postbox’s lines until A welcomes it: A refuses a line it can’t read at once, with no turn, which would otherwise read as a refused hello. A broker frame A sends before its own welcome is relayed as any other.
 13. **Settings.** The relay’s hello carries the driver’s `hello.settings`. An older daemon refuses a setting it doesn’t know as `bad-message`; the relay then says hello again without them, so A keeps its defaults, and sends A what Postbox sent meanwhile.
 14. **A second laptop still on A** keeps it only while it stays connected. If its link drops, B’s next hello may take A’s free driver slot, and that laptop’s reconnect gets `busy`.
-15. **A frame B can’t read.** A frame from A whose shape B no longer takes can’t reach Postbox, so B tells Postbox its turn’s relay is `lost`, once, rather than dropping it without a word.
+15. **Nothing dropped without a word.** Each of these tells Postbox the relay’s turns are `lost`, once each, or `off` if nothing has crossed yet:
+    - a frame from A whose shape B no longer takes;
+    - after A’s welcome, an error from A that names no turn, which is how A refuses a line it can’t read, such as an answer;
+    - no welcome from A within 15 seconds of the relay’s hello;
+    - more than 1,000 of Postbox’s lines held while A’s welcome is awaited.
 
 ## Security
 

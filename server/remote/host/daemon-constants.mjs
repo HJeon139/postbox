@@ -97,7 +97,7 @@ export const READ_CHUNK = 64 * 1024;
  *   probeLoginPath?: () => Promise<import('./login-path.mjs').LoginPath>,
  *   kill?: (pid: number, signal: NodeJS.Signals) => void, log?: (line: string) => void, onIdle?: () => void,
  *   onRemoved?: () => void, pollMs?: number, stopGraceMs?: number, removeWaitMs?: number, runnerStartMs?: number, sweepMs?: number,
- *   broker?: Broker, shim?: ShimSeam, uid?: number, env?: Record<string, string | undefined>, connectRelay?: typeof import('./relay.mjs').connectSocket, relayCheckMs?: number }} DaemonOpts
+ *   broker?: Broker, shim?: ShimSeam, uid?: number, env?: Record<string, string | undefined>, connectRelay?: typeof import('./relay.mjs').connectSocket, relayCheckMs?: number, relayWelcomeMs?: number }} DaemonOpts
  */
 /**
  * One daemon: its options, defaults filled in, and its state, which createDaemon passes to every function in the
