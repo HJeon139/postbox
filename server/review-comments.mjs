@@ -45,7 +45,15 @@ export function reviewBlock(apps, sessionId, args) {
   const revision = it.revision ?? 1;
   const review = { handle: se.handle, ...(verdict ? { verdict } : {}), revision, threads: added.map((c) => c.threadId), at: Date.now() };
   apps.threads.patchItem(where, it.id, { block: v.block, reviews: [...(it.reviews ?? []), review] });
-  const event = { blockId: it.block.id, revision, action: 'review', values: { ...(verdict ? { verdict } : {}), comments: added }, from: se.handle };
+  // answered: the person already answered it, so its agent hears that a revision would ask them again (#716).
+  const event = {
+    blockId: it.block.id,
+    revision,
+    action: 'review',
+    values: { ...(verdict ? { verdict } : {}), comments: added },
+    from: se.handle,
+    ...(it.answered ? { answered: true } : {}),
+  };
   let heard = `@${it.handle} hears them now, and can revise.`;
   try {
     // A review is the one entry an agent makes without an @-mention: its block’s author’s, pointing at the block. Until

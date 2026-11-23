@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { formatMessage } from '../server/adapters/guide.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
@@ -61,4 +62,11 @@ test('#716 a reviewer comments on a review the person already answered: the thre
   const review = () => heard.find((m) => m.kind === 'event' && m.event?.action === 'review');
   for (let i = 0; i < 100 && !review(); i++) await new Promise((r) => setTimeout(r, 5));
   assert.equal(review()?.event.values.comments[0].text, 'A read of the approved design.');
+  // Told the person answered it, so a revision would ask them again; not to revise as if it still waited on them.
+  const said = formatMessage(review());
+  assert.match(
+    said,
+    /The person already answered this block: resolving one in update_block’s threads\? keeps their answer, while changing its content asks them again\./,
+  );
+  assert.doesNotMatch(said, /still waits on the person/);
 });
