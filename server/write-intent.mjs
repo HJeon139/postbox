@@ -14,9 +14,9 @@
 // fails is a card.
 
 import { randomBytes } from 'node:crypto';
-import { renderMarkdown } from '../shared/markdown.mjs';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
+import { codeIn } from './confirm-code.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { pushConsequence, pushedMessage, pushOf, runPush } from './push-on-request.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
@@ -75,19 +75,6 @@ const squash = (s) =>
     .replace(/\s+/g, ' ')
     .trim();
 const wordsOf = (s) => norm(s).match(/[\p{L}\p{N}][\p{L}\p{N}'._/#-]*/gu) ?? [];
-
-const HTML_ENT = { '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&amp;': '&' };
-
-/**
- * The code in a confirm’s statement: each `<code…>` element `renderMarkdown` draws on the page (#1659), both fenced
- * blocks and inline spans, so a command hidden in a dropped table cell, a link target, math or an indented line never
- * counts as confirmed.
- * @param {unknown} statement
- */
-function codeIn(statement) {
-  const html = renderMarkdown(String(statement ?? ''));
-  return [...html.matchAll(/<code(?:\s[^>]*)?>([\s\S]*?)<\/code>/g)].map((m) => m[1].replace(/&(?:lt|gt|quot|#39|amp);/g, (e) => HTML_ENT[e]));
-}
 
 /**
  * What the person asked for in this turn: the messages they typed that started it, and the confirm they confirmed, at
