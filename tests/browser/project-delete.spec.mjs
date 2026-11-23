@@ -101,4 +101,12 @@ test('#119 with one project left, Delete project… is off, takes focus, says wh
   await expect(button).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  // Adding another, as it says to, lists it and turns both Deletes on, however late the page hears of it.
+  const folder = await mkdtemp(join(tmpdir(), 'pb-second-'));
+  await settings.locator('#pj-n').fill('Second');
+  await settings.locator('#pj-f').fill(folder);
+  await settings.getByRole('button', { name: 'Create project' }).click();
+  await expect(rowOf(settings, 'Second')).toHaveCount(1);
+  for (const b of await settings.getByRole('button', { name: 'Delete project…' }).all()) await expect(b).toHaveAttribute('aria-disabled', 'false');
+  await rm(folder, { recursive: true, force: true });
 });

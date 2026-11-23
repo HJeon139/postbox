@@ -3,6 +3,7 @@
 
 import { api, client } from './client.mjs';
 import { h, icon } from './dom.mjs';
+import { heard } from './go-when-there.mjs';
 import { deleteProjectButton } from './project-delete.mjs';
 import { toast } from './ui.mjs';
 
@@ -59,8 +60,10 @@ export function projectsTab(paint) {
           type: 'button',
           onclick: () =>
             api('/api/projects', { name: name.value, folder: folder.value })
-              .then(() => {
+              .then(async (made) => {
                 toast({ title: `Created ${name.value || 'the project'}` });
+                // Once the page has heard of it, so the tab lists it, and the only project’s Delete turns on (#119).
+                await heard(() => S().projects[made.id]);
                 paint();
               })
               .catch((e) => toast({ title: 'Couldn’t create the project', text: e.message, level: 'blocking' })),
