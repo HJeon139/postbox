@@ -15,7 +15,7 @@ import { tempDir } from './temp-dirs.mjs';
 
 const PORT = 4991;
 const KEYS = ['constructor', 'toString', '__proto__', 'hasOwnProperty'];
-const ROUTERS = ['server/index.mjs', 'server/session-routes.mjs'];
+const ROUTERS = ['server/index.mjs', 'server/session-routes.mjs', 'server/project-routes.mjs'];
 // The page's beacons: you're looking at a conversation, a diagram measured too small. They answer ok for a thread or an
 // item they don't know, whatever its id, so they're held to writing nothing, not to refusing.
 const BEACONS = ['^\\/api\\/threads\\/([^/]+)\\/view$', '^\\/api\\/threads\\/([^/]+)\\/items\\/([^/]+)\\/diagram$'];
