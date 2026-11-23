@@ -2,10 +2,7 @@
 // without rendering: plain text, mentions, the glossary lint, the disclosure parser (#1601), the raw-HTML lint, write
 // intent and room links (#1659). An escaped character is text, and a table row's cells are read one at a time.
 
-import { FENCE, HEADING, LIST_ITEM, QUOTE, RULE, TABLE_SEP } from './markdown-blocks.mjs';
-
-/** What the renderer reads as escaped after a backslash (markdown-inline.mjs, inline): the pair is text. */
-const ESCAPED = /[\\`*_{}[\]()#+\-.!|$~>@]/;
+import { ESCAPED, FENCE, HEADING, LIST_ITEM, QUOTE, RULE, TABLE_SEP } from './markdown-blocks.mjs';
 
 /**
  * The longest run of backticks that starts at or after each place in s, so a run with no close of its length is known

@@ -64,4 +64,41 @@ test('#1659 mapCodeSpans keeps the text outside spans as it was', () => {
     mapCodeSpans(md, (code) => `[${code}]`),
     '| h | i |\n|---|---|\n| [a] | b \\` c |',
   );
+  // Every character in ESCAPED is shared between inline() and mapCodeSpans: an escaped @ followed by a backtick opens
+  // a span in both, whereas an unescaped backslash before a non-ESCAPED char followed by a backtick escapes the backtick.
+  for (const ch of '\\`*_{}[]()#+-.!|$~>@') {
+    const line = `\\${ch}\`span\``;
+    assert.deepEqual(codeSpansIn(line), drawn(line), `escaped ${ch}`);
+  }
+});
+
+test('#1659 seeded differential fuzz: block order and table cells agree with renderMarkdown', () => {
+  let seed = 0x1659cafe;
+  const next = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed;
+  };
+  const tokens = ['# ', '> ', '- ', '1. ', '---', '|---|---|---|', '| a | b |', '`x|y`', '\\`z`', '``a`b``', 'plain | text', '   '];
+  let tables = 0;
+  for (let n = 0; n < 300; n++) {
+    const lines = Array.from({ length: 1 + (next() % 5) }, () => {
+      const parts = Array.from({ length: 1 + (next() % 3) }, () => tokens[next() % tokens.length]);
+      return parts.join(' ');
+    });
+    const md = lines.join('\n');
+    const html = renderMarkdown(md);
+    if (html.includes('<table>')) {
+      // Skip only when a table body row had more cells than its header, which the renderer drops.
+      const ths = (html.match(/<th>/g) ?? []).length;
+      const trs = [...html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].slice(1);
+      if (trs.length && lines.some((l) => l.split('|').length - 2 > ths)) continue;
+      tables++;
+    }
+    assert.deepEqual(
+      codeSpansIn(md).map((c) => c.replace(/\\\|/g, '|')),
+      drawn(md),
+      `seed case ${n}: ${JSON.stringify(md)}`,
+    );
+  }
+  assert.ok(tables > 0, `exercised ${tables} rendered tables`);
 });

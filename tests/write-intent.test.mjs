@@ -49,6 +49,24 @@ test('a confirm that shows the exact command lets it run with no model; one that
   const escaped = await setup();
   const notCode = `Not \\\`a\` \`${comment.input.command}\` this.`;
   assert.deepEqual(await afterBlock(escaped, confirm(notCode), ['confirm', {}], [comment]), [false]);
+  // Commands hidden from the rendered page (a dropped table cell, a link target, math, a 4-space indented fence) never
+  // count as confirmed, while an escaped pipe in a visible table cell matches the pipe the page draws.
+  const cmd = comment.input.command;
+  for (const hidden of [
+    `| Plan |\n| --- |\n| Open the PR | \`${cmd}\` |`,
+    `[Review the release notes](https://example.com/\`${cmd}\`)`,
+    `$x + \`${cmd}\` = y$`,
+    `    \`\`\`\n    ${cmd}\n    \`\`\``,
+  ]) {
+    const s = await setup();
+    assert.deepEqual(await afterBlock(s, confirm(hidden), ['confirm', {}], [comment]), [false], hidden);
+  }
+  const piped = bash('gh pr create --title "a | b" --body "Closes #508."');
+  const inCell = `| Command |\n| --- |\n| \`${piped.input.command.replace('|', '\\|')}\` |`;
+  const cellMismatch = await setup();
+  assert.deepEqual(await afterBlock(cellMismatch, confirm(inCell), ['confirm', {}], [bash(piped.input.command.replace('|', '\\|'))]), [false]);
+  const cellShown = await setup();
+  assert.deepEqual(await afterBlock(cellShown, confirm(inCell), ['confirm', {}], [piped]), [true]);
 });
 
 test('#557’s review: words an agent writes in a block it shows are never the person’s, whatever they claim', async () => {
