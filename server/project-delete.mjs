@@ -1,6 +1,6 @@
 // Deleting a project (#119). Its conversations go with it, each as deleting it would: its agents’ sessions, its topic
-// and side threads, its apps and its room’s assets (the person’s choice, 23 November 2026). The personas stay, and so
-// does its folder on this computer, with every file in it.
+// and side threads, its apps and its room’s assets, as the person chose. The personas stay, and so does its
+// folder on this computer, with every file in it.
 
 import { httpError } from './helpers.mjs';
 

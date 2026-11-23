@@ -1,7 +1,9 @@
 // #119: a project can be deleted from Settings. Its conversations go with it, as deleting each would (the person’s
-// choice, 23 November 2026), and its folder on this computer stays. The last project stays, since Postbox opens on one.
+// choice, 22 November 2026), and its folder on this computer stays. The last project stays, since Postbox opens on one.
 
 import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { projectsRoute } from '../server/project-routes.mjs';
 import * as arrange from './arrange.mjs';
@@ -77,4 +79,26 @@ test('#119 behind a held commit, a delete counts the projects as written: the la
   });
   assert.deepEqual(Object.keys(store.state.projects), ['p2']);
   assert.ok(!Object.values(store.state.threads).some((t) => t.projectId === 'p1'));
+});
+
+const route = (rt, path, method, body = {}) => projectsRoute(rt, path, method, body, new URLSearchParams());
+
+test('#119 behind a held commit, a conversation started there goes with its project, and nothing brings it back', async () => {
+  const root = tempDir('pb-attach-gone-');
+  const id = '11111111-2222-3333-4444-555555555555';
+  mkdirSync(join(root, '-work-site'));
+  const typed = { type: 'user', turnOrigin: 'human', cwd: '/work/site', message: { role: 'user', content: 'Fix the header' } };
+  writeFileSync(join(root, '-work-site', `${id}.jsonl`), `${JSON.stringify(typed)}\n`);
+  let started = null;
+  const store = await whileHeld(async ({ rt }) => {
+    rt.config.claudeProjectsRoot = root;
+    started = rt.createThread({ projectId: 'p1', title: 'Started behind the hold' });
+    await route(rt, '/api/projects/p1', 'DELETE');
+    // An attach into it, and a write of its push repository, find it gone rather than emit it again.
+    await assert.rejects(rt.attachClaudeSession({ claudeSessionId: id, projectId: 'p1' }), { status: 404 });
+    await assert.rejects(route(rt, '/api/projects/p1/push-url', 'PUT', { url: 'https://github.com/a/b.git' }), { status: 404 });
+  });
+  assert.equal(store.state.threads[started.id], undefined, 'the conversation started behind the hold went with it');
+  assert.deepEqual(Object.keys(store.state.projects), ['p2'], 'and the project stays gone');
+  assert.ok(!Object.values(store.state.personas).some((p) => p.handle === 'site'), 'the refused attach made no agent');
 });

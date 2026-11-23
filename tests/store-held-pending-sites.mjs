@@ -64,6 +64,9 @@ export const PENDING = {
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
   'read-folders.mjs': ['inReadFolder'], // whether a read is allowed with no card: a removal held behind a commit counts at once (#1074)
+  // The projects whose folder on a host goes with it, and the project a host folder is set on, any of them maybe deleted
+  // behind a held commit, so the write doesn’t bring one back (#119).
+  'remote/host-admin.mjs': ['removeHost', 'setProjectHostFolder'],
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies
   'remote/turns-prompt-cards.mjs': ['permissionCards'], // a host turn’s own cards, and a question’s blocks (#1059): the sweep its callers settle, and the calls an attach after a restart holds (#353)
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
@@ -104,6 +107,8 @@ export const PENDING = {
   // The project a delete takes, the projects it counts so the last one stays, and its conversations, any of them maybe
   // made or deleted behind a held commit (#119).
   'project-delete.mjs': ['deleteProject', 'deleteProject', 'deleteProject'],
+  // The project a push repository is set on, maybe deleted behind a held commit, so the write doesn’t bring it back (#119).
+  'projects.mjs': ['setPushUrl'],
   // pendingIn: a thread's sessions, for a read that decides whether to make one; ensure: the agent it joins, which the
   // same request may have just made; update and remove: the session they write; needAt: the need's item's time, maybe
   // added behind a held commit (#1155); forgetReported: an agent’s sessions whose last report a backend switch drops
