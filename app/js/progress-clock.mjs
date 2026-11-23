@@ -2,12 +2,11 @@
 // app/js/blocks.mjs, which draws the block and starts the clock.
 
 import { formatDuration } from '/shared/text.mjs';
-import { client } from './client.mjs';
 import { dayOf, timeOf } from './dom.mjs';
 
-/** A step still marked running looks stalled when its agent has stopped working and the block hasn’t moved for a minute. */
-const STALE_MS = 60000;
-const WORKING = new Set(['think', 'gen', 'tool']);
+// A step still marked running shows as running, however long since its last update: the server marks it stalled when
+// the turn that owns it ends, fails, stops or hangs, or when the background job it was held for ends (stallSteps,
+// turn-checks.mjs; job-records.mjs). A minute without an update said nothing about whether it was still going (#1715).
 
 /** Whether a progress block has a step still going, so its times move. @param {Element} node */
 export const isRunning = (node) => node.querySelector('[data-since-kind="running"], [data-since-kind="stalled"]') !== null;
@@ -19,24 +18,15 @@ export const isRunning = (node) => node.querySelector('[data-since-kind="running
 export function tickProgress(node) {
   const now = Date.now();
   const live = isRunning(node);
-  const se = client.state.sessions[node.dataset.progress];
-  const idle = !se || !WORKING.has(se.state);
-  const stale = idle && now - Number(node.dataset.updatedAt) > STALE_MS;
   for (const el of node.querySelectorAll('[data-since]')) {
     const ms = Math.max(1000, now - Number(el.dataset.since));
-    const li = el.closest('li');
     if (el.dataset.sinceKind === 'updated' && !live) {
       const at = Number(el.dataset.since);
       el.textContent = `Updated ${timeOf(at)}`;
       el.title = `${dayOf(at)} ${timeOf(at)}`;
     } else if (el.dataset.sinceKind === 'updated') el.textContent = ms < 5000 ? 'Updated just now' : `Updated ${formatDuration(ms)} ago`;
-    else if (el.dataset.sinceKind === 'stalled' || stale)
-      el.textContent = `No update for ${formatDuration(Math.max(1000, now - Number(node.dataset.updatedAt)))}`;
+    else if (el.dataset.sinceKind === 'stalled') el.textContent = `No update for ${formatDuration(Math.max(1000, now - Number(node.dataset.updatedAt)))}`;
     else el.textContent = formatDuration(ms);
-    if (li && el.dataset.sinceKind === 'running') {
-      li.classList.toggle('stale', stale);
-      li.querySelector('.g')?.setAttribute('aria-label', stale ? 'Stalled' : 'Running');
-    }
   }
 }
 
