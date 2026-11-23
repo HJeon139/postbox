@@ -38,6 +38,7 @@ const PUBLISHED = {
   'read-message.mjs': ['readMessage', 'readMessage', 'readConversation'], // read tools (T-31)
   'remote/turns-snapshot.mjs': ['readable'], // the snapshot sent to a host: it leaves the process
   'review-comments.mjs': ['find'], // review_block on a block shown in the room
+  'review-correct.mjs': ['correctComment'], // the person’s correction of their comment on a review they see (#858)
   'review-files.mjs': ['findReviewFile'], // a review’s image, as an HTTP answer to the page (#780)
   'search-conversation.mjs': ['searchConversation'], // a read tool (#1340): the hit’s item, as read_conversation reads it
   'runtime.mjs': ['resolveProposal'], // a person’s action on an item they see

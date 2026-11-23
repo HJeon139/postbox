@@ -230,7 +230,8 @@ export const SCHEMAS = {
             ...ANCHOR,
             anchor: str({ min: 1, max: 80 }),
             status: oneOf('open', 'resolved'),
-            comments: list(obj({ author, text: str({ min: 1, max: 4000 }) }, ['author', 'text']), { min: 1, max: 50 }),
+            // edited: the person’s correction of their comment before it, after they submitted (#858, review-correct.mjs).
+            comments: list(obj({ author, text: str({ min: 1, max: 4000 }), edited: bool() }, ['author', 'text']), { min: 1, max: 50 }),
           },
           ['id', 'status', 'comments'],
         ),
