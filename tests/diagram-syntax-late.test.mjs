@@ -29,3 +29,35 @@ test('#731 a syntax error the parser finds after the lint turn’s settle still 
     ['diagram-error', 'text-too-small'],
   );
 });
+
+test('#731 a syntax error the parser finds after Postbox stopped saving is neither sent nor kept', async () => {
+  useParser({ url: new URL('./fixtures/diagram-parse/slow-worker.mjs', import.meta.url), ms: 5000 });
+  const { rt, store, t, adapter } = setup();
+  rt.checks.config.lintSettleMs = 1500;
+  adapter.next.push(async (c) => c.text('```mermaid\nflowchart TD\n  A --> B\n```'));
+  rt.sendMessage(t.id, { text: 'draw it' });
+  await settle(rt);
+  // The parse is still running (the stand-in answers after 1.8 s) when the store stops saving.
+  store.writable = false;
+  await sleep(2500);
+  store.writable = true;
+  assert.equal(adapter.calls.filter((c) => c.message.kind === 'lint').length, 0, 'no lint turn');
+  const se = Object.values(store.state.sessions).find((s) => s.threadId === t.id);
+  assert.deepEqual(se?.diagramsLinted ?? [], [], 'not remembered');
+});
+
+test('#731 a syntax error the parser finds once Postbox is closing is neither sent nor kept', async () => {
+  useParser({ url: new URL('./fixtures/diagram-parse/slow-worker.mjs', import.meta.url), ms: 5000 });
+  const { rt, store, t, adapter } = setup();
+  rt.checks.config.lintSettleMs = 1500;
+  adapter.next.push(async (c) => c.text('```mermaid\nflowchart TD\n  A --> B\n```'));
+  rt.sendMessage(t.id, { text: 'draw it' });
+  await settle(rt);
+  // The parse is still running (the stand-in answers after 1.8 s) when Postbox starts closing.
+  rt.checks.running.shuttingDown = true;
+  await sleep(2500);
+  rt.checks.running.shuttingDown = false;
+  assert.equal(adapter.calls.filter((c) => c.message.kind === 'lint').length, 0, 'no lint turn');
+  const se = Object.values(store.state.sessions).find((s) => s.threadId === t.id);
+  assert.deepEqual(se?.diagramsLinted ?? [], [], 'not remembered');
+});
