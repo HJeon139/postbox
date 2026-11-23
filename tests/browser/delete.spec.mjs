@@ -102,7 +102,7 @@ test('deleting an agent that runs on a host says its memory there goes, and its 
   await page.keyboard.press('Escape');
   await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('hosts')));
   const card = page.locator(`[data-status="${host.id}"]`);
-  await expect.soft(card).toContainText('A deleted agent’s memory is still on this host.');
+  await expect.soft(card).toContainText('Postbox still has to ask this host to remove any memory a deleted agent left here.');
   app.store.emit('host.forget', { id: host.id, drop: [p.id] });
   await expect.soft(card).not.toContainText('deleted agent');
   app.store.emit('host', { id: host.id, removed: true });

@@ -222,6 +222,9 @@ test('#491 a host that can’t remove it now says why, keeps it owed, and is ask
   manager.emit('status', 'ho_a');
   await settled();
   assert.equal(manager.links.get('ho_a').sent.length, 1, 'not asked again on that connection');
+  manager.connect('ho_a');
+  await settled();
+  assert.deepEqual(manager.links.get('ho_a').sent, [{ type: 'forget', persona: 'pe_gone' }], 'asked again on the next');
 });
 
 test('#491 a forgotten for a persona owed but not asked on this send settles nothing', async () => {

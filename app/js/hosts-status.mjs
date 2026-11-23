@@ -33,15 +33,20 @@ const HARNESSES = {
 const INSTALL_KINDS = new Set(['not-installed', 'version', 'bad-token']);
 
 /**
- * The deleted agents whose memory is still on this host (#491): it goes when Postbox next connects there with this
- * version on the host, so a host that’s off, or runs an older Postbox, keeps it until then, and the person sees so.
+ * The deleted agents whose memory this host still has to be asked to remove (#491): asked when Postbox next connects
+ * there with this version on the host, so a host that’s off, or runs an older Postbox, keeps any until then, and the
+ * person sees so.
  * @param {any} host
  */
 const owedView = (host) => {
   const n = S().hostForgets?.[host.id]?.length ?? 0;
   if (!n) return null;
-  const who = n === 1 ? 'A deleted agent’s memory is' : `${n} deleted agents’ memory is`;
-  return h('p.small.dim', `${who} still on this host. Postbox removes it the next time it connects here, once the host runs this version.`);
+  // Every host owes every deleted agent, wherever it ran, so this says what Postbox still has to ask, not what’s there.
+  const whose = n === 1 ? 'a deleted agent' : `${n} deleted agents`;
+  return h(
+    'p.small.dim',
+    `Postbox still has to ask this host to remove any memory ${whose} left here. It asks the next time it connects, once the host runs this version.`,
+  );
 };
 
 /** Repaints one host’s status, leaving its editor alone. @param {import('./hosts.mjs').Panel} p @param {string} id */
