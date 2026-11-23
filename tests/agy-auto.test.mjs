@@ -290,7 +290,7 @@ test('the persona sheet says Antigravity’s Auto works like Run everything for 
     help('auto'),
     /^Antigravity’s Auto: agy’s own Auto isn’t available on this account, so Auto works like Run everything for the tools you give it/,
   );
-  assert.match(help('auto'), /Nothing judges those calls, and with Shell a command can reach \.git or Antigravity’s own settings/);
+  assert.match(help('auto'), /With Shell, its reads and edits run anywhere too, \.git included; a command can still reach Antigravity’s own settings/);
   assert.match(help('auto'), /Without Shell or Web, .* asks with a card before the rest/);
   // #794: a public fetch runs with no card even without Web (autoAllows, publicFetch), so the text says so.
   assert.match(help('auto'), /Without Shell or Web, .*fetches public pages/);
