@@ -85,3 +85,24 @@ test('#619 a classic scroll bar on the root is a new width, without a resize', a
   await expect(page.locator(WORK)).toBeVisible();
   await expect(handle, 'the pane’s most is 40 px less').toHaveAttribute('aria-valuemax', String(wide - 40));
 });
+
+test('#619 a width that changes as the pane opens, in the same task, is corrected once the root reports it', async ({ page }) => {
+  await countRootReads(page);
+  await fresh(page, room, 1280);
+  const work = page.locator('#work-button');
+  const handle = page.locator('.rp-handle');
+  await work.click();
+  await expect(page.locator(WORK)).toBeVisible();
+  const wide = Number(await handle.getAttribute('aria-valuemax'));
+  await work.click();
+  await expect(page.locator(WORK)).toBeHidden();
+  // The scroll bar shows and the pane opens in one task, as when a long room opens from a short one: the pane reads
+  // the width it kept, and the root’s observer reports the new one only after the next layout.
+  await page.evaluate(() => {
+    window.__scrollBar = 40;
+    document.documentElement.style.width = `${innerWidth - 40}px`;
+    /** @type {HTMLElement} */ (document.querySelector('#work-button')).click();
+  });
+  await expect(page.locator(WORK)).toBeVisible();
+  await expect(handle, 'the pane refits to the narrower root').toHaveAttribute('aria-valuemax', String(wide - 40));
+});

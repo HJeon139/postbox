@@ -30,13 +30,17 @@ if (typeof addEventListener === 'function')
     roomWidth = null;
   });
 // A classic scroll bar showing or going changes the root’s width without a resize. The root grows taller with every
-// new item, so only a change of width forgets it: the root has no padding, so its box is as wide as clientWidth.
+// new item, so only a change of width forgets it: the root has no padding, so its box is as wide as clientWidth. The
+// observer reports after the layout that changed it, so a pane that opened in the meantime kept the old width: an open
+// pane refits on pb-room-width, as it does on pb-rail.
 let rootBox = -1;
 if (typeof ResizeObserver === 'function')
   new ResizeObserver(([entry]) => {
     if (entry.contentRect.width === rootBox) return;
+    const first = rootBox < 0;
     rootBox = entry.contentRect.width;
     roomWidth = null;
+    if (!first) dispatchEvent(new Event('pb-room-width'));
   }).observe(document.documentElement);
 
 /**
@@ -179,6 +183,7 @@ export function mountWidth(el, onCramped) {
   };
   addEventListener('resize', refit);
   addEventListener('pb-rail', refit);
+  addEventListener('pb-room-width', refit);
   return {
     handle,
     update,
@@ -190,6 +195,7 @@ export function mountWidth(el, onCramped) {
       asideToasts(0);
       removeEventListener('resize', refit);
       removeEventListener('pb-rail', refit);
+      removeEventListener('pb-room-width', refit);
     },
   };
 }
