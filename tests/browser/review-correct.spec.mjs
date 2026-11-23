@@ -43,6 +43,13 @@ test('#858 a sent comment is corrected in place: what was sent stays, the correc
   const thread = block.locator('.rv-thread', { hasText: 'Make it bolder.' });
   await expect(thread.locator('.c'), 'what was sent, then the correction').toHaveText([/Make it bolder\./, /Edited.*Make it bolder, and say why\./]);
   await expect(page.locator('#composer-input'), 'focus goes to the message box, as after any act on a block').toBeFocused();
+  await expect(thread.getByRole('button', { name: /^Edit your sent comment/ }), 'Edit is on the correction alone, the comment it replaces').toHaveCount(1);
+  await expect(
+    thread
+      .locator('.c')
+      .last()
+      .getByRole('button', { name: /^Edit your sent comment/ }),
+  ).toBeVisible();
   await expect.poll(() => corrections(blockId)).toEqual([{ threadId: 'you-1-1', line: 3, replaces: 'Make it bolder.', text: 'Make it bolder, and say why.' }]);
 });
 
@@ -64,5 +71,17 @@ test('#858 Cancel leaves a sent comment as it was, and a refused correction open
   await block.getByRole('button', { name: 'Send correction', exact: true }).click();
   await expect(block.getByRole('alert'), 'why it was refused').toContainText('longer than 4000 characters');
   await expect(box, 'the box is open again, with what was typed').toHaveValue(long);
+  expect(corrections(blockId), 'the agent heard nothing').toEqual([]);
+});
+
+test('#858 Send correction with the text as it was closes the box as Cancel does, and sends nothing', async ({ page }) => {
+  const { block, blockId, edit } = await sent(page, 'Unchanged correction');
+  await edit.click();
+  const box = block.getByRole('textbox', { name: 'Edit your sent comment on line 3', exact: true });
+  await expect(box).toHaveValue('Make it bolder.');
+  await block.getByRole('button', { name: 'Send correction', exact: true }).click();
+  await expect(box, 'the box closes').toHaveCount(0);
+  await expect(edit, 'and Edit is back, with focus').toBeFocused();
+  await expect(block.locator('.rv-thread .c'), 'nothing was added').toHaveCount(1);
   expect(corrections(blockId), 'the agent heard nothing').toEqual([]);
 });

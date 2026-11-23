@@ -80,11 +80,19 @@ export function correctionBox(t, { b, itemId, rerender, correct }) {
   // from this box, which is still on the page.
   const send = (/** @type {string} */ value) => {
     if (!value.trim()) return;
+    // What was sent, unchanged, is no correction: the box closes as Cancel does, and nothing is sent.
+    if (value.trim() === t.comments[lastMine(t)].text) return close();
     d.correcting = null;
-    correct(t.id, value).catch((/** @type {any} */ e) => {
-      Object.assign(d, { correcting: t.id, correctingText: value, correctFocus: true, correctError: e.message });
-      rerender();
-    });
+    correct(t.id, value).then(
+      (/** @type {any} */ r) => {
+        // Postbox found nothing to change, so no update draws the thread again: close the box here.
+        if (r?.unchanged) close();
+      },
+      (/** @type {any} */ e) => {
+        Object.assign(d, { correcting: t.id, correctingText: value, correctFocus: true, correctError: e.message });
+        rerender();
+      },
+    );
   };
   const box = commentBox(d, {
     label: `Edit your sent comment on ${placeIn(t, b)}`,
