@@ -64,6 +64,7 @@ import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, mainCheckout, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
+import { staleNoter } from './uat/stale-notes.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
 import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
@@ -208,21 +209,7 @@ async function main() {
       Object.values(st?.items ?? {})
         .flatMap((list) => list ?? [])
         .find((x) => x?.id === id);
-    /** @type {Set<string>} */
-    const staleSeen = new Set();
-    // Postbox’s notice on a block whose answer it refused because it changed meanwhile (#123): the page’s own record.
-    const noteStale = async () => {
-      const notes = await d.staleNotes().catch((e) => {
-        log(`Couldn’t read the page’s stale-answer notices, so the stale-answer trigger may be missed: ${e.message}`);
-        return [];
-      });
-      for (const n of notes ?? []) {
-        if (!n?.key || staleSeen.has(`${n.key}\n${n.text}`)) continue;
-        staleSeen.add(`${n.key}\n${n.text}`);
-        facts.probes.stale.push({ key: n.key, text: n.text, at: Date.now(), step: timeline.length });
-        log(`the page refused a stale answer to ${n.key}: ${n.text}`);
-      }
-    };
+    const noteStale = staleNoter({ d, facts, timeline, log }); // the page’s refused stale answers (#123)
     // An answer while the agent works (an interrupt that answers), to cause #123’s refusals: the page answers the
     // revision it showed, whatever the agent has done since.
     const answerMidTurn = async (it) => {
