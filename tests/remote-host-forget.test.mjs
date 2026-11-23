@@ -36,9 +36,11 @@ function rig({ answer = (m) => ({ type: 'forgotten', persona: m.persona }), conn
     link: linkOf,
     need: (/** @type {string} */ id) => manager.needs.push(['need', id]),
     release: (/** @type {string} */ id) => manager.needs.push(['release', id]),
-    /** The host connects, on a fresh link. @param {string} id */
+    /** The host connects again: as in hosts.mjs, the host keeps its link, and link.mjs gives it a new welcome. @param {string} id */
     connect(id) {
-      manager.links.set(id, newLink(answer));
+      const l = linkOf(id);
+      l.connected = true;
+      l.welcome = {};
       manager.states.set(id, 'connected');
       manager.emit('status', id);
     },
@@ -48,7 +50,7 @@ function rig({ answer = (m) => ({ type: 'forgotten', persona: m.persona }), conn
 
 /** A link whose daemon answers each message with answer(msg). @param {(m: any) => any} answer */
 function newLink(answer) {
-  const l = Object.assign(new EventEmitter(), { connected: true, sent: /** @type {any[]} */ ([]) });
+  const l = Object.assign(new EventEmitter(), { connected: true, welcome: {}, sent: /** @type {any[]} */ ([]) });
   Object.assign(l, {
     send(/** @type {any} */ msg) {
       l.sent.push(msg);
@@ -74,6 +76,7 @@ test('#491 a deleted persona is owed by every host; a connected one removes it a
     ['need', 'ho_a'],
     ['release', 'ho_a'],
   ]);
+  assert.equal(manager.links.get('ho_a').listenerCount('message'), 0, 'stops listening once the send settles');
   assert.equal(manager.links.has('ho_b'), false, 'a host that’s off isn’t dialed for it');
   manager.connect('ho_b');
   await settled();
@@ -99,7 +102,7 @@ test('#491 a daemon from before `forget` keeps it owed, says so once, and is ask
   assert.equal(manager.links.get('ho_a').sent.length, 1);
   manager.connect('ho_a');
   await settled();
-  assert.equal(manager.links.get('ho_a').sent.length, 1, 'a fresh connection is asked again');
+  assert.equal(manager.links.get('ho_a').sent.length, 2, 'the next connection, on the same link, is asked again');
 });
 
 test('#491 a link that closes before the answer leaves it owed', async () => {
@@ -132,7 +135,7 @@ test('#491 no answer within the wait leaves it owed and lets the host idle', asy
   assert.equal(manager.links.get('ho_a').sent.length, 1);
   manager.connect('ho_a');
   await settled();
-  assert.equal(manager.links.get('ho_a').sent.length, 1, 'sent on the fresh link');
+  assert.equal(manager.links.get('ho_a').sent.length, 2, 'sent again on the next connection, on the same link');
 });
 
 test('#491 a persona deleted while a host’s send waits goes when that send ends, on the same connection', async () => {
@@ -224,7 +227,15 @@ test('#491 a host that can’t remove it now says why, keeps it owed, and is ask
   assert.equal(manager.links.get('ho_a').sent.length, 1, 'not asked again on that connection');
   manager.connect('ho_a');
   await settled();
-  assert.deepEqual(manager.links.get('ho_a').sent, [{ type: 'forget', persona: 'pe_gone' }], 'asked again on the next');
+  assert.deepEqual(
+    manager.links.get('ho_a').sent,
+    [
+      { type: 'forget', persona: 'pe_gone' },
+      { type: 'forget', persona: 'pe_gone' },
+    ],
+    'asked again on the next, on the same link',
+  );
+  assert.equal(manager.links.get('ho_a').listenerCount('message'), 0, 'stops listening after a refusal');
 });
 
 test('#491 a forgotten for a persona owed but not asked on this send settles nothing', async () => {
@@ -242,4 +253,24 @@ test('#491 a forgotten for a persona owed but not asked on this send settles not
   l.emit('message', { type: 'forgotten', persona: 'pe_other' });
   await settled();
   assert.deepEqual(store.state.hostForgets.ho_a, ['pe_gone', 'pe_other']);
+});
+
+test('#491 a send the link can’t write releases the host at once and leaves the connection to ask again', async () => {
+  const { store, manager, hosts } = rig();
+  const l = manager.link('ho_a');
+  const send = l.send;
+  l.send = () => false;
+  watchForgets(hosts);
+  oweForget(hosts, 'pe_gone');
+  await settled();
+  assert.deepEqual(manager.needs, [
+    ['need', 'ho_a'],
+    ['release', 'ho_a'],
+  ]);
+  assert.equal(l.listenerCount('message'), 0);
+  l.send = send;
+  manager.emit('status', 'ho_a');
+  await settled();
+  assert.deepEqual(l.sent, [{ type: 'forget', persona: 'pe_gone' }], 'not marked asked, so the same connection sends it');
+  assert.equal(store.state.hostForgets.ho_a, undefined);
 });

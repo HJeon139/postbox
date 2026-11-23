@@ -20,9 +20,14 @@ export const FORGET_WAIT_MS = 30_000;
 
 /** Per Hosts, the hosts whose removals are being sent now. @type {WeakMap<Hosts, Set<string>>} */
 const sending = new WeakMap();
-/** Links not asked again until the next connection: one that refused `forget` (an older daemon), couldn’t do it, or
- * didn’t answer within the wait, so a host that never answers can still idle. */
-const done = new WeakSet();
+/** Per link, the connection (its welcome) not asked again: one that refused `forget` (an older daemon), couldn’t do
+ * it, or didn’t answer within the wait, so a host that never answers can still idle. Keyed on the welcome, not the
+ * link, because a host keeps one link across its connections (hosts.mjs) and link.mjs sets a new welcome at each. */
+const done = new WeakMap();
+/** @param {any} l */
+const isDone = (l) => done.has(l) && done.get(l) === l.welcome;
+/** @param {any} l */
+const markDone = (l) => done.set(l, l.welcome);
 
 /**
  * A persona was deleted: every host owes its memory’s removal (a host removed meanwhile owes nothing: the reducer
@@ -62,7 +67,7 @@ export async function sendForgets(
   } catch {
     return;
   }
-  if (done.has(l)) return;
+  if (isDone(l)) return;
   busy.add(hostId);
   const why = Symbol('forget');
   hosts.manager.need(hostId, why);
@@ -74,7 +79,7 @@ export async function sendForgets(
   }
   // Owed while this send waited: sent now, on the same connection.
   const more = (hosts.store.state.hostForgets?.[hostId] ?? []).some((p) => !owed.includes(p));
-  if (more && !done.has(l)) await sendForgets(hosts, hostId, { waitMs, setTimer, clearTimer });
+  if (more && !isDone(l)) await sendForgets(hosts, hostId, { waitMs, setTimer, clearTimer });
 }
 
 /**
@@ -97,13 +102,13 @@ function answers(hosts, hostId, l, left, { waitMs, setTimer, clearTimer }) {
         hosts.store.emit('host.forget', { id: hostId, drop: [msg.persona] });
         if (!left.size) finish();
       } else if (refusesType(msg, 'forget')) {
-        done.add(l);
+        markDone(l);
         console.error(
           `${nameOf(hosts, hostId)} runs a Postbox older than removing a deleted agent’s memory, so ${left.size} deleted agent(s)’ memory stays there until it runs this version: ${msg.message}`,
         );
         finish();
       } else if (msg.type === 'error' && msg.re === 'forget') {
-        done.add(l);
+        markDone(l);
         console.error(`${nameOf(hosts, hostId)} couldn’t remove a deleted agent’s memory: ${msg.message} Postbox asks again when it next connects.`);
         finish();
       }
@@ -112,7 +117,7 @@ function answers(hosts, hostId, l, left, { waitMs, setTimer, clearTimer }) {
     l.on('message', onMessage);
     l.on('state', onState);
     timer = setTimer(() => {
-      done.add(l);
+      markDone(l);
       finish();
     }, waitMs);
     for (const persona of left) if (!l.send(message('postbox-to-daemon', 'forget', { persona }))) return finish();
