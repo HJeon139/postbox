@@ -1,5 +1,6 @@
 // An asset’s content is kept only in its blob file (#516 S3, designs/architecture/assets.md, “Assets”): the asset events are
-// public and carry metadata alone, so the content must never reach the event log, a snapshot, or /api/state’s JSON.
+// public and carry metadata alone, so the content must never reach the event log, a snapshot, or /api/state’s stored
+// state. A running step’s capped preview in /api/state’s `live` isn’t stored, and isn’t checked here (#1655).
 // Nor in another encoding (#722): JSON writes a Buffer as its bytes, `{"type":"Buffer","data":[…]}`, and a copy could
 // be hex or base64. So each event, asset and version carries exactly its known keys, and the content is looked for in
 // each of those forms too.
