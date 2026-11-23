@@ -1,11 +1,11 @@
 // #1713: what ends an agent’s wait to try a turn again after its provider failed. Any other failure (it then needs the
 // person), a later failure of its own, Dismiss and Stop each end the wait, so no row says “retrying” at a time past,
-// and a wait that ended starts nothing when its timer comes (pre-review of PR #1717). The waits are the test’s own
+// and a wait that ended starts nothing when its timer comes (#1713). The waits are the test’s own
 // clock (config.retryAfter), as in turn-transient.test.mjs.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { dismissFailed } from '../server/card-needs.mjs';
-import { withTransient } from '../server/harness-failure.mjs';
+import { withQuota, withTransient } from '../server/harness-failure.mjs';
 import { agentState } from '../shared/agent-state.mjs';
 import { needsYouNow } from '../shared/needs.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
@@ -67,6 +67,9 @@ test('#1713 Dismiss ends the wait: its end runs nothing, and the row no longer s
   const failed = f.store.items(f.t.id).find((i) => i.kind === 'agent' && i.sessionId === f.beta.id);
   dismissFailed(f.rt, f.t.id, failed.id);
   assert.equal(f.se().autoRetry ?? null, null);
+  const reply = f.store.item(f.t.id, failed.id);
+  assert.equal(reply.note ?? null, null, 'its note no longer says when it would try');
+  assert.equal(reply.transient.at, null);
   const calls = f.adapter.calls.length;
   f.waits.shift()();
   await settle(f.rt);
@@ -87,7 +90,7 @@ test('#1713 Stop of the retried turn ends the count', async () => {
 });
 
 test('#1713 a turn the person started meanwhile moves past the failed one: the wait’s end runs nothing', async () => {
-  // Critic’s review of PR #1717: the person wrote something new while the agent waited, and that turn still ran when
+  // #1713: the person wrote something new while the agent waited, and that turn still ran when
   // the wait ended; the old turn went again after it, a turn the person had moved past.
   const f = room();
   await overloadedOnce(f);
@@ -102,8 +105,9 @@ test('#1713 a turn the person started meanwhile moves past the failed one: the w
   assert.equal(f.adapter.calls.length, calls, 'only the person’s new turn ran');
 });
 
-test('#1713 a turn that started a tool before its provider failed isn’t sent again on its own', async () => {
-  // Critic’s review of PR #1717: a resend could repeat a write, a push or an @-mention the failed attempt already made.
+test('#1713 a turn that started a tool goes again too, told to check what ran before repeating it', async () => {
+  // #1713: a turn with N tool calls meets the provider N+1 times, so most 529s come after a tool. Its retry carries a
+  // line to check what ran, as a scheduled wake’s recovery does (designs/508/design.md, “Record lifecycles”).
   const f = room();
   f.adapter.next.push(async (/** @type {any} */ ctx) => {
     ctx.activity?.({ id: 'tu1', label: 'Bash: git push', state: 'running', kind: 'tool' });
@@ -111,7 +115,47 @@ test('#1713 a turn that started a tool before its provider failed isn’t sent a
   });
   f.rt.sendMessage(f.t.id, { text: '@beta push it' });
   await settle(f.rt);
-  assert.equal(f.waits.length, 0, 'no wait to try again');
+  assert.equal(f.waits.length, 1, 'it waits to go again');
+  assert.deepEqual(f.se().autoRetry.started, ['Bash: git push']);
+  assert.equal(needsYouNow(f.se()), false);
+  f.waits.shift()();
+  await settle(f.rt);
+  const retried = JSON.stringify(f.adapter.calls.at(-1).message.context);
+  assert.match(retried, /after it had started work: Bash: git push/, 'the retry is told what ran');
+  assert.match(retried, /Check what those calls changed or sent before you repeat any of them/);
+});
+
+test('#1713 a retry Postbox couldn’t start ends the wait: the row says failed, and the reply keeps its Retry', async () => {
+  const f = room();
+  await overloadedOnce(f);
+  const failed = f.store.items(f.t.id).find((i) => i.kind === 'agent' && i.sessionId === f.beta.id);
+  f.rt.turnService.retry = async () => {
+    throw Object.assign(new Error('the backend is gone'), { status: 500 });
+  };
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    f.waits.shift()();
+    await settle(f.rt);
+  } finally {
+    console.warn = warn;
+  }
   assert.equal(f.se().autoRetry ?? null, null);
-  assert.equal(needsYouNow(f.se()), true, 'it needs the person, as any failed turn does');
+  assert.equal(f.se().currentStep, 'Failed');
+  assert.equal(agentState(f.se(), f.store.state).state, 'failed');
+  const reply = f.store.item(f.t.id, failed.id);
+  assert.equal(reply.status, 'failed');
+  assert.equal(reply.note ?? null, null, 'its note no longer says when it would try');
+});
+
+test('#1713 a retry its backend refused for quota ends the wait, and waits for the quota instead', async () => {
+  const f = room();
+  await overloadedOnce(f);
+  f.adapter.next.push(async () => {
+    throw withQuota(new Error('You’ve hit your limit'), { until: Date.now() + 3_600_000 });
+  });
+  f.waits.shift()();
+  await settle(f.rt);
+  assert.equal(f.se().autoRetry ?? null, null);
+  assert.notEqual(agentState(f.se(), f.store.state).state, 'retrying');
 });

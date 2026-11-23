@@ -1,7 +1,6 @@
-// Scheduled wake lifecycle: persistence, timers, cancellation, restart re-arming and recovery from a dropped network
-// or a provider’s passing failure, such as 529 Overloaded (#458, #466, #1713).
+// Scheduled wake lifecycle: persistence, timers, cancellation, restart re-arming and network recovery (#458, #466).
 
-import { failureClass } from './harness-failure.mjs';
+import { isNetworkFailure } from './harness-failure.mjs';
 import { httpError } from './helpers.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
 import { newId } from './store.mjs';
@@ -135,7 +134,7 @@ const retryDelay = (attempt) => Math.min(RETRY_MAX_MS, 1000 * 2 ** Math.min(Math
 const recoveryText = (turn, tools, why = 'failed because the network dropped') =>
   `[Postbox] Your last scheduled turn${turn ? ` (${turn.id})` : ''} ${why} after it started ${tools.join(', ')}. Check what those calls changed or sent before you continue. Do not repeat them until you have checked their effects.`;
 
-/** Settles a scheduled wake’s turn, re-arming only the current schedule after a network or a provider’s failure. */
+/** Settles a scheduled wake’s turn, re-arming only the current schedule after a network failure. */
 export function settleScheduledWake(rt, turn, err) {
   const id = turn.asked?.message?.scheduledWakeId;
   if (!id) return;
@@ -144,10 +143,7 @@ export function settleScheduledWake(rt, turn, err) {
   if (!err || err.name === 'AbortError') return finishSchedule(rt, sc, err ? 'canceled' : 'done');
   // A host turn marked lost is still running there and RemoteTurns will attach it again; no second recovery is armed.
   if (rt.store.pending.session(turn.sessionId)?.remoteTurn?.state === 'lost') return finishSchedule(rt, sc, 'done');
-  // A dropped network or a provider’s passing failure recovers through the schedule (turn-transient.mjs leaves it here).
-  const failure = failureClass(err);
-  if (failure?.kind !== 'network' && failure?.kind !== 'transient') return finishSchedule(rt, sc, 'done');
-  const why = failure.kind === 'transient' ? `failed because its provider was unavailable (${failure.status})` : undefined;
+  if (!isNetworkFailure(err)) return finishSchedule(rt, sc, 'done');
   const now = Date.now();
   const attempt = (sc.attempt ?? 0) + 1;
   const firstFailureAt = sc.firstFailureAt ?? now;
@@ -163,7 +159,7 @@ export function settleScheduledWake(rt, turn, err) {
     at: now + retryDelay(attempt),
     attempt,
     firstFailureAt,
-    ...(tools.length ? { recoveryTools: tools, recoveryNote: recoveryText(turn, tools, why) } : {}),
+    ...(tools.length ? { recoveryTools: tools, recoveryNote: recoveryText(turn, tools) } : {}),
   };
   rt.store.emit('schedule', next);
   // The line keeps the recovery too, for a Retry after you cancel the schedule (prepareScheduledRetry).

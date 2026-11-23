@@ -140,15 +140,15 @@ test('#1713 a restart starts the wait again for what was left of it, so the repl
   assert.equal(f.adapter.calls.length, 2);
 });
 
-test('#1713 a scheduled wake its provider overloaded recovers through its schedule, not also on its own', async () => {
+test('#1713 a scheduled wake’s turn its provider failed isn’t retried on its own, and its schedule is as on main', async () => {
+  // #1713: re-arming the schedule for a provider’s failure raised an alarm at each of its
+  // attempts. A scheduled wake is left as it was: it fails once, and isn’t sent again here either.
   const f = room();
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the run.' });
   f.adapter.next.push(overloaded());
   clearTimeout(f.rt.timers.get(sc.id));
   fireScheduledWake(f.rt, sc);
   await settle(f.rt);
-  assert.ok(f.store.state.schedules[sc.id], 'the wake is due again under its schedule');
-  assert.ok(f.rt.timers.has(sc.id));
-  clearTimeout(f.rt.timers.get(sc.id));
-  assert.deepEqual(f.waits, [], 'no second retry of its own');
+  assert.equal(f.store.state.schedules[sc.id], undefined, 'its schedule is done, as on main');
+  assert.deepEqual(f.waits, [], 'no retry of its own');
 });

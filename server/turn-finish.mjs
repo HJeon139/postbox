@@ -10,7 +10,7 @@ import { heldBy } from './turn-held.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { outOfQuota, quotaBack } from './turn-quota.mjs';
 import { foldSteps, settleSubagentSteps } from './turn-steps.mjs';
-import { afterTransient, autoRetryEnds, transientMarks, transientRetry, transientSession } from './turn-transient.mjs';
+import { afterTransient, autoRetryEnds, forgetWait, transientMarks, transientRetry, transientSession } from './turn-transient.mjs';
 
 /**
  * A turn ended, with err when it failed or was stopped: it leaves the running turns, its replies and the session show
@@ -80,9 +80,10 @@ function settleReplies(rt, turn, items, err) {
 function markFailed(rt, se, turn, { target, message, failure, transient }) {
   const quota = failure?.kind === 'quota' ? outOfQuota(rt, se, failure.until, turn.threadId) : null;
   // Any failure but a provider’s ends a wait to try again: the agent needs the person, or waits for its quota (#1713).
+  if (!transient) forgetWait(rt, se.id);
   /** @type {Record<string, any>} */
-  let need = { needs: { kind: 'failed', itemId: target, text: message, ...rt.sessions.awayFrom(se, turn.threadId) }, autoRetry: null };
-  if (quota) need = { quota, needs: null, autoRetry: null };
+  let need = { needs: { kind: 'failed', itemId: target, text: message, ...rt.sessions.awayFrom(se, turn.threadId) } };
+  if (quota) need = { quota, needs: null };
   else if (transient) need = transientSession(transient, turn.threadId, target);
   rt.sessions.update(se.id, {
     state: 'failed',
