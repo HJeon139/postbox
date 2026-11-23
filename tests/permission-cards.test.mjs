@@ -104,8 +104,9 @@ test('#281 a card that expires while Always allow writes its rule leaves no rule
     answer = await c.askPermission({ tool: 'Bash', summary: 'run the tests', input: { command: 'npm test' } });
   });
   rt.sendMessage(t.id, { text: 'run the tests' });
-  await sleep(20);
-  const card = store.items(t.id).find((i) => i.kind === 'permission');
+  const shown = () => store.items(t.id).find((i) => i.kind === 'permission');
+  await untilTurns(() => !!shown(), 'the card');
+  const card = shown();
   assert.equal(card.always.saves, 'Bash(npm test:*)');
   const pending = rt.act(t.id, card.id, 'always');
   expireWait(rt, card.id); // while the rule is being written
@@ -134,8 +135,9 @@ test('#238 a permission card for a chained command offers no Always allow, since
     answer = await c.askPermission({ tool: 'Bash', summary: 'run the tests', input: { command: 'cd src && npm test' } });
   });
   rt.sendMessage(t.id, { text: 'run the tests' });
-  await sleep(20);
-  const card = store.items(t.id).find((i) => i.kind === 'permission');
+  const shown = () => store.items(t.id).find((i) => i.kind === 'permission');
+  await untilTurns(() => !!shown(), 'the card');
+  const card = shown();
   assert.equal(card.always, null);
   rt.act(t.id, card.id, 'allow');
   await settle(rt);
