@@ -15,9 +15,10 @@ export const PENDING = {
   'claude-mirror.mjs': ['attachClaudeSession', 'mirror', 'pollMirror'],
   'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleFixing', 'settleRetiredNeeds', 'cardOf'], // an app left fixing, settled by whether its app-check entry still runs, a sweep that writes back (#1664); the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
+  'app-check-wait.mjs': ['waitForCheck'], // whether a version’s check already settled before the reply’s wait started (#337)
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
   'ask-question.mjs': ['handOver'], // a host question’s blocks this turn answered, whose answers go on when the host ends its call (#1059)
-  'apps.mjs': ['endFixes', 'showApp', 'updateApp'], // an agent’s apps left fixing, a sweep that writes back (#1664); show_app and update_app of an app the turn may have just shown
+  'apps.mjs': ['appCheck', 'endFixes', 'showApp', 'updateApp'], // the check just recorded, for the reply waiting on it (#337); an agent’s apps left fixing, a sweep that writes back (#1664); show_app and update_app of an app the turn may have just shown
   'app-entries.mjs': ['lostEvent'], // the voice line an app’s event posted, maybe behind a held commit, read when its turn starts (#1425)
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
@@ -29,8 +30,9 @@ export const PENDING = {
   'entry-queue.mjs': ['editEntry', 'editEntry', 'leaveOut', 'cancelEntry', 'removedUnread'],
   // the item an entry gives the turn whole, maybe settled in the same held write; the person’s message, posted at send
   // and the thread a summary request summarizes, maybe opened behind a held commit, for where its reply posts (#1425)
-  // and an input’s entries’ items, their files and its thread, maybe written in the same held write (#1427)
-  'turns.mjs': ['inputOf', 'inputOf', 'readItem', 'summaryOf', 'messageOf', 'personMessage'],
+  // and an input’s entries’ items, their files and its thread, maybe written in the same held write (#1427); and
+  // whether a review’s block is still answered when its entry starts the turn (#716)
+  'turns.mjs': ['inputOf', 'inputOf', 'readItem', 'summaryOf', 'messageOf', 'messageOf', 'personMessage'],
   'turn-service.mjs': ['retryEntries'], // whether the session a Retry wakes is still failed, maybe written behind a held commit (#1429)
   'queue-convert.mjs': ['convertOne', 'convertOne', 'notDelivered'], // the agents a stored queue's row waited for or came from, and the item an earlier conversion posted for it, read as the start's writes leave them (#1423)
   // A wake's schedule, maybe just scheduled, changed or removed behind a held commit: arming its timer, firing it,

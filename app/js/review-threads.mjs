@@ -5,27 +5,13 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { authorName } from '/shared/review-comments.mjs';
 import { h, icon, plural, trusted } from './dom.mjs';
+import { commentBox, placeKey, placeOf, quoted } from './review-comment-box.mjs';
+import { correctButton, correctingIn, correctionBox, lastMine } from './review-correct.mjs';
 import { parkComment, saveEdit } from './review-draft.mjs';
 import { revisionOf } from './review-view.mjs';
 
 /** Whether a thread or a comment is on key: an app’s part, or a line. */
 const on = (b, x, key) => (b.format === 'app' ? x.anchor === key : x.line === key);
-/**
- * Where a comment is, as its box and buttons name it (#858): “line 3”, an app’s part, or the text a selection quotes.
- * @param {any} at  a line, a part, or a selection with its quote @param {any} b
- */
-function placeOf(at, b) {
-  if (typeof at === 'object') return `“${at.quote.length > 60 ? `${at.quote.slice(0, 59)}…` : at.quote}”`;
-  return b.format === 'app' ? at : `line ${at}`;
-}
-/** A draft comment’s place, as placeOf takes it. @param {any} c @param {any} b */
-function placeKey(c, b) {
-  if (typeof c.quote === 'string') return c;
-  return b.format === 'app' ? c.anchor : c.line;
-}
-/** The text a comment on a selection is about, as its meta line shows it. */
-const quoted = (q) => (typeof q === 'string' ? h('q.rv-quote', q.length > 80 ? `${q.slice(0, 79)}…` : q) : null);
-
 /**
  * @param {any} key  a line, an app’s part, or (in Preview) the anchor of a selection being commented on
  * @param {{ b: any, d: any, done: boolean, rerender: () => HTMLElement, closeComposer: (key: any) => void }} env
@@ -33,15 +19,20 @@ const quoted = (q) => (typeof q === 'string' ? h('q.rv-quote', q.length > 80 ? `
  */
 export function threadBox(key, env) {
   const { b, d, done } = env;
-  const parts = (b.threads ?? []).filter((t) => on(b, t, key)).map(threadOf);
+  const parts = (b.threads ?? []).filter((t) => on(b, t, key)).map((t) => threadOf(t, env));
   for (const c of d.comments.filter((x) => on(b, x, key))) parts.push(draftOf(c, env));
   if (!done && d.composing === key) parts.push(composer(key, env));
   return parts;
 }
 
-/** A thread the agent keeps on the block: who said what, and whether it’s resolved. @param {any} t */
-function threadOf(t) {
+/**
+ * A thread the agent keeps on the block: who said what, and whether it’s resolved. The person’s last comment in it has
+ * Edit, which corrects it (#858); a correction shows as edited, after what they sent. @param {any} t @param {any} env
+ */
+function threadOf(t, env) {
   const resolved = t.status === 'resolved';
+  const mine = lastMine(t);
+  const open = !env.closed && correctingIn(env.itemId) === t.id;
   return h(
     'div.rv-thread',
     { class: resolved ? 'resolved' : '' },
@@ -54,10 +45,13 @@ function threadOf(t) {
           h('b', authorName(c.author).replace(/^@/, '')),
           i === 0 ? h('span.status-tag', { class: resolved ? 'ok' : 'open' }, resolved ? [icon('check', 'i-sm'), 'Resolved'] : 'Open') : null,
           i === 0 ? quoted(t.quote) : null,
+          c.edited ? h('span.status-tag', 'Edited') : null,
+          i === mine && !open && !env.closed ? correctButton(t, env) : null,
         ),
         h('div', { html: trusted(renderMarkdown(c.text)) }),
       ),
     ),
+    open ? correctionBox(t, env) : null,
   );
 }
 
@@ -143,102 +137,6 @@ function editorOf(c, at, { b, d, rerender }) {
     onSave: (value) => close(value),
     onCancel: () => close(null),
   });
-}
-
-/** Each comment box’s review draft, so a repaint finds only its own box (refocus). */
-const ownerOf = new WeakMap();
-
-/**
- * Gives a comment box focus, with its saved selection, when it was just opened (`d[opened]`), or after a repaint only
- * if it had focus (#858): a repaint while the person types elsewhere, such as another agent’s comment arriving, leaves
- * their focus where it is. It had focus if its old box, `mark` in this review, still has it, or if nothing does and
- * this box had it last: a resync takes the old box off the page before the new one is built.
- * @param {HTMLTextAreaElement} ta @param {any} d @param {string} opened @param {string} mark @param {number[]} saved
- * @param {string} text
- */
-function refocus(ta, d, opened, mark, saved, text) {
-  ownerOf.set(ta, d);
-  const active = document.activeElement;
-  const nowhere = !active || active === document.body;
-  const had = d.focusedBox === mark && (nowhere || (ownerOf.get(active) === d && active.hasAttribute(mark)));
-  const open = d[opened] || had;
-  d[opened] = false;
-  if (open) queueMicrotask(() => restoreComposer(ta, saved, text));
-}
-
-/**
- * Keeps which box has focus on its draft. Focus moving to another control clears it; the box leaving the page, or the
- * window losing focus, doesn’t. @param {any} d @param {string} mark
- */
-const tracked = (d, mark) => ({
-  [mark]: '',
-  onfocus: () => {
-    d.focusedBox = mark;
-  },
-  onblur: (/** @type {FocusEvent} */ e) => {
-    if (e.relatedTarget) d.focusedBox = null;
-  },
-});
-
-/** Restores focus and the saved selection after the box is rebuilt. */
-function restoreComposer(ta, saved, text) {
-  ta.focus();
-  const start = Math.min(saved[0] ?? text.length, text.length);
-  ta.setSelectionRange(start, Math.min(saved[1] ?? start, text.length));
-}
-
-/**
- * A review comment box: the new comment’s, and a draft’s open for editing (#858). Its text and caret are kept on the
- * draft, in the two fields `fields` names, so a repaint while it’s open (another agent’s comment, a revision) leaves
- * both; Ctrl+Enter saves it and Escape cancels it; and it takes focus as refocus says.
- * @param {any} d
- * @param {{ label: string, mark: string, opened: string, fields: [string, string], text: string, quote: HTMLElement | null,
- *   saveLabel: string, hint: string, onSave: (value: string) => void, onCancel: () => void }} box
- */
-function commentBox(d, box) {
-  const [textField, selectionField] = box.fields;
-  const saved = Array.isArray(d[selectionField]) ? d[selectionField] : [box.text.length, box.text.length];
-  const remember = () => {
-    d[textField] = ta.value;
-    d[selectionField] = [ta.selectionStart, ta.selectionEnd];
-  };
-  const ta = h('textarea.textarea', {
-    'aria-label': box.label,
-    ...tracked(d, box.mark),
-    style: { minHeight: '56px' },
-    value: box.text,
-    oninput: remember,
-    onselect: remember,
-    onkeyup: remember,
-    onmouseup: remember,
-    onkeydown: (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        box.onSave(ta.value);
-      }
-      // Escape closes the box, and only the box: not a full-screen review around it too.
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        box.onCancel();
-      }
-    },
-  });
-  refocus(ta, d, box.opened, box.mark, saved, box.text);
-  return h(
-    'div.rv-thread',
-    h(
-      'div.reply',
-      { style: { flexDirection: 'column' } },
-      box.quote ? h('span.small.dim', 'On ', box.quote) : null,
-      ta,
-      h(
-        'div.row-flex',
-        h('button.btn.sm.send', { type: 'button', onclick: () => box.onSave(ta.value) }, box.saveLabel),
-        h('button.btn.sm.ghost', { type: 'button', onclick: box.onCancel }, 'Cancel'),
-        h('span.small.dim', box.hint),
-      ),
-    ),
-  );
 }
 
 /** The box a new comment is written in, focused as it opens. @param {any} key @param {any} env */

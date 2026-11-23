@@ -43,6 +43,8 @@ export class Apps {
     this.send = send;
     this.narrator = narrator;
     this.config = config;
+    /** @type {Map<string, Set<(check: any) => void>>} show_app / update_app replies waiting for a version’s check (#337) */
+    this.waiting = new Map();
   }
 
   // ── Apps ───────────────────────────────────────────────────────────────────────────
