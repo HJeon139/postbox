@@ -94,3 +94,29 @@ test('#1654 the same turn ending while the page is open: the ring follows the ag
     .poll(() => page.evaluate(() => document.activeElement?.closest('[data-key]')?.getAttribute('data-key') ?? null), { message: 'focus lands in the choice' })
     .toBe(ask.id);
 });
+
+test('#1654 a background job that ends after the turn hides its part, and the ring moves to the choice', async ({ page }) => {
+  const { rt } = app;
+  const projectId = Object.values(rt.store.state.projects)[0].id;
+  const t = rt.createThread({ projectId, title: 'Click logs, job', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  const part = { kind: 'agent', sessionId: se.id, handle: 'researcher', turnId: 'turn_job', status: 'done' };
+  arrange.post(rt, t.id, { kind: 'user', text: '@researcher index the logs, then ask me how to partition them.' });
+  // The turn ended with its first part's job still running, so that part shows, with the turn's speaker line.
+  const JOB = { id: 'job_1', label: 'npm run index', state: 'running', job: 'j1' };
+  const stepsOnly = arrange.post(rt, t.id, { ...part, text: '', activity: { steps: [THOUGHT, JOB] } });
+  const ask = arrange.post(rt, t.id, { kind: 'block', sessionId: se.id, handle: 'researcher', turnId: 'turn_job', valid: true, block: CHOICE });
+  arrange.post(rt, t.id, { ...part, text: 'Pick a partition above.' });
+  arrange.setSession(rt, se.id, { state: 'needs', needs: { kind: 'block', itemId: ask.id, text: CHOICE.title } });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(page.locator(`[data-key="${stepsOnly.id}"]`), 'shown while its job runs').toBeVisible();
+  // The job ends: only an item patch, with no session event after it.
+  arrange.setItem(rt, t.id, stepsOnly.id, { activity: { steps: [THOUGHT, { ...JOB, state: 'done' }] } });
+  await synced(page, app);
+  await expect(page.locator(`[data-key="${stepsOnly.id}"]`), 'hidden once its job is done').toBeHidden();
+  await expect(page.locator(`[data-key="${ask.id}"] .who pb-ring[data-session="${se.id}"]`), 'the choice takes the speaker line').toHaveAttribute(
+    'state',
+    'needs',
+  );
+});
