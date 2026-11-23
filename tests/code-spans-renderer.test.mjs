@@ -28,6 +28,11 @@ const CASES = [
   ['a span inside one table cell', '| h | i |\n|---|---|\n| `a` | b |'],
   ['an escaped pipe inside a cell’s span', '| h |\n|---|\n| `a \\| b` |'],
   ['a plain line, as before', 'run `npm test` and ``a ` b`` then'],
+  // The pre-review of the fix's fuzz: a heading or a quote over a rule is no table header.
+  ['a heading over a rule, which is no table', '# `a|b`\n---'],
+  ['a quote over a rule, which is no table', '> `a|b`\n---'],
+  ['a heading over a rule, then a span with a pipe', '## A | B\n---\n`@x|y`'],
+  ['a quote over a rule, then a span with a pipe', '> a | b\n---\n`@x|y`'],
 ];
 
 for (const [name, md] of CASES)

@@ -2,10 +2,10 @@
 // without rendering: plain text, mentions, the glossary lint, the disclosure parser (#1601), the raw-HTML lint, write
 // intent and room links (#1659). An escaped character is text, and a table row's cells are read one at a time.
 
+import { FENCE, HEADING, LIST_ITEM, QUOTE, RULE, TABLE_SEP } from './markdown-blocks.mjs';
+
 /** What the renderer reads as escaped after a backslash (markdown-inline.mjs, inline): the pair is text. */
 const ESCAPED = /[\\`*_{}[\]()#+\-.!|$~>@]/;
-/** A table's separator row, as the renderer reads it (markdown.mjs, TABLE_SEP). */
-const TABLE_SEP = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
 
 /**
  * The longest run of backticks that starts at or after each place in s, so a run with no close of its length is known
@@ -88,10 +88,12 @@ export function mapCodeSpans(s, fn) {
   // Most messages have no backticks, and mentions are read on every keystroke and every item in a catch-up.
   if (!s.includes('`')) return s;
   const parts = s.split(/(\r\n?|\n)/);
-  // The lines of a table: a line with a “|” whose next is a separator row, then each line with a “|” after it.
+  // The lines of a table: a line with a “|” whose next is a separator row, then each line with a “|” after it. As
+  // the renderer reads blocks (markdown.mjs), a heading, a quote, a list item, a fence or a rule is read first, so
+  // none of them starts a table, though a rule under it matches the separator.
   const inTable = new Set();
   for (let i = 0; i < parts.length; i += 2) {
-    if (!parts[i].includes('|') || !TABLE_SEP.test(parts[i + 2] ?? '')) continue;
+    if (!parts[i].includes('|') || !TABLE_SEP.test(parts[i + 2] ?? '') || readFirst(parts[i])) continue;
     inTable.add(i);
     for (i += 4; i < parts.length && parts[i].includes('|') && parts[i].trim(); i += 2) inTable.add(i);
     i -= 2;
@@ -103,6 +105,9 @@ export function mapCodeSpans(s, fn) {
     })
     .join('');
 }
+
+/** Whether the renderer reads a line as another block before it could start a table. @param {string} line */
+const readFirst = (line) => [FENCE, HEADING, QUOTE, LIST_ITEM, RULE].some((re) => re.test(line));
 
 /** The code of each code span in the text, in order, as the page draws them. @param {string} s */
 export function codeSpansIn(s) {
