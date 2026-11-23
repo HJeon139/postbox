@@ -4,26 +4,15 @@
 
 import { promises as fsp } from 'node:fs';
 import { posix } from 'node:path';
-import { hostPaths, TURN_FILES, validateRunnerRecord } from '../../../shared/remote-protocol.mjs';
+import { hostPaths, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { scan } from './daemon-scan.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon */
 
-/** The version a turn’s runner.json names, checked as every runner record is, or null. @param {Daemon} d @param {string} turn */
-async function runnerVersion(d, turn) {
-  try {
-    const r = validateRunnerRecord(JSON.parse(await fsp.readFile(d.p.turn(turn, TURN_FILES.runner), 'utf8')));
-    return r.ok && r.msg.turn === turn ? r.msg.version : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * The turns of `turns` this daemon’s broker serves: all but those whose runner.json names another version. One with
- * no runner record yet is its own: only this version starts turns now. A record that fails its check still names
- * its version, and one naming another is left to that version: replaying its records here would send its calls and
- * prompts to Postbox with no way back to its shim.
+ * no runner record yet is its own: only this version starts turns now. Replaying another version’s records here would
+ * send its calls and prompts to Postbox with no way back to its shim.
  * @template {{ turn: string }} T @param {Daemon} d @param {T[]} turns @returns {Promise<T[]>}
  */
 export async function ownTurns(d, turns) {
@@ -35,11 +24,18 @@ export async function ownTurns(d, turns) {
   return own;
 }
 
-/** The version a turn’s runner.json names, checked or not, or null when it has none. @param {Daemon} d @param {string} turn */
+/**
+ * The version a turn’s runner.json names, or null when it names none Postbox installs. Only the version is read, not
+ * the whole record: an older version’s record may have a shape this one’s check refuses, and that turn is still that
+ * version’s, to relay. hostPaths refuses a name that isn’t a version, so it can never become a path.
+ * @param {Daemon} d @param {string} turn
+ */
 async function namedVersion(d, turn) {
   try {
     const r = JSON.parse(await fsp.readFile(d.p.turn(turn, TURN_FILES.runner), 'utf8'));
-    return typeof r?.version === 'string' ? r.version : null;
+    if (typeof r?.version !== 'string') return null;
+    hostPaths(d.home, r.version);
+    return r.version;
   } catch {
     return null;
   }
@@ -51,7 +47,7 @@ export async function olderTurns(d) {
   const byVersion = new Map();
   for (const t of await scan(d)) {
     if (t.state !== 'running') continue;
-    const version = await runnerVersion(d, t.turn);
+    const version = await namedVersion(d, t.turn);
     if (version && version !== d.version) byVersion.set(version, [...(byVersion.get(version) ?? []), t.turn]);
   }
   return byVersion;

@@ -33,20 +33,23 @@ import { olderTurns, socketOf, stopped } from './relay-turns.mjs';
  * @typedef {{ write: (line: string) => void, end: () => void }} RelayLink  one connection to an older daemon
  * @typedef {{ version: string, turns: Set<string>, driver: Conn, settings: Record<string, unknown> | null,
  *   link: RelayLink | null, waiting: string[] | null, ready: boolean, crossed: boolean, told: Set<string>, done: boolean,
- *   timer: any, welcomeTimer: any }} Relay
+ *   timer: any, welcomeTimer: any, holdsAnswers: boolean }} Relay
  *   settings: the driver’s, for the hello, or null. link: once connected; waiting: Postbox’s lines for it until the
  *   older daemon welcomes it, then null: a line it can’t read before then would read as a refused hello. ready: the
  *   older daemon welcomed it; crossed: a frame of its went to Postbox, which may wait on it now. told: its turns Postbox
  *   has heard are lost while it still relays them. timer: its next look at whether its turns still run; welcomeTimer:
- *   how long the older daemon has to welcome it.
+ *   how long the older daemon has to welcome it. holdsAnswers: an answer or a reply waits in `waiting`.
  */
 
 /** How a relay’s hello says what it is. */
 export const RELAY_PREFIX = 'relay_';
 /** How often a relay looks whether its turns still run, once Postbox no longer reads them. */
 export const RELAY_CHECK_MS = 30_000;
-/** How long the older daemon has to welcome a relay: its own hello looks for programs, which takes seconds at most. */
-export const RELAY_WELCOME_MS = 15_000;
+/**
+ * How long the older daemon has to welcome a relay. Its hello may first ask the login shell for PATH (5 s at most,
+ * login-path.mjs), then node’s version (10 s) and each harness’s at once (10 s, programs.mjs): 25 s, so twice that.
+ */
+export const RELAY_WELCOME_MS = 60_000;
 const UP = new Set(['tool', 'prompt', 'prompt-expired', 'error']);
 const DOWN = new Set(['snapshot', 'snapshot-items', 'answer', 'reply']);
 /** Postbox’s lines a relay holds until its welcome: the snapshot and what follows it, far fewer in practice. */
@@ -97,6 +100,7 @@ function planned(d, c, version, turns, settings) {
     done: false,
     timer: null,
     welcomeTimer: null,
+    holdsAnswers: false,
   };
   d.relays.add(relay);
   for (const t of turns) d.relayed.set(t, relay);
@@ -141,7 +145,7 @@ async function connect(d, relay) {
   relay.welcomeTimer = d.timers.setTimeout(() => {
     if (relay.done || relay.ready) return;
     d.log(`Postbox ${relay.version}’s daemon didn’t welcome a relay within ${Math.round(d.relayWelcomeMs / 1000)} s.`);
-    endRelay(d, relay, relay.crossed ? 'lost' : 'off');
+    endRelay(d, relay, lostOrOff(relay));
   }, d.relayWelcomeMs);
 }
 
@@ -179,11 +183,11 @@ function fromOlder(d, relay, text) {
   // A broker frame may come before the welcome, since the older daemon makes the relay its driver before it answers
   // the hello: it goes on as any other.
   if (!relay.ready && type === 'error' && typeof body.turn !== 'string') return refused(d, relay, body.code);
-  // After the welcome, such an error refuses a line the relay sent, which names no turn: an answer or a reply may be
-  // gone, so every turn of the relay is lost, as Postbox can’t tell which.
+  // After the welcome, such an error refuses a line the relay sent (bad-message), or says another Postbox took A over
+  // (taken-over). Either way an answer or a reply may be gone, and Postbox can’t tell which: the relay ends, lost.
   if (type === 'error' && typeof body.turn !== 'string') {
     d.log(`Postbox ${relay.version}’s daemon refused a line from a relay: ${body.code}.`);
-    return tellLost(d, relay, relay.turns);
+    return endRelay(d, relay, 'lost');
   }
   if (!UP.has(type) || typeof body.turn !== 'string' || !relay.turns.has(body.turn)) return;
   if (relay.driver.closed || d.driver !== relay.driver) return;
@@ -225,18 +229,28 @@ function tellLost(d, relay, turns) {
  */
 function refused(d, relay, code) {
   d.log(`Postbox ${relay.version}’s daemon refused a relay: ${code}.`);
-  if (code !== 'bad-message' || !relay.settings) return endRelay(d, relay, relay.crossed ? 'lost' : 'off');
+  if (code !== 'bad-message' || !relay.settings) return endRelay(d, relay, lostOrOff(relay));
   const lines = relay.waiting;
   endRelay(d, relay, null);
   const again = planned(d, relay.driver, relay.version, [...relay.turns], null);
   again.crossed = relay.crossed;
+  again.holdsAnswers = relay.holdsAnswers;
   again.waiting = lines;
   void connectOrOff(d, again);
 }
 
 /** The older daemon’s connection ended: lost, once it carried anything, else off. @param {Daemon} d @param {Relay} relay */
 function relayClosed(d, relay) {
-  if (!relay.done) endRelay(d, relay, relay.ready || relay.crossed ? 'lost' : 'off');
+  if (!relay.done) endRelay(d, relay, relay.ready ? 'lost' : lostOrOff(relay));
+}
+
+/**
+ * How a relay that ends before its welcome says so: lost once Postbox may wait on it, for a frame it carried up or an
+ * answer or reply it held, else off: nothing of these turns went either way.
+ * @param {Relay} relay
+ */
+function lostOrOff(relay) {
+  return relay.crossed || relay.holdsAnswers ? 'lost' : 'off';
 }
 
 /**
@@ -285,11 +299,13 @@ export function toOlder(d, m) {
   const { type, ...body } = m;
   const line = encode(message('postbox-to-daemon', type, body));
   if (!relay.waiting) relay.link?.write(line);
-  else if (relay.waiting.length < WAITING_MAX) relay.waiting.push(line);
-  else {
+  else if (relay.waiting.length < WAITING_MAX) {
+    relay.waiting.push(line);
+    if (type === 'answer' || type === 'reply') relay.holdsAnswers = true;
+  } else {
     // Never a line dropped without a word: a relay that can’t hold more ends, and its turns say so.
     d.log(`A relay to Postbox ${relay.version} held ${WAITING_MAX} lines with no welcome.`);
-    endRelay(d, relay, relay.crossed ? 'lost' : 'off');
+    endRelay(d, relay, lostOrOff(relay));
   }
   return true;
 }

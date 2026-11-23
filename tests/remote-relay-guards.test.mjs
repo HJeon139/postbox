@@ -34,7 +34,7 @@ function fakeOlder(onLine) {
   return { heard, serveA };
 }
 
-test('#759: a line the old daemon refuses after its welcome marks the relay’s turns lost, once', async (t) => {
+test('#759: a line the old daemon refuses after its welcome ends the relay, lost', async (t) => {
   /** @type {any} */
   let h;
   const older = fakeOlder((m, s) => {
@@ -49,7 +49,8 @@ test('#759: a line the old daemon refuses after its welcome marks the relay’s 
   pb.send('answer', answer('p1'));
   pb.send('answer', answer('p2'));
   assert.deepEqual(await pb.msgs.next('relay'), { type: 'relay', turn: 'ta', version: OLD, state: 'lost' });
-  await until(() => older.heard.filter((m) => m.type === 'answer').length === 2, 'both answers at A');
+  const [side] = h.sockets;
+  await until(() => side.readableEnded, 'the relay to end');
   await sleep(20);
   assert.equal(pb.msgs.messages.filter((m) => m.type === 'relay').length, 1, 'once');
   assert.ok(
@@ -58,19 +59,23 @@ test('#759: a line the old daemon refuses after its welcome marks the relay’s 
   );
 });
 
-test('#759: an old daemon that never welcomes the relay leaves the turn its notice, not a silence', async (t) => {
-  const older = fakeOlder(() => {});
-  const h = await host(t, { serveA: older.serveA, relayWelcomeMs: 50 });
-  await h.first.hangUp();
-  const pb = await drive(h.b);
-  pb.send('answer', answer('p1'));
-  assert.deepEqual(await pb.msgs.next('relay'), { type: 'relay', turn: 'ta', version: OLD, state: 'off' });
-  assert.ok(!older.heard.some((m) => m.type === 'answer'), 'nothing but the hello went before a welcome');
-  assert.ok(
-    h.logs.some((l) => l.includes('didn’t welcome a relay')),
-    h.logs.join('\n'),
-  );
-});
+for (const [held, state] of /** @type {const} */ ([
+  [false, 'off'],
+  [true, 'lost'],
+]))
+  test(`#759: an old daemon that never welcomes the relay leaves the turn ${state}, ${held ? 'its held answer gone' : 'nothing held'}`, async (t) => {
+    const older = fakeOlder(() => {});
+    const h = await host(t, { serveA: older.serveA, relayWelcomeMs: 50 });
+    await h.first.hangUp();
+    const pb = await drive(h.b);
+    if (held) pb.send('answer', answer('p1'));
+    assert.deepEqual(await pb.msgs.next('relay'), { type: 'relay', turn: 'ta', version: OLD, state });
+    assert.ok(!older.heard.some((m) => m.type === 'answer'), 'nothing but the hello went before a welcome');
+    assert.ok(
+      h.logs.some((l) => l.includes('didn’t welcome a relay')),
+      h.logs.join('\n'),
+    );
+  });
 
 test('#759: a relay that can hold no more of Postbox’s lines before a welcome ends with its notice', async (t) => {
   const older = fakeOlder(() => {});
@@ -78,7 +83,8 @@ test('#759: a relay that can hold no more of Postbox’s lines before a welcome 
   await h.first.hangUp();
   const pb = await drive(h.b);
   for (let i = 0; i <= 1000; i++) pb.send('answer', answer(`p${i}`));
-  assert.deepEqual(await pb.msgs.next('relay'), { type: 'relay', turn: 'ta', version: OLD, state: 'off' });
+  // The answers it held are gone, so Postbox may wait on them: lost.
+  assert.deepEqual(await pb.msgs.next('relay'), { type: 'relay', turn: 'ta', version: OLD, state: 'lost' });
   assert.ok(
     h.logs.some((l) => l.includes('held 1000 lines with no welcome')),
     h.logs.join('\n'),
@@ -159,15 +165,7 @@ test('#759: an old turn that has ended isn’t relayed', async (t) => {
   await untouched(h, await drive(h.b));
 });
 
-test('#759: a turn whose runner.json names another turn isn’t relayed', async (t) => {
-  const h = await host(t);
-  await h.first.hangUp();
-  const file = hostPaths(h.home, VERSION).turn('ta', TURN_FILES.runner);
-  writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), turn: 'tother' }));
-  await untouched(h, await drive(h.b));
-});
-
-test('#759: an old turn whose runner.json fails its check stays the old daemon’s, though it can’t be relayed', async (t) => {
+test('#759: an old turn whose runner.json this version’s check refuses is left to the old daemon, and never silent', async (t) => {
   const h = await host(t, {
     // A’s shim queues a call while A’s laptop is gone; then the turn’s runner record is damaged, its version kept.
     async beforeB({ first, shim, home }) {
@@ -180,6 +178,9 @@ test('#759: an old turn whose runner.json fails its check stays the old daemon�
     },
   });
   const pb = await drive(h.b);
-  await sleep(40);
-  assert.ok(!pb.msgs.messages.some((m) => m.turn === 'ta' && m.type === 'tool'), 'B’s broker doesn’t send A’s call');
+  // B relays it by the version its record names. Here B’s cleanup has already retired A’s folder, socket and all,
+  // since it counts only records that pass its check (cleanup.mjs): so the turn hears off, rather than nothing.
+  assert.deepEqual(await pb.msgs.next('relay'), { type: 'relay', turn: 'ta', version: OLD, state: 'off' });
+  await sleep(30);
+  assert.ok(!pb.msgs.messages.some((m) => m.type === 'tool'), 'B’s broker left A’s call to A');
 });

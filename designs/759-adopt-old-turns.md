@@ -39,7 +39,7 @@ sequenceDiagram
 
 1. **When B relays.** After each hello from Postbox, B scans the turn folders, as it does today for the welcome. For each running turn whose `runner.json` names another version, B opens one relay connection per version to that version’s socket.
 2. **The relay’s hello.** It’s Postbox’s own `hello { version: PROTOCOL_VERSION, token, instance }`, with the shared token and B’s own relay instance (`relay_` and random hex, the same for each of B’s relays, so a relay opened again replaces the one before it), and never `takeover`. The token proves the host account, not that B’s laptop owns A’s driver, so the relay never displaces a laptop still attached to A. A refuses it with `busy` while another Postbox drives it, and with `version` when its protocol differs. Either way B leaves A as it is and falls back to the notice below for those turns.
-3. **Where B connects.** B reads the version from the turn’s `runner.json`, validated as start records are, derives A’s socket with `hostPaths(home, version)`, and connects only if that path is a Unix socket inside the account’s private `~/.postbox-remote/`. The token never goes into a log, an error or a forwarded frame.
+3. **Where B connects.** B reads the version the turn’s `runner.json` names, which must be one `hostPaths` takes, derives A’s socket with `hostPaths(home, version)`, and connects only if that path is a Unix socket inside the account’s private `~/.postbox-remote/`. The token never goes into a log, an error or a forwarded frame.
 4. **One relay per driver.** Each relay belongs to B’s current driver. It closes when that driver disconnects or is replaced, and the next driver’s hello opens it again. A relay connection is terminal: B never relays from a connection that is itself a relay, so two versions that both relay can’t loop through each other.
 5. **Up, from A.** A sends `tool`, `prompt`, `prompt-expired` and its errors for A’s turns, and again after each hello, as it would to Postbox. B validates each frame, forwards only those broker types, and only for turns assigned to that relay. A call or prompt is (turn, id), and turn IDs are unique across versions, so Postbox applies each identity once, as it does now.
 6. **Down, from Postbox.** B keeps a map from turn to relay. A `reply`, `answer`, `snapshot` or `snapshot-items` for a relayed turn is validated and goes to its relay, not to B’s own broker. Nothing else reaches A.
@@ -51,15 +51,15 @@ sequenceDiagram
     - **Relay interrupted:** “Postbox lost its link to Postbox A on <host>, which this turn runs under. A question or block it sent meanwhile may not have arrived.” It names the version rather than calling it older: after a downgrade, the turn runs under a newer one.
 
     That keeps the issue’s first “done when” for every case.
-11. **B’s own broker leaves A’s turns alone.** At its start, B’s broker replays only its own turns’ records, so A’s queued calls and prompts reach Postbox only through A, and their answers can only go back there. A `runner.json` that fails its check but names another version is left to that version too; such a turn isn’t relayed either.
+11. **B’s own broker leaves A’s turns alone.** At its start, B’s broker replays only its own turns’ records, so A’s queued calls and prompts reach Postbox only through A, and their answers can only go back there. B reads only the version a turn’s `runner.json` names, for this and for relaying: an older version’s record may have a shape B’s check refuses, and that turn is still that version’s.
 12. **Before the welcome.** B plans its relays before it welcomes Postbox, so the snapshot Postbox sends once welcomed goes to A. The relay holds Postbox’s lines until A welcomes it: A refuses a line it can’t read at once, with no turn, which would otherwise read as a refused hello. A broker frame A sends before its own welcome is relayed as any other.
 13. **Settings.** The relay’s hello carries the driver’s `hello.settings`. An older daemon refuses a setting it doesn’t know as `bad-message`; the relay then says hello again without them, so A keeps its defaults, and sends A what Postbox sent meanwhile.
 14. **A second laptop still on A** keeps it only while it stays connected. If its link drops, B’s next hello may take A’s free driver slot, and that laptop’s reconnect gets `busy`.
-15. **Nothing dropped without a word.** Each of these tells Postbox the relay’s turns are `lost`, once each, or `off` if nothing has crossed yet:
-    - a frame from A whose shape B no longer takes;
-    - after A’s welcome, an error from A that names no turn, which is how A refuses a line it can’t read, such as an answer;
-    - no welcome from A within 15 seconds of the relay’s hello;
-    - more than 1,000 of Postbox’s lines held while A’s welcome is awaited.
+15. **Nothing dropped without a word.** Each of these tells Postbox the relay’s turns are `lost`, or `off` if nothing has crossed yet and no answer or reply was held for A:
+    - a frame from A whose shape B no longer takes (that turn only, and the relay goes on);
+    - after A’s welcome, an error from A that names no turn, which is how A refuses a line it can’t read, such as an answer (the relay ends);
+    - no welcome from A within 60 seconds of the relay’s hello, twice A’s slowest hello (the relay ends);
+    - more than 1,000 of Postbox’s lines held while A’s welcome is awaited (the relay ends).
 
 ## Security
 
