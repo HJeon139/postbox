@@ -222,7 +222,7 @@ test('#337 a result that arrived before the wait starts returns at once, and war
   let replyText = '';
   s.setDeliver(async () => {
     const r = s.tools.update_app({ id: s.r.appId, code: '<p>v2</p>' });
-    const p = withCheck(s.rt.apps, 'update_app', r, null);
+    const p = withCheck(s.rt.apps, 'update_app', r, null, s.rt.turns.get(s.se.id));
     s.rt.appCheck(s.r.appId, { version: 2, problems: [WARNING] });
     replyText = (await p).message;
   });
@@ -232,6 +232,8 @@ test('#337 a result that arrived before the wait starts returns at once, and war
   assert.equal(s.rt.s.apps[s.r.appId].check.told, true);
   await sleep(20);
   assert.deepEqual(s.lints(), [], 'no lint turn repeats the warning carried in the reply');
+  const queued = [...s.rt.checks.lints.values()].flatMap((e) => e.problems);
+  assert.deepEqual(queued, [], 'and none is queued for one');
 });
 
 test('#337 with no page open, the reply returns at once, as before', async () => {
