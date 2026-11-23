@@ -81,7 +81,10 @@ test('#1654 the same turn ending while the page is open: the ring follows the ag
   const ask = arrange.post(rt, t.id, { kind: 'block', sessionId: se.id, handle: 'researcher', turnId: 'turn_live', valid: true, block: CHOICE });
   const last = arrange.post(rt, t.id, { ...part, status: 'streaming', text: 'Pick a partition above.' });
   await synced(page, app);
-  // The turn ends in the server's order (turn-finish.mjs): its parts settle first, then the session says it needs you.
+  // The page hears the session as it works, as in any real turn, so the turn’s end isn’t the first session event heard.
+  arrange.setSession(rt, se.id, { state: 'gen' });
+  await synced(page, app);
+  // The turn ends in the server’s order (turn-finish.mjs): its parts settle first, then the session says it needs you.
   arrange.setItem(rt, t.id, last.id, { status: 'done' });
   arrange.setSession(rt, se.id, { state: 'needs', needs: { kind: 'block', itemId: ask.id, text: CHOICE.title } });
   await synced(page, app);
