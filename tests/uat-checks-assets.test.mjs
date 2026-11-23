@@ -194,7 +194,7 @@ test('#722: an agent’s item is its words only where it wrote them; a tool call
 });
 
 test('#1655: a live frame is no store: an asset’s content in a running step’s preview is no copy, and one in the log still is', () => {
-  // Recorded from a real run: the step previews of the write_asset call that made the asset (the fixture’s source).
+  // Recorded from a real run: a tool call’s previews, the write’s input and a later read’s output (the fixture’s source).
   const rec = JSON.parse(readFileSync(new URL('./fixtures/uat-assets/needsnav-c-live-asset.json', import.meta.url), 'utf8'));
   const bytes = Buffer.from(rec.asset, 'utf8');
   const sha = createHash('sha256').update(bytes).digest('hex');

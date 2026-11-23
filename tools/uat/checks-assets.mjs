@@ -116,8 +116,8 @@ function stateParts(state, where) {
 /**
  * Every copy of an asset’s content in the run’s records outside its blob file: the log, the snapshot and the final
  * state. Each says which file, where, under which key, in which form, and whether it’s someone’s own words. The live
- * frames aren’t among them: they’re transient and never stored, so a running step’s preview of a write_asset call
- * that carries the asset’s text is no copy (#1655, designs/architecture/live-progress.md).
+ * frames aren’t among them: they’re transient and never stored, so a tool call’s preview that carries the asset’s
+ * text, a write’s input or a read’s output, is no copy (#1655, designs/architecture/live-progress.md).
  * @param {any} facts
  */
 export function contentCopies(facts) {

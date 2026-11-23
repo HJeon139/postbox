@@ -1,6 +1,7 @@
 // The UAT runner keeps every live frame its stream receives (tools/uat/history.mjs): a running turn’s progress isn’t
 // stored between commit points (designs/architecture/live-progress.md), so the run saves the frames beside the events,
-// and a --recheck reads them back. They aren’t storage: the #722 scan for an asset’s content outside its file skips them (#1655).
+// where the ATIF export reads them (tools/atif-export.mjs). They aren’t storage: the #722 scan for an asset’s content
+// outside its file skips them, and a --recheck doesn’t read them (#1655).
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -11,11 +12,12 @@ import { test } from 'node:test';
 import { liveSession, liveStep } from '../server/live-buffer.mjs';
 import { liveStreams } from '../server/live-streams.mjs';
 import { Store } from '../server/store.mjs';
+import { readRecording } from '../tools/atif-export.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
-import { followEvents, readHistory, readLive, writeHistory } from '../tools/uat/history.mjs';
+import { followEvents, readHistory, writeHistory } from '../tools/uat/history.mjs';
 import { savedFacts } from '../tools/uat/recheck.mjs';
 
-test('the runner’s stream keeps the live frames, which writeHistory saves and a recheck reads back', async () => {
+test('the runner’s stream keeps the live frames, which writeHistory saves and the ATIF export reads back', async () => {
   const store = await new Store(null).load();
   store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'tool' });
   const live = liveStreams(store, undefined, { running: { all: () => [] } });
@@ -48,7 +50,7 @@ test('the runner’s stream keeps the live frames, which writeHistory saves and 
     );
     assert.equal(history.live()[0].step.output, 'the file’s text');
     await writeHistory(dir, { events: history.events(), live: history.live() });
-    assert.deepEqual(readLive(dir), history.live());
+    assert.deepEqual(readRecording(dir).live, history.live());
     assert.deepEqual(readHistory(dir), history.events());
   } finally {
     history.close();
@@ -61,7 +63,8 @@ test('the runner’s stream keeps the live frames, which writeHistory saves and 
 test('a run from before the live frames were kept reads none', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pb-uat-live-'));
   try {
-    assert.deepEqual(readLive(dir), []);
+    await writeFile(join(dir, 'events.jsonl'), '');
+    assert.deepEqual(readRecording(dir).live, []);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
