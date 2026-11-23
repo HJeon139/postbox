@@ -373,8 +373,8 @@ export async function start({
     // Remote hosts (#120): their routes, reads and writes (server/hosts-routes.mjs).
     const hostsDid = await hostsRoute(rt, path, req.method, body);
     if (hostsDid) return send(res, hostsDid.status, hostsDid.body);
-    // Projects: making one, its push repository and its folder (server/project-routes.mjs).
-    const projectsDid = await projectsRoute(store, path, req.method, body, url.searchParams);
+    // Projects: making one, its push repository, its folder and deleting one (server/project-routes.mjs).
+    const projectsDid = await projectsRoute(rt, path, req.method, body, url.searchParams);
     if (projectsDid) return send(res, projectsDid.status, projectsDid.body);
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
     const stored = await storedFileRoute(store, blobs, path, req.method);

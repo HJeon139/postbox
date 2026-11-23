@@ -100,6 +100,8 @@ export const PENDING = {
   'session-lifecycle.mjs': ['conversationScope', 'conversationScope', 'deleteSession', 'deleteSession', 'deleteSession', 'deleteSession'],
   // An agent changed or deleted, and a deleted agent’s sessions, any of them maybe made behind a held commit.
   'personas.mjs': ['update', 'remove'],
+  // The project a delete takes, and its conversations, any of them maybe made behind a held commit (#119).
+  'project-delete.mjs': ['deleteProject', 'deleteProject'],
   // pendingIn: a thread's sessions, for a read that decides whether to make one; ensure: the agent it joins, which the
   // same request may have just made; update and remove: the session they write; needAt: the need's item's time, maybe
   // added behind a held commit (#1155); forgetReported: an agent’s sessions whose last report a backend switch drops

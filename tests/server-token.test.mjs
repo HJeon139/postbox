@@ -82,6 +82,7 @@ const WRITE_ROUTES = {
   'PUT ^\\/api\\/projects\\/([^/]+)\\/hosts\\/([^/]+)\\/folder$': ['/api/projects/pr_none/hosts/ho_none/folder'],
   'POST /api/projects': ['/api/projects'],
   'PUT ^\\/api\\/projects\\/([^/]+)\\/push-url$': ['/api/projects/pr_none/push-url'],
+  'DELETE ^\\/api\\/projects\\/([^/]+)$': ['/api/projects/pr_none'],
   'POST /api/files': ['/api/files'],
   'POST ^\\/api\\/apps\\/([^/]+)\\/(check|event|note|state|query|open|publish)$': [
     '/api/apps/ap_none/check',
