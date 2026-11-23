@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.40.1 (2026-11-23)
+
+### Fixes
+
+- **apps:** a Stop that stops a waiting app check lets go of its app
+- **uat:** stop waiting on apps once the bound stops the run, and report a run that throws
+- **apps:** let go of an app’s fixing when its app-check turn stops or fails
+- **run-clock:** say what a clock's lines did for an idle or local agent
+- **run-clock:** add a holding clock's line once across restarts
+
 ## 4.40.0 (2026-11-23)
 
 ### Features
