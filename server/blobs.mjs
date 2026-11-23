@@ -56,7 +56,8 @@ export class Blobs {
    * whole or not at all: written to a draft beside it, synced, then renamed over its name, and the folder synced, so a
    * crash or a reader mid-write never finds a short file under the hash (a truncated one left by an older build is
    * replaced). Blobs can hold command lines and output, so they are the owner’s alone: files 0600, folders 0700 (#305).
-   * A staged put (#780) is settled once its call is known to keep it or not (settle); fresh says this put wrote it.
+   * A staged put (#780) is settled once its call is known to keep it or not (settle); fresh says this put made the
+   * file: none was there before, so one it only made whole again is never removed (#706).
    * @param {Buffer} buffer @param {{ staged?: boolean }} [opts]
    */
   async put(buffer, { staged = false } = {}) {
@@ -112,7 +113,7 @@ export class Blobs {
       throw e;
     }
     await this.syncFolder(folder);
-    return { sha256, size: buffer.length, path, fresh: true };
+    return { sha256, size: buffer.length, path, fresh: !have };
   }
 
   /**

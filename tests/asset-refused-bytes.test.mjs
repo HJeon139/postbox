@@ -2,7 +2,7 @@
 // taken name doesn’t grow the disk, while a file a version keeps stays. Row F3 of the failure table is in
 // tests/asset-failures.test.mjs; these are the retries and the races around it.
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { assetBlobs, writeAsset } from '../server/assets.mjs';
@@ -68,4 +68,16 @@ test('#706: of two writes of the same bytes at once, the refused one leaves the 
   assert.deepEqual([x.code ?? 'ok', y.code ?? 'ok'].sort(), ['ok', 'stale']);
   assert.equal((await f.blobs.get(store.state.assets[a.id].versions[1].sha256)).toString(), 'same');
   assert.deepEqual([f.blobs.held.size, f.blobs.kept.size], [0, 0]);
+});
+
+test('#706: a refused write that replaced a damaged file a version names leaves the whole file', async (t) => {
+  const f = await folder(t);
+  const { store } = f;
+  const a = await twoVersions(f);
+  const sha = store.state.assets[a.id].versions[0].sha256;
+  // As a cut-off write of an older build left it: short, under the hash a version names.
+  writeFileSync(f.blobs.pathOf(sha), 'o');
+  const stale = await writeAsset(store, f.blobs, req({ id: a.id, base: 1, bytes: text('one') }));
+  assert.equal(stale.code, 'stale');
+  assert.equal((await f.blobs.get(sha)).toString(), 'one', 'the put made it whole, and the refusal didn’t remove it');
 });
