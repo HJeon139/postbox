@@ -9,6 +9,7 @@ import { Blobs } from '../server/blobs.mjs';
 import { keptIfShown } from '../server/review-files.mjs';
 import { png, setup } from './review-files-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 test('#780 two calls with the same bytes at once: the refused one leaves the kept one’s blob', async () => {
   const f = await setup();
@@ -67,18 +68,22 @@ test('#780 a refusal that settles while an ordinary put of the same bytes is mid
   let pause = null;
   const blobs = new Blobs(tempDir('pb-review-blobs-'), {
     open: async (path, flags, mode) => {
-      if (flags === 'r' && pause) await pause.gate;
+      if (flags === 'r' && pause) {
+        pause.reached = true;
+        await pause.gate;
+      }
       return open(path, flags, mode);
     },
   });
   const bytes = png(7, 3);
   const s = await blobs.put(bytes, { staged: true });
   let release = () => {};
-  pause = { gate: new Promise((r) => (release = r)) };
+  pause = { reached: false, gate: new Promise((r) => (release = r)) };
   const plain = blobs.put(bytes);
-  // Bounded, so a build that never counts it fails here rather than hanging the gate.
-  for (let i = 0; i < 200 && !blobs.writing?.size; i++) await new Promise((r) => setImmediate(r));
-  await new Promise((r) => setTimeout(r, 20)); // its stat has found the file; it waits at the folder sync
+  // Bounded by real time, so a build that never counts it fails here rather than hanging the gate.
+  await untilTurns(() => !!blobs.writing?.size, 'the write counted');
+  // Its stat has found the file, and it waits at the folder sync: the gate, not a fixed time, says so (#1657).
+  await untilTurns(() => !!pause?.reached, 'the ordinary put at its folder sync');
   await blobs.settle([{ sha256: s.sha256, fresh: s.fresh }], false);
   pause = null;
   release();
