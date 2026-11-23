@@ -72,7 +72,7 @@ test('#716 a reviewer comments on a review the person already answered: the thre
   const said = formatMessage(review());
   assert.match(
     said,
-    /The person already answered this block: changing only status to “resolved” in update_block’s threads\? keeps their answer; adding a reply or changing its content asks them again\./,
+    /The person already answered this block: changing only status to “resolved” in update_block’s threads\? keeps their answer; adding a reply, changing its content or sending it back unchanged asks them again\./,
   );
   assert.doesNotMatch(said, /still waits on the person/);
 });
@@ -124,4 +124,35 @@ test('#716 answered on the review event is read when the turn takes the entry, n
   for (let i = 0; i < 100 && !review(); i++) await new Promise((r) => setTimeout(r, 5));
   assert.equal(review()?.event.answered, undefined);
   assert.match(formatMessage(review()), /still waits on the person/);
+});
+
+test('#716 a review withdrawn after a reviewer commented is delivered as closed: no answer to keep, and any update asks again', async () => {
+  let releaseAnswer = () => {};
+  const { rt, t, mine, theirs, item, heard } = setup(async (m) => {
+    if (m.kind === 'event' && m.event?.action === 'submit') await new Promise((r) => (releaseAnswer = r));
+  });
+  rt.act(t.id, item().id, 'submit', { verdict: 'approve', comments: [] }, 1);
+  for (let i = 0; i < 100 && !heard.length; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(rt.toolsFor(theirs.id).review_block({ blockId: 'plan', comments: [{ line: 3, text: 'Note.' }] }).ok, true);
+  // In the answer’s turn, @researcher withdraws the block before the review reaches it.
+  assert.equal(rt.toolsFor(mine.id).update_block({ block: { id: 'plan', withdraw: 'Handled in the room.' } }).ok, true);
+  assert.ok(item().closed);
+  releaseAnswer();
+  const review = () => heard.find((m) => m.kind === 'event' && m.event?.action === 'review');
+  for (let i = 0; i < 100 && !review(); i++) await new Promise((r) => setTimeout(r, 5));
+  assert.deepEqual([review()?.event.answered, review()?.event.closed], [undefined, true]);
+  const said = formatMessage(review());
+  assert.match(said, /This block is closed, so it no longer asks the person: any update_block to it, even one that only resolves a comment, asks them again\./);
+  assert.doesNotMatch(said, /keeps their answer|still waits on the person/);
+});
+
+test('#716 sending an answered review back unchanged, after a reviewer commented, asks the person again, as its note says', async () => {
+  const { rt, t, mine, theirs, item, heard } = setup();
+  rt.act(t.id, item().id, 'submit', { verdict: 'approve', comments: [] }, 1);
+  for (let i = 0; i < 100 && !heard.length; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(rt.toolsFor(theirs.id).review_block({ blockId: 'plan', comments: [{ line: 3, text: 'Note.' }] }).ok, true);
+  // The draft as it was first shown: the reviewer’s threads stay on it either way (#133).
+  const same = rt.toolsFor(mine.id).update_block({ block: draft });
+  assert.equal(same.ok, true, same.message);
+  assert.equal(item().answered, false);
 });

@@ -144,6 +144,17 @@ const count = (/** @type {number} */ n) => n.toLocaleString('en-US');
 const given = (rt, entries) => entries.map((e) => messageOf(rt, e));
 
 /**
+ * Where a reviewed block stands when its review is delivered (#716): withdrawn or dismissed since, there’s no answer
+ * to keep and any update asks again (block-update.mjs); answered, only a thread’s status change keeps the answer.
+ * @param {any} it  the block’s item, or null
+ */
+function blockNow(it) {
+  if (it?.closed) return { closed: true };
+  if (it?.answered) return { answered: true };
+  return {};
+}
+
+/**
  * One entry as today’s deliver takes it. A mention is its item as it is now, whole up to what one message may carry,
  * with what its failed reply said first (#485): the entry keeps no copy, so a reply settled before its turn wrote the
  * error reads it here. A review carries the event it was sent with; a notice is Postbox’s own words.
@@ -155,8 +166,8 @@ export function messageOf(rt, e) {
   if (e.source === 'event') return rt.delivery.carriedFor(e.id) ?? lostEvent(rt, e);
   if (e.source === 'review' && e.message?.event) {
     const it = e.itemId ? rt.store.pending.item(e.threadId, e.itemId) : null;
-    const { answered: _a, ...ev } = e.message.event;
-    return { ...e.message, event: { ...ev, ...(it?.answered ? { answered: true } : {}) } };
+    const { answered: _a, closed: _c, ...ev } = e.message.event;
+    return { ...e.message, event: { ...ev, ...blockNow(it) } };
   }
   if (e.message) return plainMessage(e.message) ? { ...e.message, at: e.at, seq: e.seq } : e.message;
   if (e.source === 'person') return personMessage(rt, e);
