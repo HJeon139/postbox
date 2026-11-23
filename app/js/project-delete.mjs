@@ -51,7 +51,8 @@ export function confirmDeleteProject(p, paint) {
                 dlg.close();
                 // Once the page has heard it’s gone, so the page under Settings doesn’t open a conversation of it.
                 await heard(() => !S().projects[p.id]);
-                if (shows(p.id)) navigate('#/');
+                // A conversation of it left when it went (main.mjs); the project’s own page leaves here.
+                if (route().projectId === p.id) navigate('#/');
                 paint();
                 say(`Deleted the project “${p.name}”`);
               })
@@ -69,13 +70,6 @@ export function confirmDeleteProject(p, paint) {
     initialFocus: () => null,
   });
   dlg.dialog.querySelector('.d-foot .btn')?.focus();
-}
-
-/** Whether the page under Settings shows this project, or a conversation that was in it. @param {string} projectId */
-function shows(projectId) {
-  const r = route();
-  if (r.projectId === projectId) return true;
-  return Boolean(r.threadId) && !S().threads[r.threadId];
 }
 
 /** What deleting a project erases and what it keeps, as deleting a conversation lists them. @param {any} p */
