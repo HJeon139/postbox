@@ -4,6 +4,7 @@
 import { READING } from '../shared/limits.mjs';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { authorName, commentAt, PERSON } from '../shared/review-comments.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { appCheckText } from './app-check-status.mjs';
 import { closedText } from './block-update.mjs';
 import { clipText, fenced } from './helpers.mjs';
@@ -16,7 +17,10 @@ const count = (n) => n.toLocaleString('en-US');
  */
 export const clipItem = (s, n, id) => {
   const t = String(s ?? '');
-  return t.length > n ? `${t.slice(0, n)}… (${count(n)} of ${count(t.length)} characters; read_message { id: "${id}" } has the rest)` : t;
+  if (t.length <= n) return t;
+  // Never inside a character (#675): a pair the cut would split goes whole to read_message.
+  const kept = cutText(t, n);
+  return `${kept}… (${count(kept.length)} of ${count(t.length)} characters; read_message { id: "${id}" } has the rest)`;
 };
 
 /**
