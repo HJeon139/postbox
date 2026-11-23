@@ -13,10 +13,10 @@ export const PENDING = {
   // made, whose transcript mirror starts following.
   'claude-mirror.mjs': ['mirror', 'pollMirror'],
   'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
-  'restart-sweep.mjs': ['settleRetiredNeeds', 'cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
+  'restart-sweep.mjs': ['settleFixing', 'settleRetiredNeeds', 'cardOf'], // an app left fixing, settled by whether its app-check entry still runs, a sweep that writes back (#1664); the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
   'ask-question.mjs': ['handOver'], // a host question’s blocks this turn answered, whose answers go on when the host ends its call (#1059)
-  'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
+  'apps.mjs': ['endFixes', 'showApp', 'updateApp'], // an agent’s apps left fixing, a sweep that writes back (#1664); show_app and update_app of an app the turn may have just shown
   'app-entries.mjs': ['lostEvent'], // the voice line an app’s event posted, maybe behind a held commit, read when its turn starts (#1425)
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed
@@ -87,9 +87,10 @@ export const PENDING = {
   'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
   // With run clocks on (#1526): every decision on a run clock (its route, its timer, a turn’s line, Delivery’s hold),
   // on the clock as held writes will leave it; the session its route names, which a held delete may have removed; and
-  // the host stops its pause or expiry waits on, which the stop itself just wrote.
+  // the host stops its pause or expiry waits on, which the stop itself just wrote; and, as Postbox starts or Retry
+  // reloads, the session whose agent’s host the restored line names, read as clockNote reads it.
   'run-clock-install.mjs': ['installRunClock'],
-  'run-clock.mjs': ['clockOf', 'unconfirmedStops', 'clockAction'],
+  'run-clock.mjs': ['clockOf', 'unconfirmedStops', 'clockAction', 'rearmClocks'],
   // Whether a turn is kept for the resume: its clock may have expired behind a held commit, and then it can never run.
   // The refusal’s words: the agent’s handle, and whether its clock is paused, maybe written behind a held commit.
   'run-clock-held.mjs': ['holdForClock', 'refuseWhileHeld', 'refuseWhileHeld'],
@@ -148,7 +149,6 @@ export const PENDING = {
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left
   'turn-end-work.mjs': ['workLine'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
-  'turn-end-listeners.mjs': ['listenTurnEnd'], // an app-check turn’s apps at its end, a sweep that writes back, maybe held behind a commit (#796)
   'turn-finish.mjs': ['endTurn'], // a turn’s end: its own items, maybe held behind a commit (#796)
   'turn-needs.mjs': ['needsAfter'], // the thread a turn’s reply count goes to, maybe held behind a commit (#796)
   // The quota marks that decide a mark or its clearing, and the persona that says whose quota it is, each maybe held

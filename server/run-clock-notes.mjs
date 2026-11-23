@@ -10,11 +10,11 @@ const s = (ms) => `${Math.floor(ms / 1000)}s`;
 /** Whether a clock’s stop waits on a host (shared/run-clock.mjs, isLocalStop). @param {any} d */
 const onHost = (d) => Boolean(d.stopping?.some((/** @type {string} */ t) => !isLocalStop(t)));
 
-/** What an expiry did to the agent’s turn. @param {string} h @param {any} d */
+/** What an expiry did to the agent’s turn, or nothing for an idle agent, which had none to stop. @param {string} h @param {any} d */
 function expiredStop(h, d) {
   if (onHost(d)) return `asked @${h}’s host to stop @${h}, which may still be working there until the host confirms`;
   if (d.stopping?.length) return `stopped @${h}’s turn, which may run on until its CLI has exited`;
-  return `stopped @${h}`;
+  return '';
 }
 
 /** Why Postbox stopped waiting for a turn here, by clock.stopped’s why. */
@@ -37,22 +37,25 @@ const WORDS = {
     if (onHost(d)) {
       return `@${h}’s run clock is paused. Postbox asked @${h}’s host to stop it, and starts no turn of it until the clock resumes. Until the host confirms the stop, @${h} may still be working there, so the clock counts on.`;
     }
-    const exiting = d.stopping?.length ? ` Until its stopped turn has ended, @${h} may still be working, so the clock counts on.` : '';
-    return `@${h}’s run clock is paused. Postbox stopped @${h}, and starts no turn of it until the clock resumes.${exiting}`;
+    // An idle agent had no turn to stop.
+    if (!d.stopping?.length) return `@${h}’s run clock is paused. Postbox starts no turn of @${h} until the clock resumes.`;
+    return `@${h}’s run clock is paused. Postbox stopped @${h}, and starts no turn of it until the clock resumes. Until its stopped turn has ended, @${h} may still be working, so the clock counts on.`;
   },
   resumed: (h, d) => `@${h}’s run clock resumed at ${s(d.elapsedMs)} of ${s(d.budgetMs)}.`,
-  expired: (h, d) =>
-    `@${h}’s run clock reached its budget of ${s(d.budgetMs)}, so Postbox ${expiredStop(h, d)}. Messages to @${h} here now wait, and no turn starts; a new timed run goes in a new conversation.`,
+  expired: (h, d) => {
+    const stop = expiredStop(h, d);
+    return `@${h}’s run clock reached its budget of ${s(d.budgetMs)}${stop ? `, so Postbox ${stop}` : ''}. Messages to @${h} here now wait, and no turn starts; a new timed run goes in a new conversation.`;
+  },
   voided: (h, d) =>
     `Postbox couldn’t confirm that @${h}’s stopped turn ended (${FORCED[d.forced] ?? d.forced}), so @${h} may still be working, uncounted. This timed run is void: no turn of @${h} starts here again, and a new timed run goes in a new conversation.`,
   stopped: (h, d) => `${stoppedWords(h, d)}${!d.left && d.state === 'paused' ? ' The paused clock stops counting here.' : ''}`,
   restored: (h, d) =>
-    `Postbox started again with @${h}’s run clock at ${s(d.elapsedMs)} of ${s(d.budgetMs)}. The time it was down counted, and @${h} may have worked through it on its host.`,
+    `Postbox started again with @${h}’s run clock at ${s(d.elapsedMs)} of ${s(d.budgetMs)}. The time it was down counted${d.host ? `, and @${h} may have worked through it on its host` : ''}.`,
 };
 
 /**
  * A line in the agent’s conversation for a change of its clock.
- * @param {any} rt @param {string} sessionId @param {keyof typeof WORDS} change @param {{ budgetMs: number, elapsedMs?: number, stopping?: string[], state?: string, left?: number, where?: string, forced?: string }} d
+ * @param {any} rt @param {string} sessionId @param {keyof typeof WORDS} change @param {{ budgetMs: number, elapsedMs?: number, stopping?: string[], state?: string, left?: number, where?: string, forced?: string, host?: boolean }} d
  */
 export function clockNote(rt, sessionId, change, d) {
   const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
@@ -60,12 +63,20 @@ export function clockNote(rt, sessionId, change, d) {
   rt.threads.addItem(se.threadId, { kind: 'system', variant: 'clock', sessionId, handle: se.handle, change, text: WORDS[change](se.handle, d) });
 }
 
-/** The line a clock’s state needs last in its conversation, for a state that holds the agent. */
+/** The line a clock’s state needs as its newest line of a change of state, for a state that holds the agent. */
 const HOLDING = /** @type {const} */ ({ paused: 'paused', expired: 'expired' });
 
 /**
+ * The lines that hold the agent or let it go again. A stopped turn’s end and a restart change neither, so they may come
+ * after the line a holding clock needs.
+ */
+const STATE_LINES = new Set(['paused', 'resumed', 'expired', 'voided']);
+
+/**
  * As Postbox starts, a clock that holds its agent gets its line if the conversation lacks it: the clock’s event and
- * its line are two writes, and a kill between them would leave the agent held with nothing to say so (#1526). The line is the newest clock line for that session, so a second start adds nothing.
+ * its line are two writes, and a kill between them would leave the agent held with nothing to say so (#1526). The line
+ * is the newest of STATE_LINES for that session, so a second start adds nothing, even after a stopped
+ * turn’s end came last.
  * @param {any} rt @param {string} sessionId @param {any} clock
  */
 export function repairClockNote(rt, sessionId, clock) {
@@ -76,7 +87,7 @@ export function repairClockNote(rt, sessionId, clock) {
   if (!change || !se) return;
   const last = rt.store.pending
     .items(se.threadId)
-    .findLast((/** @type {any} */ i) => i.kind === 'system' && i.variant === 'clock' && i.sessionId === sessionId);
+    .findLast((/** @type {any} */ i) => i.kind === 'system' && i.variant === 'clock' && i.sessionId === sessionId && STATE_LINES.has(i.change));
   if (last?.change !== change)
     clockNote(rt, sessionId, change, { budgetMs: clock.budgetMs, elapsedMs: clock.usedMs, stopping: clock.stopping ?? [], forced: clock.voided?.why });
 }

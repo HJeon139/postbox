@@ -2,6 +2,7 @@
 
 import { ASKING } from '../shared/catalog.mjs';
 import { liveDetail } from '../shared/step-fold.mjs';
+import { fixEnded } from './apps.mjs';
 import { challengerWins, nextNeed, RANK, stateFor } from './card-needs.mjs';
 import { heldOfCutOff } from './turn-held.mjs';
 import { foldSteps } from './turn-steps.mjs';
@@ -37,6 +38,23 @@ export function settleInterrupted(rt) {
   }
   settleRetiredNeeds(rt);
   foldCutOff(rt);
+  settleFixing(rt);
+}
+
+/**
+ * An app left fixing with no app-check turn still to come shows with its note, or crashed, as the end of its turn
+ * would have (#1664): the turn was stopped before Postbox let go of it then, or its entry is gone. One whose entry
+ * waits, or was taken by a turn the restart cut off, stays fixing: the inbox gives it again (Delivery’s start), unless
+ * it was a resend, which fails instead. @param {any} rt
+ */
+function settleFixing(rt) {
+  for (const app of Object.values(rt.store.pending.apps())) {
+    if (app.check?.status !== 'fixing') continue;
+    const comes = rt.delivery
+      .inbox(app.sessionId)
+      .some((e) => e.message?.kind === 'app-check' && e.message.appId === app.id && (e.state === 'waiting' || (e.state === 'taken' && !e.resend)));
+    if (!comes) rt.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
+  }
 }
 
 /**

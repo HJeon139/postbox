@@ -14,3 +14,22 @@ export async function endRun({ report, review, judge }) {
   await judge();
   await report();
 }
+
+/**
+ * The end of a run that threw before it (#1664): the failure is a finding, and the run still writes its report,
+ * findings.json and run.json through `end`, then fails with what threw. An end that fails as well is logged, so the
+ * first error is the one the run reports. In the Kiro wall-time run of batch 4, the wait after a step pressed Stop on a
+ * page that had none, and the run ended with no report.
+ * @param {Error} error @param {{ findings: Map<string, any>, step: number, end: () => Promise<unknown>, log: (line: string) => void }} o
+ * @returns {Promise<never>}
+ */
+export async function endFailedRun(error, { findings, step, end, log }) {
+  findings.set('run-failed', { source: 'run', check: 'run-failed', issue: null, title: 'The run failed before its last step', evidence: error.message, step });
+  log(`The run failed at step ${step}, so it writes its report with what it has: ${error.message}`);
+  try {
+    await end();
+  } catch (e) {
+    log(`The run couldn’t finish its report after it failed: ${e instanceof Error ? e.message : e}`);
+  }
+  throw error;
+}

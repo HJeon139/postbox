@@ -28,11 +28,12 @@ test('the conversation shows a clock’s start, its pause and resume, and its ex
   arrange.runClock(app.rt, se.id, { action: 'start', budgetS: 60 }, () => t0);
   await expect.soft(page.getByText('@timed’s run clock started, with a budget of 60s.')).toBeVisible();
   arrange.runClock(app.rt, se.id, { action: 'pause' }, () => t0 + 10_000);
-  await expect.soft(page.getByText(/@timed’s run clock is paused\. Postbox stopped @timed/)).toBeVisible();
+  // @timed is idle, so the pause and the expiry stop no turn, and their lines don’t say Postbox stopped it.
+  await expect.soft(page.getByText('@timed’s run clock is paused. Postbox starts no turn of @timed until the clock resumes.')).toBeVisible();
   arrange.runClock(app.rt, se.id, { action: 'resume' }, () => t0 + 20_000);
   await expect.soft(page.getByText('@timed’s run clock resumed at 10s of 60s.')).toBeVisible();
   arrange.clockTimer(app.rt, se.id, () => t0 + 90_000);
-  await expect.soft(page.getByText(/reached its budget of 60s, so Postbox stopped @timed\. Messages to @timed here now wait/)).toBeVisible();
+  await expect.soft(page.getByText(/@timed’s run clock reached its budget of 60s\. Messages to @timed here now wait/)).toBeVisible();
 });
 
 test('a reply a run clock stopped says the clock stopped it, at its budget or its pause, not the person', async ({ page }) => {

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { armClock, clockAction, rearmClocks } from '../server/run-clock.mjs';
 import { clocked as setup } from './run-clock-fixture.mjs';
+import { slowToExit } from './stop-fixture.mjs';
 
 const T0 = 1_800_000_000_000;
 beforeEach(() => mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: T0 }));
@@ -59,4 +60,94 @@ test('the line a restart gives back to an expiry whose host turn isn’t confirm
   const text = store.items(t.id).findLast((i) => i.variant === 'clock').text;
   assert.match(text, /so Postbox asked @developer’s host to stop @developer, which may still be working there until the host confirms\./);
   assert.doesNotMatch(text, /Postbox stopped @developer/);
+});
+
+/** Lets the scripted turns settle, then moves the mock clock on by `ms`, and lets what that fires settle. */
+async function sleep(ms) {
+  const turns = async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+  };
+  await turns();
+  mock.timers.tick(ms);
+  await turns();
+}
+const changes = (store, t) =>
+  store
+    .items(t.id)
+    .filter((i) => i.variant === 'clock')
+    .map((i) => i.change);
+
+test('a restart adds no second expiry line when the clock expired during a turn whose end came last', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 });
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work until stopped.' });
+  await sleep(60_000);
+  turn.exit();
+  await sleep(10);
+  assert.deepEqual(changes(store, t), ['started', 'expired', 'stopped']);
+  rearmClocks(rt);
+  rearmClocks(rt);
+  assert.deepEqual(changes(store, t), ['started', 'expired', 'stopped']);
+});
+
+test('a restart adds no second pause line when the paused turn’s end came last', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 600 });
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work until paused.' });
+  await sleep(5);
+  clockAction(rt, se.id, { action: 'pause' });
+  turn.exit();
+  await sleep(10);
+  assert.deepEqual(changes(store, t), ['started', 'paused', 'stopped']);
+  rearmClocks(rt);
+  assert.deepEqual(changes(store, t), ['started', 'paused', 'stopped']);
+});
+
+test('a lost pause line comes back after an earlier pause and resume, which had theirs', () => {
+  const { rt, store, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  clockAction(rt, se.id, { action: 'pause' }, at(10_000));
+  clockAction(rt, se.id, { action: 'resume' }, at(20_000));
+  store.emit('clock.paused', { sessionId: se.id, at: T0 + 30_000 });
+  rearmClocks(rt, at(40_000));
+  assert.deepEqual(changes(store, t), ['started', 'paused', 'resumed', 'paused']);
+});
+
+test('an expiry while the agent is idle doesn’t say Postbox stopped it, nor does a pause', () => {
+  const { rt, store, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  clockAction(rt, se.id, { action: 'pause' }, at(10_000));
+  clockAction(rt, se.id, { action: 'resume' }, at(20_000));
+  armClock(rt, se.id, at(90_000));
+  const lines = store.items(t.id).filter((i) => i.variant === 'clock');
+  assert.equal(lines[1].text, '@developer’s run clock is paused. Postbox starts no turn of @developer until the clock resumes.');
+  assert.equal(
+    lines[3].text,
+    '@developer’s run clock reached its budget of 60s. Messages to @developer here now wait, and no turn starts; a new timed run goes in a new conversation.',
+  );
+});
+
+test('the line as Postbox starts again doesn’t say an agent on this computer may have worked on a host', () => {
+  const { rt, store, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(30_000));
+  assert.equal(
+    store.items(t.id).findLast((i) => i.variant === 'clock').text,
+    'Postbox started again with @developer’s run clock at 30s of 60s. The time it was down counted.',
+  );
+});
+
+test('the line as Postbox starts again says an agent on a host may have worked through the time it was down', () => {
+  const { rt, store, t, se } = setup();
+  store.emit('persona', { ...rt.personas.forSession(se), remote: { hostId: 'host-1' } });
+  clockAction(rt, se.id, { action: 'start', budgetS: 60 }, at(0));
+  rearmClocks(rt, at(30_000));
+  assert.equal(
+    store.items(t.id).findLast((i) => i.variant === 'clock').text,
+    'Postbox started again with @developer’s run clock at 30s of 60s. The time it was down counted, and @developer may have worked through it on its host.',
+  );
 });
