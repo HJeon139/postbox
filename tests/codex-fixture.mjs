@@ -28,7 +28,7 @@ function answerStart(child, req, { hold, error, then }) {
 
 export function fakeAppServer(
   seen,
-  { hold = false, error = null, then = 'complete', mcpServers = [], threadError = (_req) => null, cut = (_req) => false } = {},
+  { hold = false, error = null, then = 'complete', mcpServers = [], threadError = (_req) => null, cut = (_req) => false, beforeStarted = null } = {},
 ) {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
@@ -71,7 +71,9 @@ export function fakeAppServer(
         child.stdout.write(`${JSON.stringify({ id: req.id, result: { thread: { id } } })}\n`);
       }
       if (req.method === 'turn/start') {
-        answerStart(child, req, { hold, error, then });
+        // What Codex sends before turn/start's answer, such as turn/started: the test calls `answer` when it's done.
+        if (beforeStarted) beforeStarted(child, () => answerStart(child, req, { hold, error, then }));
+        else answerStart(child, req, { hold, error, then });
       }
     }
   });

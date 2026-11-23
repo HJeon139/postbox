@@ -98,3 +98,26 @@ test('a resume answer the host had to leave out fails the turn, and stops the ap
   );
   assert.ok(killed, 'the app-server is stopped, so it no longer holds the thread');
 });
+
+// Once Codex says the turn started, a line the host left out is the turn's own output, which the host notes in the
+// conversation itself; it isn't an answer Postbox waits for, so the turn goes on (#1705, hydrant-critic's P3).
+test('a line the host leaves out after turn/started doesn’t fail the turn, even with turn/start’s answer still to come', { timeout: 5000 }, async () => {
+  const seen = [];
+  const adapter = new CodexAdapter({
+    spawnImpl: () =>
+      fakeAppServer(seen, {
+        beforeStarted: async (child, answer) => {
+          child.stdout.write(`${JSON.stringify({ method: 'turn/started', params: { turn: { id: 'turn_fake' } } })}\n`);
+          for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r)); // the adapter reads that line
+          // While turn/start's answer is still pending: a long command output the host had to leave out.
+          child.emit('cut', { offset: 0, next: 9_000_000 });
+          answer();
+        },
+      }),
+  });
+  await adapter.deliver({}, { kind: 'user', text: 'Continue.' }, context({ codexThreadId: 'thr_existing' }));
+  assert.ok(
+    seen.some((r) => r.method === 'turn/start'),
+    'the turn started, and ended as Codex completed it',
+  );
+});
