@@ -17,8 +17,9 @@ export function bind(v, scrolled, resized, pointed) {
   addEventListener('resize', resized);
   v.sizes.observe(v.el);
   const unmoved = onPointerMoved(pointed);
-  // A press takes hold of what it pressed at once, before anything that grows in this frame moves it (#1653).
-  const unpressed = onPointerPressed(() => takeHold(v));
+  // Following, a press takes hold of what it pressed at once, before the end grows in this frame and the view follows
+  // it (#1653). Reading, the view holds its place as before: what it pressed moves only if something above it grows.
+  const unpressed = onPointerPressed(() => v.stuck && takeHold(v));
   v.unpoint = () => {
     unmoved();
     unpressed();

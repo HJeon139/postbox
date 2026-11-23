@@ -74,7 +74,7 @@ test('#1653 following, a press that comes with its move holds the button through
   await open(page, t);
   await settled(page);
   const chipTop = () => page.evaluate(() => document.querySelector('[role="radio"][aria-checked]')?.getBoundingClientRect().top ?? NaN);
-  const { pressedAt, moved } = await page.evaluate(() => {
+  const { pressedAt, moved, at } = await page.evaluate(() => {
     const chip = /** @type {HTMLElement} */ (document.querySelector('[role="radio"][aria-checked]'));
     const r = chip.getBoundingClientRect();
     const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, pointerType: 'mouse', isPrimary: true };
@@ -83,16 +83,12 @@ test('#1653 following, a press that comes with its move holds the button through
     const item = /** @type {HTMLElement} */ (chip.closest('.transcript > [data-key]'));
     item.append(Object.assign(document.createElement('div'), { className: 'pb-test-grow', style: 'height: 160px' }));
     item.dispatchEvent(new Event('contentvisibilityautostatechange'));
-    return { pressedAt: r.top, moved: chip.getBoundingClientRect().top - r.top };
+    return { pressedAt: r.top, moved: chip.getBoundingClientRect().top - r.top, at };
   });
   expect(Math.abs(moved), `the button moved ${moved} px under the press`).toBeLessThan(1);
   await settled(page);
   expect(Math.abs((await chipTop()) - pressedAt), 'and still there once the page has drawn, while the press is held').toBeLessThan(1);
-  await page.evaluate(() =>
-    document
-      .querySelector('[role="radio"][aria-checked]')
-      ?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', isPrimary: true })),
-  );
+  await page.evaluate((at) => document.querySelector('[role="radio"][aria-checked]')?.dispatchEvent(new PointerEvent('pointerup', at)), at);
   await settled(page);
   const gap = await page.evaluate(() => Math.round(document.documentElement.scrollHeight - scrollY - innerHeight));
   expect(gap, 'at the end once let go').toBeLessThanOrEqual(2);

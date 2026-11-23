@@ -32,8 +32,8 @@ function onPointer(e) {
   if (e.type === 'pointermove') aimedNow = true;
   if (e.type === 'pointerdown') pressedNow = true;
   if (e.type === 'pointerup' || e.type === 'pointercancel') pressedNow = aimedNow = false;
-  if (e.type === 'pointerdown') for (const fn of pressers) fn();
   tell();
+  if (e.type === 'pointerdown') for (const fn of pressers) fn();
 }
 for (const type of ['pointermove', 'pointerdown', 'pointerup', 'pointercancel']) addEventListener(type, onPointer, { capture: true, passive: true });
 document.documentElement.addEventListener('pointerleave', (e) => {
