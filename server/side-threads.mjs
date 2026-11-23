@@ -5,7 +5,8 @@
 
 import { HOP_LIMIT } from '../shared/limits.mjs';
 import { endFixes } from './apps.mjs';
-import { clip, retiredError } from './helpers.mjs';
+import { joinConversation } from './conversation-join.mjs';
+import { clip } from './helpers.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
 import { dropScheduledWake } from './scheduled-wakes.mjs';
 import { askToAdd, askToWake, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
@@ -159,18 +160,11 @@ export function dropWakes(rt, se, how = 'stopped') {
  * @param {any} side  the side or topic thread @param {string} personaId @param {string} by  the handle that woke it, or 'you'
  */
 export function sideSession(rt, side, personaId, by) {
-  // As written: a topic, or its conversation, opened behind a held commit isn’t published yet (#1292).
-  const conv = rt.threads.lineage(side.id, (id) => rt.store.pending.thread(id)).at(-1);
-  const had = rt.sessions.pendingIn(conv).find((x) => x.personaId === personaId);
-  if (had?.retiredFork) throw retiredError(had);
   const where = side.kind === 'topic' ? 'a topic thread' : 'a side thread';
-  return (
-    had ??
-    rt.ensureSession(conv, personaId, {
-      brief: by === 'you' ? `You were @-mentioned in ${where} of this conversation.` : `@${by} woke you in ${where} of this conversation.`,
-      joined: { by, in: side.id },
-    })
-  );
+  return joinConversation(rt, side.id, personaId, {
+    brief: by === 'you' ? `You were @-mentioned in ${where} of this conversation.` : `@${by} woke you in ${where} of this conversation.`,
+    joined: { by, in: side.id },
+  });
 }
 
 /**
