@@ -679,6 +679,7 @@ export class AntigravityCliAdapter {
       try {
         // Its own process group, so Stop reaches everything it started (#126).
         child = this.spawn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+        ctx.backendPid?.(child.pid);
       } catch (e) {
         reject(agyStartError(e, prompt, this.bin));
         return;

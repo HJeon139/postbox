@@ -101,6 +101,10 @@ function turnHooks(rt, turn, live) {
     control(c) {
       turn.control = c;
     },
+    /** The backend process the turn runs here, Postbox’s own child: a background launch is bound by descent from it (bg-identity.mjs). */
+    backendPid(pid) {
+      if (Number.isInteger(pid) && pid > 1) turn.backendPid = pid;
+    },
     /**
      * The agent’s skills and commands (#67), from init (names) or the SDK’s supportedCommands() (with descriptions
      * and argument hints): [{ name, description?, argumentHint?, skill? }]. Kept on the session for the / menu.

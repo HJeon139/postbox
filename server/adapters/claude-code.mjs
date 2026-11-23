@@ -255,6 +255,7 @@ export class ClaudeCodeAdapter {
       // A background job’s own Stop, while the CLI waits for it. Not offered on a host (stopJobUnder would refuse it
       // there too): the runtime then says the job can’t be reached, and to stop the agent.
       if (!remote) ctx.control?.({ stopJob: (job) => stopJobUnder(child, job, procs) });
+      if (!remote) ctx.backendPid?.(child.pid);
       child.on('error', (e) =>
         reject(
           new Error(

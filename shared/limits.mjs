@@ -263,6 +263,13 @@ export const HELD_WAKES = 20;
 /** Wakes one agent session may have pending with schedule_wake, not yet fired (#362); past this, it’s refused. */
 export const PENDING_WAKES = 20;
 
+/**
+ * Background processes an agent starts with start_process (#1614, designs/architecture/background-processes.md):
+ * perAgent and perConversation count registered and running ones alike; note is start_process’s note; registerMs is
+ * how long a registration waits for its launcher before it expires; ended is how many ended ones a conversation keeps.
+ */
+export const PROCESSES = Object.freeze({ perAgent: 4, perConversation: 12, note: 300, registerMs: 2 * 60_000, ended: 20 });
+
 /** How long a remote read waits for Postbox before it is answered from the host's snapshot (#582). Kiro gives up a call after 120 s, so the answer has to be there well before. */
 export const REMOTE_READ_TIMEOUT_MS = 100_000;
 

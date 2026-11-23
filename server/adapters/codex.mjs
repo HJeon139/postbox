@@ -259,6 +259,7 @@ export class CodexAdapter {
     const child = remote
       ? spawnRemoteCodex(remote, attach, cwd, this.bin, ctx.persona)
       : this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
+    if (!remote) ctx.backendPid?.(child.pid);
     const exitedP = new Promise((r) => {
       child.once('exit', r);
       child.once('close', r);

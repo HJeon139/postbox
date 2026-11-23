@@ -185,6 +185,7 @@ export class AgentSdkAdapter {
     const spawnClaudeCodeProcess = (/** @type {any} */ o) => {
       child = this.spawn(o.command, o.args, { cwd: o.cwd, env: o.env, stdio: ['pipe', 'pipe', 'pipe'], signal: o.signal, windowsHide: true, detached: true });
       const c = child;
+      ctx.backendPid?.(c.pid);
       exited = new Promise((r) => {
         c.once('exit', r);
         c.once('error', r);

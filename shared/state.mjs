@@ -56,6 +56,9 @@ export function emptyState() {
     // What each app sent its agent without the person’s click (#1488, shared/app-notes.mjs): { id: the app’s id, notes,
     // dropped }. Private, as published is: only the agent’s read_app reads them.
     appNotes: map(),
+    // The background processes agents start with start_process (#1614, server/bg-processes.mjs), each with the pids and
+    // start times Postbox bound and checks before it signals. Private until the room shows them, which needs only part.
+    processes: map(),
   };
 }
 
@@ -115,7 +118,8 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
 ]);
 // What apps published for their agents (#1478): read only by read_app, so no page is sent a copy of each publish.
 // And the notes apps sent them without a click (#1488), read only by read_app too.
-export const PRIVATE_STATE_KEYS = Object.freeze(['published', 'appNotes']);
+// And the background processes (#1614), whose records hold pids and start times no page needs.
+export const PRIVATE_STATE_KEYS = Object.freeze(['published', 'appNotes', 'processes']);
 
 /** The names the event stream gives its own frames (server/live-streams.mjs). None is ever an event type. */
 export const STREAM = Object.freeze({ cursor: 'cursor', status: 'status', epoch: 'epoch', resync: 'resync', header: 'header', live: 'live' });
@@ -170,6 +174,14 @@ export const EVENTS = Object.freeze({
       else s.schedules[d.id] = d;
     },
     public: true,
+  },
+  // A background process’s record, whole, or { id, removed } (#1614): private, as PRIVATE_STATE_KEYS says.
+  process: {
+    apply: (s, d) => {
+      if (d.removed) delete s.processes[d.id];
+      else s.processes[d.id] = d;
+    },
+    public: false,
   },
   glossary: { apply: putGlossary, public: true },
   'item.add': { apply: (s, d) => (s.items[d.threadId] ??= []).push(d.item), public: true },
@@ -234,6 +246,8 @@ function removeEntity(s, d) {
   if (d.kind === 'app' && s.appNotes) delete s.appNotes[d.id];
   // Deleting a session deletes its entries; the messages they came from stay (designs/rooms-at-scale.md, “What an entry is”).
   if (d.kind === 'session') delete s.inbox[d.id];
+  // And its background processes’ records: what a deleted session started was stopped as it went (server/bg-processes.mjs).
+  if (d.kind === 'session') for (const p of Object.values(s.processes ?? {})) if (p.sessionId === d.id) delete s.processes[p.id];
 }
 
 /**

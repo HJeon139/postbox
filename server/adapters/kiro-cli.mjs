@@ -370,6 +370,7 @@ export class KiroCliAdapter {
         try {
           // Its own process group, so Stop reaches everything it started (#126).
           child = spawnFn(this.bin, args, { cwd, env, stdio: [stdin && !ctx.remote ? 'pipe' : 'ignore', 'pipe', 'pipe'], detached: true });
+          if (!ctx.remote) ctx.backendPid?.(child.pid);
         } catch (e) {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
