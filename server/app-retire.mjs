@@ -43,7 +43,7 @@ export function retireApp(apps, sessionId, { id, reason, replacedBy } = {}) {
   const retired = { ...app, retired: { by: apps.sessions.get(sessionId).handle, reason: why, replacedBy: to, at: Date.now() } };
   apps.store.emit('app', retired);
   // A reply still waiting for its check won’t get one now (#337).
-  settleUnchecked(app.id, null);
+  settleUnchecked(apps, app.id, null);
   // Signaled for whatever listens: nothing does since an app’s sends stopped waiting on a card (#1488).
   apps.bus.emit('app.retired', { app: retired });
   return { ok: true, message: `Retired ${app.title}. It shows as one line where it was, with its versions; update_app brings it back.` };

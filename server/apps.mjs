@@ -59,7 +59,7 @@ export const withIntentNote = (r, intent) => (r.ok && intentNote(intent) ? { ...
  */
 export function appCheck(apps, appId, report) {
   const r = checked(apps, appId, report);
-  if (!r.ignored) settleWaits(appId, report.version, apps.store.pending.apps()[appId]?.check);
+  if (!r.ignored) settleWaits(apps, appId, report.version, apps.store.pending.apps()[appId]?.check);
   return r;
 }
 
@@ -89,23 +89,24 @@ function checked(apps, appId, { version, problems = [] }) {
   // pipeline: the person’s note is plain, so the agent is the only one with the detail (#948, #981).
   const fixable = clean.filter((p) => p.code !== 'no-answer' && p.code !== 'check-error');
   const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
+  const liveTurn = apps.running.turnOf(app.sessionId);
+  const heard = !!liveTurn && !liveTurn.abort?.signal?.aborted && awaited(apps, appId, version);
   if (app.check.attempt === 0 && blocking.length && apps.store.state.sessions[app.sessionId]) {
-    // heard: a reply waiting for this check carries the problems, so no app-check turn comes; the turn that made the
-    // version ends the fix instead (endHeardFixes).
-    const heard = awaited(appId, version);
+    // heard: a reply waiting for this check on a live turn carries the problems, so no app-check turn comes; the turn
+    // that made the version ends the fix instead (fixOver).
     apps.store.emit('app', { ...app, check: { status: 'fixing', attempt: 1, problems: fixable, ...(heard ? { heard } : {}) } });
     if (!heard) apps.send(app.sessionId, { kind: 'app-check', appId, problems: fixable }, { threadId: app.threadId });
     return { status: 'fixing' };
   }
   const notes = clean.every((p) => APP_WARNINGS.has(p.code));
   // The version was made by the agent’s turn that’s running, or else the last one that ended.
-  const turnId = apps.running.all().find((t) => t.sessionId === app.sessionId)?.id ?? apps.store.state.sessions[app.sessionId]?.lastTurnId;
+  const turnId = liveTurn?.id ?? apps.store.state.sessions[app.sessionId]?.lastTurnId;
   const scope = { kind: 'app', id: appId, title: app.title };
   // Whether the agent will hear of them, so the person’s note says so only when it’s true.
   // A reply waiting for this check carries them, so the lint turn doesn’t repeat them.
   const told =
     fixable.length > 0 &&
-    (awaited(appId, version) ||
+    (heard ||
       !!apps.checks.lint(
         app.sessionId,
         turnId,
@@ -275,7 +276,7 @@ export function updateApp(apps, sessionId, turn, threadId, endSegment, { id, cod
   };
   apps.store.emit('app', next);
   // A reply still waiting for an earlier version’s check won’t get one now (#337).
-  settleUnchecked(id, next.current);
+  settleUnchecked(apps, id, next.current);
   // A new version always comes to the newest point, where the agent says what changed (#49).
   let moved = false;
   if (followsConversation({ type: 'app' })) {

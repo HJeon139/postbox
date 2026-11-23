@@ -38,12 +38,13 @@ test('#337 with a page open, the reply says whether the version passed its check
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   const shown = await withCheck(
+    rt.apps,
     'show_app',
     tools.show_app({ id: 'sleep', title: 'Sleep and running', code: '<main style="padding:12px"><p>Version 1</p></main>' }),
     null,
   );
   expect(shown.message).toContain('v1 passed its check, and the person sees it.');
-  const updated = await withCheck('update_app', tools.update_app({ id: 'sleep', code: FAINT, summary: 'bigger labels' }), null);
+  const updated = await withCheck(rt.apps, 'update_app', tools.update_app({ id: 'sleep', code: FAINT, summary: 'bigger labels' }), null);
   expect(updated.check.status).toBe('fixing');
   expect(updated.message).toMatch(
     /v2’s check found problems, so the person doesn’t see it yet\. Fix them in a new version\. Don’t tell the person v2 is fixed until its check passes\.\n- /,

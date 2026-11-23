@@ -92,7 +92,7 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
         // An app’s files (#54) and a review’s images (#780) may come from the agent’s folder, which Postbox reads itself.
         const app =
           name === 'show_app' || name === 'update_app' ? await rt.assets.appFiles(sessionId, args) : await rt.assets.blockFiles(sessionId, name, args);
-        const r = await withCheck(name, await keptIfShown(app, (given) => tools[name](app.args, given)), closeOrSignal);
+        const r = await withCheck(rt.apps, name, await keptIfShown(app, (given) => tools[name](app.args, given)), [closeOrSignal, turn?.abort?.signal]);
         noteAnswer(rt.turns.get(sessionId) ?? null, name, r);
         // An urgent note for the agent comes first (#229): this is how it hears one mid-turn.
         const text = withUrgent(rt, sessionId, r.results ? JSON.stringify(r.results) : r.message, turn);

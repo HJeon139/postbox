@@ -14,6 +14,7 @@ export const PENDING = {
   'claude-mirror.mjs': ['mirror', 'pollMirror'],
   'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleFixing', 'settleRetiredNeeds', 'cardOf'], // an app left fixing, settled by whether its app-check entry still runs, a sweep that writes back (#1664); the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
+  'app-check-wait.mjs': ['waitForCheck'], // whether a version’s check already settled before the reply’s wait started (#337)
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
   'ask-question.mjs': ['handOver'], // a host question’s blocks this turn answered, whose answers go on when the host ends its call (#1059)
   'apps.mjs': ['appCheck', 'endFixes', 'showApp', 'updateApp'], // the check just recorded, for the reply waiting on it (#337); an agent’s apps left fixing, a sweep that writes back (#1664); show_app and update_app of an app the turn may have just shown
