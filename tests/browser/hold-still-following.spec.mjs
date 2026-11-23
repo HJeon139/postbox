@@ -94,6 +94,32 @@ test('#1653 following, a press that comes with its move holds the button through
   expect(gap, 'at the end once let go').toBeLessThanOrEqual(2);
 });
 
+// #1653 with a real click, as critic’s review of #1693 asked: Chromium sends a press with no move before it through
+// CDP, as a quick click can come, and the end grows from the button’s own pointerdown, after the view has heard the
+// press and before the release. On main the view followed the end with no hold yet, and the release missed the chip.
+test('#1653 following, a real click whose press makes the end grow still lands on its button', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the press with no move before it goes through CDP');
+  const { t, tools, say } = room('Hold still: real quick press');
+  for (let i = 1; i <= 20; i++) say(LONG(i));
+  tools.show_block({ block: PICK(`pick-${t.id}`) });
+  await open(page, t);
+  const chip = page.getByRole('radio', { name: 'The corpus' });
+  const b = /** @type {{ x: number, y: number, width: number, height: number }} */ (await chip.boundingBox());
+  await chip.evaluate((el) => {
+    const item = /** @type {HTMLElement} */ (el.closest('.transcript > [data-key]'));
+    const grow = () => {
+      item.append(Object.assign(document.createElement('div'), { className: 'pb-test-grow', style: 'height: 160px' }));
+      item.dispatchEvent(new Event('contentvisibilityautostatechange'));
+    };
+    el.addEventListener('pointerdown', grow, { once: true });
+  });
+  const cdp = await page.context().newCDPSession(page);
+  const at = { x: b.x + b.width / 2, y: b.y + b.height / 2, button: /** @type {const} */ ('left'), clickCount: 1 };
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...at });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at });
+  await expect(chip, 'the click landed on the chip').toHaveAttribute('aria-checked', 'true');
+});
+
 // A hold never hides what arrives (#1326’s review): inside an app’s frame the page can’t see the pointer leave or
 // click, so a pointer resting on an app doesn’t hold the view while following; and while a pointer resting on a
 // button holds it, the replies below count on Jump to latest, and the view goes on to them once the pointer leaves.
