@@ -230,7 +230,8 @@ export const SCHEMAS = {
             ...ANCHOR,
             anchor: str({ min: 1, max: 80 }),
             status: oneOf('open', 'resolved'),
-            // edited: the person’s correction of their comment before it, after they submitted (#858, review-correct.mjs).
+            // edited: the person’s correction of their last comment in the thread, after they submitted (#858,
+            // review-correct.mjs); it goes at the thread’s end, after any reply to the comment it corrects.
             comments: list(obj({ author, text: str({ min: 1, max: 4000 }), edited: bool() }, ['author', 'text']), { min: 1, max: 50 }),
           },
           ['id', 'status', 'comments'],
