@@ -15,7 +15,9 @@ import { untilTurns } from './until-turns.mjs';
 /**
  * Waits for the automatic install under way on h1, if there is one, to end and be acted on: its `done` resolves, then
  * what the manager chains on it (afterBusy, which may connect), so a connect it makes has started by the time this
- * returns. No fixed wait: a fixed one let these races pass, or fail, by the machine’s load (#1530, #1657).
+ * returns. No fixed wait: a fixed one let these races pass, or fail, by the machine’s load (#1530, #1657). What it
+ * covers is a connect made in that chain, which dials at once (connectNow); one put off on a timer isn’t, as no
+ * bounded wait could cover a timer of any length.
  * @param {any} t
  */
 async function installSettled(t) {
