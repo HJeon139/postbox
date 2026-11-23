@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.43.1 (2026-11-23)
+
+### Fixes
+
+- **codex:** fail a turn whose thread answer the host left out, instead of waiting for good
+- **codex:** resume a thread without its past turns, so the answer fits a host's line
+
 ## 4.43.0 (2026-11-23)
 
 ### Features
