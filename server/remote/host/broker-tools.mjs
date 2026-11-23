@@ -5,6 +5,7 @@
 import { hostBlockRefusal } from '../../../shared/block-updates.mjs';
 import { validateBlock } from '../../../shared/catalog.mjs';
 import { carriesBlockFiles, encodedBytes, REMOTE_LIMITS, TURN_FILES, toolRoute } from '../../../shared/remote-protocol.mjs';
+import { cutText } from '../../../shared/text-parts.mjs';
 import { filesReader, withoutFiles } from './broker-files.mjs';
 import { armReadTimer, claim, detached, readLocal, settled, settleOffline } from './broker-offline.mjs';
 import { note, record, refusal, startOf, unrecorded, written } from './broker-records.mjs';
@@ -189,7 +190,7 @@ async function answerResend(b, c, known, route, result) {
 /** A shim’s tool call. @param {Broker} b @param {ShimConn} c @param {string} turn @param {any} m */
 export async function call(b, c, turn, m) {
   const arrived = b.now();
-  const result = (ok, text) => c.send('result', { id: m.id, ok, text: text.slice(0, REMOTE_LIMITS.replyChars) });
+  const result = (ok, text) => c.send('result', { id: m.id, ok, text: cutText(text, REMOTE_LIMITS.replyChars) });
   const no = await refusal(b, turn);
   if (no) {
     result(false, no.text);

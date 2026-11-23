@@ -7,6 +7,7 @@
 import { LIMITS } from '../../shared/limits.mjs';
 import { GONE_TOOLS } from '../../shared/mcp-tools.mjs';
 import { REMOTE_LIMITS, toolRoute } from '../../shared/remote-protocol.mjs';
+import { cutText } from '../../shared/text-parts.mjs';
 import { AgentFileError } from '../agent-files.mjs';
 import { noteAnswer } from '../empty-reply.mjs';
 import { keptIfShown } from '../review-files.mjs';
@@ -59,17 +60,17 @@ export async function onTool(rts, hostId, m) {
   if (r.closed) return queued ? undefined : void send(link, 'reply', { turn: m.turn, id: m.id, ok: false, text: r.text });
   // An urgent note for the agent comes first, as on the laptop (server/mcp.mjs, #229), in an answer it waits for: a
   // queued call’s reply never reaches it (the shim answered once the daemon took it), so its note waits for the next.
-  const text = (queued ? r.text : withUrgent(rts.rt, live.sessionId, r.text, live.rt)).slice(0, REMOTE_LIMITS.replyChars);
+  const text = cutText(queued ? r.text : withUrgent(rts.rt, live.sessionId, r.text, live.rt), REMOTE_LIMITS.replyChars);
   // The reply is kept for the daemon’s repeats, which come after a hello until one is heard: a link that drops
   // before it lands mustn’t post a hand-off, or schedule a wake, twice (#439).
   const now = rts.rt.s.sessions[live.sessionId];
   if (now?.remoteTurn && !REPEATABLE.has(m.name)) {
-    const replies = [...(now.remoteTurn.replies ?? []), { turn: m.turn, id: m.id, ok: r.ok, text: text.slice(0, KEPT_REPLY_CHARS) }].slice(-KEPT_REPLIES);
+    const replies = [...(now.remoteTurn.replies ?? []), { turn: m.turn, id: m.id, ok: r.ok, text: cutText(text, KEPT_REPLY_CHARS) }].slice(-KEPT_REPLIES);
     updateRemote(rts, now.id, { replies });
   }
   // A queued call’s agent already has its answer (the shim’s, once the daemon took it), so Postbox’s refusal goes to
   // it at its next turn instead.
-  if (queued && !r.ok) rts.rt.sessions.tell(live.sessionId, `Your ${m.name} call from the host didn’t go through: ${text.slice(0, 1000)}`);
+  if (queued && !r.ok) rts.rt.sessions.tell(live.sessionId, `Your ${m.name} call from the host didn’t go through: ${cutText(text, 1000)}`);
   send(link, 'reply', { turn: m.turn, id: m.id, ok: r.ok, text: text || (r.ok ? 'Done.' : 'It failed.') });
 }
 

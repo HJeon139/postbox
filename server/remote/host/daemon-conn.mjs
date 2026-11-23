@@ -12,6 +12,7 @@ import { checkIdle } from './daemon-scan.mjs';
 import { start } from './daemon-start.mjs';
 import { stop } from './daemon-stop.mjs';
 import { write } from './daemon-write.mjs';
+import { closeRelays, toOlder } from './relay.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
 /** @typedef {import('./daemon-constants.mjs').Output} Output */
@@ -36,7 +37,10 @@ function openConn(d, output, end = () => output.end()) {
       c.follows.clear();
       // Read before the driver is cleared (#582, designs/508/582/link.md).
       const wasDriver = d.driver === c;
-      if (wasDriver) d.driver = null;
+      if (wasDriver) {
+        d.driver = null;
+        closeRelays(d);
+      }
       d.conns.delete(c);
       d.lastActive = d.now();
       try {
@@ -96,6 +100,8 @@ async function dispatch(d, c, m) {
   if (!c.ready) return fail(c, 'not-ready', 'Say hello with the host’s token first.', m.type, m.turn);
   if (d.removing) return fail(c, 'internal', 'Postbox is being removed from this host.', m.type, m.turn);
   if (Object.hasOwn(handlers, m.type)) return handlers[m.type](d, c, m);
+  // A turn this daemon relays to an older version’s (relay.mjs, #759): its answers and replies go there.
+  if (d.driver === c && toOlder(d, m)) return;
   // A refused answer or reply names its prompt or call, so Postbox knows which card or call it was (#120).
   const of = typeof m.prompt === 'string' ? m.prompt : typeof m.id === 'string' ? m.id : undefined;
   const reply = { send: (type, body) => send(c, type, body), fail: (code, text) => fail(c, code, text, m.type, m.turn, of) };

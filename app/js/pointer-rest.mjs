@@ -1,5 +1,5 @@
 // Where the mouse rests, for what holds still under it (#1326): the transcript’s view (view-hold.mjs) and an agent
-// sheet (sheet-hold.mjs). Each hears of a move, a press or a let-go once a frame.
+// sheet (sheet-hold.mjs). Each hears of a move, a press or a let-go once a frame; the view also hears of a press at once.
 
 // The mouse’s place in the window, whether it moved there since the last click (aimed), and whether a click has
 // started there: null outside the window, or when the last pointer was a finger, which rests nowhere. Inside an app’s
@@ -11,6 +11,8 @@ let aimedNow = false;
 let pressedNow = false;
 /** @type {Set<() => void>} the answer of each view and sheet that holds still under the pointer */
 const listeners = new Set();
+/** @type {Set<() => void>} what takes hold of the element pressed, as it’s pressed */
+const pressers = new Set();
 let soon = 0;
 function tell() {
   if (soon) return;
@@ -31,6 +33,7 @@ function onPointer(e) {
   if (e.type === 'pointerdown') pressedNow = true;
   if (e.type === 'pointerup' || e.type === 'pointercancel') pressedNow = aimedNow = false;
   tell();
+  if (e.type === 'pointerdown') for (const fn of pressers) fn();
 }
 for (const type of ['pointermove', 'pointerdown', 'pointerup', 'pointercancel']) addEventListener(type, onPointer, { capture: true, passive: true });
 document.documentElement.addEventListener('pointerleave', (e) => {
@@ -57,6 +60,18 @@ addEventListener('blur', () => {
 export function onPointerMoved(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
+}
+
+/**
+ * Calls fn as the pointer presses, while what it pressed is still under it; returns how to stop. A quick click moves
+ * and presses with no frame between, and the transcript can grow and follow its end before the next frame’s callbacks,
+ * moving the button out from under the press so the release lands elsewhere and the click is lost (#1653). fn only
+ * takes hold: anything that scrolls waits for the frame, as onPointerMoved’s does, so the press itself moves nothing.
+ * @param {() => void} fn
+ */
+export function onPointerPressed(fn) {
+  pressers.add(fn);
+  return () => pressers.delete(fn);
 }
 
 /** Where the mouse is in the window, or null. */

@@ -92,7 +92,8 @@ function pointerOver(v) {
 
 /**
  * Takes the element to hold, where it is now: called once the view has held its place, so nothing has moved since
- * the last frame drew. Reading, at the pointer, else the middle of the view; not while a jump’s target holds the
+ * the last frame drew; or, following, as the pointer presses (view-bind.mjs), wherever what it pressed is by then
+ * (#1653). Reading, at the pointer, else the middle of the view; not while a jump’s target holds the
  * place (view-jump.mjs), nor at the end, where a window grown taller clamps the view short of the place its anchor
  * keeps to go back to (#837), nor while a reply in sight is laid out at an estimate, which moves what’s around it as it
  * draws (#1257): once it draws, the view holds its place again and takes the hold then (holdAnchor).

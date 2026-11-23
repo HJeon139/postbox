@@ -691,7 +691,13 @@ export function openRename(threadId) {
 
 // ── Delete confirm ──────────────────────────────────────────────────────────────────────
 
-export function confirmDelete(se) {
+/**
+ * The Delete session confirm. keepConversation, from the Agents header’s − (#1620), asks the server to refuse rather
+ * than erase the conversation if this turns out to be its last agent by the time the person confirms. removed runs
+ * once the session is gone.
+ * @param {any} se @param {{ keepConversation?: boolean, removed?: () => void }} [opts]
+ */
+export function confirmDelete(se, { keepConversation = false, removed } = {}) {
   const t = S().threads[se.threadId];
   const room = sessionsOf(se.threadId).length > 1;
   const apps = Object.values(S().apps).filter((a) => a.sessionId === se.id).length;
@@ -740,11 +746,12 @@ export function confirmDelete(se) {
           onclick: async () => {
             dlg.close();
             try {
-              await api(`/api/sessions/${se.id}`, undefined, 'DELETE');
+              await (keepConversation ? api(`/api/sessions/${se.id}/remove`, {}) : api(`/api/sessions/${se.id}`, undefined, 'DELETE'));
               say(`Deleted ${se.handle}’s session`);
+              removed?.();
               if (location.hash.includes(se.threadId) && !room) (await import('./last-place.mjs')).leave(se.threadId);
             } catch (e) {
-              toast({ title: 'Couldn’t delete', text: e.message, level: 'blocking' });
+              toast({ title: keepConversation ? `Couldn’t remove @${se.handle}` : 'Couldn’t delete', text: e.message, level: 'blocking' });
             }
           },
         },

@@ -7,18 +7,22 @@ import { createDaemon } from '../server/remote/host/daemon.mjs';
 import { encode, message, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { BOOT, VERSION } from './remote-broker-fixtures.mjs';
 
-/** The daemon in-process, with fake runners: a held stdin’s writes are kept in `writes`. @param {string} home */
-export function inProcessDaemon(home) {
-  const alive = new Set();
+/**
+ * The daemon in-process, with fake runners: a held stdin’s writes are kept in `writes`. Two daemons of different versions
+ * on one host share `alive`, the runners running there (tests/remote-relay.test.mjs).
+ * connectRelay: the newer one’s connection to the older one’s socket, in-process.
+ * @param {string} home @param {{ version?: string, alive?: Set<string>, log?: (line: string) => void, connectRelay?: any, relayCheckMs?: number, relayWelcomeMs?: number }} [o]
+ */
+export function inProcessDaemon(home, { version = VERSION, alive = new Set(), log = () => {}, connectRelay, relayCheckMs, relayWelcomeMs } = {}) {
   const writes = [];
   let pid = 4000;
   const daemon = createDaemon({
     home,
-    version: VERSION,
+    version,
     // logind’s facts, which the daemon asks at each hello (the lingering warning): none, as on a host without systemd.
     logind: () => ({ killUserProcesses: null, linger: null }),
     async launchRunner(o) {
-      writeFileSync(o.paths.turn(o.turn, TURN_FILES.runner), JSON.stringify({ turn: o.turn, version: VERSION, pid: ++pid, bootId: BOOT, startTime: 1 }), {
+      writeFileSync(o.paths.turn(o.turn, TURN_FILES.runner), JSON.stringify({ turn: o.turn, version, pid: ++pid, bootId: BOOT, startTime: 1 }), {
         mode: 0o600,
       });
       alive.add(o.turn);
@@ -40,7 +44,10 @@ export function inProcessDaemon(home) {
     }),
     probeLoginPath: async () => ({ ok: false, why: 'the test runs no login shell' }),
     kill: () => {},
-    log: () => {},
+    log,
+    connectRelay,
+    relayCheckMs,
+    relayWelcomeMs,
     pollMs: 10,
     stopGraceMs: 60_000,
   });

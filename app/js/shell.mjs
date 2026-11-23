@@ -4,6 +4,7 @@
 import { isMock, mockMarker } from './agent-facts.mjs';
 import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
+import { canRemove, openAdd, openRemove } from './agents-header.mjs';
 import { chainLimitDesc, openChainLimit } from './chain-limit.mjs';
 import { busy, client, needsYou, sessionsOf, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
@@ -15,7 +16,7 @@ import { openPermissions } from './permissions.mjs';
 import { projectPlaces } from './places-menu.mjs';
 import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { confirmDeleteThread, openNewAgent, openRename, openSettings } from './sheets.mjs';
+import { confirmDelete, confirmDeleteThread, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { threadState } from './thread-state.mjs';
 import './store-line.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
@@ -425,8 +426,11 @@ function conversationMenu(anchor, shown) {
         label: 'Add an agent…',
         icon: 'agent',
         desc: room ? 'It joins the room' : 'This conversation becomes a room',
-        run: () => openNewAgent({ threadId: t.id }),
+        // The Agents header’s picks, here too where the sidebar is hidden (#1620).
+        run: () => openAdd(anchor, t.id, { openNewAgent, confirmDelete }),
       },
+      // While one agent is left, removing it would erase the conversation: Delete does that, below.
+      ...(canRemove(t.id) ? [{ label: 'Remove an agent…', icon: 'trash', run: () => openRemove(anchor, t.id, { openNewAgent, confirmDelete }) }] : []),
       { label: 'Work', icon: 'file', desc: 'What its agents changed, ran and published', run: () => openWork(t.id) },
       {
         label: 'Permissions…',

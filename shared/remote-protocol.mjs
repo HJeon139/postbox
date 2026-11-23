@@ -66,6 +66,10 @@
 // - A second Postbox gets `busy` unless its hello says `takeover`; the one it replaces gets `taken-over`. A hello whose
 //   `instance` (a Postbox’s own name for itself, the same across its restarts) is the driver’s replaces that
 //   connection without either: it’s the same Postbox back after its ssh died before the host noticed.
+// - A turn left running under an older Postbox version on the host is relayed by this version’s daemon to that
+//   version’s daemon, as a Postbox of its own (server/remote/host/relay.mjs, #759). The relay’s hello has an
+//   `instance` that starts `relay_`, and a daemon never relays from such a connection. `relay { turn, version, state }`
+//   tells Postbox a turn it couldn’t relay (`off`), or whose relay ended after carrying anything (`lost`).
 // - A `stop` for a turn the daemon doesn’t have answers `no-turn`, and from then on a `start` for that turn is refused
 //   with `turn-stopped`, on any connection: a start written to a channel that dropped may still reach the daemon after
 //   the stop sent on the next one. A stop that comes while its turn’s start is under way waits for that start to

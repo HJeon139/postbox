@@ -25,6 +25,19 @@ export function userSetup(workspace) {
   return out;
 }
 
+/**
+ * What the agents spent and used, as their streams record it now: every backend’s streams, which the report’s usage
+ * line and run.json read. The run reads them again before each report, as the budget reads its own (#1696).
+ * @param {{ streams: string, sdkStreams: string, kiroStreams: string, agyStreams: string, codexStreams: string }} paths
+ */
+export const readSpend = (paths) => ({
+  streams: readStreams(paths.streams),
+  sdkStreams: readStreams(paths.sdkStreams),
+  kiroStreams: readStreams(paths.kiroStreams),
+  agyStreams: readStreams(paths.agyStreams),
+  codexStreams: readStreams(paths.codexStreams),
+});
+
 /** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD), by the Kiro CLI
  * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/, by the Antigravity CLI adapter (POSTBOX_AGY_RECORD) in streams/agy/,
  * by Codex’s (POSTBOX_CODEX_RECORD) in streams/codex/, or by the Agent SDK’s (POSTBOX_SDK_RECORD) in streams/sdk/.

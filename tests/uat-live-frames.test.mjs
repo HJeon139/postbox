@@ -1,7 +1,6 @@
 // The UAT runner keeps every live frame its stream receives (tools/uat/history.mjs): a running turn’s progress isn’t
 // stored between commit points (designs/architecture/live-progress.md), so the run saves the frames beside the events,
-// where the ATIF export reads them (tools/atif-export.mjs). They aren’t storage: the #722 scan for an asset’s content
-// outside its file skips them, and a --recheck doesn’t read them (#1655).
+// for the ATIF trajectories. They aren’t storage: the #722 scan for an asset’s content outside its file skips them (#1655).
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
