@@ -109,11 +109,12 @@ test('#1696 each report reads what the agents spent as the budget does, after a 
   };
   for (const folder of Object.values(paths)) mkdirSync(folder);
   const result = (usd) => `${JSON.stringify({ type: 'result', total_cost_usd: usd })}\n`;
+  // What the run last read, before a failed step’s turn reported: the first report reads the streams again too.
+  const facts = readSpend(paths);
   writeFileSync(join(paths.sdkStreams, '1-researcher.jsonl'), result(0.72));
   writeFileSync(join(paths.sdkStreams, '2-researcher.jsonl'), '');
   const budget = new RunBudget({ cap: 10, testerShare: 1, agentsShare: 8, now: () => 0 });
   budget.track({ streams: streamResults(...dollarFolders(paths)), tester: { spent: 0 } });
-  const facts = readSpend(paths);
   const reports = [];
   await endRun({
     refresh: () => Object.assign(facts, readSpend(paths)),
@@ -121,6 +122,7 @@ test('#1696 each report reads what the agents spent as the budget does, after a 
     review: async () => appendFileSync(join(paths.sdkStreams, '2-researcher.jsonl'), result(0.12)),
     judge: async () => {},
   });
+  assert.ok(Math.abs((reports[0]?.usage ?? 0) - 0.72) < 1e-9, `the first report’s usage line: ${reports[0]?.usage}`);
   const last = reports.at(-1);
   assert.ok(Math.abs((last?.usage ?? 0) - 0.84) < 1e-9, `the last report’s usage line: ${last?.usage}`);
   assert.ok(Math.abs((last?.budget ?? 0) - 0.84) < 1e-9, `its budget: ${last?.budget}`);
