@@ -46,18 +46,29 @@ export function withoutFences(s) {
 /** Strips Markdown to plain text, for screen-reader announcements and short previews. */
 export function toPlainText(src) {
   const text = String(src ?? '');
-  // The asterisks of 10**9 or 2*n, and those in a code span, stay as typed while emphasis goes, as rendering keeps them
-  // (#793). A code span’s are kept first, so they don’t count as emphasis opened before the math after them.
+  // A code span’s code is kept as typed, as the page shows it: set aside before the Markdown goes, so its underscores,
+  // asterisks and brackets aren’t read as emphasis or links, and put back after (#1673). The asterisks of 10**9 or 2*n
+  // stay as typed while emphasis goes, as rendering keeps them (#793).
   const mark = freeMark(text);
+  // Most text has no code span: then nothing is held.
+  const hold = text.includes('`') ? freeMark(text + mark) : '';
+  /** @type {string[]} */
+  const codes = [];
   const kept = withoutFences(text).replace(/<\/?(details|summary)>/g, ' ');
-  const coded = mapCodeSpans(kept, (code) => code.replaceAll('*', mark));
-  return keepMathStars(coded, mark)
+  const held = mapCodeSpans(kept, (code) => `${hold}${codes.push(code) - 1}${hold}`);
+  const plain = keepMathStars(held, mark)
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^ {0,3}#{1,6}\s+/gm, '')
     .replace(/^ {0,3}>\s?/gm, '')
     .replace(/^\s*([-*+]|\d+[.)])\s+/gm, '')
-    .replace(/(\*\*|__|~~|\*|_)(?=\S)([\s\S]*?\S)\1/g, '$2')
-    .replaceAll(mark, '*')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/(\*\*|__|~~|\*|_)(?=\S)([\s\S]*?\S)\1/g, '$2');
+  // Code goes back before the kept asterisks do, since a hold can begin with the mark when the text holds every
+  // private-use character (freeMark).
+  const back = codes.length
+    ? plain
+        .split(hold)
+        .map((part, i) => (i % 2 ? codes[Number(part)] : part))
+        .join('')
+    : plain;
+  return back.replaceAll(mark, '*').replace(/\s+/g, ' ').trim();
 }

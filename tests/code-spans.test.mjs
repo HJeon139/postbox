@@ -4,10 +4,11 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { clip } from '../server/helpers.mjs';
 import { lintTerms } from '../server/lint.mjs';
 import { renderMarkdown } from '../shared/markdown.mjs';
 import { toPlainText } from '../shared/markdown-plain.mjs';
-import { parseMentions } from '../shared/text.mjs';
+import { parseMentions, spokenSentences } from '../shared/text.mjs';
 
 test('a handle in code of any backtick run wakes no one, and one in prose still does', () => {
   assert.deepEqual(parseMentions('Run ``@critic`` here', ['critic']), []);
@@ -78,4 +79,45 @@ test('a long line of runs with no close renders in linear time', () => {
   const t = performance.now();
   renderMarkdown(line);
   assert.ok(performance.now() - t < 100, `rendered ${line.length} characters in ${Math.round(performance.now() - t)} ms`);
+});
+
+// #1673: plain text kept a code span’s asterisks but read its underscores as emphasis, so a wake reason said
+// “001pagessearch.sql” where the reply had `001_pages_search.sql`. A span’s code is kept as the page shows it.
+test('plain text keeps a code span’s code as typed, and still drops emphasis outside it', () => {
+  assert.equal(toPlainText('see `001_pages_search.sql`'), 'see 001_pages_search.sql');
+  assert.equal(toPlainText('as `001_pages_search.sql`. And `a_b_c`'), 'as 001_pages_search.sql. And a_b_c');
+  assert.equal(toPlainText('`__init__` and ``x_y_z`` and `~~gone~~` and `[a](b)`'), '__init__ and x_y_z and ~~gone~~ and [a](b)');
+  assert.equal(toPlainText('`a*b*c` and *em*'), 'a*b*c and em');
+  assert.equal(toPlainText('**bold** and _em_ then `x_y_z` and __strong__'), 'bold and em then x_y_z and strong');
+  // Emphasis can’t pair across a span: the underscores of `a_b` don’t close the one before it.
+  assert.equal(toPlainText('_one `a_b` two_'), 'one a_b two');
+});
+
+test('plain text keeps code and math asterisks when the text holds every private-use character', () => {
+  let every = '';
+  for (let code = 0xe000; code <= 0xf8ff; code++) every += String.fromCharCode(code);
+  assert.equal(toPlainText(`${every} \`a_b*c\` 2*n *em*`), `${every} a_b*c 2*n em`);
+});
+
+test('plain text reads a span on its own line, as the renderer does, at a line feed, CRLF or a lone CR', () => {
+  for (const br of ['\n', '\r\n', '\r']) {
+    assert.equal(toPlainText(`a \`x${br}\`b_c_d\``), 'a `x b_c_d', JSON.stringify(br));
+  }
+});
+
+test('wake reasons and excerpts (clip) and spoken sentences keep a code span’s underscores', () => {
+  assert.equal(clip('Wrote `001_pages_search.sql` for review'), 'Wrote 001_pages_search.sql for review');
+  assert.deepEqual(spokenSentences('Run `001_pages_search.sql` now. ', 0, true).sentences, ['Run 001_pages_search.sql now.']);
+});
+
+test('plain text of a long text full of spans and stray runs takes linear time', () => {
+  const spans = '`a_b*c` _d_ '.repeat(20_000);
+  let stray = '';
+  for (let n = 600; n > 0; n--) stray += `${'`'.repeat(n)}a_`;
+  for (const text of [spans, stray]) {
+    const t = performance.now();
+    toPlainText(text);
+    const ms = performance.now() - t;
+    assert.ok(ms < 200, `cut ${text.length} characters to plain text in ${Math.round(ms)} ms`);
+  }
 });

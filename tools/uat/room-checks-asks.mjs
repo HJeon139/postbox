@@ -119,7 +119,7 @@ function droppedAsks(f) {
 
 /**
  * needs-mismatch: a ring that disagrees with the open asks. An agent with an open card or an unanswered block that
- * doesn’t need you, or one that needs you for an ask already settled.
+ * doesn’t need you (a block once the turn that showed it has ended), or one that needs you for an ask already settled.
  */
 function needsMismatches(f) {
   const out = [];
@@ -132,7 +132,7 @@ function needsMismatches(f) {
       const se = sid ? sessions[sid] : null;
       if (!se || se.archived) continue;
       const open = it.kind === 'hop' ? it.status === 'open' : ASKING.has(it.block?.type) && it.valid !== false && !it.answered && !it.closed;
-      if (open && !needsYouNow(se))
+      if (open && !needsYouNow(se) && !shownByRunningTurn(it, se))
         out.push({
           key: `needs-mismatch:${it.id}`,
           title: `@${se.handle} has an open ask, and its ring doesn’t say it needs you`,
@@ -151,6 +151,17 @@ function needsMismatches(f) {
   }
   return out;
 }
+
+/**
+ * Whether a block was shown by its agent’s turn that’s still running: a turn clears `finishedAt` as it starts and sets
+ * it as it ends. That turn’s own end decides whether its block needs you (server/card-needs.mjs, turnsOf), so a run
+ * that reads the room mid-turn, as it does when it hands a block to the tester while the agent works (#289), finds no
+ * need yet on any backend. Not an AskUserQuestion’s block shown here (#521): its call waits on the person, so it needs
+ * you mid-turn. One on a host may be let go mid-turn by the host’s own limit (#1059), so it’s judged at the turn’s end.
+ * @param {any} it  @param {any} se
+ */
+const shownByRunningTurn = (it, se) =>
+  it.kind === 'block' && (!it.question || Boolean(it.remote)) && Boolean(it.turnId) && it.turnId === se.lastTurnId && !se.finishedAt;
 
 /**
  * Whether the ask a ring points at is settled: a wake card or a permission card that’s no longer open (one that
