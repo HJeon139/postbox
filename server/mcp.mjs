@@ -17,6 +17,7 @@
 // and agents posted large apps to /mcp from scripts, outside the tool calls you see. A large app goes by codePath.
 
 import { GONE_TOOLS, TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import { withCheck } from './app-check-wait.mjs';
 import { offersBring } from './bring.mjs';
 import { noteAnswer } from './empty-reply.mjs';
 import { sameToken } from './helpers.mjs';
@@ -91,7 +92,7 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
         // An app’s files (#54) and a review’s images (#780) may come from the agent’s folder, which Postbox reads itself.
         const app =
           name === 'show_app' || name === 'update_app' ? await rt.assets.appFiles(sessionId, args) : await rt.assets.blockFiles(sessionId, name, args);
-        const r = await keptIfShown(app, (given) => tools[name](app.args, given));
+        const r = await withCheck(name, await keptIfShown(app, (given) => tools[name](app.args, given)), closeOrSignal);
         noteAnswer(rt.turns.get(sessionId) ?? null, name, r);
         // An urgent note for the agent comes first (#229): this is how it hears one mid-turn.
         const text = withUrgent(rt, sessionId, r.results ? JSON.stringify(r.results) : r.message, turn);

@@ -34,6 +34,7 @@ const PLACED = {
   'adapters/kiro-cli-models.mjs': 1, // kills a CLI probe: no store
   'adapters/mock.mjs': 1, // the mock’s pacing: no store
   'adapters/process-group.mjs': 4, // SIGKILL after a Stop’s grace: Stop is allowed while closed
+  'app-check-wait.mjs': 1, // a show_app or update_app reply that stops waiting for its app’s check: no store (#337)
   'ask-question.mjs': 1, // a question’s CARD_WAIT_MS, expireWait: gated (#521)
   'claude-mirror.mjs': 1, // the mirror’s poll of an attached session’s transcript: skips its tick while closed
   'diagram-parse.mjs': 1, // ends a diagram parse that took too long, by ending its worker: no store (#731)

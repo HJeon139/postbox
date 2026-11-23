@@ -98,7 +98,7 @@ The stylesheet is preloaded, so apps use the same classes and tokens as Postbox,
 - low-contrast text
 - script errors
 
-The first failure goes back to the agent as an `app-check` message. If the next version still fails, the app is shown with a note. A script error shows a “stopped working” card with Reload and Ask to fix.
+The first failure goes back to the agent as an `app-check` message. While a Postbox page is open to run the check, `show_app` and `update_app` wait for it, up to 12 s, and their reply says how it went, the problems it found included, so the agent doesn’t tell you a version is fixed before its check answers; a result the reply carries isn’t sent again as a message, and one that takes longer comes as one (#337, `server/app-check-wait.mjs`). With no page open, the reply returns at once. If the next version still fails, the app is shown with a note. A script error shows a “stopped working” card with Reload and Ask to fix.
 
 What the check finds is written for the agent, with pixel sizes and CSS advice, so only the agent gets it: as the `app-check` message, or in a lint turn for warnings and for what a fix left. You see a plain status instead (#948, #981). While the agent fixes a version, you see the last version that passed its check, read-only, with a note; if none has, its place says the app is being fixed. An app shown with problems has one plain sentence above it: whether parts may be hard to read or use, whether its agent couldn’t fix them, or that Postbox couldn’t finish checking it, and that the agent has the details only when it was told.
 

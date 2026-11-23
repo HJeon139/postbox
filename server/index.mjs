@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
+import { checksRunIn } from './app-check-wait.mjs';
 import { openLink } from './app-links.mjs';
 import { clickEvent, noteApp } from './app-notes.mjs';
 import { publishApp } from './app-publish.mjs';
@@ -182,7 +183,9 @@ export async function start({
   };
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
-  const { streams, stop: stopStreams, stream, headers } = liveStreams(store, undefined, { running: rt.running });
+  const { streams, stop: stopStreams, stream, headers, pages } = liveStreams(store, undefined, { running: rt.running });
+  // A saved app’s reply waits for its check only while a page is open to run it (#337).
+  checksRunIn(pages);
   const search = searchOf(store);
   let offlineUntil = 0;
 

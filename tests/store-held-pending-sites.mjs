@@ -16,7 +16,7 @@ export const PENDING = {
   'restart-sweep.mjs': ['settleFixing', 'settleRetiredNeeds', 'cardOf'], // an app left fixing, settled by whether its app-check entry still runs, a sweep that writes back (#1664); the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
   'ask-question.mjs': ['handOver'], // a host question’s blocks this turn answered, whose answers go on when the host ends its call (#1059)
-  'apps.mjs': ['endFixes', 'showApp', 'updateApp'], // an agent’s apps left fixing, a sweep that writes back (#1664); show_app and update_app of an app the turn may have just shown
+  'apps.mjs': ['appCheck', 'endFixes', 'showApp', 'updateApp'], // the check just recorded, for the reply waiting on it (#337); an agent’s apps left fixing, a sweep that writes back (#1664); show_app and update_app of an app the turn may have just shown
   'app-entries.mjs': ['lostEvent'], // the voice line an app’s event posted, maybe behind a held commit, read when its turn starts (#1425)
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'block-update.mjs': ['shownBy'], // update_block of a block the turn just showed

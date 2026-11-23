@@ -41,6 +41,7 @@ export const UNREAD_MS = 60_000;
  *   stop: () => void,
  *   stream: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, url: URL) => void,
  *   headers: ReturnType<typeof threadHeaders>,
+ *   pages: () => boolean,
  * }}
  */
 export function liveStreams(store, table, { now = Date.now, running }) {
@@ -96,7 +97,9 @@ export function liveStreams(store, table, { now = Date.now, running }) {
     req.on('close', () => streams.delete(res));
   }
 
-  return { streams, stop: () => clearInterval(keepAlive), stream, headers };
+  // Whether a Postbox page is open: a page’s stream names the conversations it has open, a tool’s names none.
+  const pages = () => [...streams].some((res) => openOf.has(res));
+  return { streams, stop: () => clearInterval(keepAlive), stream, headers, pages };
 }
 
 /**
