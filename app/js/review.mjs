@@ -156,6 +156,12 @@ export function renderReview(b, item, ctx, kit) {
             compose(u.key);
           };
     const threadsOf = (u) => u.lines.flatMap((k) => threadBox(k));
+    // A thread under a line is an item of the Lines list too, so the list holds only its items (#858: axe’s
+    // aria-required-children, once a thread has a button).
+    const listed = (/** @type {HTMLElement[]} */ els) => {
+      for (const el of els) el.setAttribute('role', 'listitem');
+      return els;
+    };
     const quoted = (depth) => (depth ? `quote q${Math.min(depth, 3)}` : '');
     // code: a line of a fence, drawn as part of one code box ('first' carries the language label).
     // raw: a line shown as its source, such as a changed fence marker or delimiter row in a diff.
@@ -186,13 +192,16 @@ export function renderReview(b, item, ctx, kit) {
             plain ? text || ' ' : null,
           ),
         ),
-        threadsOf(u),
+        listed(threadsOf(u)),
       ];
     };
     // A hidden line (a delimiter row, a fence marker) that a diff changed shows as its source, so the
     // change is visible; an unchanged one shows only its threads.
-    const hiddenRows = (rs, depth) =>
-      rs.map((r) => (r.kind === 'same' ? (r.n === undefined ? [] : threadBox(r.n)) : lineRow(rowUnit(r), depth, { raw: true })));
+    const hiddenRow = (r, depth) => {
+      if (r.kind !== 'same') return lineRow(rowUnit(r), depth, { raw: true });
+      return r.n === undefined ? [] : listed(threadBox(r.n));
+    };
+    const hiddenRows = (rs, depth) => rs.map((r) => hiddenRow(r, depth));
     // A table or list renders whole. Each row or item gets its own gutter, positioned in the gutter
     // column, and its threads right after it. If the rendered rows or items don't match the targets,
     // the block is drawn line by line, as before.
@@ -227,7 +236,7 @@ export function renderReview(b, item, ctx, kit) {
       const md = h('div.tx.md', { class: quoted(g.depth), html: trusted(renderMarkdown(rows.map((r) => r.t).join('\n'))) });
       return [
         h('div.rv-line.rv-block', { role: 'listitem', class: [unitClass(u), onLine(u) ? 'can-c' : ''].join(' '), onclick: onLine(u) }, gutter(u), md),
-        threadsOf(u),
+        listed(threadsOf(u)),
       ];
     };
     for (const g of groups) {
