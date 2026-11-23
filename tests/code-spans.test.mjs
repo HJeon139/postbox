@@ -20,10 +20,10 @@ test('a handle in code of any backtick run wakes no one, and one in prose still 
   assert.deepEqual(parseMentions('Say ```@critic``` then @critic', ['critic']), ['critic']);
   assert.deepEqual(parseMentions('```\n@critic\n```\nand @critic', ['critic']), ['critic']);
   assert.deepEqual(parseMentions('```\n@critic\n```', ['critic']), []);
-  // A fence can open on a list item’s own line, as the renderer reads it (pre-review).
+  // A fence can open on a list item’s own line, as the renderer reads it (#1601).
   assert.deepEqual(parseMentions('- ```\n  @critic\n  ```\nafter', ['critic']), []);
   assert.deepEqual(parseMentions('1. ```\n   @critic\n   ```', ['critic']), []);
-  // A list marker opens a fence but never closes one: `- ~~~` inside a ~~~ fence is code (critic’s review).
+  // A list marker opens a fence but never closes one: `- ~~~` inside a ~~~ fence is code (#1601).
   const fenced = '~~~\n- ~~~\n@critic Step 7\n~~~\nafter @critic';
   assert.deepEqual(parseMentions(fenced, ['critic']), ['critic']);
   assert.deepEqual(parseMentions('~~~\n- ~~~\n@critic\n~~~\nafter', ['critic']), []);
@@ -60,17 +60,21 @@ test('a span never crosses a line, as the renderer reads it: a stray run leaves 
   assert.equal(toPlainText('Use `x here.\n\nThen *y* and `z`'), 'Use `x here. Then y and z');
 });
 
-test('a lone carriage return ends a line for spans too, as the renderer reads it (pre-review)', () => {
+test('a lone carriage return ends a line for spans too, as the renderer reads it', () => {
   const text = 'a `x\r@critic y`';
   assert.match(renderMarkdown(text, { mentions: ['critic'] }), /class="mention"/);
   assert.deepEqual(parseMentions(text, ['critic']), ['critic']);
   assert.deepEqual(parseMentions('a `x\r\n@critic y`', ['critic']), ['critic']);
+  // A fence's lines end at a lone \r too, so a mention inside it is code, as the page shows it.
+  const fenced = '```\r@critic\r```\rafter';
+  assert.doesNotMatch(renderMarkdown(fenced, { mentions: ['critic'] }), /class="mention"/);
+  assert.deepEqual(parseMentions(fenced, ['critic']), []);
 });
 
-test('a long line of runs with no close renders in linear time (pre-review)', () => {
+test('a long line of runs with no close renders in linear time', () => {
   let line = '';
   for (let n = 600; n > 0; n--) line += `${'`'.repeat(n)}a`;
   const t = performance.now();
   renderMarkdown(line);
-  assert.ok(performance.now() - t < 500, `rendered ${line.length} characters in ${Math.round(performance.now() - t)} ms`);
+  assert.ok(performance.now() - t < 100, `rendered ${line.length} characters in ${Math.round(performance.now() - t)} ms`);
 });

@@ -28,7 +28,8 @@ export function withoutFences(s) {
   if (!s.includes('```') && !s.includes('~~~')) return s;
   const out = [];
   let marker = null;
-  for (const line of s.split('\n')) {
+  // A line ends where the renderer ends one (markdown.mjs): at \n, \r\n or a lone \r (#1601).
+  for (const line of s.split(/\r\n?|\n/)) {
     const bare = line.replace(/^(\s*>)*\s*/, '');
     if (marker) {
       if (closesFence(marker, bare)) marker = null;

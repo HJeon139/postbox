@@ -38,6 +38,7 @@ export function codeSpanAt(line, at, longest) {
  * @param {string} line @param {(code: string, span: string) => string} fn
  */
 function mapLine(line, fn) {
+  if (!line.includes('`')) return line;
   const longest = longestRunFrom(line);
   let out = '';
   let i = 0;
