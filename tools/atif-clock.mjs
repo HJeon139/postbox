@@ -8,10 +8,8 @@
 // void when Postbox couldn’t confirm a stopped turn ended (a forced `clock.stopped`), when Postbox started again with
 // the clock running (`clock.restored`), or when the clock’s state says so (`voided`, which a snapshot keeps).
 
+import { isLocalStop } from '../shared/run-clock.mjs';
 import { iso } from './atif-time.mjs';
-
-/** Whether a stop is of a turn on this computer, which the clock names `turn:` and its id; else a host’s turn id. */
-const isLocalStop = (/** @type {string} */ stop) => stop.startsWith('turn:');
 
 /** Whether a clock event’s stops wait on a host. @param {any} d */
 const onHost = (d) => Boolean(d.stopping?.some((/** @type {string} */ t) => !isLocalStop(t)));

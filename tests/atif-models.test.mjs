@@ -43,7 +43,7 @@ test('a model a turn reports only after its first words is still that turn’s, 
 
 test('steps from a new epoch, numbered from lower again after a restart, come after the old epoch’s', () => {
   // As the UAT kit’s recorder keeps them (tools/uat/history.mjs): epoch 0 to seq 100, then epoch 1 from seq 1. The clock
-  // events are the run clock’s contract (tests/atif-clock-events.mjs).
+  // events are the run clock’s contract (shared/run-clock.mjs).
   const reply = (id, at) => ({ threadId: 'th_1', item: { id, at, kind: 'agent', sessionId: 'se_1', handle: 'dry', text: id } });
   const events = [
     { seq: 98, type: 'session', data: { id: 'se_1', handle: 'dry', threadId: 'th_1', backend: 'claude-code', lastModel: 'old' } },

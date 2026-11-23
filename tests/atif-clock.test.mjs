@@ -1,7 +1,7 @@
 // A run clock in an ATIF trajectory (tools/atif-clock.mjs, tools/atif.mjs): its events go in the trajectory’s extra, not
 // in steps, since the agent saw only the clock’s line in its prompt; a stop the agent may have outlived makes the
 // trajectory partial; and a forced stop, a restart with the clock running, or a clock whose state says `voided` makes
-// the timed run void. The clock events are the run clock’s contract (#1526, tests/atif-clock-events.mjs), recorded in
+// the timed run void. The clock events are the run clock’s contract (#1526, shared/run-clock.mjs), recorded in
 // tests/fixtures/atif/dry-run.md’s run or built in its shape.
 
 import assert from 'node:assert/strict';

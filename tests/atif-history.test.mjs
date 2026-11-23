@@ -5,9 +5,9 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { EVENTS } from '../shared/state.mjs';
 import { readHistory } from '../tools/uat/history.mjs';
 import { keepEvent } from '../tools/uat/room-events.mjs';
-import { CLOCK_EVENTS } from './atif-clock-events.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const DIR = new URL('fixtures/atif/dry-run/', import.meta.url).pathname;
@@ -20,11 +20,11 @@ test('the UAT history keeps the clock’s events, a reply’s stored words, the 
   for (const type of ['clock.started', 'clock.turn', 'clock.expired', 'item.text', 'entry.add', 'entry.patch', 'work.add', 'work.patch']) {
     const e = lines.find((x) => x.type === type);
     assert.ok(e, `the fixture has a ${type}`);
-    assert.deepEqual(keepEvent(e.seq, e.type, e.data, new Map(), CLOCK_EVENTS), { seq: e.seq, type, data: e.data }, type);
+    assert.deepEqual(keepEvent(e.seq, e.type, e.data, new Map()), { seq: e.seq, type, data: e.data }, type);
   }
   // Only a public type is kept: without the run clock’s events in EVENTS (#1526), its events are never recorded.
   const started = lines.find((x) => x.type === 'clock.started');
-  assert.equal(keepEvent(started.seq, started.type, started.data, new Map(), { ...CLOCK_EVENTS, 'clock.started': { public: false } }), null);
+  assert.equal(keepEvent(started.seq, started.type, started.data, new Map(), { ...EVENTS, 'clock.started': { public: false } }), null);
   assert.ok(lines.some((x) => x.type === 'work.add' && x.data.entry.kind === 'command'));
   // A ledger entry the trajectories don’t read (a file’s change, a publish) isn’t kept.
   assert.equal(keepEvent(1, 'work.add', { convId: 'th_1', entry: { kind: 'publish', id: 'w_1' } }), null);
