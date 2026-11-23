@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setup } from './side-threads-fixture.mjs';
+import { setup as heldSetup, heldStore } from './stop-reply-fixture.mjs';
 
 test('#1670 deleting a conversation cancels its agents’ wakes at once, with their timers', () => {
   const f = setup();
@@ -28,4 +29,22 @@ test('#1670 removing one agent from a room cancels its wakes and keeps the other
   assert.equal(line?.status, 'canceled', 'its line in the room reads canceled');
   assert.ok(f.store.state.schedules[b.id], 'the other agent’s wake stays');
   assert.ok(f.rt.timers.has(b.id));
+});
+
+test('#1670 a wake scheduled behind a held commit goes with its conversation', async () => {
+  const h = await heldStore();
+  const env = await heldSetup(async () => {}, h.store);
+  await h.store.flush();
+  h.hold();
+  const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync;
+  const sc = env.rt.schedule(env.se.id, { inMs: 60_000, note: 'check the gate' });
+  env.rt.deleteThread(env.se.threadId);
+  const timer = env.rt.timers.has(sc.id);
+  h.release();
+  await commit;
+  await h.store.flush();
+  assert.equal(timer, false, 'its timer went at the delete');
+  assert.equal(h.store.state.schedules[sc.id], undefined, 'and its schedule');
+  await h.store.close();
 });
