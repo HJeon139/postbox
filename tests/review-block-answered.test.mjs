@@ -142,8 +142,14 @@ test('#716 a review withdrawn after a reviewer commented is delivered as closed:
   for (let i = 0; i < 100 && !review(); i++) await new Promise((r) => setTimeout(r, 5));
   assert.deepEqual([review()?.event.answered, review()?.event.closed], [undefined, true]);
   const said = formatMessage(review());
-  assert.match(said, /This block is closed, so it no longer asks the person: any update_block to it, even one that only resolves a comment, asks them again\./);
+  assert.match(
+    said,
+    /This block is closed, so it no longer asks the person: any update_block to it but an outcome, even one that only resolves a comment, asks them again\./,
+  );
   assert.doesNotMatch(said, /keeps their answer|still waits on the person/);
+  // The one update that doesn’t ask again: an outcome under the person’s answer.
+  assert.equal(rt.toolsFor(mine.id).update_block({ block: { id: 'plan', outcome: 'Merged as is.' } }).ok, true);
+  assert.equal(item().answered, true);
 });
 
 test('#716 sending an answered review back unchanged, after a reviewer commented, asks the person again, as its note says', async () => {

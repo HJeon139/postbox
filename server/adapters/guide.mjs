@@ -245,7 +245,7 @@ const isReview = (event) =>
 function reviewedNote(event) {
   const where = 'Each comment is on the block now, by its threadId.';
   if (event.closed)
-    return `${where} This block is closed, so it no longer asks the person: any update_block to it, even one that only resolves a comment, asks them again.`;
+    return `${where} This block is closed, so it no longer asks the person: any update_block to it but an outcome, even one that only resolves a comment, asks them again.`;
   if (event.answered)
     return `${where} The person already answered this block: changing only status to “resolved” in update_block’s threads? keeps their answer; adding a reply, changing its content or sending it back unchanged asks them again.`;
   return `${where} Revise with update_block, and keep each one in the block’s threads? with status “resolved” once you’ve handled it. The block still waits on the person.`;
