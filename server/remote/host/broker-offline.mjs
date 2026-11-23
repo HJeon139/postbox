@@ -4,6 +4,7 @@
 
 import { REMOTE_READ_TIMEOUT_MS } from '../../../shared/limits.mjs';
 import { REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
+import { cutText } from '../../../shared/text-parts.mjs';
 import { readConversation, readMessage } from './broker-reading.mjs';
 import { written } from './broker-records.mjs';
 import { snapshotOf } from './broker-snapshot.mjs';
@@ -45,7 +46,7 @@ export const settled = (t) => t.replied || !!t.replying;
 export const inFlight = (b) => [...b.appends.values(), ...[...b.tools.values()].flatMap((t) => (t.replying ? [t.replying] : []))];
 
 /** The answer cut to replyChars, the offline notice kept at its end (settle.md, “The settle path”). @param {string} s */
-export const offlineText = (s) => (s.length <= REMOTE_LIMITS.replyChars ? s : s.slice(0, REMOTE_LIMITS.replyChars - OFFLINE_NOTE.length) + OFFLINE_NOTE);
+export const offlineText = (s) => (s.length <= REMOTE_LIMITS.replyChars ? s : cutText(s, REMOTE_LIMITS.replyChars - OFFLINE_NOTE.length) + OFFLINE_NOTE);
 
 /**
  * Answers an open read from the snapshot, once: the first caller claims it, the rest return. The shim is told before

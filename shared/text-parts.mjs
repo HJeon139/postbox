@@ -17,6 +17,12 @@ export function partEnd(text, end) {
 }
 
 /**
+ * Text cut to at most n characters, never inside a surrogate pair (partEnd): the whole text when it fits.
+ * @param {string} text @param {number} n
+ */
+export const cutText = (text, n) => (text.length > n ? text.slice(0, partEnd(text, n)) : text);
+
+/**
  * A Markdown fence for text: longer than any run of backticks in it, so the text can't close it.
  * @param {string} text
  */

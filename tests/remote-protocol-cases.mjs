@@ -211,6 +211,14 @@ export const CASES = {
       ],
     },
     'prompt-expired': { ok: { id: 'prompt-1', turn: 't1', at: 5 }, bad: [[{ id: 'prompt-1', turn: 't1' }, /needs “at”/]] },
+    relay: {
+      ok: { turn: 't1', version: '0.9.0', state: 'lost' },
+      bad: [
+        [{ turn: 't1', version: '0.9.0', state: 'gone' }, /relay\.state/],
+        [{ turn: 't1', version: '../x', state: 'off' }, /relay\.version/],
+        [{ turn: 't1', state: 'off' }, /needs “version”/],
+      ],
+    },
     removed: { ok: {}, bad: [[{ turns: 2 }, /“turns” isn’t a field of removed/]] },
     checked: {
       ok: { ok: false, code: null, at: 5 },

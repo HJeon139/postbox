@@ -46,8 +46,9 @@ const ENTITIES = /** @type {const} */ ({
   // A persona just made behind a held commit, which a session joining it reads (POST /api/personas with join, and an
   // attached Claude Code session, #1247’s class).
   personas: { event: 'persona', removed: 'persona', patched: null },
-  // A project changed behind a held commit, whose folder a `!` command runs in (#1292). Projects are never removed.
-  projects: { event: 'project', removed: null, patched: null },
+  // A project changed behind a held commit, whose folder a `!` command runs in (#1292), or deleted there, which a delete
+  // that counts the projects and a conversation started in one read (#119).
+  projects: { event: 'project', removed: 'project', patched: null },
   // A wake just scheduled or changed behind a held commit, which arming its timer, firing it, canceling it and the
   // per-agent limit read (#623). One is removed by its own event, with `removed: true`, not by `remove`.
   schedules: { event: 'schedule', removed: null, patched: null, removedFlag: true },
@@ -111,6 +112,7 @@ const heldOn = (store, name) => Boolean(store.held) && /** @type {any} */ (store
  *   sessions: () => Readonly<Record<string, Entry>>,
  *   persona: (id: string) => Entry | undefined,
  *   project: (id: string) => Entry | undefined,
+ *   projects: () => Readonly<Record<string, Entry>>,
  *   clock: (sessionId: string) => Entry | null,
  *   schedule: (id: string) => Entry | undefined,
  *   schedules: () => Readonly<Record<string, Entry>>,
@@ -134,6 +136,7 @@ export function pendingReads(store) {
   reads.sessions = () => pendingCollection(store, 'sessions');
   reads.persona = (/** @type {string} */ id) => pendingEntity(store, 'personas', id);
   reads.project = (/** @type {string} */ id) => pendingEntity(store, 'projects', id);
+  reads.projects = () => pendingCollection(store, 'projects');
   reads.clock = (/** @type {string} */ sessionId) => pendingClock(store, sessionId);
   reads.schedule = (/** @type {string} */ id) => pendingEntity(store, 'schedules', id);
   reads.schedules = () => pendingCollection(store, 'schedules');

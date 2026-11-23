@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
+import { appAnimating } from './app-animating.mjs';
 import { openLink } from './app-links.mjs';
 import { clickEvent, noteApp } from './app-notes.mjs';
 import { publishApp } from './app-publish.mjs';
@@ -20,7 +21,6 @@ import { askAgyQuota, PROBES, registerBackends, startedBanner } from './backends
 import { buildInfo } from './build-info.mjs';
 import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
-import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
 import { hostsRoute } from './hosts-routes.mjs';
 import { itemsRoute } from './items-routes.mjs';
@@ -31,7 +31,7 @@ import { ModelLists } from './model-lists.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { pageState } from './page-state.mjs';
 import { createPersonaFor } from './persona-create.mjs';
-import { createProject, setPushUrl } from './projects.mjs';
+import { projectsRoute } from './project-routes.mjs';
 import { hostModels } from './remote/hosts-models.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { settleInterrupted, stopStreaming } from './restart-sweep.mjs';
@@ -374,20 +374,20 @@ export async function start({
     // Remote hosts (#120): their routes, reads and writes (server/hosts-routes.mjs).
     const hostsDid = await hostsRoute(rt, path, req.method, body);
     if (hostsDid) return send(res, hostsDid.status, hostsDid.body);
-    if (path === '/api/projects' && req.method === 'POST') return send(res, 201, await createProject(store, body));
-    if ((m = path.match(/^\/api\/projects\/([^/]+)\/push-url$/)) && req.method === 'PUT') return send(res, 200, setPushUrl(store, m[1], body.url));
-    if ((m = path.match(/^\/api\/projects\/([^/]+)\/files$/)) && req.method === 'GET')
-      return send(res, 200, await listFolder(store.state.projects[m[1]], url.searchParams.get('path') ?? ''));
+    // Projects: making one, its push repository, its folder and deleting one (server/project-routes.mjs).
+    const projectsDid = await projectsRoute(rt, path, req.method, body, url.searchParams);
+    if (projectsDid) return send(res, projectsDid.status, projectsDid.body);
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
     const stored = await storedFileRoute(store, blobs, path, req.method);
     if (stored) return raw(res, 200, stored.bytes, stored.headers);
-    if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|note|state|query|open|publish)$/)) && req.method === 'POST') {
+    if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|note|state|query|open|publish|animating)$/)) && req.method === 'POST') {
       const id = decodePath(m[1]);
       if (m[2] === 'open') {
         hereAlone(req, 'Links from apps open');
         return send(res, 200, await openLink(rt, id, body.url, { run: openUrl }));
       }
       if (m[2] === 'publish') return send(res, 200, publishApp(rt, id, body.data));
+      if (m[2] === 'animating') return send(res, 200, appAnimating(rt, id, body.version));
       if (m[2] === 'check') return send(res, 200, rt.appCheck(id, body));
       // A click’s send starts a turn; any other is a note for the agent’s next one (#1488, app/js/app-send.mjs).
       if (m[2] === 'event') return send(res, 200, clickEvent(rt, id, body.action, body.values ?? {}));
