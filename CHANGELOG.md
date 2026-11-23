@@ -2,6 +2,39 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.40.0 (2026-11-23)
+
+### Features
+
+- **uat:** export a UAT run as ATIF v1.8 trajectories
+- **app:** say in the persona sheet what each backend does with memory
+- **review:** edit a draft comment in place before you submit
+
+### Fixes
+
+- **text:** end a quote's line at a lone carriage return
+- **app:** hedge Antigravity's memory line, since its store is unverified
+- **markdown:** end a fence's line at a lone carriage return too
+- **markdown:** end a span's line at a lone carriage return, and keep it linear
+- **personas:** say a Kiro agent on a host keeps memory only if Kiro does
+- **markdown:** skip the fence scan when a message has no fence
+- **markdown:** pair code spans only within a line, as the renderer does
+- **review:** name a draft comment's place in its Edit, Delete and edit box
+- **app:** say an older Claude Code's and Antigravity's memory is yours too
+- **app:** say what memory a persona really has on a host, Antigravity and older Claude Code
+- **uat:** name the epoch of a stream gap that came after a restart
+- **uat:** keep a step with no time, without a timestamp, instead of losing the run's trajectories
+- **uat:** order the jobs trigger and the legacy move merge by epoch, then seq
+- **uat:** place a turn's later prompt after what the turn showed before it was sent
+- **uat:** compare the checks' events across a restart's new epoch
+- **review:** keep text set aside by Edit until its own place is reopened
+- **review:** give focus back only to the box that had it, and follow set-aside text
+- **review:** leave focus where the person put it when a new comment's box repaints
+- **review:** keep a new comment's text and the person's focus when Edit opens
+- **review:** keep one box open, and never drop what was typed in an edit
+- **markdown:** let a list marker open a fence but never close one
+- **markdown:** read code spans as the renderer does in mentions, disclosures and the lint
+
 ## 4.39.0 (2026-11-23)
 
 ### Features
