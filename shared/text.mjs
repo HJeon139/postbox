@@ -1,8 +1,10 @@
 // Small text helpers shared by the server and the browser.
 
+import { mapCodeSpans } from './code-spans.mjs';
 import { GLIMPSE_CHARS, GLIMPSE_SOURCE_CHARS } from './limits.mjs';
 import { renderMarkdown, TABLE_SEP } from './markdown.mjs';
 import { stripTags } from './markdown-inline.mjs';
+import { withoutFences } from './markdown-plain.mjs';
 import { partEnd } from './text-parts.mjs';
 
 /** How many words a text has, by the spaces between them. @param {string} s */
@@ -64,11 +66,11 @@ function withoutCopies(lines, isCopy) {
 }
 
 /**
- * Text without its code: a fenced block and a code span each become a space. A mention in code names no one, and an
+ * Text without its code, read as the renderer reads it (#1601): a fenced block goes, and a code span becomes a space. A mention in code names no one, and an
  * item’s line is compared with a copy of it the same way (server/copied-line.mjs).
  * @param {string} text
  */
-export const withoutCode = (text) => text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/`[^`]*`/g, ' ');
+export const withoutCode = (text) => mapCodeSpans(withoutFences(text), () => ' ');
 
 /**
  * A message’s text with what it quotes left out, so a mention there names an agent without waking it: code, blockquote
@@ -79,7 +81,7 @@ function unquoted(text, isCopy) {
   const plain = withoutCode(text);
   // Read line by line only when a line could be a quote: the page reads a draft on every keystroke.
   if (!plain.includes('>') && !(isCopy && plain.includes('it_'))) return plain;
-  const lines = plain.split('\n').filter((line) => !BLOCKQUOTE.test(line));
+  const lines = plain.split(/\r\n?|\n/).filter((line) => !BLOCKQUOTE.test(line));
   return (isCopy ? withoutCopies(lines, isCopy) : lines).join('\n');
 }
 

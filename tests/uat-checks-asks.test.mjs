@@ -241,3 +241,16 @@ test('#721 needs-mismatch fires for a ring left on a permission card that expire
 test('#721 needs-mismatch stays silent while the permission card it needs you for is open', () => {
   assert.deepEqual(found(permissionRoom('open'), 'needs-mismatch'), []);
 });
+
+test('ask-dropped counts a Stop before a restart as no reason for a wake taken off after it, across the new epoch', () => {
+  // As tools/uat/history.mjs keeps events after Postbox restarted: each later one tagged with its epoch, numbered from
+  // lower again (#1529). The Stop is in the first epoch, so it can’t be what took the wake off in the second, though
+  // their bare seqs are within STOP_WINDOW of each other.
+  const f = takenOffRoom('stopped');
+  const off = f.events.findIndex((e) => e.type === 'item.patch' && Array.isArray(e.data.patch.held) && !e.data.patch.held.length);
+  f.events = f.events.map((e, i) => (i >= off ? { ...e, epoch: 1 } : e));
+  assert.deepEqual(
+    found(f, 'ask-dropped').map((x) => x.key),
+    [`ask-dropped:it_card:se_critic:developer:${headOf(ROUND_TWO)}`],
+  );
+});

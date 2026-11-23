@@ -8,6 +8,7 @@
 // only: a catch-up line or a held note reformats the text around it, never the words.
 
 import { parseMentions } from '../../shared/text.mjs';
+import { placeOf } from './room-events.mjs';
 
 /** Letters and digits only, lowercase: the form texts are matched in. */
 export const plain = (s) =>
@@ -40,9 +41,13 @@ const itemsOf = (f) => (f.threads ?? []).flatMap((t) => (f.state?.items?.[t] ?? 
 const handlesIn = (f, threadId) =>
   (f.state?.threads?.[threadId]?.members ?? []).map((id) => f.state.sessions?.[id]?.handle).filter((h) => typeof h === 'string');
 
-/** When the event after seq added an item: the closest record of when a patch, which carries no time, happened. */
-export function timeAfter(events, seq) {
-  for (const e of events ?? []) if (e.seq > seq && e.type === 'item.add' && Number.isFinite(e.data?.item?.at)) return e.data.item.at;
+/**
+ * When the event after `ref` added an item: the closest record of when a patch, which carries no time, happened. After,
+ * by its place across the recording’s epochs (placeOf).
+ */
+export function timeAfter(events, ref) {
+  const from = placeOf(ref);
+  for (const e of events ?? []) if (placeOf(e) > from && e.type === 'item.add' && Number.isFinite(e.data?.item?.at)) return e.data.item.at;
   return null;
 }
 
@@ -57,14 +62,14 @@ const ownOf = (card) => ({ fromSessionId: card.fromSessionId, from: card.from, t
 /**
  * Each card’s history from the events: the card as added, the statuses it went through, when it was settled (null
  * while open), and every wake held on it, with whether a later patch took it off while the card was still open, and
- * that patch’s seq (removedSeq), for what happened around it.
+ * that patch’s place across the run’s epochs (removedAt, placeOf), for what happened around it.
  * Retiring a card sends its own wake and those held on it on (server/wake-cards.mjs’s retireStale), and one that
  * still needs a card raises the next card, or is held on it: movedTo names the card that took a wake over, and
  * movedFrom the card it came from, its own wake’s (own) as a held one’s.
  * @param {any[]} events
  */
 export function cardHistory(events) {
-  /** @typedef {{ w: any, removedOpen: boolean, removedSeq: number|null, movedTo: string|null, movedFrom: string|null }} Wake */
+  /** @typedef {{ w: any, removedOpen: boolean, removedAt: number|null, movedTo: string|null, movedFrom: string|null }} Wake */
   /** @type {Map<string, { card: any, statuses: string[], settled: number|null, own: Wake, held: Map<string, Wake> }>} */
   const cards = new Map();
   /** The wakes of retired cards not yet taken over, by heldKey: each with its card and when it was retired. */
@@ -81,7 +86,7 @@ export function cardHistory(events) {
   for (const e of events ?? []) {
     if (e.type === 'item.add' && e.data?.item?.kind === 'hop') {
       const card = e.data.item;
-      const own = { w: ownOf(card), removedOpen: false, removedSeq: null, movedTo: null, movedFrom: null };
+      const own = { w: ownOf(card), removedOpen: false, removedAt: null, movedTo: null, movedFrom: null };
       cards.set(card.id, { card, statuses: [card.status], settled: null, own, held: new Map() });
       takeOver(heldKey(own.w), card.at, card.id, own);
     }
@@ -91,14 +96,14 @@ export function cardHistory(events) {
     if (typeof p.status === 'string') c.statuses.push(p.status);
     // A patch carries no time: a retired card’s says when; otherwise the next item added is the closest record.
     if (typeof p.status === 'string' && p.status !== 'open' && c.settled === null)
-      c.settled = Number.isFinite(p.retiredAt) ? p.retiredAt : timeAfter(events, e.seq);
+      c.settled = Number.isFinite(p.retiredAt) ? p.retiredAt : timeAfter(events, e);
     if (p.status === 'retired' && Number.isFinite(p.retiredAt))
       for (const h of [c.own, ...c.held.values()]) pending.set(heldKey(h.w), { h, cardId: c.card.id, at: p.retiredAt });
     if (!Array.isArray(p.held)) continue;
     const now = new Set(p.held.map(heldKey));
     for (const w of p.held)
       if (!c.held.has(heldKey(w))) {
-        const h = { w, removedOpen: false, removedSeq: null, movedTo: null, movedFrom: null };
+        const h = { w, removedOpen: false, removedAt: null, movedTo: null, movedFrom: null };
         c.held.set(heldKey(w), h);
         takeOver(heldKey(w), w.at, c.card.id, h);
       }
@@ -106,7 +111,7 @@ export function cardHistory(events) {
     for (const [k, h] of c.held)
       if (!now.has(k) && open && !h.removedOpen) {
         h.removedOpen = true;
-        h.removedSeq = e.seq;
+        h.removedAt = placeOf(e);
       }
   }
   return cards;
@@ -195,7 +200,7 @@ export function settledAt(f, cardId) {
   const p = (f.events ?? []).find(
     (e) => e.type === 'item.patch' && e.data?.id === cardId && typeof e.data?.patch?.status === 'string' && e.data.patch.status !== 'open',
   );
-  return p ? timeAfter(f.events, p.seq) : null;
+  return p ? timeAfter(f.events, p) : null;
 }
 
 const textOf = (content) =>

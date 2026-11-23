@@ -7,6 +7,7 @@ import { ASKING } from '../../shared/catalog.mjs';
 import { needsYouNow } from '../../shared/needs.mjs';
 import { clip } from '../../shared/text.mjs';
 import { cardHistory, heldKey, holds, inputsOf, recorded, turnsOf } from './room-delivery.mjs';
+import { placeOf } from './room-events.mjs';
 import { notCheckableAll, unreadable } from './room-unverified.mjs';
 
 // Closed: its agent was archived, removed or retired, and everyone held on it was told (#693).
@@ -24,20 +25,21 @@ const STOP_WINDOW = 60;
  * meanwhile as not sent. The events keep no reason on the patch, and no notice, so the reason is read from around it:
  * the target’s empty stopped item or its session going to stopping within STOP_WINDOW events before the patch; its
  * session archived in the state; or no session of its handle in the state, or a “left” line after the patch.
- * @param {any} f  @param {{ to: string }} w  @param {number|null} seq  the held patch’s seq, when one took it off
+ * @param {any} f  @param {{ to: string }} w  @param {number|null} at  the held patch’s place across the run’s epochs
+ * (placeOf), when one took it off
  */
-function byDesign(f, w, seq) {
+function byDesign(f, w, at) {
   const sessions = Object.values(f.state?.sessions ?? {}).filter((se) => se?.handle === w.to);
   if (!sessions.length || sessions.every((se) => se.archived)) return true;
   const ids = new Set(sessions.map((se) => se.id));
   return (f.events ?? []).some(
     (e) =>
-      (seq !== null &&
-        e.seq <= seq &&
-        e.seq >= seq - STOP_WINDOW &&
+      (at !== null &&
+        placeOf(e) <= at &&
+        placeOf(e) >= at - STOP_WINDOW &&
         ((e.type === 'session' && e.data?.state === 'stopping' && ids.has(e.data.id)) ||
           (e.type === 'item.add' && e.data?.item?.kind === 'agent' && e.data.item.status === 'stopped' && e.data.item.handle === w.to))) ||
-      (seq !== null && e.seq > seq && e.type === 'item.add' && e.data?.item?.kind === 'system' && e.data.item.variant === 'left' && e.data.item.to === w.to),
+      (at !== null && placeOf(e) > at && e.type === 'item.add' && e.data?.item?.kind === 'system' && e.data.item.variant === 'left' && e.data.item.to === w.to),
   );
 }
 
@@ -102,7 +104,7 @@ function droppedAsks(f) {
       // Settled with its card: Allow or Don’t allow is the person’s answer; retiring sends it on, so it must arrive.
       const cardGone = !answered && !live.has(id);
       if (!(h.removedOpen || cardGone || retired)) continue;
-      if ((h.removedOpen || retired) && byDesign(f, h.w, h.removedOpen ? h.removedSeq : null)) continue;
+      if ((h.removedOpen || retired) && byDesign(f, h.w, h.removedOpen ? h.removedAt : null)) continue;
       if (reached(h.w, firstHeld(cards, h), retired ? c.settled : null)) continue;
       const via = h.movedFrom ? `, moved from ${h.movedFrom}` : '';
       out.push({
