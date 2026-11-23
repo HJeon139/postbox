@@ -184,7 +184,7 @@ After either:
 - **Search, fork, share and export** read stored items. While a turn runs they get its text to the last window; after it ends, all of it.
 - **Other `item.text` writers stay stored:** the person’s commands’ output (`shell-runs.mjs`) and an attached Claude Code terminal’s mirror (`claude-mirror.mjs`).
 - **The UAT checks** read the log:
-  - `checks-assets.mjs`’s scan for an agent’s own words (#722) matches `activityStep` and `item.text` in the log, which commit points keep. But a call’s `input` and `output`, and the glimpse, would be on live frames only. The UAT runner records every live frame its stream receives into the run’s files beside the log, for the ATIF trajectories. The scan for an asset’s content outside its file doesn’t read them: they’re never stored, and a `write_asset` call’s own preview is no copy (#1655);
+  - `checks-assets.mjs`’s scan for an agent’s own words (#722) matches `activityStep` and `item.text` in the log, which commit points keep. But a call’s `input` and `output`, and the glimpse, would be on live frames only. The UAT runner records every live frame its stream receives into the run’s files beside the log, for the ATIF trajectories. The scan for an asset’s content outside its file doesn’t read them: they’re never stored, and a running step’s preview (a write’s input, a read’s output) is no copy (#1655);
   - `inbox-measures.mjs` and `picture-choice.mjs` append `item.text`, unchanged;
   - `room-events.mjs` and `history.mjs` replay events, unchanged;
   - `tools/uat/turns.mjs` reads `state`, which stays stored.

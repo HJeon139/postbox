@@ -1,6 +1,6 @@
 // The UAT runner keeps every live frame its stream receives (tools/uat/history.mjs): a running turn’s progress isn’t
 // stored between commit points (designs/architecture/live-progress.md), so the run saves the frames beside the events,
-// and a --recheck reads them back. They aren’t storage: the #722 scan for an asset’s content outside its file skips them (#1655).
+// for the ATIF trajectories. They aren’t storage: the #722 scan for an asset’s content outside its file skips them (#1655).
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -15,7 +15,7 @@ import { runChecks } from '../tools/uat/checks.mjs';
 import { followEvents, readHistory, readLive, writeHistory } from '../tools/uat/history.mjs';
 import { savedFacts } from '../tools/uat/recheck.mjs';
 
-test('the runner’s stream keeps the live frames, which writeHistory saves and a recheck reads back', async () => {
+test('the runner’s stream keeps the live frames, which writeHistory saves and readLive reads back', async () => {
   const store = await new Store(null).load();
   store.emit('session', { id: 'se_1', threadId: 'th_1', state: 'tool' });
   const live = liveStreams(store, undefined, { running: { all: () => [] } });
