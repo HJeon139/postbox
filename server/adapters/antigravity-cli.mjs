@@ -16,7 +16,8 @@
 //
 // and removes it when the turn ends. Checked with agy 1.4.5: the plugin’s server loads as `postbox_postbox` (plugin,
 // then server), and the plugin’s rules reach the model. Two turns in one folder would overwrite each other’s
-// plugin, so a turn waits for the one before it in the same folder (FolderQueue). In a git repo the plugin folder
+// plugin, so a turn waits for the one before it in the same folder (FolderQueue); each agent gets its own worktree,
+// so agents don’t share one (agent-worktree.mjs, #1709). In a git repo the plugin folder
 // goes in .git/info/exclude, so it never shows in git status.
 //
 // Headless, agy refuses every call it would ask about, Postbox’s own tools included (recorded: “user denied
@@ -59,6 +60,7 @@ import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
+import { agentWorktree, sharedFolder } from './agent-worktree.mjs';
 import { agyArgs, agyBypassWebOff } from './agy-args.mjs';
 import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
@@ -72,7 +74,6 @@ import { repeatsLastError } from './agy-repeated-error.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { stepId, toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
-import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned } from './prompt-sent.mjs';
@@ -536,9 +537,10 @@ export class AntigravityCliAdapter {
   /**
    * @param {{ bin?: string, workRoot: string, models?: string[], version?: string|null, hookScript?: string, hookProbe?: typeof probeAgyHook, settingsFile?: string,
    *           spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv, kill?: typeof process.kill, listProcesses?: typeof listProcesses,
-   *           usage?: ReturnType<typeof import('./agy-usage.mjs').usageProbe> | null }} opts
+   *           usage?: ReturnType<typeof import('./agy-usage.mjs').usageProbe> | null, git?: import('./agent-worktree.mjs').Git }} opts
    *   models: a list to offer before agy is asked (server/model-lists.mjs); settingsFile: your agy settings; usage: how
-   *   it asks agy for its quota, for the composer’s line (#1466), which server/backends.mjs passes
+   *   it asks agy for its quota, for the composer’s line (#1466), which server/backends.mjs passes; git: how it runs git to
+   *   make an agent’s worktree (agent-worktree.mjs)
    */
   constructor({
     bin = findAgy(),
@@ -553,6 +555,7 @@ export class AntigravityCliAdapter {
     kill = process.kill,
     listProcesses: list = listProcesses,
     usage = null,
+    git,
   }) {
     this.usage = usage;
     this.kill = kill;
@@ -567,6 +570,7 @@ export class AntigravityCliAdapter {
     this.spawn = spawnImpl;
     this.env = env;
     this.folders = new FolderQueue();
+    this.git = git;
     /** @type {Promise<string>|null} */
     this.allowed = null;
     /** @type {Set<string>} */
@@ -583,9 +587,9 @@ export class AntigravityCliAdapter {
     return hookPromptCard(call?.raw, args);
   }
 
-  /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
+  /** The folder the agent works in: its own worktree of the project’s repository, else every backend’s (agent-worktree.mjs, #1709). */
   folderFor(persona, project) {
-    return agentFolder(persona, project, this.workRoot);
+    return agentWorktree(persona, project, this.workRoot, { git: this.git });
   }
 
   async deliver(session, message, ctx) {
@@ -606,7 +610,7 @@ export class AntigravityCliAdapter {
     const useHook = agySupportsHooks(this.version) && (persona?.permissionMode !== 'bypass' || agyBypassWebOff(persona));
     const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
     const rules = rulesWith(useHook);
-    const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
+    const addDirs = [...new Set([sharedFolder(cwd, ctx.project, this.workRoot), ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
     const asked = this.usage?.start(this.version, ctx.signal) ?? null;
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });
     // Its quota is reported once the run is over, while the turn can still record it: after a failed turn too, which
