@@ -70,7 +70,7 @@ test('#1523, #1591 replies that name no one go back and forth, until an agent’
   assert.match(turnsOf(f, 'alpha')[1].message.text, /Your reply posts there and goes back to @beta\. @-mention another agent to hand off to them instead\./);
   assert.match(
     turnsOf(f, 'alpha')[2].message.text,
-    /Your reply posts there\. Your last reply here only wrote, so this one goes back to @beta only if you do work this turn/,
+    /Your reply posts there\. Your last reply to @beta only wrote, so this one goes back to @beta only if you do work this turn/,
   );
 });
 

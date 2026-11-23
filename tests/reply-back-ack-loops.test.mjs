@@ -85,7 +85,7 @@ test('#1591: agents that write “I’m ending without a reply” end at the sec
     [
       ['researcher', ['critic'], true],
       ['critic', ['researcher'], true],
-      ['researcher', undefined, undefined],
+      ['researcher', undefined, true],
     ],
   );
   assert.equal(said.at(-1).text, "Nothing here is for me to act on, so I'm ending without a reply.", 'its line still posts');
@@ -101,10 +101,10 @@ test('#1591: an agent is told when its next reply that only writes will wake no 
   // Its first reply after one came back goes back as any does, and a reaction or nothing at all ends the exchange.
   assert.match(back, /Your reply posts there and goes back to @critic\. @-mention another agent to hand off to them instead\. If the exchange is done, /);
   assert.match(back, /react to the reply: then nothing you write this turn wakes its sender, even by name\. You can also end without writing anything\.\n/);
-  assert.match(again, /Your reply posts there\. Your last reply here only wrote, so this one goes back to @critic only if you do work this turn /);
+  assert.match(again, /Your reply posts there\. Your last reply to @critic only wrote, so this one goes back to @critic only if you do work this turn /);
   assert.match(
     again,
-    /\(more than reading the room and reacting\): a second in a row that only writes wakes no one, so @-mention whoever must act on it or answer it\./,
+    /\(more than reading the room and reacting\): a second in a row to the same agent that only writes doesn’t wake it, so @-mention whoever must act on it\b/,
   );
 });
 
