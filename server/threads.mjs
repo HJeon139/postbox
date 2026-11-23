@@ -176,6 +176,12 @@ export class Threads {
    * A thread, then the conversation it branched from, following parentId (a topic or side thread’s is one level), as
    * `thread` reads one. @param {string} threadId @param {(id: string) => any} [thread]
    */
+  lineage(threadId, thread = (id) => this.store.state.threads[id]) {
+    const out = [];
+    for (let id = threadId; id && thread(id) && !out.includes(id) && out.length < 8; id = thread(id).parentId) out.push(id);
+    return out;
+  }
+
   /**
    * The conversation a thread belongs to, as memory will hold it, for a write it decides (#623): a topic opened behind
    * a held commit, and its conversation, aren’t published yet, so lineage reads them as written.
@@ -183,12 +189,6 @@ export class Threads {
    */
   conversationToWrite(threadId) {
     return this.lineage(threadId, (id) => this.store.pending.thread(id)).at(-1);
-  }
-
-  lineage(threadId, thread = (id) => this.store.state.threads[id]) {
-    const out = [];
-    for (let id = threadId; id && thread(id) && !out.includes(id) && out.length < 8; id = thread(id).parentId) out.push(id);
-    return out;
   }
 
   /**

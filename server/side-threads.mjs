@@ -194,12 +194,9 @@ export function threadPersona(rt, t) {
     (last && rt.persona(last.personaId)) ?? rt.personas.byHandle(t.woke ?? t.pair?.split('|')[1] ?? '') ?? (first && rt.persona(first.personaId)) ?? null;
   if (!picked || !deletedFrom(rt, t, picked)) return picked;
   // An agent deleted from the conversation isn’t brought back to answer: another still in it does, or no one (#283).
-  const here = rt.sessions.pendingIn(conversationOf(rt, t)).find((x) => !x.retiredFork);
+  const here = rt.sessions.pendingIn(rt.threads.conversationToWrite(t.id)).find((x) => !x.retiredFork);
   return (here && rt.persona(here.personaId)) ?? null;
 }
-
-/** A thread’s conversation as written: one made behind a held commit isn’t published yet (#796’s class). */
-const conversationOf = (rt, t) => rt.threads.lineage(t.id, (id) => rt.store.pending.thread(id)).at(-1);
 
 /**
  * The agents in a thread’s conversation as written, by handle, as their sessions have them: those that could write or
@@ -207,7 +204,7 @@ const conversationOf = (rt, t) => rt.threads.lineage(t.id, (id) => rt.store.pend
  */
 export function presentIn(rt, t) {
   const here = new Map();
-  for (const se of rt.sessions.pendingIn(conversationOf(rt, t))) {
+  for (const se of rt.sessions.pendingIn(rt.threads.conversationToWrite(t.id))) {
     const p = !se.retiredFork && rt.persona(se.personaId);
     if (p) here.set(p.handle, p);
   }
@@ -230,7 +227,7 @@ const legacyLeft = (i, p) => i.to === p.handle && !((p.createdAt ?? 0) > i.at);
  */
 export function deletedFrom(rt, t, p) {
   if (presentIn(rt, t).has(p.handle)) return false;
-  const conv = conversationOf(rt, t);
+  const conv = rt.threads.conversationToWrite(t.id);
   const left = (i) => i.kind === 'system' && i.variant === 'left' && (i.personaId ? i.personaId === p.id : legacyLeft(i, p));
   return rt.store.pending.items(conv).some(left);
 }
