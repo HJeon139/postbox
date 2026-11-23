@@ -5,6 +5,7 @@ import { mockMarker } from './agent-facts.mjs';
 import { client } from './client.mjs';
 import { dayOf, h, timeOf } from './dom.mjs';
 import { replyLine } from './reply-rings.mjs';
+import { namesSpeaker } from './speaker-line.mjs';
 
 const S = () => client.state;
 
@@ -26,3 +27,22 @@ export const who = (it, { you = false, threadId = '' } = {}) => {
   const woke = it.woke ? h('span.woke', wokeText(it.woke)) : null;
   return h('div.who', ring, h('b', it.handle), mockMarker(se), word, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
 };
+
+/**
+ * Puts a drawn item’s speaker line where it now belongs, once the item before it starts or stops drawing anything
+ * (#1654), without drawing the item again: an app keeps its running frame, and what the person did in it. An agent’s
+ * reply or a block gets or loses its line in place. Returns false for a node of any other shape, which the caller draws
+ * again. @param {HTMLElement | undefined} node @param {any} it @param {any} prev @param {string} threadId
+ */
+export function moveSpeakerLine(node, it, prev, threadId) {
+  if (!node) return true;
+  const app = it.kind === 'block' && it.valid && it.block.type === 'app';
+  if (!app && !(['agent', 'block'].includes(it.kind) && node.matches('.col.turn'))) return false;
+  // An app’s line sits in a column of its own above the frame; a reply’s or a block’s is the node’s first child.
+  const line = app ? node.querySelector(':scope > .col > .who')?.parentElement : node.querySelector(':scope > .who');
+  const want = namesSpeaker(it, prev, threadId);
+  if (want === Boolean(line)) return true;
+  if (line) line.remove();
+  else node.prepend(app ? h('div.col', who(it, { threadId })) : who(it, { threadId }));
+  return true;
+}

@@ -1,7 +1,7 @@
 // Which messages in a transcript name their speaker: a line with the agent’s ring, its handle and the time.
 
 import { recordMoved } from './activity-paint.mjs';
-import { client, itemsOf } from './client.mjs';
+import { busy, client, itemsOf } from './client.mjs';
 
 /**
  * Whether the transcript draws nothing for a reply: one replaced by its replay (#120, a turn on a host attached again
@@ -48,12 +48,22 @@ export function latestReply(threadId, sessionId) {
 // and the speaker lines do.
 /** @type {Map<string, string | null>} */
 const latest = new Map();
+// What isLive reads of each session, last time it was heard: whether it works, and its last turn. Only a change in
+// these can make a finished part draw nothing (drawsNothing), so only then is its latest reply found again (#1654);
+// any other session event, the most frequent, keeps the cached one, as #564-b1 asks. Registered as this module loads,
+// before reply-rings.mjs’s listener, which imports it, so the cache is right by the time the lines are painted.
+/** @type {Map<string, string>} */
+const live = new Map();
 client.on((ch) => {
   if (ch.type === 'load') latest.clear();
-  // A session's change can hide a finished part of its turn (drawsNothing reads whether the turn is still live), and
-  // the server sends it after the turn's last item event, so the session's latest reply is found again (#1654).
-  const sessionId = ch.type === 'session' || ch.type === 'session.patch' ? ch.data?.id : null;
-  if (sessionId) for (const key of latest.keys()) if (key.endsWith(`\n${sessionId}`)) latest.delete(key);
+  const se = ch.type === 'session' ? ch.data : null;
+  if (se?.id) {
+    const now = `${busy(se)}|${se.lastTurnId ?? ''}`;
+    if (live.get(se.id) !== now) {
+      live.set(se.id, now);
+      for (const key of latest.keys()) if (key.endsWith(`\n${se.id}`)) latest.delete(key);
+    }
+  }
   const threadId = ch.type.startsWith('item.') ? ch.data?.threadId : null;
   if (!threadId) return;
   for (const key of latest.keys()) if (key.startsWith(`${threadId}\n`)) latest.delete(key);

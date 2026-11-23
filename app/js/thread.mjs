@@ -39,7 +39,7 @@ import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, confirmDelete, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { drawsNothing, namesSpeaker } from './speaker-line.mjs';
-import { who } from './speaker-who.mjs';
+import { moveSpeakerLine, who } from './speaker-who.mjs';
 import { systemLine } from './system-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
@@ -129,8 +129,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     nodes.set(id, n);
     if (old && win) replacedNode(win, old, n);
     back();
-    // An item that now draws nothing, or something again, moves the speaker line to or from the one after it (#1654).
-    if (old && old.hidden !== n.hidden && list[i + 1]) rerender(list[i + 1].id);
+    // An item that now draws nothing, or something again, moves the speaker line to or from the one after it (#1654),
+    // in place where it can, so an app there keeps its frame.
+    const next = list[i + 1];
+    if (old && old.hidden !== n.hidden && next && !moveSpeakerLine(nodes.get(next.id), next, list[i], threadId)) rerender(next.id);
   };
   // The nodes a rebuild keeps where they are, while it runs (resync-keep.mjs, #987).
   let held = new Map();

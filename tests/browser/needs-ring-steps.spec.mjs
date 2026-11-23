@@ -1,9 +1,9 @@
-// #1654: the ring beside an agent's newest message goes to what it needs, also when the turn that asked began with a
+// #1654: the ring beside an agent’s newest message goes to what it needs, also when the turn that asked began with a
 // part that holds only steps. The page hides such a part (recordMoved, activity-paint.mjs), but the speaker line went
 // with it: its ring was the one that followed the agent, and the choice after it drew no line. So the only ring left
-// on screen was the resting one on the agent's earlier write-up, and a click stayed there.
+// on screen was the resting one on the agent’s earlier write-up, and a click stayed there.
 //
-// The items are UAT run 2026-11-22T19-14-39-needsnav's, step 7 (thread th_j2bVFjqm, items 1 to 9): a long write-up,
+// The items are UAT run 2026-11-22T19-14-39-needsnav’s, step 7 (thread th_j2bVFjqm, items 1 to 9): a long write-up,
 // your message, then a turn whose first part is one thought step with no words, its choice block, and a short reply.
 
 import { expect, test } from '@playwright/test';
@@ -119,4 +119,35 @@ test('#1654 a background job that ends after the turn hides its part, and the ri
     'state',
     'needs',
   );
+});
+
+test('#1654 an app shown after a steps-only part keeps its frame when the turn ends, and takes the speaker line', async ({ page }) => {
+  const { rt } = app;
+  const projectId = Object.values(rt.store.state.projects)[0].id;
+  const t = rt.createThread({ projectId, title: 'Click logs, app', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  arrange.post(rt, t.id, { kind: 'user', text: '@researcher build me a partition explorer.' });
+  arrange.setSession(rt, se.id, { state: 'tool', lastTurnId: 'turn_app' });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const part = { kind: 'agent', sessionId: se.id, handle: 'researcher', turnId: 'turn_app' };
+  const stepsOnly = arrange.post(rt, t.id, { ...part, status: 'done', text: '', activity: { steps: [THOUGHT] } });
+  const { appId } = rt.toolsFor(se.id).show_app({ title: 'Partitions', code: '<p style="padding:12px">Pick a partition.</p>' });
+  const shown = rt.store.items(t.id).find((it) => it.kind === 'block' && it.block?.type === 'app' && it.block.id === appId);
+  arrange.setItem(rt, t.id, shown.id, { turnId: 'turn_app' });
+  const last = arrange.post(rt, t.id, { ...part, status: 'streaming', text: 'Try the explorer above.' });
+  await synced(page, app);
+  const frame = page.locator(`[data-key="${shown.id}"] .appframe iframe`).first();
+  await expect(frame).toBeAttached();
+  // Mark the running frame: a reload draws a new one, and what the person did in it is gone.
+  await frame.evaluate((f) => {
+    f.dataset.kept = 'yes';
+  });
+  // The turn ends in the server's order: its last part settles, then the session stops working.
+  arrange.setItem(rt, t.id, last.id, { status: 'done' });
+  arrange.setSession(rt, se.id, { state: 'idle' });
+  await synced(page, app);
+  await expect(page.locator(`[data-key="${stepsOnly.id}"]`), 'the steps-only part is hidden').toBeHidden();
+  await expect(page.locator(`[data-key="${shown.id}"] .who pb-ring[data-session="${se.id}"]`), 'the app takes the speaker line').toBeVisible();
+  await expect(page.locator(`[data-key="${shown.id}"] .appframe iframe[data-kept="yes"]`), 'the same frame, not reloaded').toHaveCount(1);
 });
