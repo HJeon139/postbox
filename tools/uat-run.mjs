@@ -56,7 +56,7 @@ import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
 import { overdueStop, runBound, watchRun } from './uat/run-bound.mjs';
-import { endRun } from './uat/run-end.mjs';
+import { endFailedRun, endRun } from './uat/run-end.mjs';
 import { runEnv } from './uat/run-env.mjs';
 import { runFacts } from './uat/run-facts.mjs';
 import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi } from './uat/run-files.mjs';
@@ -178,6 +178,8 @@ async function main() {
   const facts = runFacts({ agentModels, agentEffort, page, keyFrameOn: Boolean(keyFrameOut(opt, scenario, dir)), workspace: paths.workspace, hr, postbox });
   run.keep = keeper(dir, facts, paths.workspace);
   let unwatch = () => {};
+  /** @type {(() => Promise<any[]>) | null} */
+  let finish = null;
   try {
     await page.size(1440, 1000, { theme: 'light' });
     await page.goto(`${origin}/`);
@@ -280,9 +282,62 @@ async function main() {
 
     // What needs the person that a wait between steps has seen: it hands back to the tester once for each (#289).
     const told = new Set();
-    const settle = (handBack = false) => timing.time('agents', () => settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log }));
+    const settle = (handBack = false) =>
+      timing.time('agents', () =>
+        settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log, stopped: () => Boolean(budget.stopped || bound.stopped) }),
+      );
 
     const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
+
+    // The run’s end, after its last step, or after a step threw (#1664): the last checks, the report, the verifier, the
+    // picture judges and run.json.
+    finish = async () => {
+      lastCheckPass(findings, newFindings);
+      // What the last action caused counts, and every phase with triggers that didn’t all happen is a coverage gap.
+      await noteStale();
+      goals.observe(facts, timeline.length);
+      if (goals.check(phase, timeline.length).end !== 'now') goals.finish(phase);
+      for (const g of goals.gaps()) findings.set(`coverage-gap:${g.key}`, { ...g, step: timeline.length });
+      const coverage = goals.coverage();
+      // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
+      await writeHistory(dir, facts);
+      writePostboxOutput(dir, facts.postboxOutput); // what Postbox printed, as the checks read it, for --recheck
+      const all = [...findings.values()];
+      presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
+      const verify = opt.verify !== 'no';
+      const review = { ...REVIEW, dir, scenario, findings: all, timeline, log, verify, file: opt.file !== 'no' };
+      const shoot = (label, file) => d.shotItem(keys.get(label), file);
+      await endRun({
+        report: async () => {
+          Object.assign(facts, { budget: budget.summary(), bound: bound.summary(), timing: timing.summary(Date.now() - started) });
+          await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
+        },
+        review: verify || review.file ? () => timing.time('verifier', () => reviewFindings({ ...review, ask: budget.verifier() })) : null,
+        // #995’s judges of the agent’s pictures, after the verifier (tools/uat/run-end.mjs).
+        judge: () => judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, shoot, ask: budget.verifier(), model: opt['tester-model'], log }),
+      });
+      // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
+      writeJsonAtomic(join(dir, 'run.json'), {
+        ...runRecord({
+          root: ROOT,
+          dir,
+          scenario,
+          name,
+          opt,
+          started,
+          steps: timeline.length,
+          cap: steps,
+          startPhase: startPhase + 1,
+          phases,
+          tester,
+          facts,
+          coverage,
+          workspace: paths.workspace,
+        }),
+        ...(facts.budget ? { budget: facts.budget } : {}),
+      });
+      return all;
+    };
 
     // The bound, and with --max-cost the budget, watch the agents’ turns through the steps and the wait after them.
     // Past the wall time, a run held by a Postbox that answers nothing runs its own stop, as a signal would, and exits.
@@ -490,51 +545,15 @@ async function main() {
     unwatch();
     await refreshFacts();
     if (hr) await endHosts(hr, dir);
-    lastCheckPass(findings, newFindings);
-    // What the last action caused counts, and every phase with triggers that didn’t all happen is a coverage gap.
-    await noteStale();
-    goals.observe(facts, timeline.length);
-    if (goals.check(phase, timeline.length).end !== 'now') goals.finish(phase);
-    for (const g of goals.gaps()) findings.set(`coverage-gap:${g.key}`, { ...g, step: timeline.length });
-    const coverage = goals.coverage();
-    // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
-    await writeHistory(dir, facts);
-    writePostboxOutput(dir, facts.postboxOutput); // what Postbox printed, as the checks read it, for --recheck
-    const all = [...findings.values()];
-    presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
-    const verify = opt.verify !== 'no';
-    const review = { ...REVIEW, dir, scenario, findings: all, timeline, log, verify, file: opt.file !== 'no' };
-    const shoot = (label, file) => d.shotItem(keys.get(label), file);
-    await endRun({
-      report: async () => {
-        Object.assign(facts, { budget: budget.summary(), bound: bound.summary(), timing: timing.summary(Date.now() - started) });
-        await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
-      },
-      review: verify || review.file ? () => timing.time('verifier', () => reviewFindings({ ...review, ask: budget.verifier() })) : null,
-      // #995’s judges of the agent’s pictures, after the verifier (tools/uat/run-end.mjs).
-      judge: () => judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, shoot, ask: budget.verifier(), model: opt['tester-model'], log }),
-    });
-    // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
-    writeJsonAtomic(join(dir, 'run.json'), {
-      ...runRecord({
-        root: ROOT,
-        dir,
-        scenario,
-        name,
-        opt,
-        started,
-        steps: timeline.length,
-        cap: steps,
-        startPhase: startPhase + 1,
-        phases,
-        tester,
-        facts,
-        coverage,
-        workspace: paths.workspace,
-      }),
-      ...(facts.budget ? { budget: facts.budget } : {}),
-    });
-    return all;
+    const end = finish;
+    finish = null; // what throws from here is the end’s own
+    return await end();
+  } catch (e) {
+    // A step, or the wait after one, threw: the run still writes its report, findings.json and run.json, unless a signal
+    // stopped it (#1664).
+    if (!finish || signals.stopping) throw e;
+    unwatch();
+    return await endFailedRun(e, { findings, step: timeline.length, end: finish, log });
   } finally {
     unwatch();
     await stop();
