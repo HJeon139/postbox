@@ -264,9 +264,10 @@ test('#120 e2e: a change to a setting the daemon enforces reaches a connected ho
     assert.equal(hellos(p.d).length, 1);
     // stallTimeout stays on the laptop: no new session.
     p.rt.updateHost(p.host.id, { settings: { stallTimeout: 20 * 60_000 } });
-    assert.equal(hellos(p.d).length, 1, 'a laptop-only setting doesn’t reconnect');
-    // No wait for something that shouldn’t happen: had it reconnected, the next hello would be that one, without the
-    // permissionWaitMax set below, and the check on hellos[1] would fail.
+    // A reconnect closes the session at once, inside updateHost, so this needs no wait: the ssh under it is still up.
+    // (A hello count alone can’t tell: a wrong reconnect opens only after the next update too, carrying its setting.)
+    assert.equal(p.ssh.children.at(-1).exited, false, 'a laptop-only setting doesn’t close the session to reconnect');
+    assert.equal(hellos(p.d).length, 1, 'and opens no new one');
     // permissionWaitMax is the host’s: a new session, whose hello carries it.
     p.rt.updateHost(p.host.id, { settings: { permissionWaitMax: 2 * 3_600_000 } });
     await until(() => hellos(p.d).length === 2, 'a fresh hello');
