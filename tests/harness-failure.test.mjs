@@ -10,7 +10,7 @@ import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { createCodexMapper } from '../server/adapters/codex.mjs';
 import { kiroError } from '../server/adapters/kiro-errors.mjs';
-import { failureClass, NETWORK_CODES, withQuota } from '../server/harness-failure.mjs';
+import { failureClass, NETWORK_CODES, TRANSIENT_STATUSES, withQuota, withTransient } from '../server/harness-failure.mjs';
 
 /** A turn context whose callbacks do nothing. @param {any} [over] */
 const quietCtx = (over = {}) =>
@@ -36,6 +36,26 @@ test('#442 a quota mark is quota, with its reset time when the harness gave one'
   assert.deepEqual(failureClass(withQuota(new Error('Out of quota.'), { until: 1792741200000 })), { kind: 'quota', until: 1792741200000 });
   assert.deepEqual(failureClass(new Error('The turn failed.', { cause: withQuota(new Error('Out.'), { until: null }) })), { kind: 'quota', until: null });
   assert.equal(failureClass(withQuota(new Error('Fine.'), null)), null);
+});
+
+test('#1713 a provider’s status that passes is transient, by its mark anywhere in the causes, and no other status is', () => {
+  for (const status of [429, 500, 502, 503, 504, 529])
+    assert.deepEqual(failureClass(withTransient(new Error('API Error.'), status)), { kind: 'transient', status });
+  assert.deepEqual(TRANSIENT_STATUSES, [429, 500, 502, 503, 504, 529]);
+  assert.deepEqual(failureClass(new Error('The turn failed.', { cause: withTransient(new Error('Overloaded.'), 529) })), { kind: 'transient', status: 529 });
+  for (const status of [400, 401, 403, 404, 413, null, undefined, '529'])
+    assert.equal(failureClass(withTransient(new Error('API Error.'), status)), null, String(status));
+});
+
+test('#1713 a 429 that ran the quota out stays quota, which waits for its reset rather than retrying', () => {
+  const err = withTransient(withQuota(new Error('You’ve hit your usage limit.'), { until: 1792741200000 }), 429);
+  assert.deepEqual(failureClass(err), { kind: 'quota', until: 1792741200000 });
+  assert.equal(Object.hasOwn(err, 'transient'), false);
+});
+
+test('#1713 an error’s words alone never make it transient', () => {
+  assert.equal(failureClass(new Error('API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}')), null);
+  assert.equal(failureClass(Object.assign(new Error('Overloaded.'), { status: 529 })), null, 'only the adapter’s mark counts');
 });
 
 test('#467 only the classifier lists the network codes: the scheduled wakes and Kiro use its list', () => {
