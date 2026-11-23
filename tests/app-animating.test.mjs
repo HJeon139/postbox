@@ -29,10 +29,11 @@ test('#438 an app that keeps animating is reported to its agent once, for the ve
   const s = shown();
   assert.deepEqual(appAnimating(s.rt, s.appId, 1), { ok: true, told: true });
   assert.deepEqual(appAnimating(s.rt, s.appId, 1), { ok: true, told: false }, 'the same version again');
+  assert.equal(s.rt.store.state.apps[s.appId].animatingTold, 1, 'kept on the app, so a restart doesn’t tell it again');
   assert.equal(s.heard().length, 1);
   assert.match(
     s.heard()[0],
-    /^\[Postbox\] Your app “Reaction rates” v1 kept animating for 30 seconds with no input from the person, drawing every frame\. Make its loop stop on its own: when its state stops changing, at a time limit, or after a set number of steps\./,
+    /^\[Postbox\] Your app “Reaction rates” v1 kept animating for 30 seconds with no input from the person, drawing every frame\. If nothing on it needs to keep moving, make its loop stop on its own: when its state stops changing, at a time limit, or after a set number of steps\./,
   );
   s.tools.update_app({ id: s.appId, code: '<canvas id="v2"></canvas>', summary: 'stops at rest' });
   assert.deepEqual(appAnimating(s.rt, s.appId, 1), { ok: true, told: false }, 'an older version');

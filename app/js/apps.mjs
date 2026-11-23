@@ -56,7 +56,6 @@ addEventListener('message', async (e) => {
     case 'hello':
       e.source.postMessage({ __pb: 1, type: 'init', theme: theme(), state: rec.check ? null : (app?.state ?? null) }, '*');
       if (rec.review) e.source.postMessage({ __pb: 1, type: 'review', on: true }, '*');
-      if (rec.iframe.closest('.app-body')?._onScreen === false) e.source.postMessage({ __pb: 1, type: 'view', on: false }, '*');
       break;
     case 'size':
       // Full screen, the frame is the window’s height, so the app measures at least that; keep the height it
@@ -392,14 +391,6 @@ const observer = new IntersectionObserver(
   },
   { rootMargin: '150% 0px 150% 0px' },
 );
-// Whether each app is on screen at all, which its frame hears (#438, app/kit/frames.js): off screen, its animation
-// frames wait. It’s kept on the body, so a frame that loads later hears it when it says hello.
-const onScreen = new IntersectionObserver((entries) => {
-  for (const en of entries) {
-    en.target._onScreen = en.isIntersecting;
-    en.target.querySelector('iframe.app-iframe')?.contentWindow?.postMessage({ __pb: 1, type: 'view', on: en.isIntersecting }, '*');
-  }
-});
 // One for every app body: an app taller than its box makes the box scroll.
 const bodySizes = new ResizeObserver((entries) => {
   for (const en of entries) keyboardScroll(en.target);
@@ -416,7 +407,6 @@ export function releaseApps() {
     bodies.delete(body);
     observer.unobserve(body);
     bodySizes.unobserve(body);
-    onScreen.unobserve(body);
     nearBodies.delete(body);
   }
 }
@@ -426,7 +416,6 @@ function appBody(appId, review) {
   const body = h('div.app-body', { dataset: { appId } });
   bodies.add(body);
   bodySizes.observe(body);
-  onScreen.observe(body);
   // A review never unloads, so it isn’t watched for nearness: while it’s mounted, its app may be under the pointer.
   if (review) {
     // Its old bodies leave the near set in mayBeUnder(), not here: releaseApps() now would run before the transcript

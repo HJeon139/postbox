@@ -58,6 +58,7 @@ export const PENDING = {
   'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'diagram-check.mjs': ['syntaxCheck'], // the turn’s replies, maybe held behind a commit: their diagrams decide its lint turn and the session’s diagramsLinted (#731)
+  'app-animating.mjs': ['appAnimating'], // the app, maybe held behind a commit: whether its version was told decides the write that marks it (#438)
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
   'live-buffer.mjs': ['liveSession', 'closeLive', 'liveUpdate', 'liveFields'], // a live field sent only when it differs from the stored one, put back to it at the turn’s end, a running turn’s state stored only when it changed, and its calls and step from what was stored as it began, held writes included
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once

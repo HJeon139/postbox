@@ -1,6 +1,7 @@
 // #438: an agent’s app whose animation loop never stops is reported to its agent, with nothing shown to the person.
-// The kit (app/kit/frames.js) reports a loop that draws for 30 s with no input from the person, once; one that draws
-// only after the person clicks is never reported. And while the app is off screen, its frame callbacks wait. The spec
+// The kit (app/kit/frames.js) reports a run of frames that lasts 30 s with no input from the person, once, however the
+// app asks for its frames; one the person keeps going, a timer’s now-and-then redraw, or a loop that pauses longer than
+// the kit’s gap is never reported. The spec
 // sets the kit’s 30 s to IDLE_MS before each page loads (window.__pbIdleMs, read by app/kit/frames.js).
 
 import { expect, test } from '@playwright/test';
@@ -21,12 +22,20 @@ const TIMER = `<main style="padding:12px"><p id="t">0</p></main>
 let n = 0;
 setInterval(() => requestAnimationFrame(() => { document.getElementById('t').textContent = String(++n); }), 300);
 </script>`;
-/** All of its content fixed, as a full-bleed canvas is, so its own page has no height. */
-const FIXED = `<div style="position:fixed;inset:0;background:var(--panel)"><p style="margin:12px">Fixed</p></div>
+/** A loop driven by a timer asking for a frame every 16 ms: animation all the same. */
+const TIMER_LOOP = `<main style="padding:12px"><p id="t">0</p></main>
 <script>
 let n = 0;
-const step = () => { n++; requestAnimationFrame(step); };
-requestAnimationFrame(step);
+setInterval(() => requestAnimationFrame(() => { document.getElementById('t').textContent = String(++n); }), 16);
+</script>`;
+/** A loop that draws for 0.6 s, then rests 0.5 s, over and over: each run is short of the kit’s time. */
+const PAUSING = `<main style="padding:12px"><p id="t">0</p></main>
+<script>
+let n = 0;
+let until = 0;
+const step = (now) => { document.getElementById('t').textContent = String(++n); if (now < until) requestAnimationFrame(step); else setTimeout(start, 500); };
+const start = () => { until = performance.now() + 600; requestAnimationFrame(step); };
+start();
 </script>`;
 /** The kit’s 30 s, for this spec. */
 const IDLE_MS = 1500;
@@ -96,20 +105,6 @@ test('#438 an app that animates only while the person keeps using it is never re
   expect(heard()).toEqual([]);
 });
 
-test('#438 while the app is off screen, its frame callbacks wait, and run when it’s back in view', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 700 });
-  const { rt } = app;
-  const { frame } = await shown(page, 'Off screen', FOREVER);
-  const threadId = rt.store.state.apps[Object.keys(rt.store.state.apps).find((id) => rt.store.state.apps[id].title === 'Off screen')].threadId;
-  for (let i = 0; i < 8; i++) arrange.post(rt, threadId, { kind: 'user', text: `Line ${i}\n\n${'A long line of words. '.repeat(40)}` });
-  await synced(page, app);
-  const held = () => frame.locator('body').evaluate(() => requestAnimationFrame(() => {}) < 0);
-  await page.locator('.transcript').evaluate((el) => el.scrollTo(0, el.scrollHeight));
-  await expect.poll(held, { message: 'off screen, a callback is held' }).toBe(true);
-  await frameOf(page, 'Off screen').scrollIntoViewIfNeeded();
-  await expect.poll(held, { message: 'in view, it runs' }).toBe(false);
-});
-
 test('#438 an app that redraws on a timer, one frame at a time, is never reported', async ({ page }) => {
   const { heard, frame, now } = await shown(page, 'Timer', TIMER);
   const at = await now();
@@ -118,44 +113,15 @@ test('#438 an app that redraws on a timer, one frame at a time, is never reporte
   expect(heard()).toEqual([]);
 });
 
-test('#438 a frame callback held off screen and cancelled as it’s released never runs', async ({ page }) => {
-  const { frame } = await shown(page, 'Cancel', FOREVER);
-  const ran = await frame.locator('body').evaluate(async () => {
-    // As Postbox’s page says it (app/js/apps.mjs, onScreen), in one task: off screen, then back in view.
-    const view = (on) => dispatchEvent(new MessageEvent('message', { data: { __pb: 1, type: 'view', on }, source: parent }));
-    let calls = 0;
-    view(false);
-    const id = requestAnimationFrame(() => calls++);
-    const heldId = id < 0;
-    view(true);
-    cancelAnimationFrame(id);
-    // Two frames on: a released callback that wasn’t cancelled would have run by then.
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    return { heldId, calls };
-  });
-  expect(ran).toEqual({ heldId: true, calls: 0 });
+test('#438 a loop a timer drives, asking for a frame every 16 ms, is reported as a loop', async ({ page }) => {
+  const { heard } = await shown(page, 'Timer loop', TIMER_LOOP);
+  await expect.poll(heard, { message: 'its agent hears it', timeout: 15_000 }).toEqual([expect.stringContaining('Your app “Timer loop” v1 kept animating')]);
 });
 
-test('#438 an app whose content is all fixed is in view while any of it shows', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 700 });
-  const { rt } = app;
-  const { frame } = await shown(page, 'Fixed', FIXED);
-  const f = frameOf(page, 'Fixed');
-  // Enough below it that the conversation can scroll its top out of view.
-  const threadId = Object.values(rt.store.state.apps).find((a) => a.title === 'Fixed').threadId;
-  for (let i = 0; i < 8; i++) arrange.post(rt, threadId, { kind: 'user', text: `Line ${i}\n\n${'A long line of words. '.repeat(40)}` });
-  await synced(page, app);
-  // Its frame’s top just above the window’s top edge, the rest still showing: its own page, which has no height, is at
-  // that top edge, out of view, while the app shows.
-  await f.evaluate((n) => {
-    let scroller = n.parentElement;
-    while (scroller && !(scroller.scrollHeight > scroller.clientHeight && /auto|scroll/.test(getComputedStyle(scroller).overflowY)))
-      scroller = scroller.parentElement;
-    (scroller ?? document.scrollingElement)?.scrollBy(0, n.getBoundingClientRect().top + 20);
-  });
-  await expect.poll(async () => (await f.boundingBox())?.y ?? 0).toBeLessThan(0);
-  const box = await f.boundingBox();
-  expect(box && box.y + box.height > 0, 'part of it shows').toBe(true);
-  const runs = () => frame.locator('body').evaluate(() => requestAnimationFrame(() => {}) > 0);
-  await expect.poll(runs, { message: 'its frames run' }).toBe(true);
+test('#438 a loop that rests longer than the kit’s gap each time is never reported', async ({ page }) => {
+  const { heard, frame, now } = await shown(page, 'Pausing', PAUSING);
+  const at = await now();
+  await expect.poll(now, { timeout: 15_000 }).toBeGreaterThan(at + IDLE_MS * 3);
+  await expect(frame.locator('#t'), 'it animates').not.toHaveText('0');
+  expect(heard()).toEqual([]);
 });
