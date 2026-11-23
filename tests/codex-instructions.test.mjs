@@ -73,3 +73,28 @@ test('resuming a thread asks Codex for no past turns, as a fork does', async () 
   assert.equal(resumed.params.threadId, 'thr_existing');
   assert.equal(resumed.params.excludeTurns, true, 'the resume answer must not carry the thread’s history');
 });
+
+// Before the fix the turn waited for that answer for good; the timeout makes that a failure, not a hung run.
+test('a resume answer the host had to leave out fails the turn, and stops the app-server holding the thread (#1705)', { timeout: 5000 }, async () => {
+  const seen = [];
+  let killed = false;
+  const adapter = new CodexAdapter({
+    spawnImpl: () => {
+      const child = fakeAppServer(seen, { cut: (r) => r.method === 'thread/resume' });
+      const kill = child.kill;
+      child.kill = (sig) => {
+        killed = true;
+        return kill(sig);
+      };
+      return child;
+    },
+  });
+  const turn = adapter.deliver({}, { kind: 'user', text: 'Continue.' }, context({ codexThreadId: 'thr_existing' }));
+  await assert.rejects(turn, /thread\/resume.*too long to send from the host/);
+  assert.equal(
+    seen.some((r) => r.method === 'turn/start'),
+    false,
+    'no turn starts on a thread it never opened',
+  );
+  assert.ok(killed, 'the app-server is stopped, so it no longer holds the thread');
+});

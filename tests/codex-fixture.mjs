@@ -8,7 +8,10 @@ import { tempDir } from './temp-dirs.mjs';
 /** The Codex tests’ work root, a temp folder of the test file’s: the adapter makes folders in it (#823). */
 export const CODEX_ROOT = tempDir('postbox-codex-test-');
 
-export function fakeAppServer(seen, { hold = false, error = null, then = 'complete', mcpServers = [], threadError = (_req) => null } = {}) {
+export function fakeAppServer(
+  seen,
+  { hold = false, error = null, then = 'complete', mcpServers = [], threadError = (_req) => null, cut = (_req) => false } = {},
+) {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
@@ -36,6 +39,11 @@ export function fakeAppServer(seen, { hold = false, error = null, then = 'comple
           })}\n`,
         );
       if (['thread/start', 'thread/resume', 'thread/fork'].includes(req.method)) {
+        // A host leaves out a line past its limit and says so (server/remote/process-receive.mjs's 'cut', #1705).
+        if (cut(req)) {
+          child.emit('cut', { offset: 0, next: 8_458_618 });
+          continue;
+        }
         const failure = threadError(req);
         if (failure) {
           child.stdout.write(`${JSON.stringify({ id: req.id, error: failure })}\n`);

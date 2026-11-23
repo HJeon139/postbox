@@ -70,3 +70,20 @@ export function codexRefusal(ctx, err) {
     },
   );
 }
+
+/**
+ * Fails the requests a turn is waiting on when a host leaves out a line of Codex's output as too long to send
+ * (server/remote/process-receive.mjs's 'cut'). Until the turn starts, Codex's lines are its answers and a few short
+ * notices, so the lost line was one of those answers: without this, its request waits for good while the app-server
+ * holds the thread, and every later turn on it is refused as "already has an active writer" (#1705). A local
+ * app-server never emits 'cut'.
+ * @param {import('node:events').EventEmitter} child @param {Map<number, { method: string }>} pending
+ * @param {(err: Error) => void} fail @param {() => boolean} opening whether the turn hasn't started yet
+ */
+export function failOnCutAnswer(child, pending, fail, opening) {
+  child.on('cut', ({ offset, next }) => {
+    if (!opening() || pending.size === 0) return;
+    const methods = [...new Set([...pending.values()].map((x) => x.method))].join(', ');
+    fail(new Error(`Codex’s answer to ${methods} was ${next - offset} bytes, too long to send from the host, so the thread can’t be opened.`));
+  });
+}
