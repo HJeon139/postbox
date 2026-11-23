@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.39.0 (2026-11-23)
+
+### Features
+
+- **guide:** ask agents to start each option's description with what it makes
+
+### Fixes
+
+- **diagrams:** take a reply's diagrams from the renderer's own output
+- **diagrams:** check each diagram in a reply once
+- **diagrams:** hold a turn's lint turn while the server parses its diagrams
+- **diagrams:** read a reply's Mermaid fences as the renderer draws them
+- **guide:** say plainly that each option is listed in the fallback
+- **diagrams:** send the diagrams queued behind a hung parse to a new worker
+- **diagrams:** check each reply's Mermaid syntax on the server
+
 ## 4.38.0 (2026-11-22)
 
 ### Features
