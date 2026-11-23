@@ -19,7 +19,7 @@ export function correctionOf(id) {
       correctFocus: false,
       focusedBox: null,
       correctError: null,
-      focusEdit: null,
+      focusedEdit: null,
     });
   return states.get(id);
 }
@@ -57,19 +57,17 @@ export function correctButton(t, { b, itemId, rerender }) {
     { type: 'button', style: { marginLeft: 'auto' }, 'aria-label': label, 'data-correct': t.id, onclick: open, ...track },
     'Edit',
   );
-  // Back from a correction it sent, focus returns here once the thread is drawn with it; and over a later repaint it
-  // stays, while this Edit had it last and nothing else has it since.
-  const arrived = d.focusEdit?.thread === t.id && t.comments[lastMine(t)].text === d.focusEdit.text;
+  // Over a repaint, focus stays here while this Edit had it last and nothing else has it since. After a correction
+  // is sent, focus goes to the message box, as after any act on a block (thread.mjs).
   const active = document.activeElement;
   const had = d.focusedEdit === t.id && (!active || active === document.body || /** @type {HTMLElement} */ (active).dataset?.correct === t.id);
-  if (arrived) d.focusEdit = null;
-  if (arrived || had) queueMicrotask(() => button.focus());
+  if (had) queueMicrotask(() => button.isConnected && button.focus());
   return button;
 }
 
 /**
  * The box a correction is written in, under its thread. Send correction sends it and closes the box; a refusal opens it
- * again with what was typed and why. Cancel drops it. Either way focus goes back to Edit.
+ * again with what was typed and why. Cancel drops it, and focus goes back to Edit.
  * @param {any} t @param {any} env  { b, itemId, rerender, correct }
  */
 export function correctionBox(t, { b, itemId, rerender, correct }) {
@@ -78,11 +76,11 @@ export function correctionBox(t, { b, itemId, rerender, correct }) {
     d.correcting = null;
     /** @type {HTMLElement | null} */ (rerender().querySelector(`[data-correct="${CSS.escape(t.id)}"]`))?.focus();
   };
-  // The correction’s own update draws the thread again with it, and without the box; Edit then takes focus. Only a
-  // refusal draws it here, from this box, which is still on the page.
+  // The correction’s own update draws the thread again with it, and without the box. Only a refusal draws it here,
+  // from this box, which is still on the page.
   const send = (/** @type {string} */ value) => {
     if (!value.trim()) return;
-    Object.assign(d, { correcting: null, focusEdit: { thread: t.id, text: value.trim() } });
+    d.correcting = null;
     correct(t.id, value).catch((/** @type {any} */ e) => {
       Object.assign(d, { correcting: t.id, correctingText: value, correctFocus: true, correctError: e.message });
       rerender();

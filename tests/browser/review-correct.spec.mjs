@@ -1,6 +1,6 @@
 // #858: the person corrects a comment of theirs after submitting the review. Edit on their sent comment opens it in a
 // box with its text; Send correction adds the new text after it, marked Edited, while what they sent stays; and the
-// agent hears an event that names the comment it replaces. A refusal opens the box again with what was typed and why.
+// agent hears an event that names the comment it replaces. Focus then goes to the message box, as after any act. A refusal opens the box again with what was typed and why.
 
 import { expect, test } from '@playwright/test';
 import { allowPageError, failOnPageErrors } from './postbox.mjs';
@@ -42,7 +42,7 @@ test('#858 a sent comment is corrected in place: what was sent stays, the correc
   await box.press('Control+Enter');
   const thread = block.locator('.rv-thread', { hasText: 'Make it bolder.' });
   await expect(thread.locator('.c'), 'what was sent, then the correction').toHaveText([/Make it bolder\./, /Edited.*Make it bolder, and say why\./]);
-  await expect(edit, 'focus goes back to Edit').toBeFocused();
+  await expect(page.locator('#composer-input'), 'focus goes to the message box, as after any act on a block').toBeFocused();
   await expect.poll(() => corrections(blockId)).toEqual([{ threadId: 'you-1-1', line: 3, replaces: 'Make it bolder.', text: 'Make it bolder, and say why.' }]);
 });
 
@@ -53,6 +53,7 @@ test('#858 Cancel leaves a sent comment as it was, and a refused correction open
   await box.fill('Not this.');
   await block.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(box).toHaveCount(0);
+  await expect(edit, 'Cancel puts focus back on Edit').toBeFocused();
   await expect(block.locator('.rv-thread .c'), 'nothing was added').toHaveCount(1);
   await edit.click();
   await expect(box, 'Cancel dropped what was typed').toHaveValue('Make it bolder.');
