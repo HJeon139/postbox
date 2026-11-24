@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.43.3 (2026-11-24)
+
+### Fixes
+
+- **codex:** say what to do when an answer is too long to send from the host
+- **app:** move the speaker line in place, so an app after it keeps its frame
+- **app:** redraw a part whose last job ends, so the ring moves to the choice
+- **app:** move the speaker line when a part of an open turn ends hidden
+- **app:** give a turn's speaker line to its first part the page draws
+
 ## 4.43.2 (2026-11-23)
 
 ### Fixes
