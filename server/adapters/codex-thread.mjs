@@ -84,6 +84,6 @@ export function failOnCutAnswer(child, pending, fail, opening) {
   child.on('cut', ({ offset, next }) => {
     if (!opening() || pending.size === 0) return;
     const methods = [...new Set([...pending.values()].map((x) => x.method))].join(', ');
-    fail(new Error(`Codex’s answer to ${methods} was ${next - offset} bytes, too long to send from the host, so the thread can’t be opened.`));
+    fail(new Error(`Codex’s answer to ${methods} was ${next - offset} bytes, too long to send from the host, so the turn didn’t start. Retry to try again.`));
   });
 }

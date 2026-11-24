@@ -169,7 +169,9 @@ export function drawnStale(node, it, threadId) {
  * @returns {boolean} false when it couldn’t, and the caller draws the whole reply instead
  */
 export function paintActivity(node, it, threadId) {
-  if (!node || it?.kind !== 'agent' || it.status === 'replaced') return false;
+  // A part that now draws nothing, such as one whose last job just ended, is drawn whole again, so its speaker line
+  // moves to the part after it (thread.mjs, rerender; #1654).
+  if (!node || it?.kind !== 'agent' || it.status === 'replaced' || recordMoved(it, threadId)) return false;
   // A running turn’s live block is painted again at the next frame, once for all the steps that landed (paintLive).
   if (isLive(it, threadId)) return liveSoon(node, it.id, threadId);
   const [, list, jobs] = activityParts(it, threadId);

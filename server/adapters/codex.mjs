@@ -338,7 +338,7 @@ export class CodexAdapter {
       if (host?.rebuilding) host.replay(line, onLine, fail);
       else void onLine(line).catch(fail);
     });
-    failOnCutAnswer(child, pending, fail, () => !host?.rebuilding && !activeTurnId);
+    failOnCutAnswer(child, pending, fail, () => !activeTurnId);
     child.on('error', (e) => {
       if (child.remote) endError ??= e;
       const err = new Error(
