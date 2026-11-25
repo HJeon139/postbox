@@ -17,7 +17,6 @@ import {
 } from '/shared/agent-facts.mjs';
 import { memoryLine } from '/shared/agent-memory.mjs';
 
-import { hostMarker, mockMarker } from './agent-facts.mjs';
 import { boilerplateRow } from './boilerplate-row.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
@@ -27,6 +26,7 @@ import { hostsPanel } from './hosts.mjs';
 import { capsOf, modelField, modelsFor } from './model-field.mjs';
 import { openPermissions } from './permissions.mjs';
 import { lifeButtons } from './persona-delete.mjs';
+import { personaRows } from './persona-rows.mjs';
 import { projectsTab } from './projects-tab.mjs';
 import { fullHeight, holdSheet } from './sheet-hold.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
@@ -811,33 +811,11 @@ export function openSettings(tab = 'appearance', personaId = null) {
         document.getElementById(`pe-edit-${editing.id}`)?.focus();
       });
     return [
-      h(
-        'ul.list-rows',
-        list.map((p) =>
-          h(
-            'li.persona-row',
-            h('b', p.handle),
-            mockMarker(p),
-            h('span.small.dim.grow', p.retired ? 'Retired' : p.description),
-            hostMarker(p),
-            h('span.small.dim', `v${p.version ?? 1}`),
-            h(
-              'button.btn.sm',
-              {
-                type: 'button',
-                id: `pe-edit-${p.id}`,
-                'aria-label': `Edit ${p.handle}`,
-                onclick: () => {
-                  personaId = p.id;
-                  paint();
-                  document.getElementById('pe-d')?.focus();
-                },
-              },
-              'Edit',
-            ),
-          ),
-        ),
-      ),
+      personaRows(list, (p) => {
+        personaId = p.id;
+        paint();
+        document.getElementById('pe-d')?.focus();
+      }),
       boilerplateRow({ openNewAgent, closeSettings: () => dlg.close() }),
       h(
         'div.row-flex',
