@@ -50,7 +50,7 @@ export function hostsPanel(setFoot) {
     adding: false,
     picked: {},
     setFoot,
-    paint: () => keepFocus(root, () => fill(root, ...view(p))),
+    paint: () => keepBarFocus(() => keepFocus(root, () => fill(root, ...view(p)))),
   };
   listen(p);
   p.paint();
@@ -81,6 +81,17 @@ function listen(p) {
     off();
     clearInterval(tick);
   };
+}
+
+/**
+ * A repaint draws the list’s bar again, in the sheet’s foot, outside what keepFocus looks after: a control of the bar
+ * that had focus (the +, after a host is removed) has it again, by its id. @param {() => void} paint
+ */
+function keepBarFocus(paint) {
+  const at = /** @type {HTMLElement | null} */ (document.activeElement);
+  const id = at?.closest('.d-foot') ? at.id : '';
+  paint();
+  if (id && document.activeElement?.id !== id) document.getElementById(id)?.focus();
 }
 
 const hosts = () => Object.values(S().hosts ?? {}).sort((a, b) => a.createdAt - b.createdAt);
@@ -238,6 +249,8 @@ const add = (p) => {
       p.added = made.id;
       p.adding = false;
       p.paint();
+      // On the list’s + until the page hears of the host, which can be after this; then on its Install… (focusAdded).
+      document.getElementById('ho-new')?.focus();
       focusAdded(p);
     })
     .catch((e) => {
@@ -249,7 +262,7 @@ const add = (p) => {
 
 /**
  * A host just added: its Install… gets focus once its card shows it, since its status can reach the page just after
- * the host does. Not if you’ve moved on from Add a host meanwhile.
+ * the host does. Not if you’ve moved on meanwhile, from the New host form or the list’s +, where adding leaves you.
  * @param {Panel} p
  */
 const focusAdded = (p) => {
@@ -257,5 +270,5 @@ const focusAdded = (p) => {
   if (!el) return;
   p.added = null;
   const at = document.activeElement;
-  if (!at || at === document.body || at.closest('.ho-add')) el.focus();
+  if (!at || at === document.body || at.closest('.ho-add') || at.id === 'ho-new') el.focus();
 };
