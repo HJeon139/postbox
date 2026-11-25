@@ -14,14 +14,14 @@ An agent’s turns can run on another computer you reach with `ssh`, such as a b
 - **An ordinary user.** The daemon refuses to run as root.
 
 **Set it up**
-1. **Settings → Hosts → Add a host.** Type the SSH destination as you would after `ssh`: an alias from `~/.ssh/config`, a host name, or `user@host.example.com`.
+1. **Settings → Hosts → + (Add a host).** Type the SSH destination as you would after `ssh`: an alias from `~/.ssh/config`, a host name, or `user@host.example.com`.
 2. **Install…** The confirm says what it writes outside Postbox’s folder, on both computers, and shows the commands `ssh` runs there:
    - Postbox’s host program (`server/remote/host/` and the `shared/` modules it imports) in `~/.postbox-remote/<version>/` on the host, readable only by you (folders `0700`, files `0600`, and the launcher `0700`), each checked against a SHA-256 manifest that comes in the same archive: that catches a broken copy, not a tampered one.
    - The daemon’s token in `~/.postbox-remote/token` there (`0600`), and a copy on this computer in `data/remote-tokens/<host id>` (`0600`), outside what the page reads.
    - With **Node’s path** set, a `node-path` file beside the code that names it.
 
    Nothing runs as root, and nothing outside `~/.postbox-remote` changes on the host. Postbox connects when a turn there needs it. From then on, the host’s card lists the Node and the harnesses its daemon found, each with its version and path, or where it looked.
-3. **Edit settings → Project folders on this host.** Where each project’s agents work there: an absolute path. Left empty, an agent works in `~/postbox-work/<handle>` on the host.
+3. **Edit → Project folders on this host.** Pick the host in the list and press Edit in the bar under it. Where each project’s agents work there: an absolute path. Left empty, an agent works in `~/postbox-work/<handle>` on the host.
 4. **Runs on.** In a persona’s settings, or the new-agent sheet, pick the host under **Runs on**. Its agents run there from their next turn. Postbox refuses a host whose daemon didn’t find that persona’s CLI, and an agent can’t move while a turn of its runs.
 
 **What you see**
@@ -38,7 +38,7 @@ An agent’s turns can run on another computer you reach with `ssh`, such as a b
 - **`!` commands** run on this computer, not the host, and their output says so.
 - **Kiro CLI** gets its message on stdin on a host, not as an argument, so other users there can’t read it in the process list, and no limit on one argument applies.
 
-**The settings worth knowing.** Each host’s **Edit settings** has the full list, with ranges.
+**The settings worth knowing.** Each host’s **Edit** has the full list, with ranges.
 
 | Setting | Default | What it does |
 |---|---|---|

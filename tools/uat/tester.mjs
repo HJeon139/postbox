@@ -110,6 +110,7 @@ export const SCHEMA = {
             'stop',
             'agent_panel',
             'profile',
+            'members',
             'go_to_needs',
             'conversation',
             'pane',
@@ -138,6 +139,8 @@ export const SCHEMA = {
           description: 'agent_panel: the backend to pick, as the sheet names it (Claude Code, Agent SDK, Codex, Kiro CLI, Antigravity CLI).',
         },
         model: { type: 'string', description: 'agent_panel: the model to type into the Model field, such as claude-sonnet-5-5.' },
+        add: { type: 'string', description: 'members: the handle of the agent to add to the open conversation.' },
+        remove: { type: 'string', description: 'members: the handle of the agent to remove from the open conversation.' },
         effort: { type: 'string', description: 'agent_panel: the effort to pick: low, medium, high, xhigh or max.' },
         mode: { type: 'string', description: 'agent_panel: the permission mode to pick.' },
         shell: { type: 'boolean', description: 'agent_panel: turn the shell tool on or off.' },
@@ -229,6 +232,7 @@ Then choose one action:
 - settings {target, permissions?}: open Settings › Personas and edit that agent (target is its handle), to see what it runs on, its model, permissions and setup; with permissions, also open its permissions panel. You get what they say and their screenshots; they close after.
 - agent_panel {target, backend?, model?, effort?, mode?, shell?}: click that agent’s row in the sidebar’s Agents section, which opens its persona sheet in Settings, set what you give (the backend first, which resets the model and effort when the new backend doesn’t run the model), press Save, and close Settings. You get what the sheet said, what it held when saved, whether it saved, and the agent’s row after. It applies from the agent’s next turn.
 - profile {fills}: open Settings on your profile (the button with your initials in the top bar), write each fill into the field with that label (Name, Also written as, Preferences, Time zone, Pronouns; an empty value clears it), press Save profile, and close Settings. You get what each field held and what the tab says agents are told.
+- members {add?, remove?}: open the room’s form from the button beside the Agents heading, and in its Members list add that agent (its handle) with + or remove it with − and the confirm, then close the form. You get the Members list as it reads after.
 - go_to_needs {from, target?}: go to what an agent needs: from next, press the top bar’s “Next that needs you” button; from rail, agents or message, click that agent’s pulsing needs-you ring in its rail row, in its Agents-section row (its name there opens its persona sheet instead), or beside its newest message. You get which item focus landed in, whether it’s on screen, and whether it was outlined.
 - conversation {conversation, at?, agents?, title?}: delete deletes the conversation that’s open, through its menu and the confirm, as you would, and it’s gone at once; with at (an ISO time at most 5 minutes away), it opens the confirm and presses Delete at that moment, since your own step takes seconds. new starts another conversation in the project with agents, and opens it; open opens one by its title. You get when each happened. To delete while an agent works, give send an interrupt {after, do: conversation, conversation: delete}.
 - fault {fault: restart-postbox}: in a run without hosts too, stop Postbox and start it again on the same data, and reload the page.

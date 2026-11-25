@@ -18,17 +18,23 @@ import {
 import { memoryLine } from '/shared/agent-memory.mjs';
 
 import { boilerplateRow } from './boilerplate-row.mjs';
+import { chainLimitDesc, openChainLimit } from './chain-limit.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
 import { goToNew, goWhenThere, heard } from './go-when-there.mjs';
 import { hostsPanel } from './hosts.mjs';
+import { pinnedFoot } from './manage-list.mjs';
 import { capsOf, modelField, modelsFor } from './model-field.mjs';
+import { openNewThread } from './new-thread-sheet.mjs';
+import { peopleTab } from './people-tab.mjs';
 import { openPermissions } from './permissions.mjs';
 import { lifeButtons } from './persona-delete.mjs';
-import { personaRows } from './persona-rows.mjs';
+import { personasList } from './personas-list.mjs';
 import { profile } from './profile-tab.mjs';
 import { projectsTab } from './projects-tab.mjs';
+import { roomsTab } from './rooms-tab.mjs';
+import { focusOpened, openAt } from './settings-open.mjs';
 import { fullHeight, holdSheet } from './sheet-hold.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
 import { appearance, connect } from './sheets-settings.mjs';
@@ -615,8 +621,8 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
 // New conversation moved to new-thread-sheet.mjs; kept here for those that open it from this module.
 export { openNewThread } from './new-thread-sheet.mjs';
 
-/** Deletes a conversation or room, after saying what goes and what stays. */
-export function confirmDeleteThread(threadId) {
+/** Deletes a conversation or room, after saying what goes and what stays. `deleted` runs once it’s gone. */
+export function confirmDeleteThread(threadId, deleted = () => {}) {
   const t = S().threads[threadId];
   if (!t) return;
   const ses = sessionsOf(threadId);
@@ -657,6 +663,7 @@ export function confirmDeleteThread(threadId) {
             api(`/api/threads/${threadId}`, null, 'DELETE')
               .then(async () => {
                 dlg.close();
+                deleted();
                 // Once the page has heard it's gone: else the project's latest conversation is still this one, and
                 // opening it asks for items the server has erased (#1155).
                 await heard(() => !S().threads[threadId]);
@@ -671,23 +678,9 @@ export function confirmDeleteThread(threadId) {
   });
 }
 
-/** Renames a conversation or room. */
+/** A conversation or room’s title is edited in the main menu’s form for it (#1735): this goes there, to its Title. */
 export function openRename(threadId) {
-  const t = S().threads[threadId];
-  const input = h('input.input', { id: 'rn-title', value: t?.title ?? '' });
-  const save = () =>
-    api(`/api/threads/${threadId}`, { title: input.value }, 'PATCH')
-      .then(() => dlg.close())
-      .catch((e) => toast({ title: 'Couldn’t rename it', text: e.message, level: 'blocking' }));
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') void save();
-  });
-  const dlg = openDialog({
-    title: `Rename the ${t?.kind === 'room' ? 'room' : 'conversation'}`,
-    body: [h('div.field', h('label.label', { for: 'rn-title' }, 'Name'), input)],
-    foot: [h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'), h('button.btn.send', { type: 'button', onclick: save }, 'Rename')],
-    initialFocus: () => input,
-  });
+  openSettings('rooms', threadId);
 }
 
 // ── Delete confirm ──────────────────────────────────────────────────────────────────────
@@ -769,17 +762,27 @@ export function confirmDelete(se, { keepConversation = false, removed } = {}) {
 
 export function openSettings(tab = 'appearance', personaId = null) {
   let cur = tab;
+  const at = openAt(tab, personaId, S().projects);
+  const go = (/** @type {string} */ to) => {
+    cur = to;
+    paint();
+  };
   const tabs = h('div.tabs', { role: 'tablist' });
   const panel = h('div', { role: 'tabpanel', style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // The tabs and the panel repaint together; focus stays on the tab or control you used (#26).
   const paint = () => keepFocus(tabs.parentElement, repaint);
+  // The tab’s actions, pinned under the sheet’s body so none scrolls out of sight (#1735): a tab hands them to setFoot.
+  const { foot, setFoot } = pinnedFoot();
   const repaint = () => {
+    setFoot();
     tabs.replaceChildren(
       ...[
-        ['appearance', 'Appearance'],
         ['profile', 'Profile'],
+        ['appearance', 'Appearance'],
         ['personas', 'Personas'],
         ['projects', 'Projects'],
+        ['rooms', 'Rooms'],
+        ['people', 'People'],
         ['hosts', 'Hosts'],
         ['connect', 'Backends'],
       ].map(([id, label]) =>
@@ -801,19 +804,28 @@ export function openSettings(tab = 'appearance', personaId = null) {
     fill(
       panel,
       ...{
+        profile: () => profile(paint, setFoot),
         appearance: () => appearance(paint),
-        profile: () => profile(paint),
         personas,
-        projects: () => projectsTab(paint),
-        hosts: () => [hostsPanel()],
+        projects: () => projectsTab(paint, setFoot, at),
+        rooms: () =>
+          roomsTab(paint, setFoot, at, {
+            close: () => dlg.close(),
+            openNewThread,
+            confirmDeleteThread,
+            confirmDelete,
+            openNewAgent,
+            openPermissions,
+            openChainLimit,
+            chainLimitDesc,
+          }),
+        people: () => peopleTab(go, setFoot, at),
+        hosts: () => [hostsPanel(setFoot)],
         connect,
       }[cur](),
     );
-    fullHeight(panel.closest('.dialog'), editingPersona());
   };
-  const editingPersona = () => cur === 'personas' && !!personaId && !!S().personas[personaId];
   const personas = () => {
-    const list = Object.values(S().personas);
     const editing = personaId && S().personas[personaId];
     // Between the list and a persona’s form, focus goes to the form’s first field, and back to its Edit button.
     if (editing)
@@ -822,28 +834,14 @@ export function openSettings(tab = 'appearance', personaId = null) {
         paint();
         document.getElementById(`pe-edit-${editing.id}`)?.focus();
       });
+    const edit = (/** @type {string} */ id) => {
+      personaId = id;
+      paint();
+    };
+    const rows = personasList({ at, paint, edit, setFoot, openNewAgent, closeSettings: () => dlg.close() });
     return [
-      personaRows(list, (p) => {
-        personaId = p.id;
-        paint();
-        document.getElementById('pe-d')?.focus();
-      }),
       boilerplateRow({ openNewAgent, closeSettings: () => dlg.close() }),
-      h(
-        'div.row-flex',
-        h(
-          'button.btn',
-          {
-            type: 'button',
-            onclick: () => {
-              dlg.close();
-              openNewAgent({});
-            },
-          },
-          icon('plus'),
-          'New agent',
-        ),
-      ),
+      rows,
       h('p.small.dim', 'An edit applies from each agent’s next turn, in every conversation it’s in. A turn that’s running keeps what it started with.'),
     ];
   };
@@ -866,7 +864,8 @@ export function openSettings(tab = 'appearance', personaId = null) {
     const runBox = h('div.form-grid');
     const paintRun = () => keepFocus(runBox, () => fill(runBox, backendFields(run, paintRun, { idp: 'pe', personaId: p.id })));
     paintRun();
-    const desc = h('input.input', { id: 'pe-d', value: p.description });
+    // All of it in view: a description runs to 200 characters, which one line would hide most of (#1735).
+    const desc = h('textarea.textarea', { id: 'pe-d', rows: 2, style: { minHeight: '52px' } }, p.description);
     const ins = h('textarea.textarea', { id: 'pe-i', style: { minHeight: '100px' } }, p.instructions);
     return [
       h('button.btn.sm.ghost', { type: 'button', onclick: back, style: { alignSelf: 'flex-start' } }, icon('back', 'i-sm'), 'All personas'),
@@ -910,8 +909,9 @@ export function openSettings(tab = 'appearance', personaId = null) {
             h('span.help', 'Its rules, with where each comes from, and which rule decides a call.'),
           )
         : null,
-      h(
-        'div.row-flex',
+      setFoot(
+        ...lifeButtons(p, back),
+        h('span.grow'),
         h(
           'button.btn.send',
           {
@@ -920,7 +920,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
               api(
                 `/api/personas/${p.id}`,
                 {
-                  description: desc.value,
+                  description: desc.value.replace(/\s*\n\s*/g, ' ').trim(),
                   instructions: ins.value,
                   tools: [...tools],
                   backend: run.backend,
@@ -950,22 +950,19 @@ export function openSettings(tab = 'appearance', personaId = null) {
           },
           'Save',
         ),
-        ...lifeButtons(p, back),
       ),
     ];
   };
   paint();
-  // Focus starts on the tab that’s open, whichever way in: Enter then stays on it, and a screen reader names it.
-  const dlg = openDialog({
-    title: 'Settings',
-    size: 'lg',
-    body: [tabs, panel],
-    onClose: () => letGo(),
-    initialFocus: () => tabs.querySelector('[aria-selected="true"]'),
-  });
-  // A persona’s MCP servers and skills come after it opens, and move nothing under the pointer when they do (#1326).
-  fullHeight(dlg.dialog, editingPersona());
+  const dlg = openDialog({ title: 'Settings', size: 'lg', body: [panel], foot, onClose: () => letGo() });
+  // The tabs stay put while a panel scrolls (#1735).
+  panel.parentElement?.before(tabs);
+  if (foot.parentElement) foot.parentElement.hidden = !foot.children.length;
+  // One height on every tab (decided 23 November 2026, #1735): switching tabs moves no tab under the pointer, and a
+  // persona’s MCP servers and skills, which come after it opens, move nothing either (#1326).
+  fullHeight(dlg.dialog, true);
   const letGo = holdSheet(dlg.dialog);
+  focusOpened(at, tabs);
 }
 
 // ── Folder picker ───────────────────────────────────────────────────────────────────────

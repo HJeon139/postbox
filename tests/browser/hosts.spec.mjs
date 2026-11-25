@@ -36,18 +36,20 @@ async function adding(page) {
   freshHost(app, fake);
   const settings = await openHosts(page, app);
   await expect.soft(settings.getByText('No hosts yet.'), 'with no hosts, it says so').toBeVisible();
+  // + in the list’s bar shows the New host form (#1735), whose Add host is pinned under it.
+  await settings.getByRole('button', { name: 'Add a host', exact: true }).click();
   const form = settings.getByRole('region', { name: 'Add a host' });
   const field = form.getByRole('textbox', { name: 'SSH destination' });
   const refused = '-oProxyCommand=x';
   await field.fill(refused);
-  await form.getByRole('button', { name: 'Add host' }).click();
+  await settings.getByRole('button', { name: 'Add host', exact: true }).click();
   const said = /** @type {any} */ (checkDestination(refused)).error;
   await expect.soft(form.getByRole('alert'), 'a destination ssh would read as an option is refused with the shared check’s message').toHaveText(said);
   await expect.soft(field, 'the field is marked invalid').toHaveAttribute('aria-invalid', 'true');
   expect.soft(Object.keys(app.store.state.hosts ?? {}), 'and nothing was added').toEqual([]);
 
   await field.fill(NAME);
-  await form.getByRole('button', { name: 'Add host' }).click();
+  await settings.getByRole('button', { name: 'Add host', exact: true }).click();
   await expect.poll(() => Object.values(app.store.state.hosts ?? {}).map((h) => h.name), { message: 'Add host adds it' }).toEqual([NAME]);
   const id = Object.keys(app.store.state.hosts)[0];
   await expect(card(page, NAME), 'its card').toBeVisible();
@@ -115,7 +117,7 @@ for (const { width, use } of SIZES)
       fake.set(id, { state: 'disconnected' });
       await openHosts(page, app);
       const c = card(page, NAME);
-      await c.getByRole('button', { name: `Edit settings for ${NAME}` }).click();
+      await page.getByRole('button', { name: `Edit settings for ${NAME}` }).click();
       const project = Object.values(app.store.state.projects)[0];
       const f = fields(c, project);
       await test.step('what it shows', () => editorShows(page, c, id, f));
@@ -131,7 +133,8 @@ const fields = (c, project) => ({
   deny: c.getByRole('checkbox', { name: 'Deny permission prompts instead of waiting (unattended runs)' }),
   signIn: c.getByRole('textbox', { name: 'Sign-in check' }),
   folder: c.getByRole('textbox', { name: project.name, exact: true }),
-  save: c.getByRole('button', { name: 'Save' }),
+  // Pinned under the sheet, not in the card (#1735).
+  save: c.page().getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Save', exact: true }),
 });
 
 /** @param {import('@playwright/test').Page} page @param {import('@playwright/test').Locator} c @param {string} id @param {ReturnType<typeof fields>} f */

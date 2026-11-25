@@ -79,20 +79,20 @@ for (const width of [320, 375, 768, 1024, 1280, 1920])
             if (x > 1 && y > 1) overlaps.push(`${a.el.textContent} / ${b.el.textContent}`);
           }
         const where = /** @type {HTMLElement} */ (kids.find((k) => k.el.textContent?.includes('On '))?.el);
-        const said = /** @type {Element} */ (kids.find((k) => k.el.matches('.grow'))?.el);
+        const said = /** @type {Element} */ (kids.findLast((k) => k.el.matches('.fact'))?.el);
         const top = (/** @type {string} */ sel) => li.querySelector(sel)?.getBoundingClientRect().top ?? Number.NaN;
         const lineOf = (/** @type {Element} */ el) => Number.parseFloat(getComputedStyle(el).lineHeight) || 17;
         const hr = where.getBoundingClientRect();
         const sr = said.getBoundingClientRect();
         return {
           overlaps,
-          hostTitle: where.getAttribute('title') ?? '',
           hostText: where.textContent,
           hostCut: where.scrollWidth > where.clientWidth + 1,
           hostLines: Math.round(hr.height / lineOf(where)),
           hostShows: hr.width,
-          // On a phone: the name, its version and Edit on one line, the host under them, the description under that.
-          nameLine: Math.max(Math.abs(top('b') - top('button')), Math.abs(top('b') - top('.on-host ~ span'))) < lineOf(where),
+          // The name and its version on one line, the host under them, the description under that (#1735: a row of
+          // the pick list, whose actions are in the bar under the list).
+          nameLine: Math.abs(top('b') - top('b ~ .small:not(.fact)')) < lineOf(where),
           hostBelowName: hr.top >= (li.querySelector('b')?.getBoundingClientRect().bottom ?? 0) - 1,
           saidBelowHost: sr.top >= hr.bottom - 1,
           lines: Math.round(sr.height / lineOf(said)),
@@ -100,11 +100,10 @@ for (const width of [320, 375, 768, 1024, 1280, 1920])
         };
       });
       expect.soft(look.overlaps, `${handle}: nothing drawn over anything else`).toEqual([]);
-      expect.soft(look.hostTitle, `${handle}: its whole host name is in its title`).toBe(`On ${host}`);
       if (width <= 600) {
         // A phone has no hover: the whole name shows, wrapped, on a line of its own, and the description under it.
         expect.soft([look.hostText, look.hostCut], `${handle}: its whole host name shows`).toEqual([`On ${host}`, false]);
-        expect.soft(look.nameLine, `${handle}: its name, version and Edit on one line`).toBe(true);
+        expect.soft(look.nameLine, `${handle}: its name and version on one line`).toBe(true);
         expect.soft(look.hostBelowName, `${handle}: its host under its name`).toBe(true);
         expect.soft(look.saidBelowHost, `${handle}: its description under its host`).toBe(true);
       } else {
@@ -125,51 +124,42 @@ for (const width of [320, 375, 599, 1024, 1280])
     for (const project of ['Field notes', LONG_PROJECT, UNBROKEN]) await projectRow(dialog, page, width, project);
   });
 
-/** One project’s row: its name and folder read in lines, its folder under its name, and its repository field usable. */
-async function projectRow(dialog, page, width, project) {
+/**
+ * One project’s row (#1735: a row of the shared list, app/js/manage-list.mjs): its name and folder whole, the folder
+ * under the name, its actions inside the panel; then its form, with a repository field you can type in and Save in view.
+ */
+async function projectRow(dialog, page, _width, project) {
   const row = dialog.locator('li', { has: page.getByText(project, { exact: true }) });
   const look = await row.evaluate((li) => {
-    const r = (/** @type {string} */ sel) => /** @type {Element} */ (li.querySelector(sel)).getBoundingClientRect();
-    const tab = /** @type {Element} */ (li.closest('[role="tabpanel"]'));
-    const form = /** @type {Element} */ (tab.querySelector('.form-grid')).getBoundingClientRect();
+    const spills = (/** @type {Element} */ el) => el.scrollWidth > el.clientWidth + 1;
+    const name = /** @type {Element} */ (li.querySelector('b'));
+    const folder = /** @type {Element} */ (li.querySelector('.fact'));
+    const panel = /** @type {Element} */ (li.closest('[role="tabpanel"]')).getBoundingClientRect();
     return {
       li: li.getBoundingClientRect(),
-      name: r('.row-flex'),
-      folder: r('.mono.grow'),
-      // Its text, not its box: a word that can’t break runs past a box that stays the row’s width.
-      folderSpills: (() => {
-        const el = /** @type {Element} */ (li.querySelector('.mono.grow'));
-        return el.scrollWidth > el.clientWidth + 1;
-      })(),
-      title: r('b'),
-      titleSpills: (() => {
-        const el = /** @type {Element} */ (li.querySelector('b'));
-        return el.scrollWidth > el.clientWidth + 1;
-      })(),
-      field: r('.field'),
-      input: r('input'),
-      save: r('button'),
-      panel: tab.getBoundingClientRect(),
-      form,
+      name: name.getBoundingClientRect(),
+      folder: folder.getBoundingClientRect(),
+      spills: [spills(name), spills(folder)],
+      panel,
     };
   });
   const of = (/** @type {string} */ what) => `${project.slice(0, 12)}…: ${what}`;
-  expect.soft(look.save.right, of('“Save repository” inside the panel')).toBeLessThanOrEqual(look.panel.right + 0.5);
-  expect.soft([look.titleSpills, look.folderSpills], of('its name and folder wrap inside their lines')).toEqual([false, false]);
-  expect.soft(look.title.right, of('its name inside the panel, even one with nothing to break at')).toBeLessThanOrEqual(look.panel.right + 0.5);
-  expect.soft(look.folder.top, of('its folder under its name, at every width')).toBeGreaterThanOrEqual(look.title.bottom - 1);
-  if (width < 600) expect.soft(look.field.top, of('on a phone, where it pushes is under its folder')).toBeGreaterThanOrEqual(look.name.bottom - 1);
-  // With room for both, where it pushes is beside its folder, not under it (16em and 22em).
-  else if (width > 1000) expect.soft(look.field.top, of('with room, where it pushes is beside its folder')).toBeLessThan(look.name.bottom - 1);
-  expect.soft(look.input.width, of('a repository field you can type in')).toBeGreaterThanOrEqual(120);
+  expect.soft(look.spills, of('its name and folder wrap inside their lines')).toEqual([false, false]);
+  expect.soft(look.name.right, of('its name inside the panel, even one with nothing to break at')).toBeLessThanOrEqual(look.panel.right + 0.5);
+  expect.soft(look.folder.top, of('its folder under its name, at every width')).toBeGreaterThanOrEqual(look.name.bottom - 1);
   expect.soft(look.folder.width, of('a folder that reads in lines, not a character to a line')).toBeGreaterThanOrEqual(150);
-  // As wide as the form under it: the column’s 760 px cap is the conversation’s, not a dialog’s rows’.
-  expect.soft(Math.abs(look.li.width - look.form.width), of('the row spans the panel, as the form does')).toBeLessThanOrEqual(10);
+  await row.click();
+  await dialog.getByRole('button', { name: `Edit ${project}`, exact: true }).click();
+  const field = dialog.getByLabel('Repository to push to');
+  expect.soft((await field.boundingBox())?.width ?? 0, of('a repository field you can type in')).toBeGreaterThanOrEqual(120);
+  await expect.soft(dialog.getByRole('button', { name: 'Save', exact: true }), of('Save in view')).toBeInViewport({ ratio: 1 });
+  await dialog.getByRole('button', { name: 'All projects' }).click();
 }
 
 for (const width of [320, 375])
   test(`#1497 at ${width} px a persona’s model hint keeps its host’s name whole`, async ({ page }) => {
     const dialog = await settings(page, width, 'Personas');
+    await dialog.locator('li[role="option"]', { has: page.getByText('trainer', { exact: true }) }).click();
     await dialog.getByRole('button', { name: 'Edit trainer' }).click();
     const name = dialog.locator('[data-model-help] .host-name');
     await expect(name).toHaveText('gpu-build-a100-03.lab.example.net');

@@ -45,7 +45,7 @@ const withUpdate = (state, update) => ({
 /** Opens the host’s editor and returns the toggle. @param {import('@playwright/test').Page} page */
 async function openToggle(page) {
   const c = card(page, NAME);
-  await c.getByRole('button', { name: `Edit settings for ${NAME}` }).click();
+  await page.getByRole('button', { name: `Edit settings for ${NAME}` }).click();
   return c.getByRole('checkbox', { name: TOGGLE });
 }
 

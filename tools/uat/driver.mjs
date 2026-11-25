@@ -6,6 +6,8 @@
 import { writeFile } from 'node:fs/promises';
 import { js, sleep } from '../browser.mjs';
 import { targetScript } from './app-target.mjs';
+import { editPersona } from './driver-hosts.mjs';
+import { changeMembers } from './driver-members.mjs';
 import { agentPanel } from './driver-panel.mjs';
 import { pointer } from './driver-pointer.mjs';
 import { saveProfile } from './driver-profile.mjs';
@@ -177,7 +179,7 @@ export function driver(page, hooks = {}) {
       try {
         await clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
         await clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Personas'), 'the Personas tab');
-        await clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit ${h}"]`)})`, `Edit ${h}`);
+        await editPersona({ clickAt }, h);
         await page.waitFor(`!!document.getElementById('pe-d')`, { label: 'the persona editor' });
         await sleep(300);
         const editor = await read();
@@ -283,6 +285,7 @@ export function driver(page, hooks = {}) {
     /** Presses an app’s Expand (full screen) button and reports whether anything visibly changed. */
     agentPanel: (handle, set = {}) => agentPanel({ ev, clickAt, press, page }, handle, set),
     saveProfile: (fills) => saveProfile({ ev, clickAt, press, page }, fills),
+    changeMembers: (change) => changeMembers({ ev, clickAt, press }, change),
 
     /** Opens a view in the right pane: Work by its top-bar button, or the thread on an item (#146). Returns both views’ sizes. */
     async openPane(view, key = null) {

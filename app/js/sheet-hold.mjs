@@ -14,8 +14,8 @@ function pathOf(/** @type {Element} */ body, /** @type {Element} */ n) {
 }
 
 /**
- * Gives an agent sheet the most height the window gives it, or lets it fit what it shows again: only while it shows an
- * agent’s form, whose lists come late (.dialog.held, workbench.css). The other Settings tabs fit what they show.
+ * Gives a sheet the most height the window gives it, or lets it fit what it shows again (.dialog.held, workbench.css):
+ * an agent’s form, whose lists come late, and Settings on every tab, so its tabs stay where they are (#1735).
  * @param {HTMLElement | null | undefined} dialog @param {boolean} on
  */
 export const fullHeight = (dialog, on) => dialog?.classList.toggle('held', on);

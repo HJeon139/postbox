@@ -1,6 +1,6 @@
 # Remote hosts: the live checklist
 
-**Where:** Settings › Hosts (each host’s card), a persona’s **Runs on**, the agent’s row and ring, and the callouts under a reply whose turn ran on a host.
+**Where:** Settings › Hosts (the list of hosts and the picked host’s card, [its page](sheets/settings/hosts.md)), a persona’s **Runs on**, the agent’s row and ring, and the callouts under a reply whose turn ran on a host.
 
 ## Why it exists
 
@@ -66,7 +66,7 @@ A finished turn’s `out.jsonl`, `in.jsonl` and `err.log` are deleted once Postb
 ## 1. SSH and host authentication
 
 **1.1 Install, and its confirm**
-- **Steps:** Settings › Hosts. Under **Add a host**, type `host.example.com` and press **Add host**. On its card, press **Install…**, read the confirm, open **The commands ssh runs there**, and press **Install**. Then press **Install…** again and install a second time.
+- **Steps:** Settings › Hosts. Press **+** (Add a host), type `host.example.com` and press **Add host**. On its card, press **Install…**, read the confirm, open **The commands ssh runs there**, and press **Install**. Then press **Install…** again and install a second time.
 - **You should see:** before installing, “Postbox’s host program isn’t installed on host.example.com yet”. The confirm, “Install Postbox on host.example.com?”, lists four steps: connect with your ssh without a password or host-key prompt; copy Postbox’s host program to `~/.postbox-remote/<version>/` readable only by you (folders 0700, files 0600) and check each file’s SHA-256; find Node 22 or later (or write `node-path`, if Node’s path is set); make the token at `~/.postbox-remote/token` (0600) and keep a copy here. It ends “Nothing runs as root, and nothing outside ~/.postbox-remote changes on host.example.com.” Then the toast “Installed Postbox on host.example.com”, and the second time “This Postbox was already on host.example.com”. On the host, `ls -la ~/.postbox-remote` shows `drwx------` and `token` as `-rw-------`; here, `ls -l /tmp/pb-uat-remote/remote-tokens/` shows one `-rw-------` file.
 - **If not:** the confirm shows the failure and its next step in place. An exit code from the install script names what failed (files that didn’t arrive whole, a SHA-256 that didn’t match, no `sha256sum`, `shasum` or `node`, a symbolic link). For a missing Node, the message says where the launcher looked.
 

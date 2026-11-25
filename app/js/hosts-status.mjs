@@ -53,8 +53,17 @@ const owedView = (host) => {
 export const paintStatus = (p, id) => {
   const el = p.root.querySelector(`[data-status="${CSS.escape(id)}"]`);
   const host = S().hosts?.[id];
+  // Its row in the list says it in a line, whether or not its card is the one showing.
+  const line = p.root.querySelector(`[data-row-status="${CSS.escape(id)}"]`);
+  if (line && host) line.textContent = statusLine(host);
   if (!el || !host) return;
   keepFocus(/** @type {HTMLElement} */ (el), () => fill(/** @type {HTMLElement} */ (el), ...statusView(p, host)));
+};
+
+/** A host’s status in a line, for its row in the list: its state and when it was last heard from. @param {any} host */
+export const statusLine = (host) => {
+  const st = S().hostStatus?.[host.id] ?? null;
+  return `${STATES[st?.state ?? null] ?? 'Not connected yet'} · ${st?.lastHeard ? `Last heard from ${ago(st.lastHeard)}` : 'Not heard from yet'}`;
 };
 
 /** @param {import('./hosts.mjs').Panel} p @param {any} host */

@@ -35,6 +35,8 @@ test('Create project refuses an empty or relative folder, and makes one at a ful
   await page.locator('header.topbar').getByRole('button', { name: 'Settings', exact: true }).click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
   await settings.getByRole('tab', { name: 'Projects' }).click();
+  // The form is behind New project (#1735): the tab opens on the list.
+  await settings.getByRole('button', { name: 'New project' }).click();
   const create = settings.getByRole('button', { name: 'Create project' });
   const before = folders();
 

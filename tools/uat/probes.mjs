@@ -29,6 +29,8 @@ export const newProbes = () => ({
   panels: [],
   // What the person saved in Settings › Profile, and what the tab then said agents are told (#558).
   profiles: [],
+  // Each change the members action made to the open conversation’s agents, and the Members list after (#1735).
+  members: [],
   panes: [],
   drafts: [],
   jumps: [],

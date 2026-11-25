@@ -30,7 +30,12 @@ test('deleting a conversation: the confirm says what goes and that it can’t be
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await page.getByRole('button', { name: `Actions for ${t.title}` }).click();
-  await page.getByRole('menuitem', { name: /Delete conversation/ }).click();
+  // Delete is in the room’s form in the main menu (#1735).
+  await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
+  await page
+    .getByRole('dialog', { name: 'Settings' })
+    .getByRole('button', { name: /^Delete .+…$/ })
+    .click();
   const ask = page.getByRole('alertdialog', { name: `Delete the conversation “${t.title}”?` });
   await expect.soft(ask).toContainText('This erases');
   await expect.soft(ask).toContainText('This can’t be undone.');
@@ -118,7 +123,12 @@ test('a dialog body that scrolls can be focused to scroll by keyboard, and one t
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await page.getByRole('button', { name: `Actions for ${t.title}` }).click();
-  await page.getByRole('menuitem', { name: /Delete conversation/ }).click();
+  // Delete is in the room’s form in the main menu (#1735).
+  await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
+  await page
+    .getByRole('dialog', { name: 'Settings' })
+    .getByRole('button', { name: /^Delete .+…$/ })
+    .click();
   const body = page.getByRole('alertdialog').locator('.d-body');
   await expect(body).toBeVisible();
   const scrolls = () => body.evaluate((b) => b.scrollHeight > b.clientHeight);
@@ -149,7 +159,12 @@ test('a long project folder wraps in the delete confirm at 375 px, rather than w
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await page.getByRole('button', { name: `Actions for ${t.title}` }).click();
-  await page.getByRole('menuitem', { name: /Delete conversation/ }).click();
+  // Delete is in the room’s form in the main menu (#1735).
+  await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
+  await page
+    .getByRole('dialog', { name: 'Settings' })
+    .getByRole('button', { name: /^Delete .+…$/ })
+    .click();
   const body = page.getByRole('alertdialog').locator('.d-body');
   await expect(body).toContainText(folder.slice(0, 20));
   expect(await body.evaluate((b) => b.scrollWidth - b.clientWidth), 'nothing wider than the body').toBeLessThanOrEqual(0);

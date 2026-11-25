@@ -470,6 +470,11 @@ async function main() {
           const r = await d.agentPanel(handle, set);
           facts.probes.panels.push({ handle, set, left: r.left, at: Date.now() });
           actionResult = `@${handle}’s persona sheet said:\n${r.said}\n\nWhen Save was pressed it held, and then: ${JSON.stringify(r.left)}`;
+        } else if (a.type === 'members') {
+          const change = { add: a.add ? String(a.add).replace(/^@/, '') : undefined, remove: a.remove ? String(a.remove).replace(/^@/, '') : undefined };
+          const r = await d.changeMembers(change);
+          facts.probes.members.push({ ...change, ...r, at: Date.now() });
+          actionResult = `The room’s Members list now reads: ${r.members.join(', ')}`;
         } else if (a.type === 'profile') {
           const r = await d.saveProfile(a.fills ?? []);
           facts.probes.profiles.push({ fills: a.fills ?? [], ...r, at: Date.now() });

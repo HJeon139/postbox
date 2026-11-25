@@ -17,6 +17,14 @@ Agents call you “the person”, and nothing tells one that a GitHub login on a
 - With nothing saved, agents are told nothing of you, whatever the account’s name. Your messages still come from “The person”.
 - The top bar’s initials follow the name you saved, else the account’s.
 
+## Steps to reproduce
+
+1. Run Postbox on a data folder of its own (`node server/index.mjs --port 4181 --data /tmp/pb-uat-profile --fresh`) and open <http://127.0.0.1:4181/>. Press your initials in the top bar.
+2. Set Name to “Robin”, put “github: robin-example” under Also written as, and press Save profile.
+3. Empty Name, press Save profile, close Settings and open it again from your initials.
+
+**Pass if:** Settings opens on Profile with Name holding your account’s name and “Nothing yet” under What agents are told; after the first save it lists “- Name: Robin” and “- Also written as: robin-example (github)” and the top bar reads “R”; after the second, Name is still empty when you come back.
+
 ## Accessibility
 
 - Settings opens with keyboard focus on the Profile tab, the one that’s open.

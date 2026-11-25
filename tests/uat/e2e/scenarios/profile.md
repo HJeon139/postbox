@@ -6,7 +6,7 @@
 - conversation: Getting set up
 - steps: 10
 
-A local run on one computer, Claude Code only: the one person is the account Postbox runs as (#558). The profile action writes into Settings › Profile through the page and saves, as a person would. What an agent is told is in each turn it is given, so the phases ask the agents and code triggers read their prompts, before the first save and after it: a run that never saved a profile fires neither and reads as a gap in coverage, not a pass.
+A local run on one computer, Claude Code only: the one person is the account Postbox runs as (#558). The profile action writes into Settings › Profile through the page and saves, as a person would. What an agent is told is in each turn it is given, so the phases ask the agents and code triggers read their prompts, before the first save and after it: a run that never saved a profile doesn’t fire `profile-told`, and reads as a gap in coverage, not a pass.
 
 `node tools/uat-run.mjs --scenario profile --max-turns 30 --budget 2 --max-cost 8 --file no`.
 

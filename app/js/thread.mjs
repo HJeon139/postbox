@@ -968,7 +968,8 @@ export function mountComposer(threadId, { side = false } = {}) {
     ['compact', 'Summarize its context to make room', (se) => compact(se)],
     ['stop', 'Stop the agents that are working', (_se, named) => stopAll(named)],
     ['delete', 'Delete its session in this conversation', (se = target()) => se && confirmDelete(se)],
-    ['rename', 'Rename this conversation', () => openRename(threadId)],
+    // Its title is edited in the room’s form in the main menu (#1735).
+    ['rename', 'Rename this conversation, in its settings', () => openRename(threadId)],
   ];
   const POSTBOX_NAMES = new Set(POSTBOX.map(([n]) => n));
   // Those that only open a view, so an argument typed after one can go without it acting on anything else (#546).

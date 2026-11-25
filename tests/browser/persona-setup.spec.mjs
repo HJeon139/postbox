@@ -59,6 +59,8 @@ test('#57 the persona editor shows both setup controls, with help, works from th
   const persona = app.rt.createPersona({ handle: 'checker', backend: 'claude-code' });
   expect.soft([persona.usesHostSetup, persona.canPublish], 'a new persona uses your setup and can’t publish').toEqual([true, false]);
   await personas(page);
+  // Pick its row, then Edit in the list’s bar (#1735).
+  await page.locator('li[role="option"]', { has: page.locator('b', { hasText: /^checker$/ }) }).click();
   await page.getByRole('button', { name: 'Edit checker', exact: true }).click();
   const setup = await setupBox(page, 'pe-setup', 'Uses your Claude Code setup', /skills, commands, plugins and permission rules/);
   await expect.soft(setup, 'Isolated keeps the folder’s local file').toHaveAccessibleDescription(/folder’s local file, where Always allow saves/);
@@ -134,6 +136,7 @@ for (const stored of ['ask', 'acceptEdits'])
   test(`a persona stored as ${stored} shows Auto in the sheet, and saving it untouched saves Auto`, async ({ page }) => {
     const persona = app.rt.createPersona({ handle: `was-${stored.toLowerCase()}`, backend: 'claude-code', permissionMode: stored });
     await personas(page);
+    await page.locator('li[role="option"]', { has: page.getByText(persona.handle, { exact: true }) }).click();
     await page.getByRole('button', { name: `Edit ${persona.handle}`, exact: true }).click();
     const modes = page.locator('.dialog').getByRole('radiogroup', { name: 'Permissions' });
     await expect(modes.getByRole('radio', { name: 'Auto (the harness judges)', exact: true })).toHaveAttribute('aria-checked', 'true');
@@ -147,6 +150,8 @@ const skillRow = (page, name) => page.locator('fieldset').filter({ hasText: 'Ski
 test('#207 the persona editor lists Postbox’s skills and yours, all ticked; unticked ones save, and Isolated hides yours', async ({ page }) => {
   const persona = app.rt.createPersona({ handle: 'drawer', backend: 'claude-code' });
   await personas(page);
+  // Pick its row, then Edit in the list’s bar (#1735).
+  await page.locator('li[role="option"]', { has: page.locator('b', { hasText: /^drawer$/ }) }).click();
   await page.getByRole('button', { name: 'Edit drawer', exact: true }).click();
   const postbox = skillRow(page, 'postbox:visual-explainer');
   const yours = skillRow(page, 'grill-me');
@@ -165,6 +170,8 @@ test('#207 the persona editor lists Postbox’s skills and yours, all ticked; un
     .toEqual(['postbox:visual-explainer', 'grill-me']);
   // The sheet opens from the page’s copy of the persona, which the saved one reaches over the event stream.
   await synced(page, app);
+  // Pick its row, then Edit in the list’s bar (#1735).
+  await page.locator('li[role="option"]', { has: page.locator('b', { hasText: /^drawer$/ }) }).click();
   await page.getByRole('button', { name: 'Edit drawer', exact: true }).click();
   await expect.soft(skillRow(page, 'grill-me'), 'it opens as saved').toHaveAttribute('aria-checked', 'false');
   await page.locator('#pe-setup').click();
