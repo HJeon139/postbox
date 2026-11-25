@@ -94,11 +94,13 @@ function roomForm(
   const title = h('input.input', { id: 'rm-title', value: t.title, onkeydown: (/** @type {KeyboardEvent} */ e) => e.key === 'Enter' && void save() });
   const save = () =>
     api(`/api/threads/${t.id}`, { title: title.value }, 'PATCH')
-      .then(() => {
+      .then(async () => {
         toast({ title: `Saved ${title.value}` });
         // Opened on this room from the room itself (its ⋯, /rename), Save goes back there; from the list, to the list.
-        if (at.direct) sheets.close();
-        else back();
+        if (at.direct) return sheets.close();
+        // Once the page has heard of the new title, so the list shows it.
+        await heard(() => S().threads[t.id]?.title === title.value.trim());
+        back();
       })
       .catch((e) => toast({ title: 'Couldn’t save the room', text: e.message, level: 'blocking' }));
   setFoot(
