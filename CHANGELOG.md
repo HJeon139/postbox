@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.45.0 (2026-11-25)
+
+### Features
+
+- **people:** know who is asking, and tell agents who you say you are
+
+### Fixes
+
+- **people:** a turn says the person's profile is saved, not said in the room
+- **uat:** a run's workspace has a fixture person's git user, not the runner's
+
 ## 4.44.0 (2026-11-25)
 
 ### Features
