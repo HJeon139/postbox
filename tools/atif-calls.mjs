@@ -13,6 +13,9 @@ import { iso } from './atif-time.mjs';
 /** The most of one call's output a result carries, in characters: a longer one is cut, and says so. */
 export const RESULT_CHARS = 16_384;
 
+/** The largest stored output read for a result, in bytes: a bigger blob isn't read whole just to keep its start. */
+export const RESULT_READ_BYTES = 64 * 1024 * 1024;
+
 /** An output as a result's content, cut at RESULT_CHARS. @param {string} text */
 const resultContent = (text) =>
   text.length > RESULT_CHARS
@@ -109,7 +112,10 @@ export function callsOf(it, ledger, questions = new Map(), blob = () => null) {
   });
   const results = calls.flatMap((s) => {
     if (typeof s.output === 'string' || typeof s.detail === 'string') return [{ source_call_id: s.id, content: s.output ?? s.detail }];
-    const h = ledger.get(s.id)?.output?.sha256;
+    const out = ledger.get(s.id)?.output;
+    if (typeof out?.size === 'number' && out.size > RESULT_READ_BYTES)
+      return [{ source_call_id: s.id, content: `[output too large to read: ${out.size.toLocaleString('en-US')} bytes]` }];
+    const h = out?.sha256;
     const text = typeof h === 'string' ? blob(h) : null;
     return typeof text === 'string' ? [{ source_call_id: s.id, content: resultContent(text) }] : [];
   });

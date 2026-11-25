@@ -72,3 +72,24 @@ test('reading a data folder reads its blobs, checked against their hash', () => 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('an output too large to read is noted by its size, and its blob isn’t read', () => {
+  const big = rec.events.map((e) =>
+    e.type === 'work.patch' && e.data.patch.output?.sha256 === ended.output.sha256
+      ? { ...e, data: { ...e.data, patch: { ...e.data.patch, output: { ...e.data.patch.output, size: 100 * 1024 * 1024 } } } }
+      : e,
+  );
+  let read = 0;
+  const t = trajectories(big, {
+    version: POSTBOX_VERSION,
+    prompts: rec.prompts,
+    live: [],
+    blob: () => {
+      read += 1;
+      return 'high';
+    },
+  }).find((x) => x.handle === 'dry').trajectory;
+  const step = t.steps.find((s) => s.tool_calls?.some((c) => c.tool_call_id === command.toolUseId));
+  assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: '[output too large to read: 104,857,600 bytes]' }]);
+  assert.equal(read, 0);
+});
