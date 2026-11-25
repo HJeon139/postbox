@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.44.0 (2026-11-25)
+
+### Features
+
+- **atif:** give each tool call its start time, exit code and stored output
+
+### Fixes
+
+- **atif:** treat a blob that can't be read as no output, not a failed export
+- **atif:** don't read a stored output over 64 MiB just to keep its start
+- **atif:** take a session's tool calls from its own work ledger entries
+
 ## 4.43.3 (2026-11-24)
 
 ### Fixes
