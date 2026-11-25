@@ -29,6 +29,11 @@ async function projectsTab(page) {
   return settings;
 }
 const rowOf = (settings, name) => settings.locator('li.project-row', { hasText: name });
+/** A project’s Delete: its row picked, then − in the list’s bar, which deletes the pick (#558). */
+async function deleteOf(settings, name) {
+  await rowOf(settings, name).click();
+  return settings.getByRole('button', { name: `Delete project ${name}…` });
+}
 
 test('#119 Delete project… asks once, deletes its conversations, keeps its folder, and leaves the page it was on', async ({ page }) => {
   const { rt } = app;
@@ -42,7 +47,7 @@ test('#119 Delete project… asks once, deletes its conversations, keeps its fol
   await page.goto(`${app.origin}/#/p/pr_doomed/threads`);
   await synced(page, app);
   const settings = await projectsTab(page);
-  const button = rowOf(settings, 'Doomed').getByRole('button', { name: 'Delete project…' });
+  const button = await deleteOf(settings, 'Doomed');
   await button.focus();
   await page.keyboard.press('Enter');
   const confirm = page.getByRole('alertdialog', { name: 'Delete the project “Doomed”?' });
@@ -90,7 +95,7 @@ test('#119 with one project left, Delete project… is off, takes focus, says wh
   await page.goto(app.origin);
   await synced(page, app);
   const settings = await projectsTab(page);
-  const button = settings.getByRole('button', { name: 'Delete project…' });
+  const button = settings.getByRole('button', { name: /^Delete project .+…$/ });
   await expect(button).toHaveCount(1);
   const why = 'This is the only project, and Postbox opens on one. Add another project, then delete this one.';
   await expect(button).toHaveAttribute('aria-disabled', 'true');
@@ -103,10 +108,11 @@ test('#119 with one project left, Delete project… is off, takes focus, says wh
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
   // Adding another, as it says to, lists it and turns both Deletes on, however late the page hears of it.
   const folder = await mkdtemp(join(tmpdir(), 'pb-second-'));
+  await settings.getByRole('button', { name: 'New project' }).click();
   await settings.locator('#pj-n').fill('Second');
   await settings.locator('#pj-f').fill(folder);
   await settings.getByRole('button', { name: 'Create project' }).click();
   await expect(rowOf(settings, 'Second')).toHaveCount(1);
-  for (const b of await settings.getByRole('button', { name: 'Delete project…' }).all()) await expect(b).toHaveAttribute('aria-disabled', 'false');
+  await expect(settings.getByRole('button', { name: /^Delete project .+…$/ })).toHaveAttribute('aria-disabled', 'false');
   await rm(folder, { recursive: true, force: true });
 });

@@ -136,8 +136,8 @@ const PREPARE = {
   'app-versions': `document.querySelector('.appframe [aria-haspopup="menu"]')?.click()`,
   'new-agent': `(() => { document.querySelector('[aria-label="Add a file, an agent or a command"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From a boilerplate')).click(); })()`,
   'new-room': `document.querySelector('[aria-label="New room"]').click()`,
-  rename: `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Rename')).click(); })()`,
-  'delete-conversation': `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Delete')).click(); })()`,
+  rename: `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Manage room')).click(); })()`,
+  'delete-conversation': `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Manage room')).click(); document.querySelector('.dialog .d-foot button.danger').click(); })()`,
   'delete-session': `(() => { const c = document.querySelector('#composer-input'); c.focus(); c.value = '/delete'; c.dispatchEvent(new Event('input', { bubbles: true })); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`,
   palette: `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))`,
   // Settings opens on Profile (#558), so the Appearance shot goes to its tab.

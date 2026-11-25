@@ -10,9 +10,9 @@ The person needs to see what each agent runs with, from wherever they are. The c
 
 ## Expected functionality
 
-- **+ and − beside the Agents heading** (#1620), as a list has in macOS:
-  - **+** lists the agents you have that aren’t in this conversation, each added in one pick, with a line in the conversation saying it joined, then New agent…. A retired agent isn’t listed. After an add, focus goes to the composer.
-  - **−** lists the agents here, each removed through the [Delete session](../../sheets/delete-session.md) confirm; its persona stays. While one agent is left, − is off and says why (“The last agent can’t be removed. Delete the conversation instead.”), and it still takes focus. If another agent is removed while the confirm is open, the server refuses, and the conversation stays.
+- **One button beside the Agents heading** (#1735), “Manage this conversation’s members”, opens the room’s form in the main menu at its Members list. Members are added and removed there, not here:
+  - **+** lists the agents you have that aren’t in this conversation, each added in one pick, with a line in the conversation saying it joined, then New agent…. A retired agent isn’t listed.
+  - **−** removes the member picked, through the [Delete session](../../sheets/delete-session.md) confirm; its persona stays. While one agent is left, − is off and says why (“A room keeps at least one agent. Add another first, or delete the room.”), and it still takes focus. A person of this Postbox is in every room, so − is off for one and says so.
 - One row per agent: its ring, `@handle` (“mock” after it on the mock), its state in words, and on a second line the model that answered its last turn and the effort (“Sonnet 5.5, not Opus 5.5 · medium effort”). Switched to another backend or model, it shows the new setting until a turn reports its own, never the model an earlier turn reported (#1315: Kiro on its router reports none, and its row kept saying “Opus 5.5, not auto”). A mock agent has no second line. Each part follows the agent live.
 - **Its state** (#1403), read from its records, never from what it said, on the row’s one line, cut with an ellipsis, with the whole of it as the line’s tooltip. A change of state never changes the row’s size, so nothing moves under the pointer. The first that holds:
   - “· needs you”;

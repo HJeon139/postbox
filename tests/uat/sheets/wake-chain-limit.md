@@ -1,6 +1,6 @@
 # Wake chain limit
 
-**Where:** Conversation menu › Wake chain limit…, beside Rename…, in a conversation or a room.
+**Where:** Conversation menu › Manage room and members… › Wake chain limit…, in a conversation or a room (#1735). Closing it returns focus to that button.
 
 ## Why it exists
 

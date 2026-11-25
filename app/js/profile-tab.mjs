@@ -57,7 +57,7 @@ function told(/** @type {any} */ profile) {
 export const me = () => client.state.people?.[client.config?.me?.id] ?? client.config?.me ?? null;
 
 /** What they’re called here: the name they saved, else the one their sign-in or their computer’s account gave. */
-const called = (/** @type {any} */ person) => person?.profile?.name ?? person?.name ?? '';
+export const called = (/** @type {any} */ person) => person?.profile?.name ?? person?.name ?? '';
 
 /** The letters of the top bar’s button: the initials of what the one looking is called. */
 const initials = () =>
@@ -80,8 +80,21 @@ export const meButton = (openSettings) =>
     h('span.me-icon', { id: 'me-icon', 'aria-hidden': 'true', 'data-initials': initials() }),
   );
 
-/** @param {() => void} paint  repaints the tabs, once the profile is saved */
-export function profile(paint) {
+/**
+ * The people of this Postbox, the one looking included whether or not they’ve saved anything, for the lists that show
+ * them (People, a room’s members). @returns {any[]}
+ */
+export function people() {
+  const mine = me();
+  const kept = Object.values(client.state.people ?? {});
+  return mine && !kept.some((p) => p.id === mine.id) ? [mine, ...kept] : kept;
+}
+
+/**
+ * @param {() => void} paint  repaints the tabs, once the profile is saved
+ * @param {(...actions: any[]) => null} setFoot  pins the tab’s actions under the sheet
+ */
+export function profile(paint, setFoot) {
   const person = me();
   if (!person) return [h('p', 'Postbox doesn’t know who you are yet. Reload the page.')];
   const saved = person.profile ?? {};
@@ -113,6 +126,7 @@ export function profile(paint) {
         paint();
       })
       .catch((e) => toast({ title: 'Couldn’t save your profile', text: e.message, level: 'blocking' }));
+  setFoot(h('span.grow'), h('button.btn.send', { type: 'button', id: 'pf-save', onclick: save }, 'Save profile'));
   return [
     field('pf-name', 'Name', kept ? (saved.name ?? '') : person.name, `How agents address you.${unsaved}`, { max: PROFILE.name }),
     field(
@@ -130,7 +144,6 @@ export function profile(paint) {
     field('pf-pronouns', 'Pronouns', saved.pronouns ?? '', 'How agents refer to you when they write about you to others. Used as given, never guessed.', {
       max: PROFILE.pronouns,
     }),
-    h('div.row-flex', h('button.btn.send', { type: 'button', id: 'pf-save', onclick: save }, 'Save profile')),
     told(saved),
   ];
 }

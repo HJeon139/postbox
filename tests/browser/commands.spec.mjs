@@ -112,7 +112,7 @@ test('#67 the composer menu’s Commands and skills opens the same menu (#1437)'
 });
 
 // A persona’s settings are edited in one place, its sheet.
-test('/mode, /model and /effort run without a turn and open the agent’s persona sheet; /rename opens the rename sheet', async ({ page }) => {
+test('/mode, /model and /effort run without a turn and open the agent’s persona sheet; /rename opens the room’s title in its settings', async ({ page }) => {
   const { store } = app;
   const { t, seA } = await room(page, 'Settings');
   const before = turns.length;
@@ -134,8 +134,8 @@ test('/mode, /model and /effort run without a turn and open the agent’s person
   await composer(page).focus();
   await page.keyboard.type('/ren');
   await page.keyboard.press('Enter');
-  await expect(page.locator('.dialog input'), 'the rename sheet').toBeVisible();
-  await expect(page.locator('.dialog .d-head')).toContainText('Rename');
+  // Its title is edited in the room’s form in the main menu (#558), with focus on it.
+  await expect(page.getByRole('dialog', { name: 'Settings' }).getByLabel('Title'), 'the room’s title field').toBeFocused();
 });
 
 test('#67 an agent’s skill: picking it fills /name and its hint, addresses that agent in a room, and runs as its turn', async ({ page }) => {

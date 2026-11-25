@@ -10,10 +10,11 @@
 
 import { checkDestination } from '/shared/remote-settings.mjs';
 import { api, client } from './client.mjs';
-import { fill, h, icon } from './dom.mjs';
+import { fill, h } from './dom.mjs';
 import { confirmRemove } from './hosts-confirm.mjs';
-import { editor, openEditor, syncKeepUpdated } from './hosts-editor.mjs';
-import { paintStatus, statusView } from './hosts-status.mjs';
+import { editor, editorActions, openEditor, syncKeepUpdated } from './hosts-editor.mjs';
+import { paintStatus, statusLine, statusView } from './hosts-status.mjs';
+import { barSign, formHead, pickList } from './manage-list.mjs';
 import { keepFocus, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -23,14 +24,17 @@ const S = () => client.state;
  * error, the form’s, whether it’s saving, the Add a host field, and the host just added, whose Install… gets focus.
  * @typedef {{ name: string, short: string, v: Record<string, any>, folders: Record<string, string> }} Draft
  * @typedef {{ root: HTMLElement, editing: string | null, draft: Draft | null, errors: Record<string, string>, formError: string,
- *   saving: boolean, addName: string, addError: string, added: string | null, paint: () => void }} Panel
+ *   saving: boolean, addName: string, addError: string, added: string | null, adding: boolean, picked: Record<string, any>,
+ *   setFoot: (...actions: any[]) => null, paint: () => void }} Panel
+ *   adding: the New host form shows; picked: the list’s pick (app/js/manage-list.mjs); setFoot: pins the list’s bar
  */
 
 /**
  * The Hosts tab of Settings: one element that keeps itself current, so a host’s status changes while you look.
+ * @param {(...actions: any[]) => null} setFoot  pins the tab’s actions under the sheet
  * @returns {HTMLElement}
  */
-export function hostsPanel() {
+export function hostsPanel(setFoot) {
   const root = h('div.hosts', { style: { display: 'flex', flexDirection: 'column', gap: '16px' } });
   /** @type {Panel} */
   const p = {
@@ -43,7 +47,10 @@ export function hostsPanel() {
     addName: '',
     addError: '',
     added: null,
-    paint: () => keepFocus(root, () => fill(root, ...view(p))),
+    adding: false,
+    picked: {},
+    setFoot,
+    paint: () => keepBarFocus(() => keepFocus(root, () => fill(root, ...view(p)))),
   };
   listen(p);
   p.paint();
@@ -76,19 +83,101 @@ function listen(p) {
   };
 }
 
+/**
+ * A repaint draws the list’s bar again, in the sheet’s foot, outside what keepFocus looks after: a control of the bar
+ * that had focus (the +, after a host is removed) has it again, by its id. @param {() => void} paint
+ */
+function keepBarFocus(paint) {
+  const at = /** @type {HTMLElement | null} */ (document.activeElement);
+  const id = at?.closest('.d-foot') ? at.id : '';
+  paint();
+  if (id && document.activeElement?.id !== id) document.getElementById(id)?.focus();
+}
+
 const hosts = () => Object.values(S().hosts ?? {}).sort((a, b) => a.createdAt - b.createdAt);
 
-/** @param {Panel} p */
+/**
+ * The tab as every list in the main menu is (#558, app/js/manage-list.mjs): the hosts, one picked, with + − and Edit in
+ * the bar under them, and the pick’s status under the list, since a host’s state is what you came to see. + shows the
+ * New host form in the list’s place.
+ * @param {Panel} p
+ */
 const view = (p) => {
-  const list = hosts();
+  const all = hosts();
+  if (p.adding) {
+    p.setFoot(h('span.grow'), h('button.btn.send', { type: 'button', id: 'ho-add-btn', onclick: () => add(p) }, 'Add host'));
+    return [...formHead('All hosts', () => leaveAdd(p), 'New host'), addForm(p)];
+  }
+  if (p.added && all.some((x) => x.id === p.added)) p.picked.host = p.added;
+  const { list, bar } = pickList({
+    label: 'Hosts',
+    at: p.picked,
+    name: 'host',
+    empty: 'No hosts yet.',
+    rows: all.map((host) => ({ key: host.id, name: host.name, facts: [h('span', { dataset: { rowStatus: host.id } }, statusLine(host))] })),
+    // Another host picked: its status shows, and an editor left open on the last one closes without saving.
+    onPick: () => {
+      p.editing = null;
+      p.draft = null;
+      p.paint();
+    },
+    open: (r) => openEditor(p, S().hosts[r.key]),
+    controls: (r) => hostBar(p, r && S().hosts?.[r.key]),
+  });
+  const picked = all.find((x) => x.id === p.picked.host) ?? all[0];
+  // While a host is edited, the foot holds its Save and Cancel; else the list’s bar.
+  if (picked && p.editing === picked.id) p.setFoot(...editorActions(p, picked));
+  else p.setFoot(bar);
   return [
     h('p.small.dim', 'Agents can run on another computer you reach with ssh, while Postbox stays here. Pick a host for an agent in its settings.'),
-    list.length ? list.map((host) => hostCard(p, host)) : h('p.empty-note', 'No hosts yet.'),
-    addForm(p),
+    list,
+    picked ? hostCard(p, picked) : null,
   ];
 };
 
-/** @param {Panel} p @param {any} host */
+/** The list’s bar: + for a new host, then − and Edit for the one picked. @param {Panel} p @param {any} host  the pick, or none */
+const hostBar = (p, host) => {
+  return [
+    barSign(
+      '+',
+      'Add a host',
+      () => {
+        p.adding = true;
+        p.paint();
+        document.getElementById('ho-add')?.focus();
+      },
+      { id: 'ho-new' },
+    ),
+    host &&
+      h(
+        'button.btn.sm.sign',
+        {
+          type: 'button',
+          id: `ho-${host.id}-remove`,
+          'aria-label': `Remove ${host.name}`,
+          title: `Remove ${host.name}…`,
+          onclick: () => confirmRemove(host),
+        },
+        '−',
+      ),
+    host &&
+      h(
+        'button.btn.sm',
+        { type: 'button', id: `ho-${host.id}-edit`, 'aria-label': `Edit settings for ${host.name}`, onclick: () => openEditor(p, host) },
+        'Edit',
+      ),
+  ];
+};
+
+/** Back from New host to the list, with focus on its +. @param {Panel} p */
+const leaveAdd = (p) => {
+  p.adding = false;
+  p.addError = '';
+  p.paint();
+  document.getElementById('ho-new')?.focus();
+};
+
+/** The picked host’s status, and its editor while it’s being edited. @param {Panel} p @param {any} host */
 const hostCard = (p, host) => {
   const id = host.id;
   const titleId = `ho-${id}-t`;
@@ -100,28 +189,7 @@ const hostCard = (p, host) => {
       { style: { padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' } },
       h('h3.mono', { id: titleId, style: { margin: 0, fontSize: '14px', overflowWrap: 'anywhere' } }, host.name),
       h('div', { dataset: { status: id }, style: { display: 'flex', flexDirection: 'column', gap: '10px' } }, statusView(p, host)),
-      p.editing === id
-        ? editor(p, host)
-        : h(
-            'div.row-flex.wrap',
-            h(
-              'button.btn.sm',
-              {
-                type: 'button',
-                id: `ho-${id}-edit`,
-                'aria-label': `Edit settings for ${host.name}`,
-                onclick: () => openEditor(p, host),
-              },
-              icon('edit', 'i-sm'),
-              'Edit settings',
-            ),
-            h(
-              'button.btn.sm.danger',
-              { type: 'button', id: `ho-${id}-remove`, 'aria-label': `Remove ${host.name}`, onclick: () => confirmRemove(host) },
-              icon('trash', 'i-sm'),
-              'Remove…',
-            ),
-          ),
+      p.editing === id ? editor(p, host) : null,
     ),
   );
 };
@@ -161,7 +229,6 @@ const addForm = (p) => {
         'An alias from your ~/.ssh/config, a host name, or user@host. Postbox runs your own ssh, so your config’s ProxyJump, certificates and known hosts apply.',
       ),
     ),
-    h('div.row-flex', h('button.btn', { type: 'button', id: 'ho-add-btn', onclick: () => add(p) }, icon('plus'), 'Add host')),
   );
 };
 
@@ -180,7 +247,10 @@ const add = (p) => {
       p.addError = '';
       toast({ title: `Added ${made.name}`, text: 'Install Postbox there before an agent runs on it.' });
       p.added = made.id;
+      p.adding = false;
       p.paint();
+      // On the list’s + until the page hears of the host, which can be after this; then on its Install… (focusAdded).
+      document.getElementById('ho-new')?.focus();
       focusAdded(p);
     })
     .catch((e) => {
@@ -192,7 +262,7 @@ const add = (p) => {
 
 /**
  * A host just added: its Install… gets focus once its card shows it, since its status can reach the page just after
- * the host does. Not if you’ve moved on from Add a host meanwhile.
+ * the host does. Not if you’ve moved on meanwhile, from the New host form or the list’s +, where adding leaves you.
  * @param {Panel} p
  */
 const focusAdded = (p) => {
@@ -200,5 +270,5 @@ const focusAdded = (p) => {
   if (!el) return;
   p.added = null;
   const at = document.activeElement;
-  if (!at || at === document.body || at.closest('.ho-add')) el.focus();
+  if (!at || at === document.body || at.closest('.ho-add') || at.id === 'ho-new') el.focus();
 };

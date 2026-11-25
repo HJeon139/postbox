@@ -26,7 +26,7 @@ failOnPageErrors(test);
 
 const TAKES = 'A room’s wake chain limit is a whole number from 1 to 10,000.';
 
-/** The room’s menu button, the dialog and its field, and a way to open the dialog by keyboard: the item after Rename…. */
+/** The room’s menu button, the dialog and its field, and a way to open the dialog by keyboard: from the room’s form. */
 function controls(page, room) {
   const actions = page.getByRole('button', { name: `Actions for ${room.title}` });
   const dialog = page.getByRole('dialog', { name: 'Wake chain limit' });
@@ -34,9 +34,11 @@ function controls(page, room) {
   const open = async () => {
     await actions.focus();
     await page.keyboard.press('Enter');
-    await focusIs(page, 'menuitem: Rename…');
-    await page.keyboard.press('ArrowDown');
-    await focusIs(page, /^menuitem: Wake chain limit…/);
+    // The room’s form in the main menu holds it (#558): the menu’s first item goes there.
+    await focusIs(page, /^menuitem: Manage room and members…/);
+    await page.keyboard.press('Enter');
+    const more = page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Wake chain limit…' });
+    await more.focus();
     await page.keyboard.press('Enter');
     await expect(dialog).toBeVisible();
     await expect(field).toBeFocused();
@@ -78,6 +80,9 @@ for (const width of [1280, 375])
       await page.keyboard.press('Enter');
       await expect(dialog).toHaveCount(0);
       await expect.poll(() => conv().chainLimit).toBe(5);
+      // Back on the form’s button, where it was opened from, and from there to the menu’s button.
+      await expect(page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Wake chain limit…' })).toBeFocused();
+      await page.keyboard.press('Escape');
       await expect(actions).toBeFocused();
     });
 
@@ -99,6 +104,9 @@ for (const width of [1280, 375])
       await page.keyboard.press('Enter');
       await expect(dialog).toHaveCount(0);
       await expect.poll(() => conv().chainLimit).toBeNull();
+      // Back on the form’s button, where it was opened from, and from there to the menu’s button.
+      await expect(page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Wake chain limit…' })).toBeFocused();
+      await page.keyboard.press('Escape');
       await expect(actions).toBeFocused();
     });
   });

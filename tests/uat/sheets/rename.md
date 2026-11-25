@@ -2,7 +2,7 @@
 
 ![Rename](../screenshots/rename-sheet.png)
 
-**Where:** Conversation menu › Rename….
+**Where:** Conversation menu › Manage room and members… › Title, or `/rename` (#1735). There is no rename sheet of its own: the title is the first field of the room’s form in the main menu, where Enter saves, the menu closes and focus returns to ⋯.
 
 ## Why it exists
 

@@ -64,13 +64,15 @@ export const editor = (p, host) => {
     ),
     foldersSection(ed),
     h('p.err', { id: `ho-${id}-form-err`, role: 'alert', hidden: !p.formError }, p.formError),
-    h(
-      'div.row-flex.wrap',
-      h('button.btn.send', { type: 'button', id: `ho-${id}-save`, disabled: p.saving, onclick: () => save(p, host) }, p.saving ? 'Saving…' : 'Save'),
-      h('button.btn', { type: 'button', id: `ho-${id}-cancel`, onclick: () => closeEditor(p) }, 'Cancel'),
-    ),
   );
 };
+
+/** The editor’s actions, pinned under the sheet so they’re in view however long the settings are (#558). @param {Panel} p @param {any} host */
+export const editorActions = (p, host) => [
+  h('button.btn', { type: 'button', id: `ho-${host.id}-cancel`, onclick: () => closeEditor(p) }, 'Cancel'),
+  h('span.grow'),
+  h('button.btn.send', { type: 'button', id: `ho-${host.id}-save`, disabled: p.saving, onclick: () => save(p, host) }, p.saving ? 'Saving…' : 'Save'),
+];
 
 /** The host’s ssh destination. @param {Ed} ed */
 const nameField = (ed) => {
