@@ -340,6 +340,9 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .turn { display: flex; flex-direction: column; gap: 4px; position: relative; }
 .who { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); min-height: 20px; }
 .who b { color: var(--text); font-weight: 600; font-size: 13px; }
+/* The one looking, in the top bar (#558). The initials are drawn, not text: the button’s name stays “Settings”. */
+.me-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-strong); color: var(--text); font-size: 10px; font-weight: 600; }
+.me-icon::before { content: attr(data-initials); }
 /* What the agent is doing, beside its name while it works. */
 .who .who-state { font-size: 12px; color: var(--dim); }
 .who .who-state:empty { display: none; }

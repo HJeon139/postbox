@@ -4,6 +4,7 @@
 // Functions take the Runtime first, as waiting code does until Turns is a service.
 
 import { SENDING, TURN_INPUT } from '../shared/limits.mjs';
+import { aboutPeople } from '../shared/profile.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
 import { lostEvent } from './app-entries.mjs';
 import { newerElsewhere } from './newer-waiting.mjs';
@@ -86,7 +87,9 @@ export function inputOf(rt, se, { entries, as }, where) {
   const root = inThread.root ?? room.root;
   // A newer message from one of its senders waiting in another thread is named, so it can read that one first (#734).
   const notes = [...newerElsewhere(rt, se.id, threadId, entries), ...room.notes];
-  const text = turnInput({ entries, thread, read, tail, notes, root, waitingElsewhere: elsewhere, wroteOnly: wroteOnlyTo(rt, se, where) });
+  // The profiles people have saved, as they are now (#558), so an edit reaches a session that’s already running.
+  const about = aboutPeople(Object.values(rt.s.people));
+  const text = turnInput({ entries, thread, read, tail, notes, root, waitingElsewhere: elsewhere, wroteOnly: wroteOnlyTo(rt, se, where), about });
   const attachments = entries.flatMap((e) => (e.itemId ? (rt.store.pending.item(e.threadId, e.itemId)?.attachments ?? []) : []));
   // The threads the person’s messages link to, each with how to read it (threadRefs, #121), ride with it.
   const links = entries.flatMap((e) => (e.source === 'person' && e.itemId ? threadRefs(rt, e.threadId, read(e.itemId) ?? '') : []));

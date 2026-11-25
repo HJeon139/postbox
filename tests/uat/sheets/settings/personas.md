@@ -2,7 +2,7 @@
 
 ![Settings: Personas](../../screenshots/settings-personas.png)
 
-**Where:** Gear › Personas, or Personas in the rail.
+**Where:** Settings › Personas, or Personas in the rail.
 
 ## Why it exists
 

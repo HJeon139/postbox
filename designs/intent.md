@@ -37,6 +37,12 @@ One technical person directing a team of agents on their own projects: one agent
 
 Density and speed matter more than onboarding. There is no sign-in and there are no other people in rooms.
 
+Postbox knows who you are ([#558](https://github.com/HJeon139/postbox/issues/558)): on your own computer, the account it runs as, with nothing to set up. Your initials are in the top bar, and they open Settings on your profile, where you can say who you are in your own words: a name, the other names that are yours elsewhere, pronouns, a time zone and preferences. Two rules keep one person one thing:
+- **Agents are told only what you saved.** Your account’s name is kept and shown to you, and is in no turn until you save it, so with nothing saved a turn is what it always was (principle 7: nothing enters an agent’s context that you didn’t write or send). The tab shows exactly what agents are told.
+- **Your messages still come from “The person”.** A sender is named only where there is more than one person to tell apart.
+
+It is one system for a run on your own computer and for one hosted for a team: who is asking is answered in one place, and nothing after it asks which kind of run this is ([architecture/people.md](architecture/people.md)). The hosted run isn’t built.
+
 ## Principles
 
 1. **Agents author the software; Postbox owns the frame.** Feedback that must be consistent and accessible (choices, forms, confirms, reviews) comes from a fixed catalog that Postbox renders with its own code. Everything else an agent writes runs in a sandbox, behind a bridge that gives it what it needs: the conversation’s assets and public URLs today, and, planned (#1610), the live sources its agent grants it on the person’s own network and disk.

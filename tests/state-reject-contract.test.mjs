@@ -43,6 +43,7 @@ export const VALID = {
   settings: { theme: 'dark' },
   project: { id: 'p', name: 'P' },
   persona: { id: 'pe', handle: 'pe' },
+  person: { id: 'pn', identity: { provider: 'unix', issuer: 'unix:fixture', subject: 'robin' }, username: 'robin', name: 'Robin Example', profile: {} },
   boilerplate: { id: 'b', text: 'B' },
   thread: { id: 't2', members: [] },
   session: { id: 'se2', threadId: 't', handle: 'two' },

@@ -2,7 +2,7 @@
 
 ![Settings: Projects](../../screenshots/settings-projects.png)
 
-**Where:** Gear › Projects, or New project… in the Postbox menu.
+**Where:** Settings › Projects, or New project… in the Postbox menu.
 
 ## Why it exists
 

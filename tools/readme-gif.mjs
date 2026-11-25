@@ -20,6 +20,7 @@ import { chromium } from '@playwright/test';
 import { start } from '../server/index.mjs';
 import { client, sleep } from './demo-client.mjs';
 import { replay, replayTitle, story } from './demo-showcase.mjs';
+import { FIXTURE_PERSON } from './fixture-person.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT = join(ROOT, 'screenshots', 'readme');
@@ -188,7 +189,7 @@ function toGif(video, gif, palette) {
 // The Work view shows a file the mock writes in the data folder, so its path is one that names nothing of this machine.
 const dataDir = await mkdtemp('/tmp/postbox-');
 const videos = await mkdtemp(join(tmpdir(), 'pb-readme-video-'));
-const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
+const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true, account: FIXTURE_PERSON });
 const origin = `http://127.0.0.1:${PORT}`;
 const browser = await chromium.launch();
 try {

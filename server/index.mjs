@@ -23,6 +23,7 @@ import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { dataFolder } from './home.mjs';
 import { hostsRoute } from './hosts-routes.mjs';
+import { whoIs } from './identity/session.mjs';
 import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
 import { liveStreams } from './live-streams.mjs';
@@ -80,9 +81,11 @@ const OUTPUT_HEADERS = { 'content-type': 'text/plain; charset=utf-8', 'x-content
 /**
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
  *           host?: string, spawnShell?: typeof import('node:child_process').spawn, openUrl?: (cmd: [string, string[]]) => Promise<unknown>, hosts?: import('./remote/hosts.mjs').HostManager|null,
- *           wake?: Parameters<typeof import('./remote/wake.mjs').watchWake>[1], probes?: Partial<typeof PROBES>, archiveTurns?: boolean }} [opts]
+ *           wake?: Parameters<typeof import('./remote/wake.mjs').watchWake>[1], probes?: Partial<typeof PROBES>, archiveTurns?: boolean,
+ *           account?: import('./identity/index.mjs').Principal }} [opts]
  *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
  *   checks pass a temp folder, so they never read the real one)
+ *   account: who the computer’s account is (server/identity/index.mjs, #558); tests and screenshot runs pass a fixture person’s
  *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
  *   host: the address it listens on, 127.0.0.1; `!` commands refuse to run on any other (tests check that)
  *   spawnShell: how `!` commands start (tests pass a fake)
@@ -108,6 +111,7 @@ export async function start({
   wake = undefined,
   probes = undefined,
   archiveTurns = false,
+  account = undefined,
 } = {}) {
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
@@ -175,6 +179,8 @@ export async function start({
 
   // Who it answers before any route, and what runs only on this computer alone (server/request-gate.mjs).
   const gate = requestGate({ port, host: () => host });
+  // Who each request is from (#558): the provider’s answer, and the person that is.
+  const who = whoIs({ store, account });
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
   const { streams, stop: stopStreams, stream, headers } = liveStreams(store, undefined, { running: rt.running });
@@ -218,6 +224,8 @@ export async function start({
         { code: 'token' },
       );
 
+    const person = await who.of(req, path);
+
     // While the store can’t be written (#508’s storage design, “When a write fails (ST-3)”), every write is refused here
     // with the cause, before it reaches the runtime; reads, Retry and Stop still answer. The tools have the same gate
     // in server/mcp.mjs.
@@ -260,7 +268,8 @@ export async function start({
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 
-    if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, headers }));
+    if (path === '/api/state' && req.method === 'GET')
+      return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, headers, me: person }));
     // A conversation’s items by range, and its search (#1155).
     const itemsDid = itemsRoute(store, search, path, req.method, url, headers);
     if (itemsDid) return send(res, 200, itemsDid);
@@ -393,6 +402,7 @@ export async function start({
       rt.cancelSchedule(m[1]);
       return send(res, 200, { ok: true });
     }
+    if (path === '/api/me' && req.method === 'PUT') return send(res, 200, who.saveProfile(person, body));
     if (path === '/api/settings' && req.method === 'PUT') {
       const patch = {};
       if ('theme' in body) patch.theme = ['system', 'light', 'dark'].includes(body.theme) ? body.theme : 'system';

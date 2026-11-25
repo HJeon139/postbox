@@ -14,6 +14,7 @@ import { openNewThread } from './new-thread-sheet.mjs';
 import { openPalette } from './palette.mjs';
 import { openPermissions } from './permissions.mjs';
 import { projectPlaces } from './places-menu.mjs';
+import { meButton } from './profile-tab.mjs';
 import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDelete, confirmDeleteThread, openNewAgent, openRename, openSettings } from './sheets.mjs';
@@ -141,7 +142,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
         h('span.sr-sm', n > 1 ? `${n} need you` : n ? 'Next that needs you' : 'Nothing needs you'),
         h('kbd.hide-sm', { 'aria-hidden': 'true' }, '⌃J'),
       ),
-      h('button.btn.icon.sm.ghost', { type: 'button', 'aria-label': 'Settings', onclick: () => openSettings() }, icon('gear')),
+      meButton(openSettings),
     ),
   );
   // Who it was drawn for: main.mjs rebuilds the view when an agent joins or leaves, and only then.
