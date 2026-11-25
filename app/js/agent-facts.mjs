@@ -27,15 +27,3 @@ export function mockMarker(agent) {
   // The space is text, so the name and the marker read as two words (“critic mock”), wherever it goes.
   return isMock(agent) ? h('span.mock-mark', ' ', h('span.mock-tag', 'mock')) : null;
 }
-
-/**
- * “On build-box” beside a persona that runs on a host: one line that gives way at its end, with the whole name in its
- * title, so a long host name never crowds out the persona’s description (#1497). Null on this computer.
- * @param {any} persona
- */
-export function hostMarker(persona) {
-  const id = persona?.remote?.hostId;
-  if (!id) return null;
-  const where = `On ${client.state.hosts?.[id]?.name ?? 'a removed host'}`;
-  return h('span.small.dim.on-host', { title: where }, where);
-}

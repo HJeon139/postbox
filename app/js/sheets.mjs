@@ -825,7 +825,6 @@ export function openSettings(tab = 'appearance', personaId = null) {
     );
   };
   const personas = () => {
-    const _list = Object.values(S().personas);
     const editing = personaId && S().personas[personaId];
     // Between the list and a persona’s form, focus goes to the form’s first field, and back to its Edit button.
     if (editing)

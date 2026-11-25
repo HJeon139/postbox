@@ -1183,15 +1183,12 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .tabs button:focus-visible { outline: 2px solid var(--accent); }
 .list-rows { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
 .list-rows li { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
-/* A persona’s row (#1497, #558): its name, version and actions on one line, the actions kept together at the end;
-   then its host and its description, each on a line of its own and whole, at every width. A description runs to 200
-   characters and a host’s name to 60, so neither shares a line with anything that would squeeze or cut it. */
-.persona-row, .manage-row { flex-wrap: wrap; row-gap: 2px; }
-.persona-row > .row-actions, .manage-row > .row-actions { display: flex; gap: 6px; flex: none; margin-left: auto; }
-.persona-row > .grow, .manage-row > .fact { order: 9; flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; }
+/* A row of a list in the main menu (#1497, #1735, app/js/manage-list.mjs): its name and its marks on one line, then
+   each fact (a persona’s host, its description) on a line of its own and whole, at every width. A description runs to
+   200 characters and a host’s name to 60, so neither shares a line with anything that would squeeze or cut it. */
+.manage-row { flex-wrap: wrap; row-gap: 2px; }
+.manage-row > .fact { order: 9; flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; }
 .manage-row > b { min-width: 0; overflow-wrap: anywhere; }
-.persona-row > .on-host { order: 8; flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; }
-@media (max-width: 600px) { .persona-row > .row-actions, .manage-row > .row-actions { flex-basis: 100%; justify-content: flex-end; } }
 /* A list you pick a row in (#558, app/js/manage-list.mjs), with one bar of controls under it, as a macOS list has:
    + and − first, then what else acts on the pick. The pick shows by its edge and its ground, never by color alone. */
 .pick-list li { cursor: default; padding-left: 10px; border-left: 3px solid transparent; }

@@ -4,14 +4,14 @@
 import { h, icon } from './dom.mjs';
 
 /**
- * The button beside the conversation’s Agents heading. `count` is kept for the caller, which told − how many agents
- * were here; nothing reads it now. openSettings comes from the caller: sheets.mjs reaches this module through the
- * shell, so importing it here would grow an import cycle (#312).
+ * The button beside the conversation’s Agents heading. openSettings comes from the caller: sheets.mjs reaches this
+ * module through the shell, so importing it here would grow an import cycle (#312).
  * @param {string} threadId @param {{ openSettings: Function }} sheets
+ * @returns {HTMLElement}
  */
 export function agentsHeaderButtons(threadId, sheets) {
   // One way in (#558): the room’s members are added and removed in the main menu’s form for the room, not here.
-  const el = h(
+  return h(
     'span.agents-head-btns',
     h(
       'button.btn.ghost.icon.sm',
@@ -25,5 +25,4 @@ export function agentsHeaderButtons(threadId, sheets) {
       icon('gear'),
     ),
   );
-  return { el, count: (/** @type {number} */ _n) => {} };
 }
