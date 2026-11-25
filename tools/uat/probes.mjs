@@ -27,6 +27,8 @@ export const newProbes = () => ({
   stale: [],
   interrupts: [],
   panels: [],
+  // What the person saved in Settings › Profile, and what the tab then said agents are told (#558).
+  profiles: [],
   panes: [],
   drafts: [],
   jumps: [],

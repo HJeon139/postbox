@@ -2,7 +2,7 @@
 
 ![Settings: Appearance](../../screenshots/settings-appearance.png)
 
-**Where:** Gear › Appearance.
+**Where:** Settings › Appearance.
 
 ## Why it exists
 

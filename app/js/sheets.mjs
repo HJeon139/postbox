@@ -17,7 +17,6 @@ import {
 } from '/shared/agent-facts.mjs';
 import { memoryLine } from '/shared/agent-memory.mjs';
 
-import { hostMarker, mockMarker } from './agent-facts.mjs';
 import { boilerplateRow } from './boilerplate-row.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
@@ -27,6 +26,8 @@ import { hostsPanel } from './hosts.mjs';
 import { capsOf, modelField, modelsFor } from './model-field.mjs';
 import { openPermissions } from './permissions.mjs';
 import { lifeButtons } from './persona-delete.mjs';
+import { personaRows } from './persona-rows.mjs';
+import { profile } from './profile-tab.mjs';
 import { projectsTab } from './projects-tab.mjs';
 import { fullHeight, holdSheet } from './sheet-hold.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
@@ -776,6 +777,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
     tabs.replaceChildren(
       ...[
         ['appearance', 'Appearance'],
+        ['profile', 'Profile'],
         ['personas', 'Personas'],
         ['projects', 'Projects'],
         ['hosts', 'Hosts'],
@@ -796,7 +798,17 @@ export function openSettings(tab = 'appearance', personaId = null) {
         ),
       ),
     );
-    fill(panel, ...{ appearance: () => appearance(paint), personas, projects: () => projectsTab(paint), hosts: () => [hostsPanel()], connect }[cur]());
+    fill(
+      panel,
+      ...{
+        appearance: () => appearance(paint),
+        profile: () => profile(paint),
+        personas,
+        projects: () => projectsTab(paint),
+        hosts: () => [hostsPanel()],
+        connect,
+      }[cur](),
+    );
     fullHeight(panel.closest('.dialog'), editingPersona());
   };
   const editingPersona = () => cur === 'personas' && !!personaId && !!S().personas[personaId];
@@ -811,33 +823,11 @@ export function openSettings(tab = 'appearance', personaId = null) {
         document.getElementById(`pe-edit-${editing.id}`)?.focus();
       });
     return [
-      h(
-        'ul.list-rows',
-        list.map((p) =>
-          h(
-            'li.persona-row',
-            h('b', p.handle),
-            mockMarker(p),
-            h('span.small.dim.grow', p.retired ? 'Retired' : p.description),
-            hostMarker(p),
-            h('span.small.dim', `v${p.version ?? 1}`),
-            h(
-              'button.btn.sm',
-              {
-                type: 'button',
-                id: `pe-edit-${p.id}`,
-                'aria-label': `Edit ${p.handle}`,
-                onclick: () => {
-                  personaId = p.id;
-                  paint();
-                  document.getElementById('pe-d')?.focus();
-                },
-              },
-              'Edit',
-            ),
-          ),
-        ),
-      ),
+      personaRows(list, (p) => {
+        personaId = p.id;
+        paint();
+        document.getElementById('pe-d')?.focus();
+      }),
       boilerplateRow({ openNewAgent, closeSettings: () => dlg.close() }),
       h(
         'div.row-flex',
@@ -965,7 +955,14 @@ export function openSettings(tab = 'appearance', personaId = null) {
     ];
   };
   paint();
-  const dlg = openDialog({ title: 'Settings', size: 'lg', body: [tabs, panel], onClose: () => letGo() });
+  // Focus starts on the tab that’s open, whichever way in: Enter then stays on it, and a screen reader names it.
+  const dlg = openDialog({
+    title: 'Settings',
+    size: 'lg',
+    body: [tabs, panel],
+    onClose: () => letGo(),
+    initialFocus: () => tabs.querySelector('[aria-selected="true"]'),
+  });
   // A persona’s MCP servers and skills come after it opens, and move nothing under the pointer when they do (#1326).
   fullHeight(dlg.dialog, editingPersona());
   const letGo = holdSheet(dlg.dialog);

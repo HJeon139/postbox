@@ -15,6 +15,7 @@ import { start } from '../server/index.mjs';
 import { launch, sleep } from './browser.mjs';
 import { play } from './demo.mjs';
 import { demoUI } from './demo-ui.mjs';
+import { FIXTURE_PERSON } from './fixture-person.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const baseline = process.argv.includes('--baseline');
@@ -30,7 +31,7 @@ const VARIANTS = [
 
 await mkdir(join(OUT, 'sheets'), { recursive: true });
 const dataDir = join(tmpdir(), `pb-shoot-app-${process.pid}`);
-const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
+const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true, account: FIXTURE_PERSON });
 const origin = `http://127.0.0.1:${PORT}`;
 // The driver stays on the current thread at desktop size so agent apps get checked there; the shooter,
 // a second browser, captures each variant without running checks of its own.

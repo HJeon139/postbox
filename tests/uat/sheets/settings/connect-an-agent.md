@@ -2,7 +2,7 @@
 
 ![Settings: Backends](../../screenshots/settings-connection.png)
 
-**Where:** Gear › Backends.
+**Where:** Settings › Backends.
 
 ## Why it exists
 

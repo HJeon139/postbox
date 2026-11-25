@@ -11,6 +11,7 @@
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { client, sleep } from './demo-client.mjs';
+import { FIXTURE_PERSON } from './fixture-person.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /**
@@ -319,7 +320,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   };
   const port = Number(arg('port', 4173));
   const { start } = await import('../server/index.mjs');
-  const app = await start({ port, dataDir: join(ROOT, 'data', 'demo'), fresh: true, demo: true });
+  const app = await start({ port, dataDir: join(ROOT, 'data', 'demo'), fresh: true, demo: true, account: FIXTURE_PERSON });
   const origin = `http://127.0.0.1:${port}`;
   console.log(`\nOpen ${origin}/ in a browser and keep it open: apps are checked there before they’re shown.\n`);
   await sleep(4000);

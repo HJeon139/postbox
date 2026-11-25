@@ -470,6 +470,10 @@ async function main() {
           const r = await d.agentPanel(handle, set);
           facts.probes.panels.push({ handle, set, left: r.left, at: Date.now() });
           actionResult = `@${handle}’s persona sheet said:\n${r.said}\n\nWhen Save was pressed it held, and then: ${JSON.stringify(r.left)}`;
+        } else if (a.type === 'profile') {
+          const r = await d.saveProfile(a.fills ?? []);
+          facts.probes.profiles.push({ fills: a.fills ?? [], ...r, at: Date.now() });
+          actionResult = `When Save profile was pressed the fields held: ${JSON.stringify(r.held)}\n\nThe Profile tab then said agents are told:\n${r.told}`;
         } else if (a.type === 'pane') {
           const r = await d.openPane(a.open === 'thread' ? 'thread' : 'work', key);
           facts.probes.panes.push({ open: a.open, ...r });

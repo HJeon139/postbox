@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
 import { start } from '../../server/index.mjs';
+import { FIXTURE_PERSON } from '../../tools/fixture-person.mjs';
 import { heldStill } from '../../tools/page-still.mjs';
 import { allowServerLog, captureServerLog, takeServerFailures } from '../server-log.mjs';
 
@@ -59,7 +60,16 @@ export async function startPostbox(name, { demo = true, mockOnly = true, prepare
     // Another worker can bind the port between freePort() and start(): start() then closes what it opened and throws,
     // so try another port (#367).
     for (let i = 0; !app; i++)
-      app = await start({ ...server, port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo, quiet: true, claudeHome: root }).catch((e) => {
+      app = await start({
+        account: FIXTURE_PERSON,
+        ...server,
+        port: await freePort(),
+        dataDir: join(root, 'data'),
+        fresh: true,
+        demo,
+        quiet: true,
+        claudeHome: root,
+      }).catch((e) => {
         if (e?.code !== 'EADDRINUSE' || i >= 4) throw e;
       });
   } catch (e) {

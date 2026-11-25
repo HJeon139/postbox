@@ -162,12 +162,14 @@ function tailPart({ tail, notes, thread }) {
  * @param {number} [input.waitingElsewhere]  entries waiting in other threads
  * @param {string[]} [input.stopped]  ids of entries the person’s Stop kept from starting a turn
  * @param {string[]} [input.wroteOnly]  whom the agent’s last replies in the thread, which only wrote, were for (reply-back.mjs)
+ * @param {string | null} [input.about]  who the people say they are, as shared/profile.mjs’s aboutPeople words it; none while no one has saved a profile
  */
-export function turnInput({ entries, thread, read, tail = [], notes = [], root = null, waitingElsewhere = 0, stopped = [], wroteOnly = [] }) {
+export function turnInput({ entries, thread, read, tail = [], notes = [], root = null, waitingElsewhere = 0, stopped = [], wroteOnly = [], about = null }) {
   const halted = stopped.length
     ? `[Postbox] The person stopped you before a turn started from ${stopped.map((id) => `[${id}]`).join(', ')}. read_message reads one.`
     : null;
-  return [root && `[Postbox] ${root}`, entriesPart({ entries, thread, read, waitingElsewhere, wroteOnly }), halted, tailPart({ tail, notes, thread })]
+  // Who the person says they are (#558), after what the turn is for and apart from the room’s tail, which is cut to its newest.
+  return [root && `[Postbox] ${root}`, entriesPart({ entries, thread, read, waitingElsewhere, wroteOnly }), halted, about, tailPart({ tail, notes, thread })]
     .filter(Boolean)
     .join('\n\n');
 }

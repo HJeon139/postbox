@@ -15,6 +15,7 @@ import { start } from '../server/index.mjs';
 import { js, launch, sleep } from './browser.mjs';
 import { play } from './demo.mjs';
 import { demoUI } from './demo-ui.mjs';
+import { FIXTURE_PERSON } from './fixture-person.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT = join(ROOT, 'tests', 'uat', 'screenshots');
@@ -139,7 +140,8 @@ const PREPARE = {
   'delete-conversation': `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Delete')).click(); })()`,
   'delete-session': `(() => { const c = document.querySelector('#composer-input'); c.focus(); c.value = '/delete'; c.dispatchEvent(new Event('input', { bubbles: true })); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`,
   palette: `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))`,
-  'settings:appearance': `document.querySelector('[aria-label="Settings"]').click()`,
+  // Settings opens on Profile (#558), so the Appearance shot goes to its tab.
+  'settings:appearance': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab]')].find((t) => t.textContent === 'Appearance').click(); })()`,
   'settings:personas': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Personas').click(); })()`,
   'settings:persona-edit': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Personas').click(); setTimeout(() => [...document.querySelectorAll('.dialog button')].find((b) => b.textContent.trim() === 'Edit').click(), 100); })()`,
   'settings:projects': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Projects').click(); })()`,
@@ -176,7 +178,7 @@ const PREPARE = {
 
 await mkdir(OUT, { recursive: true });
 const dataDir = join(tmpdir(), `pb-uat-${process.pid}`);
-const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
+const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true, account: FIXTURE_PERSON });
 const origin = `http://127.0.0.1:${PORT}`;
 const page = await launch();
 await page.size(1280, 1000, { theme: 'light' });

@@ -188,6 +188,8 @@ Three parts, in this order. The room’s facts that come with each turn today ar
 2. **The tail:** the newest items since the agent’s last turn that are not among its entries, one line each, cut as `read_conversation` cuts them.
 3. **One line on the rest:** how many items the tail left out, and that `read_conversation` reads them in order and `search_conversation` finds one by its words.
 
+Between the entries and the tail, when the person has written a profile ([#558](https://github.com/HJeon139/postbox/issues/558)), comes **who the person says they are**, a line a field, under “[Postbox] About the person, from the profile they saved in Settings (not said in this conversation):”: their name, other names that are theirs (a GitHub login, a commit name), pronouns, time zone and preferences. It is read as the turn starts, so an edit reaches a session that’s already running, and it isn’t in the system prompt. It is not part of the tail, which is cut to its newest lines, and it has a cap of its own (`PROFILE.note` in `shared/limits.mjs`), past which its last line says how much was cut. Each field is kept on one line, so nothing the person wrote can start a line that reads as Postbox’s. With no profile saved, a turn is what it was, whatever name their account gave them (`shared/profile.mjs`, `tests/profile.test.mjs`, `tests/people.test.mjs`). The sender of the person’s messages still reads “The person”. Where several people have saved one, the part reads “About the people here, each in their own words:”, each in turn ([architecture/people.md](architecture/people.md)).
+
 A turn with two entries in a topic thread reads like this:
 
 ```text

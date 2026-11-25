@@ -210,6 +210,8 @@ const ADDED_SINCE = [
   'clock.restored',
   'clock.stopped',
   'clock.expired',
+  // A person and their profile (#558): put by id, as a persona is.
+  'person',
 ];
 
 test('the cases cover every type the switch knew, so a type of its time needs one', () => {

@@ -90,6 +90,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
   - [Project folder picker](sheets/folder-picker.md)
   - **settings/**
     - [Settings: Appearance](sheets/settings/appearance.md)
+    - [Settings: Profile](sheets/settings/profile.md)
     - [Settings: Personas](sheets/settings/personas.md)
     - [Settings: Projects](sheets/settings/projects.md)
     - [Settings: Backends](sheets/settings/connect-an-agent.md)

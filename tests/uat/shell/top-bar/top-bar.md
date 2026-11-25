@@ -20,7 +20,7 @@ It answers “where am I, and what needs me?” from anywhere: the path to the o
 - In a conversation, “Work”, with a page icon, opens and closes the conversation’s Work in the right pane, and shows pressed while it’s open (#183). On a phone only its icon shows, and a screen reader still reads “Work”.
 - “Jump to… ⌘K” opens the [command palette](../command-palette.md).
 - The needs-you button counts agents waiting on you, a refused step and a tool request too; it is disabled with “Nothing needs you” when none are. It and ⌃J go first to an agent in the open conversation (or its side and topic threads) that needs you, else to the one that has waited longest; pressed again, they move on through the rest, oldest first, so each one comes up in turn. Each lands on the ask itself, scrolled into view, focused and outlined for a moment (#285).
-- The gear opens Settings.
+- Your initials, from the name in your profile or else your account’s, open Settings on your profile (#558).
 - Under `--demo`, “Demo mode: scripted agents” sits beside “Jump to…” on every view: a project, Threads and a conversation (#12). It can’t be closed; where room is short it folds to “Demo”, and a screen reader still reads the whole sentence. It isn’t a live region. Without `--demo` it isn’t there.
 
 ## Steps to reproduce
