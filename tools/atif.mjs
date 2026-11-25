@@ -160,7 +160,7 @@ function patchItem(it, d, seq) {
 
 /** An agent step for one of the session’s replies. @param {any} it @param {any} ctx @param {number} seq  where it was added */
 function replyStep(it, ctx, seq) {
-  const { tool_calls, results, thoughts, narration } = callsOf(it, ctx.calls, ctx.questions);
+  const { tool_calls, results, thoughts, narration } = callsOf(it, ctx.calls, ctx.questions, ctx.blob);
   const metrics = ctx.meter.take(it.turnId);
   return {
     source: 'agent',
@@ -248,10 +248,14 @@ function carry(ctx, entry, what) {
   return true;
 }
 
-/** The context one session’s steps are built in. @param {ReturnType<typeof foldEvents>} f @param {string} sessionId */
-function contextOf(f, sessionId) {
+/**
+ * The context one session’s steps are built in.
+ * @param {ReturnType<typeof foldEvents>} f @param {string} sessionId @param {(sha256: string) => string | null} [blob]
+ */
+function contextOf(f, sessionId, blob = () => null) {
   const turns = new Map([...f.work.values()].filter((w) => w.kind === 'turn' && w.sessionId === sessionId).map((w) => [w.id, w]));
-  const calls = new Map([...f.work.values()].filter((w) => CALL_KINDS.has(w.kind) && w.toolUseId).map((w) => [w.toolUseId, w]));
+  // Its own calls only: a tool call's id is its backend's, so another session's call can carry the same one.
+  const calls = new Map([...f.work.values()].filter((w) => CALL_KINDS.has(w.kind) && w.toolUseId && w.sessionId === sessionId).map((w) => [w.toolUseId, w]));
   // Taken by one of its turns, as it was when taken: an entry still waiting (sent after its clock expired, say) never
   // reached the agent, and one taken and given back by a retry did (noteTake).
   const delivered = new Map([...f.takes.values()].filter((t) => t.sessionId === sessionId).map((t) => [t.itemId, t]));
@@ -266,16 +270,18 @@ function contextOf(f, sessionId) {
     carried: new Map(),
     models: f.models.get(sessionId) ?? [],
     meter: meter(turns),
+    blob,
   };
 }
 
 /**
  * One agent session’s trajectory, or null when the events give it no step.
- * @param {ReturnType<typeof foldEvents>} f @param {string} sessionId @param {{ version: string }} opts
+ * @param {ReturnType<typeof foldEvents>} f @param {string} sessionId
+ * @param {{ version: string, blob?: (sha256: string) => string | null }} opts  blob: a stored blob's text, for outputs
  */
-export function trajectoryOf(f, sessionId, { version }) {
+export function trajectoryOf(f, sessionId, { version, blob }) {
   const se = f.sessions.get(sessionId) ?? {};
-  const ctx = contextOf(f, sessionId);
+  const ctx = contextOf(f, sessionId, blob);
   /** @type {{ seq: number, steps: any[] }[]} */
   // A step that brings its own place (an answer, at its patch) goes there; the rest go where their item was added.
   const placed = f.order.flatMap(({ seq, id }) =>
@@ -313,17 +319,18 @@ const withClock = (scope, clock) => ({ notes: clock.note ? `${clock.note} ${scop
 
 /**
  * Every agent session’s trajectory in the events, or only `sessionId`’s.
- * @param {Event[]} events @param {{ version: string, live?: any[], prompts?: any[], sessionId?: string }} opts  prompts: prompts.jsonl’s rows
+ * @param {Event[]} events @param {{ version: string, live?: any[], prompts?: any[], sessionId?: string, blob?: (sha256: string) => string | null }} opts
+ *   prompts: prompts.jsonl’s rows; blob: a stored blob's text, for the outputs live frames don't carry
  * @returns {{ sessionId: string, handle: string|null, trajectory: any }[]}
  */
-export function trajectories(events, { version, live = [], prompts = [], sessionId }) {
+export function trajectories(events, { version, live = [], prompts = [], sessionId, blob }) {
   const f = foldEvents(events, live, prompts);
   // Every session that showed something: a reply, a block or an app, so one whose only output was a block has one too.
   const ids = new Set([...f.items.values()].filter((it) => OWN_KINDS.has(it.kind) && it.sessionId).map((it) => it.sessionId));
   for (const c of f.clocks) ids.add(c.data.sessionId);
   return [...ids]
     .filter((id) => !sessionId || id === sessionId)
-    .map((id) => ({ sessionId: id, trajectory: trajectoryOf(f, id, { version }) }))
+    .map((id) => ({ sessionId: id, trajectory: trajectoryOf(f, id, { version, blob }) }))
     .filter((x) => x.trajectory)
     .map((x) => ({ ...x, handle: x.trajectory.agent.extra.handle }));
 }

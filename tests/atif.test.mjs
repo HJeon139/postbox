@@ -176,6 +176,8 @@ test('a tool call names the tool its harness ran, with the arguments the work le
         label: 'Print CLAUDE_EFFORT environment variable',
         state: 'done',
         ms: reply.tool_calls[0].extra.ms,
+        started_at: '2026-11-20T01:52:56.530Z',
+        exit: 0,
         arguments_source: 'work ledger',
         display_input: 'command: printenv CLAUDE_EFFORT',
       },
@@ -282,4 +284,17 @@ test('a reply with no time keeps its step, with no timestamp, and every trajecto
   const step = got.flatMap((t) => t.trajectory.steps).find((s) => s.extra?.item_id === reply.data.item.id);
   assert.ok(step, 'its step is kept');
   assert.equal(step.timestamp, undefined);
+});
+
+test('a call’s ledger entry is its own session’s, though another session’s call has the same id', () => {
+  // From the recorded run: @dry and @dry2 each ran `printenv CLAUDE_EFFORT` under the same tool call id. With @dry2’s
+  // command line changed, @dry’s call still names its own.
+  const events = rec.events.map((e) =>
+    e.type === 'work.add' && e.data.entry.kind === 'command' && e.data.entry.handle === 'dry2'
+      ? { ...e, data: { ...e.data, entry: { ...e.data.entry, command: 'echo not dry' } } }
+      : e,
+  );
+  const call = (h) => of(h, events).steps.find((s) => s.tool_calls)?.tool_calls[0];
+  assert.equal(call('dry').arguments.command, 'printenv CLAUDE_EFFORT');
+  assert.equal(call('dry2').arguments.command, 'echo not dry');
 });
