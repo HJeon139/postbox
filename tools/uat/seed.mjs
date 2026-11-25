@@ -72,6 +72,23 @@ async function checkClis(scenario, opt, log) {
 }
 
 /**
+ * The scenario’s agents, as personas.json has them. A handle the file doesn’t have is refused: the room holds the
+ * agents under test, and the person is the tester, at the page (tests/uat/e2e/README.md, “The person is whoever drives
+ * the page”). The runner used to seed any handle it was given, so a scenario could put an agent in the room to play the
+ * person.
+ * @param {{ agents: string[] }} scenario @param {{ handle: string }[]} personas
+ */
+export function scenarioAgents(scenario, personas) {
+  return scenario.agents.map((h) => {
+    const persona = personas.find((p) => p.handle === h);
+    if (persona) return persona;
+    throw new Error(
+      `The scenario names the agent @${h}, which tests/uat/e2e/personas.json doesn’t have. Its agents are the agents under test: add @${h} there first. The person is the tester, described on the scenario’s “- persona:” line, never an agent in the room.`,
+    );
+  });
+}
+
+/**
  * Writes the run’s agents to agents.json, and says what they run on: agentModels for the report, and the effort the
  * scenario’s Claude agents run at, for run.json.
  * @param {{ scenario: any, opt: Record<string, any>, root: string, data: string, log: (line: string) => void }} o
@@ -82,10 +99,7 @@ export async function seedAgents({ scenario, opt, root, data, log }) {
   // persona in personas.json, since scenarios bring more agents (@critic) into topic threads than they start with.
   const personas = JSON.parse(readFileSync(join(root, 'tests', 'uat', 'e2e', 'personas.json'), 'utf8'));
   const codexDefaultModel = await codexDefault(scenario, log);
-  const agents = [
-    ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),
-    ...personas.filter((p) => !scenario.agents.includes(p.handle)),
-  ]
+  const agents = [...scenarioAgents(scenario, personas), ...personas.filter((p) => !scenario.agents.includes(p.handle))]
     .map((p) => fast(scenario, opt, p))
     .map((p) => onBackend(scenario, codexDefaultModel, p))
     .map((p) => withMode(scenario, p));
