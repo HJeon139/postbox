@@ -13,8 +13,11 @@
 //   say what it lost.
 // Each turn’s prompt comes from prompts.jsonl, which a UAT run records in its data folder (#1528): beside the events
 // file, or in the run’s or the data folder. Without it, a trajectory says what it leaves out (tools/atif-prompts.mjs).
+// Each call’s output, where no live frame carried it, comes from the data folder’s blobs, which the work ledger names
+// by hash (tools/atif-calls.mjs).
 // Each trajectory goes to <out>/<handle>-<session>.atif.json; with no --out and one trajectory, to standard output.
 
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +34,23 @@ export const POSTBOX_VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'
 
 /** The JSON Lines in a file, or none when it isn’t there. @param {string} file */
 const linesIn = (file) => (existsSync(file) ? lines(readFileSync(file, 'utf8')) : []);
+
+/**
+ * A reader of the store's blobs in the first of these data folders that has a blobs folder (server/blobs.mjs), for the
+ * tool outputs the work ledger names by hash: a blob's text, or null when it's missing or no longer matches its hash.
+ * With no blobs folder, none. @param {string[]} dirs @returns {((sha256: string) => string | null) | undefined}
+ */
+const blobsIn = (dirs) => {
+  const root = dirs.map((d) => join(d, 'blobs')).find((b) => existsSync(b));
+  if (!root) return undefined;
+  return (sha256) => {
+    if (!/^[a-f0-9]{64}$/.test(sha256)) return null;
+    const file = join(root, sha256.slice(0, 2), sha256.slice(2));
+    if (!existsSync(file)) return null;
+    const buf = readFileSync(file);
+    return createHash('sha256').update(buf).digest('hex') === sha256 ? buf.toString('utf8') : null;
+  };
+};
 
 /** prompts.jsonl’s rows from the first of these folders that has one (server/turn-prompt.mjs), or none. @param {string[]} dirs */
 const promptsIn = (dirs) => {
@@ -75,7 +95,7 @@ export const SNAPSHOT_LOSES = Object.freeze([
   'where each block’s answer came among the other events (it is placed beside its block)',
   'each item’s earlier revisions and the words of a reply as they streamed',
   'which inbox entries a turn took and then gave back (only each entry’s last state is kept)',
-  'live frames, so no tool call’s input or output',
+  'live frames, so no tool call’s input, and no output but what the store’s blobs keep',
   'the work ledger’s entries other than turns, commands, outside calls and reads',
 ]);
 
@@ -86,7 +106,13 @@ export const SNAPSHOT_LOSES = Object.freeze([
 export function readRecording(path) {
   if (!statSync(path).isDirectory()) {
     const beside = join(path, '..');
-    return { events: linesIn(path), live: linesIn(join(beside, 'live.jsonl')), prompts: promptsIn([beside, join(beside, 'data')]), notes: null };
+    return {
+      events: linesIn(path),
+      live: linesIn(join(beside, 'live.jsonl')),
+      prompts: promptsIn([beside, join(beside, 'data')]),
+      blob: blobsIn([beside, join(beside, 'data')]),
+      notes: null,
+    };
   }
   if (existsSync(join(path, 'events.jsonl'))) return { ...runRecording(path), notes: null };
   const data = existsSync(join(path, 'data')) ? join(path, 'data') : path;
@@ -98,11 +124,12 @@ export function readRecording(path) {
   // Only what a page may see, as the stream sends it.
   const logged = segments.flatMap((n) => linesIn(join(data, n))).filter((e) => Object.hasOwn(EVENTS, e.type) && EVENTS[e.type].public);
   const prompts = promptsIn([data]);
-  if (!snap) return { events: logged, live: [], prompts, notes: null };
+  const blob = blobsIn([data]);
+  if (!snap) return { events: logged, live: [], prompts, blob, notes: null };
   const partial = { reconstructed_before_event: snap.seq + 1, lost: SNAPSHOT_LOSES };
   const notes = `Partial: steps before event ${snap.seq + 1} are rebuilt from the store’s snapshot, which has lost ${SNAPSHOT_LOSES.join('; ')}.`;
   // A segment’s first events are often in the snapshot already (server/store-replay.mjs): only those after it count.
-  return { events: [...snapshotEvents(snap), ...logged.filter((e) => e.seq > snap.seq)], live: [], prompts, notes, partial };
+  return { events: [...snapshotEvents(snap), ...logged.filter((e) => e.seq > snap.seq)], live: [], prompts, blob, notes, partial };
 }
 
 /**
@@ -126,7 +153,7 @@ function pick(rec, { sessionId, handle }) {
   const lost = gapNote(rec.gaps);
   const notes = [rec.notes, lost].filter(Boolean).join(' ');
   const partial = { ...rec.partial, ...(rec.gaps?.length ? { stream_gaps: rec.gaps } : {}) };
-  return trajectories(rec.events, { version: POSTBOX_VERSION, live: rec.live ?? [], prompts: rec.prompts ?? [], sessionId })
+  return trajectories(rec.events, { version: POSTBOX_VERSION, live: rec.live ?? [], prompts: rec.prompts ?? [], blob: rec.blob, sessionId })
     .filter((t) => !handle || t.handle === handle)
     .map((t) =>
       notes
@@ -167,7 +194,13 @@ function gapNote(gaps) {
 /** A UAT run’s folder (tools/uat/history.mjs, writeHistory): its events, its live frames and where its stream lost events. @param {string} dir */
 function runRecording(dir) {
   const gaps = existsSync(join(dir, 'stream-gaps.json')) ? JSON.parse(readFileSync(join(dir, 'stream-gaps.json'), 'utf8')) : [];
-  return { events: linesIn(join(dir, 'events.jsonl')), live: linesIn(join(dir, 'live.jsonl')), prompts: promptsIn([dir, join(dir, 'data')]), gaps };
+  return {
+    events: linesIn(join(dir, 'events.jsonl')),
+    live: linesIn(join(dir, 'live.jsonl')),
+    prompts: promptsIn([dir, join(dir, 'data')]),
+    blob: blobsIn([dir, join(dir, 'data')]),
+    gaps,
+  };
 }
 
 /**
