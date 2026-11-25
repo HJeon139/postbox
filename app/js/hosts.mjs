@@ -97,7 +97,7 @@ function keepBarFocus(paint) {
 const hosts = () => Object.values(S().hosts ?? {}).sort((a, b) => a.createdAt - b.createdAt);
 
 /**
- * The tab as every list in the main menu is (#558, app/js/manage-list.mjs): the hosts, one picked, with + − and Edit in
+ * The tab as every list in the main menu is (#1735, app/js/manage-list.mjs): the hosts, one picked, with + − and Edit in
  * the bar under them, and the pick’s status under the list, since a host’s state is what you came to see. + shows the
  * New host form in the list’s place.
  * @param {Panel} p

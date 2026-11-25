@@ -91,7 +91,7 @@ test('a delete with at opens its confirm first, and presses Delete no earlier th
   const said = await STEPS.conversation(c, { conversation: 'delete', at });
   assert.deepEqual(
     clicks.map((x) => x.what),
-    // Delete is in the room’s form in the main menu (#558), which the conversation’s menu goes to.
+    // Delete is in the room’s form in the main menu (#1735), which the conversation’s menu goes to.
     ['the conversation’s menu', 'Manage room and members in its menu', 'Delete… under the room’s form', 'the confirm’s Delete'],
   );
   assert.ok(clicks[2].at < Date.parse(at), 'the confirm opened before at');

@@ -34,7 +34,7 @@ function controls(page, room) {
   const open = async () => {
     await actions.focus();
     await page.keyboard.press('Enter');
-    // The room’s form in the main menu holds it (#558): the menu’s first item goes there.
+    // The room’s form in the main menu holds it (#1735): the menu’s first item goes there.
     await focusIs(page, /^menuitem: Manage room and members…/);
     await page.keyboard.press('Enter');
     const more = page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Wake chain limit…' });

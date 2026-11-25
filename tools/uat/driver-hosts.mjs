@@ -19,7 +19,7 @@ async function until(kit, expr, what, ms = 15_000) {
 }
 
 /**
- * Opens Settings › Hosts unless it’s open, on its list (#558: its + is there), and picks a host’s row, so its card
+ * Opens Settings › Hosts unless it’s open, on its list (#1735: its + is there), and picks a host’s row, so its card
  * shows under the list and the list’s bar acts on it. @param {any} kit @param {string} [id]  the host to pick
  */
 export async function openHosts(kit, id) {

@@ -1,4 +1,4 @@
-// The Agents header’s way to the room’s members (#558): one button that opens the main menu’s form for this room,
+// The Agents header’s way to the room’s members (#1735): one button that opens the main menu’s form for this room,
 // where its Members list has the + and − that used to be here (#1620). Controls live in one place; this only goes there.
 
 import { h, icon } from './dom.mjs';
@@ -10,7 +10,7 @@ import { h, icon } from './dom.mjs';
  * @returns {HTMLElement}
  */
 export function agentsHeaderButtons(threadId, sheets) {
-  // One way in (#558): the room’s members are added and removed in the main menu’s form for the room, not here.
+  // One way in (#1735): the room’s members are added and removed in the main menu’s form for the room, not here.
   return h(
     'span.agents-head-btns',
     h(

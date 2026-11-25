@@ -12,7 +12,7 @@ import { byText } from './selectors.mjs';
 export async function newProject({ clickAt, typeInto, press }, name, folder) {
   await clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
   await clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Projects'), 'the Projects tab');
-  // The form is behind the list’s + (#558).
+  // The form is behind the list’s + (#1735).
   await clickAt(`document.getElementById('pj-new')`, 'New project');
   await typeInto(`document.getElementById('pj-n')`, name, 'the project name field');
   await typeInto(`document.getElementById('pj-f')`, folder, 'the project folder field');

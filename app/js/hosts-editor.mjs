@@ -67,7 +67,7 @@ export const editor = (p, host) => {
   );
 };
 
-/** The editor’s actions, pinned under the sheet so they’re in view however long the settings are (#558). @param {Panel} p @param {any} host */
+/** The editor’s actions, pinned under the sheet so they’re in view however long the settings are (#1735). @param {Panel} p @param {any} host */
 export const editorActions = (p, host) => [
   h('button.btn', { type: 'button', id: `ho-${host.id}-cancel`, onclick: () => closeEditor(p) }, 'Cancel'),
   h('span.grow'),

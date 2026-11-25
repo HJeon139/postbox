@@ -1,4 +1,4 @@
-// The main menu’s list of personas (#558, app/js/manage-list.mjs): each with its version, its host and what it does,
+// The main menu’s list of personas (#1735, app/js/manage-list.mjs): each with its version, its host and what it does,
 // and the bar under it: + for a new agent, − to delete the one picked, Edit, and Retire or Bring back.
 
 import { mockMarker } from './agent-facts.mjs';

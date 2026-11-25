@@ -1,4 +1,4 @@
-// The main menu’s lists (#558, app/js/manage-list.mjs): Rooms and People are managed as every kind is, in a list you
+// The main menu’s lists (#1735, app/js/manage-list.mjs): Rooms and People are managed as every kind is, in a list you
 // pick a row in, with one bar under it whose + and − act on the pick, and one form at a time.
 
 import { expect, test } from '@playwright/test';

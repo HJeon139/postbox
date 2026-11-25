@@ -90,7 +90,7 @@ for (const width of [320, 375, 768, 1024, 1280, 1920])
           hostCut: where.scrollWidth > where.clientWidth + 1,
           hostLines: Math.round(hr.height / lineOf(where)),
           hostShows: hr.width,
-          // The name and its version on one line, the host under them, the description under that (#558: a row of
+          // The name and its version on one line, the host under them, the description under that (#1735: a row of
           // the pick list, whose actions are in the bar under the list).
           nameLine: Math.abs(top('b') - top('b ~ .small:not(.fact)')) < lineOf(where),
           hostBelowName: hr.top >= (li.querySelector('b')?.getBoundingClientRect().bottom ?? 0) - 1,
@@ -125,7 +125,7 @@ for (const width of [320, 375, 599, 1024, 1280])
   });
 
 /**
- * One project’s row (#558: a row of the shared list, app/js/manage-list.mjs): its name and folder whole, the folder
+ * One project’s row (#1735: a row of the shared list, app/js/manage-list.mjs): its name and folder whole, the folder
  * under the name, its actions inside the panel; then its form, with a repository field you can type in and Save in view.
  */
 async function projectRow(dialog, page, _width, project) {

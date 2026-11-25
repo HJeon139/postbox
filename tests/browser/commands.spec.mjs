@@ -134,7 +134,7 @@ test('/mode, /model and /effort run without a turn and open the agent’s person
   await composer(page).focus();
   await page.keyboard.type('/ren');
   await page.keyboard.press('Enter');
-  // Its title is edited in the room’s form in the main menu (#558), with focus on it.
+  // Its title is edited in the room’s form in the main menu (#1735), with focus on it.
   await expect(page.getByRole('dialog', { name: 'Settings' }).getByLabel('Title'), 'the room’s title field').toBeFocused();
 });
 

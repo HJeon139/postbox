@@ -66,7 +66,7 @@ async function remove({ d, api, facts }, a) {
   if (!t) throw new Error('No conversation is open to delete.');
   const room = t.kind === 'room';
   await d.kit.clickAt(`document.querySelector(${js(`[aria-label="Actions for ${t.title}"]`)})`, 'the conversation’s menu');
-  // Delete is in the room’s form in the main menu (#558): the menu goes there.
+  // Delete is in the room’s form in the main menu (#1735): the menu goes there.
   await d.kit.clickAt(byText('document', '.menu .mi, [role=menuitem]', 'Manage room and members'), 'Manage room and members in its menu');
   await d.kit.clickAt(byText('document.querySelector(".dialog .d-foot")', 'button.danger', 'Delete…'), 'Delete… under the room’s form');
   const { wait: atWait, note } = delayUntil(a.at, Date.now());

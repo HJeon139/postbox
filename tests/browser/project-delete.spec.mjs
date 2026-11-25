@@ -29,7 +29,7 @@ async function projectsTab(page) {
   return settings;
 }
 const rowOf = (settings, name) => settings.locator('li.project-row', { hasText: name });
-/** A project’s Delete: its row picked, then − in the list’s bar, which deletes the pick (#558). */
+/** A project’s Delete: its row picked, then − in the list’s bar, which deletes the pick (#1735). */
 async function deleteOf(settings, name) {
   await rowOf(settings, name).click();
   return settings.getByRole('button', { name: `Delete project ${name}…` });

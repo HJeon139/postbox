@@ -1,4 +1,4 @@
-// The main menu’s People (#558): everyone this Postbox knows, as the list every other kind is managed in. Who can sign
+// The main menu’s People (#1735): everyone this Postbox knows, as the list every other kind is managed in. Who can sign
 // in is the identity provider’s to decide, so there is nothing to add here, and a person edits only their own profile.
 
 import { h } from './dom.mjs';

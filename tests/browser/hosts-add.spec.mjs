@@ -24,7 +24,7 @@ failOnPageErrors(test);
  */
 async function add(page, name, how) {
   const before = new Set(Object.keys(app.store.state.hosts ?? {}));
-  // + in the list’s bar shows the New host form (#558), whose Add host is pinned under it.
+  // + in the list’s bar shows the New host form (#1735), whose Add host is pinned under it.
   await page.getByRole('button', { name: 'Add a host', exact: true }).click();
   const form = page.getByRole('region', { name: 'Add a host' });
   await form.getByRole('textbox', { name: 'SSH destination' }).fill(name);

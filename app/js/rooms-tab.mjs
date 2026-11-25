@@ -1,4 +1,4 @@
-// The main menu’s Rooms (#558): every conversation and room, each with who is in it and its actions, and a form for
+// The main menu’s Rooms (#1735): every conversation and room, each with who is in it and its actions, and a form for
 // one at a time: its title and its members, agents and people in one list, as both are seats in it.
 
 import { mockMarker } from './agent-facts.mjs';

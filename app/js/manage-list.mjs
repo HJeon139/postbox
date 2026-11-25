@@ -1,7 +1,8 @@
-// The one pattern for managing things (#558, decided 23 November 2026): a list you pick a row in, each row with its name
-// and its facts, with one bar of controls under it as a macOS list has, + to add and − to remove what’s picked, and one thing made or edited at a time in a form in the same sheet, whose actions are
-// pinned under it. Personas, projects, rooms and their members, people and hosts are all managed this way, from the
-// main menu (openSettings in app/js/sheets.mjs), and nowhere else: a ⋯ menu or a rail button only opens it.
+// The one pattern for managing things (#1735, decided 23 November 2026): a list you pick a row in, each row with its
+// name and its facts, with one bar of controls under it as a macOS list has, + to add and − to remove what’s picked,
+// and one thing made or edited at a time in a form in the same sheet, whose actions are pinned under it. Personas,
+// projects, rooms and their members, people and hosts are all managed this way, from the main menu (openSettings in
+// app/js/sheets.mjs), and nowhere else: a ⋯ menu or a rail button only opens it.
 
 import { h, icon } from './dom.mjs';
 

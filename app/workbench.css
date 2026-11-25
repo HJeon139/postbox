@@ -866,7 +866,7 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 /* ───────── Menus, popovers, toasts, dialogs, side panel ───────── */
 
 /* Never taller than the window: a long menu scrolls inside (#36), and its items keep their height. */
-/* Above a dialog’s backdrop (50): a list’s + inside the main menu opens one over the sheet (#558). */
+/* Above a dialog’s backdrop (50): a list’s + inside the main menu opens one over the sheet (#1735). */
 .menu { position: absolute; z-index: 55; min-width: 240px; max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
 .menu > * { flex-shrink: 0; }
 .menu .mi { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; color: var(--text); text-decoration: none; cursor: pointer; border: 1px solid transparent; }
@@ -1189,7 +1189,7 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .manage-row { flex-wrap: wrap; row-gap: 2px; }
 .manage-row > .fact { order: 9; flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; }
 .manage-row > b { min-width: 0; overflow-wrap: anywhere; }
-/* A list you pick a row in (#558, app/js/manage-list.mjs), with one bar of controls under it, as a macOS list has:
+/* A list you pick a row in (#1735, app/js/manage-list.mjs), with one bar of controls under it, as a macOS list has:
    + and − first, then what else acts on the pick. The pick shows by its edge and its ground, never by color alone. */
 .pick-list li { cursor: default; padding-left: 10px; border-left: 3px solid transparent; }
 .pick-list li[aria-selected="true"] { background: var(--sunk); border-left-color: var(--accent); }

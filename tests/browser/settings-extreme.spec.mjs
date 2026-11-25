@@ -1,4 +1,4 @@
-// Settings at the longest data it allows (#558): a persona’s handle of 24 characters, its description of 200 and its
+// Settings at the longest data it allows (#1735): a persona’s handle of 24 characters, its description of 200 and its
 // host’s name of 60. At every width each row shows its host and its description whole, the bar under the list keeps
 // its controls for the picked row in view, and a persona’s form shows all of its description and keeps its actions under it.
 

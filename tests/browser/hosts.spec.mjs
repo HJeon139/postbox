@@ -36,7 +36,7 @@ async function adding(page) {
   freshHost(app, fake);
   const settings = await openHosts(page, app);
   await expect.soft(settings.getByText('No hosts yet.'), 'with no hosts, it says so').toBeVisible();
-  // + in the list’s bar shows the New host form (#558), whose Add host is pinned under it.
+  // + in the list’s bar shows the New host form (#1735), whose Add host is pinned under it.
   await settings.getByRole('button', { name: 'Add a host', exact: true }).click();
   const form = settings.getByRole('region', { name: 'Add a host' });
   const field = form.getByRole('textbox', { name: 'SSH destination' });
@@ -133,7 +133,7 @@ const fields = (c, project) => ({
   deny: c.getByRole('checkbox', { name: 'Deny permission prompts instead of waiting (unattended runs)' }),
   signIn: c.getByRole('textbox', { name: 'Sign-in check' }),
   folder: c.getByRole('textbox', { name: project.name, exact: true }),
-  // Pinned under the sheet, not in the card (#558).
+  // Pinned under the sheet, not in the card (#1735).
   save: c.page().getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Save', exact: true }),
 });
 

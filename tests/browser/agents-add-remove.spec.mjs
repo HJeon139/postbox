@@ -1,4 +1,4 @@
-// #1620, #558: a room’s members are added and removed in one place, the Members list of the room’s form in the main
+// #1620, #1735: a room’s members are added and removed in one place, the Members list of the room’s form in the main
 // menu, whose + adds an agent the person has in one pick and whose − removes the one picked, as a list’s + and − do in
 // macOS. The Agents header’s button and the conversation’s ⋯ only go there.
 

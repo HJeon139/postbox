@@ -1,4 +1,4 @@
-// The main menu’s Projects (#558): the list of projects, each with its folder, where its pushes go and its actions,
+// The main menu’s Projects (#1735): the list of projects, each with its folder, where its pushes go and its actions,
 // and a form for one at a time: a new project, or the repository a project pushes to. Moved out of app/js/sheets.mjs.
 
 import { api, client } from './client.mjs';

@@ -80,7 +80,7 @@ test('#1326 the New agent sheet’s Create agent stays under the pointer while i
   expect.soft(under, 'Create agent is still under the pointer').toBe('Create agent');
 });
 
-test('#558 Settings takes the full height on every tab, so switching tabs moves no tab', async ({ page }) => {
+test('#1735 Settings takes the full height on every tab, so switching tabs moves no tab', async ({ page }) => {
   const persona = started.app.rt.createPersona({ handle: 'fits', backend: 'claude-code' });
   await page.goto(`${started.app.origin}/`);
   await synced(page, started.app);

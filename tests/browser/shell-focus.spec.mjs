@@ -65,7 +65,7 @@ test('#26 new agent: Space on a Tools checkbox keeps focus on it', async ({ page
   // From the conversation’s ⋯: the overview’s New agent went with it (#320).
   await open(page, `#/t/${threadNamed('Index planning').id}`);
   await actions(page).click();
-  // The room’s members are in its form in the main menu (#558): + there lists the agents not here, then New agent.
+  // The room’s members are in its form in the main menu (#1735): + there lists the agents not here, then New agent.
   await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
   await page.getByRole('button', { name: 'Add an agent to Index planning' }).click();
   await page.getByRole('menuitem', { name: /^New agent/ }).click();
@@ -116,7 +116,7 @@ test('#26 ⋯ › Manage room and members… › + › New agent… by keyboard,
   await page.keyboard.press('Enter');
   await focusIs(page, /^menuitem: Manage room and members…/);
   await page.keyboard.press('Enter');
-  // The Members list’s + (#558) opens its picker (#1620): the agents not here, then New agent, last, one ArrowUp away.
+  // The Members list’s + (#1735) opens its picker (#1620): the agents not here, then New agent, last, one ArrowUp away.
   await page.getByRole('button', { name: 'Add an agent to Index planning' }).focus();
   await page.keyboard.press('Enter');
   await page.keyboard.press('ArrowUp');
@@ -189,7 +189,7 @@ test('#26 ⋯ › the room’s title by keyboard returns focus to ⋯ after the 
   await open(page, `#/t/${t.id}`);
   await actions(page).focus();
   await page.keyboard.press('Enter');
-  // The title is in the room’s form in the main menu (#558), which opens with focus on it.
+  // The title is in the room’s form in the main menu (#1735), which opens with focus on it.
   await focusIs(page, /^menuitem: Manage room and members…/);
   await page.keyboard.press('Enter');
   await expect(dialog(page)).toBeVisible();

@@ -180,7 +180,7 @@ test('#562 a push the person confirmed is Postbox’s own, to the repository the
     await page.locator('header.topbar').getByRole('button', { name: 'Settings', exact: true }).click();
     const settings = page.getByRole('dialog', { name: 'Settings' });
     await settings.getByRole('tab', { name: 'Projects' }).click();
-    // The project’s form, from its row’s Edit (#558).
+    // The project’s form, from its row’s Edit (#1735).
     await settings.locator('li[role="option"]', { hasText: 'Check' }).click();
     await settings.getByRole('button', { name: 'Edit Check', exact: true }).click();
     await settings.getByLabel('Repository to push to').fill(REPO);

@@ -678,7 +678,7 @@ export function confirmDeleteThread(threadId, deleted = () => {}) {
   });
 }
 
-/** A conversation or room’s title is edited in the main menu’s form for it (#558): this goes there, to its Title. */
+/** A conversation or room’s title is edited in the main menu’s form for it (#1735): this goes there, to its Title. */
 export function openRename(threadId) {
   openSettings('rooms', threadId);
 }
@@ -771,7 +771,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
   const panel = h('div', { role: 'tabpanel', style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // The tabs and the panel repaint together; focus stays on the tab or control you used (#26).
   const paint = () => keepFocus(tabs.parentElement, repaint);
-  // The tab’s actions, pinned under the sheet’s body so none scrolls out of sight (#558): a tab hands them to setFoot.
+  // The tab’s actions, pinned under the sheet’s body so none scrolls out of sight (#1735): a tab hands them to setFoot.
   const { foot, setFoot } = pinnedFoot();
   const repaint = () => {
     setFoot();
@@ -864,7 +864,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
     const runBox = h('div.form-grid');
     const paintRun = () => keepFocus(runBox, () => fill(runBox, backendFields(run, paintRun, { idp: 'pe', personaId: p.id })));
     paintRun();
-    // All of it in view: a description runs to 200 characters, which one line would hide most of (#558).
+    // All of it in view: a description runs to 200 characters, which one line would hide most of (#1735).
     const desc = h('textarea.textarea', { id: 'pe-d', rows: 2, style: { minHeight: '52px' } }, p.description);
     const ins = h('textarea.textarea', { id: 'pe-i', style: { minHeight: '100px' } }, p.instructions);
     return [
@@ -955,10 +955,10 @@ export function openSettings(tab = 'appearance', personaId = null) {
   };
   paint();
   const dlg = openDialog({ title: 'Settings', size: 'lg', body: [panel], foot, onClose: () => letGo() });
-  // The tabs stay put while a panel scrolls (#558).
+  // The tabs stay put while a panel scrolls (#1735).
   panel.parentElement?.before(tabs);
   if (foot.parentElement) foot.parentElement.hidden = !foot.children.length;
-  // One height on every tab (decided 23 November 2026, #558): switching tabs moves no tab under the pointer, and a
+  // One height on every tab (decided 23 November 2026, #1735): switching tabs moves no tab under the pointer, and a
   // persona’s MCP servers and skills, which come after it opens, move nothing either (#1326).
   fullHeight(dlg.dialog, true);
   const letGo = holdSheet(dlg.dialog);
