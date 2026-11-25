@@ -16,6 +16,7 @@ import { ATTACH_IMAGE_TRIGGERS } from './attach-image-triggers.mjs';
 import { DELIVERY_TRIGGERS } from './delivery-triggers.mjs';
 import { DISMISS_TRIGGERS } from './dismiss-triggers.mjs';
 import { GIT_PUSH_TRIGGERS } from './gitpush-triggers.mjs';
+import { PROFILE_TRIGGERS } from './profile-triggers.mjs';
 import { REFUSAL_TRIGGERS } from './refusal-triggers.mjs';
 import { REVIEW_FIGURE_TRIGGERS } from './review-figures-triggers.mjs';
 import { NEEDS_TRIGGERS } from './room-checks-needs.mjs';
@@ -49,6 +50,7 @@ export const TRIGGERS = {
   ...MEASURE_TRIGGERS,
   ...REVIEW_FIGURE_TRIGGERS,
   ...DISMISS_TRIGGERS,
+  ...PROFILE_TRIGGERS,
   ...ASK_QUESTION_TRIGGERS,
   ...ATTACH_IMAGE_TRIGGERS,
   ...SWITCH_TRIGGERS,

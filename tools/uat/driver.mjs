@@ -8,6 +8,7 @@ import { js, sleep } from '../browser.mjs';
 import { targetScript } from './app-target.mjs';
 import { agentPanel } from './driver-panel.mjs';
 import { pointer } from './driver-pointer.mjs';
+import { saveProfile } from './driver-profile.mjs';
 import { newProject } from './driver-projects.mjs';
 import { review } from './driver-review.mjs';
 import { keeper, shots } from './driver-shots.mjs';
@@ -281,6 +282,7 @@ export function driver(page, hooks = {}) {
 
     /** Presses an app’s Expand (full screen) button and reports whether anything visibly changed. */
     agentPanel: (handle, set = {}) => agentPanel({ ev, clickAt, press, page }, handle, set),
+    saveProfile: (fills) => saveProfile({ ev, clickAt, press, page }, fills),
 
     /** Opens a view in the right pane: Work by its top-bar button, or the thread on an item (#146). Returns both views’ sizes. */
     async openPane(view, key = null) {
