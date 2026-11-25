@@ -74,6 +74,12 @@ test('Hosts: the pick’s status shows under the list, − and Edit name it, + s
   await expect(rows).toHaveCount(2);
   await expect(rows.first()).toHaveAttribute('aria-selected', 'true');
   await expect(rows.first()).toContainText('Not heard from yet');
+  // The arrow keys move the pick and focus goes with it, though the tab draws again to show the pick’s status.
+  await rows.first().focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(rows.nth(1)).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(rows.first()).toBeFocused();
   // One host’s card at a time: the pick’s.
   await expect(dialog.getByRole('region', { name: first, exact: true })).toBeVisible();
   await expect(dialog.getByRole('region', { name: second, exact: true })).toHaveCount(0);
@@ -88,6 +94,11 @@ test('Hosts: the pick’s status shows under the list, − and Edit name it, + s
   await expect(dialog.getByRole('button', { name: 'Add a host', exact: true })).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(dialog.getByRole('button', { name: `Edit settings for ${second}`, exact: true })).toBeFocused();
+  // Another host picked closes an editor left open, without saving, and picking this one again doesn’t bring it back.
+  await dialog.getByRole('button', { name: `Edit settings for ${second}`, exact: true }).click();
+  await rows.first().click();
+  await rows.nth(1).click();
+  await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   // +: the New host form in the list’s place, and back.
   await dialog.getByRole('button', { name: 'Add a host', exact: true }).click();
   await expect(dialog.getByRole('textbox', { name: 'SSH destination' })).toBeFocused();

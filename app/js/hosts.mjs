@@ -120,6 +120,8 @@ const view = (p) => {
       p.editing = null;
       p.draft = null;
       p.paint();
+      // The repaint drew the list again: focus goes to the pick in it, so the arrow keys go on from there.
+      /** @type {HTMLElement | null} */ (p.root.querySelector('.pick-list [aria-selected="true"]'))?.focus();
     },
     open: (r) => openEditor(p, S().hosts[r.key]),
     controls: (r) => hostBar(p, r && S().hosts?.[r.key]),
