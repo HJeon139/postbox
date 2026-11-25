@@ -89,7 +89,7 @@ const commenter = (author) => (author === PERSON ? 'The person' : authorName(aut
 const toWhom = (i) => (i.to?.length ? ` to ${i.to.map((/** @type {string} */ h) => `@${h}`).join(', ')}` : '');
 
 /** The person’s message as a line: “The person, to @alpha: …”, or “The person: …” for one with no recipients kept. */
-const personSaid = (i) => (i.to?.length ? `The person,${toWhom(i)}` : 'The person');
+const personSaid = (i) => (i.to?.length ? `${i.by?.label ?? 'The person'},${toWhom(i)}` : (i.by?.label ?? 'The person'));
 
 /** A bulleted list, one line per entry. */
 const lines = (list) => list.map((x) => `- ${x}`).join('\n');

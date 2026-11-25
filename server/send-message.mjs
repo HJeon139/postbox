@@ -15,9 +15,10 @@ import { retireStale } from './wake-cards.mjs';
  * `clientId`: the id the page’s outbox gives the message, which it sends again when the response to a try was lost. A
  * repeat is answered with what the first try posted, and stores nothing (#1138).
  * @param {any} rt @param {string} threadId
- * @param {{ text?: string, attachments?: any[], sendNow?: boolean, clientId?: unknown }} [message]  as the route has it
+ * @param {{ text?: string, attachments?: any[], sendNow?: boolean, clientId?: unknown, by?: any }} [message]  as the route has it;
+ *   `by`: who sent it (#558), set by the request gate and never by the page
  */
-export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined } = {}) {
+export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined, by = undefined } = {}) {
   // As written: a conversation just started behind a held commit isn’t published yet, and its first message is sent (#1292).
   const t = rt.threads.toWrite(threadId);
   // First, before whom it goes to is worked out again: with no @-mention that’s the last speaker, who may have changed
@@ -37,7 +38,9 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   if (t.kind === 'side') throw httpError(409, 'Side threads are read-only now. Write in the conversation, where the agents talk.');
   // Refuse before anything is posted or joined: a turn for an agent whose backend isn’t registered couldn’t start (#874).
   rt.placement.refuseUnregisteredSend(mentioned);
-  const targets = targetsOf(rt, t, mentioned);
+  // A message that @-mentions only people is for them (#558): it wakes no agent, and goes to their queues (server/seats.mjs).
+  const forPeople = !mentioned.length && parseMentions(text, rt.people?.handles() ?? []).length > 0;
+  const targets = forPeople && t.kind !== 'topic' ? [] : targetsOf(rt, t, mentioned);
   // With run clocks on: Send now would start a turn a clock holds, which it would only hold (#1526).
   if (sendNow && rt.runClock) for (const { se } of targets) refuseWhileHeld(rt, se.id, 'send-now');
   // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
@@ -49,6 +52,8 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
     threadId,
     { text, attachments },
     targets.map(({ se }) => se.handle),
+    // Who sent it (#558), as the gate resolved them: what the page and the agents read as its author.
+    by ? { by } : {},
   );
   const entries = targets.map(({ se }) =>
     rt.delivery.send({ sessionId: se.id, threadId, source: 'person', itemId: item.id, from: 'you', retryId }, { wake: false }),

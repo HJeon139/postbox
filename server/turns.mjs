@@ -85,8 +85,13 @@ export function inputOf(rt, se, { entries, as }, where) {
   const tail = [...room.tail, ...inThread.lines];
   const root = inThread.root ?? room.root;
   // A newer message from one of its senders waiting in another thread is named, so it can read that one first (#734).
-  const notes = [...newerElsewhere(rt, se.id, threadId, entries), ...room.notes];
-  const text = turnInput({ entries, thread, read, tail, notes, root, waitingElsewhere: elsewhere, wroteOnly: wroteOnlyTo(rt, se, where) });
+  // Who the people are, in their own words (#558): nothing while one person has written no profile.
+  const who = rt.people?.facts() ?? [];
+  const people = who.length ? [`[Postbox] The people here, as each described themselves:\n${who.join('\n')}`] : [];
+  const notes = [...newerElsewhere(rt, se.id, threadId, entries), ...room.notes, ...people];
+  // A person’s message names its sender where the room has more than one, or they wrote a profile (#558).
+  const named = entries.map((e) => (e.source === 'person' && e.itemId ? { ...e, fromName: rt.store.pending.item(e.threadId, e.itemId)?.by?.label } : e));
+  const text = turnInput({ entries: named, thread, read, tail, notes, root, waitingElsewhere: elsewhere, wroteOnly: wroteOnlyTo(rt, se, where) });
   const attachments = entries.flatMap((e) => (e.itemId ? (rt.store.pending.item(e.threadId, e.itemId)?.attachments ?? []) : []));
   // The threads the person’s messages link to, each with how to read it (threadRefs, #121), ride with it.
   const links = entries.flatMap((e) => (e.source === 'person' && e.itemId ? threadRefs(rt, e.threadId, read(e.itemId) ?? '') : []));

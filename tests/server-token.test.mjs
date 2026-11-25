@@ -42,6 +42,8 @@ const pageCookie = async () => {
 const WRITE_ROUTES = {
   'POST /api/store/retry': ['/api/store/retry'],
   'POST /api/threads': ['/api/threads'],
+  'PATCH /api/me': ['/api/me'],
+  'POST ^\\/api\\/me\\/queue\\/([^/]+)$': ['/api/me/queue/en_none'],
   'DELETE ^\\/api\\/threads\\/([^/]+)$': ['/api/threads/th_none'],
   'PATCH ^\\/api\\/threads\\/([^/]+)$': ['/api/threads/th_none'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/messages$': ['/api/threads/th_none/messages'],

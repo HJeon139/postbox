@@ -138,6 +138,8 @@ const GET_ROUTES = {
   // The agents’ MCP endpoint takes POST alone: a GET is refused before anything is read.
   '/mcp': { paths: () => ['/mcp'], status: 405 },
   '/api/state': { paths: () => ['/api/state'], status: 200 },
+  // Who is looking and the people here (#558): none of the store’s private keys.
+  '/api/me': { paths: () => ['/api/me'], status: 200 },
   '/api/stream': { paths: () => [], status: 200 }, // read as a stream above
   '^\\/api\\/threads\\/([^/]+)\\/(items|search)$': {
     paths: (i) => [`/api/threads/${i.thread}/items?asks=20&head=20`, `/api/threads/${i.thread}/search?q=secret`],

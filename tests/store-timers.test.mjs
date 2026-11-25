@@ -32,6 +32,7 @@ const PLACED = {
   'adapters/codex-models.mjs': 1, // kills a CLI probe: no store
   'adapters/codex-remote.mjs': 1, // an interrupt’s reach: no store
   'adapters/kiro-cli-models.mjs': 1, // kills a CLI probe: no store
+  'adapters/mock-person.mjs': 1, // a scripted person’s pacing, as the mock’s: no store (#558)
   'adapters/mock.mjs': 1, // the mock’s pacing: no store
   'adapters/process-group.mjs': 4, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'app-check-wait.mjs': 1, // a show_app or update_app reply that stops waiting for its app’s check: no store (#337)
@@ -39,6 +40,7 @@ const PLACED = {
   'claude-mirror.mjs': 1, // the mirror’s poll of an attached session’s transcript: skips its tick while closed
   'diagram-parse.mjs': 1, // ends a diagram parse that took too long, by ending its worker: no store (#731)
   'diagram-parse-worker.mjs': 2, // the timer functions the worker’s stand-in page hands Mermaid: another thread, no store (#731)
+  'identity/alb.mjs': 1, // gives up on a fetch of the load balancer’s public key: no store (#558)
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
   'lint-delivery.mjs': 5, // an injected setTimer before a lint turn: a start, held by heldTurn while closed
   'live-buffer.mjs': 1, // a turn’s coalesced session frame, at the end of its tick: sendLive, which holds it behind the store’s held writes
@@ -48,6 +50,7 @@ const PLACED = {
   'net-fetch.mjs': 1, // net.fetch’s deadline, which ends a fetch: no store
   'net-fetch-line.mjs': 1, // the wait between patches of a fetch’s activity step: gated, skips its patch while closed
   'permission-cards.mjs': 1, // expireWait: gated
+  'seats.mjs': 1, // a mention’s entry for a person, after its message’s own write: skips while closed (#558)
   'turn-run.mjs': 1, // a microtask: a host turn attached again while its run clock holds the agent is stopped as its adapter follows it; Stop is allowed while closed
   'run-clock.mjs': 2, // a run clock’s expiry, and its timers’ type: stops the turn, which is allowed while closed; its record waits through whenWritable, and Retry re-arms it
   'remote/host-admin.mjs': 1, // a wait: no store

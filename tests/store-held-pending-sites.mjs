@@ -32,7 +32,8 @@ export const PENDING = {
   // and the thread a summary request summarizes, maybe opened behind a held commit, for where its reply posts (#1425)
   // and an input’s entries’ items, their files and its thread, maybe written in the same held write (#1427); and
   // whether a review’s block is still answered when its entry starts the turn (#716)
-  'turns.mjs': ['inputOf', 'inputOf', 'readItem', 'summaryOf', 'messageOf', 'messageOf', 'personMessage'],
+  // inputOf’s third: who sent each of the turn’s own entries (#558), read as the turn starts, as their text is.
+  'turns.mjs': ['inputOf', 'inputOf', 'inputOf', 'readItem', 'summaryOf', 'messageOf', 'messageOf', 'personMessage'],
   'turn-service.mjs': ['retryEntries'], // whether the session a Retry wakes is still failed, maybe written behind a held commit (#1429)
   'queue-convert.mjs': ['convertOne', 'convertOne', 'notDelivered'], // the agents a stored queue's row waited for or came from, and the item an earlier conversion posted for it, read as the start's writes leave them (#1423)
   // A wake's schedule, maybe just scheduled, changed or removed behind a held commit: arming its timer, firing it,

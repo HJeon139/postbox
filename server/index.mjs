@@ -23,6 +23,7 @@ import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { dataFolder } from './home.mjs';
 import { hostsRoute } from './hosts-routes.mjs';
+import { whoIs } from './identity/session.mjs';
 import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
 import { liveStreams } from './live-streams.mjs';
@@ -174,7 +175,10 @@ export async function start({
     req.headers['sec-fetch-mode'] === 'navigate' || req.headers['sec-fetch-site'] === 'same-origin' || req.headers['sec-fetch-site'] === 'none';
 
   // Who it answers before any route, and what runs only on this computer alone (server/request-gate.mjs).
-  const gate = requestGate({ port, host: () => host });
+  // Who each request is from (#558): the unix user here, or whoever the load balancer signed in, at the address it serves.
+  const who = whoIs({ rt, dataDir, port });
+  if (who.front.listen) host = who.front.listen;
+  const gate = requestGate({ port, host: () => host, front: who.front, local: who.local });
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
   const { streams, stop: stopStreams, stream, headers } = liveStreams(store, undefined, { running: rt.running });
@@ -207,7 +211,7 @@ export async function start({
     const url = new URL(req.url, origin);
     const path = url.pathname;
     const host = (req.headers.host ?? '').toLowerCase();
-    gate.admit(req);
+    if (gate.admit(req, path) === 'health') return raw(res, 200, 'ok');
     // Every write needs the page’s token (#74), except /mcp, where agents call Postbox’s tools with their session.
     if (req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && !hasToken(req))
       throw Object.assign(
@@ -217,6 +221,8 @@ export async function start({
         ),
         { code: 'token' },
       );
+
+    const person = await who.of(req, path);
 
     // While the store can’t be written (#508’s storage design, “When a write fails (ST-3)”), every write is refused here
     // with the cause, before it reaches the runtime; reads, Retry and Stop still answer. The tools have the same gate
@@ -235,7 +241,10 @@ export async function start({
       return file(
         res,
         await servedFile(STATIC['/app/'], 'index.html'),
-        { ...appHeaders(config), ...(fromBrowser(req) ? { 'set-cookie': `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/` } : {}) },
+        {
+          ...appHeaders(config),
+          ...(fromBrowser(req) ? { 'set-cookie': `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/${who.front.secure ? '; Secure' : ''}` } : {}),
+        },
         req,
       );
     if (path === '/favicon.svg') return file(res, await servedFile(BUNDLED_MEDIA, 'favicon.svg'), {}, req);
@@ -260,7 +269,8 @@ export async function start({
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 
-    if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, headers }));
+    if (path === '/api/state' && req.method === 'GET')
+      return send(res, 200, { ...pageState({ store, rt, adapters, origin, demo, real, config, headers }), who: who.page(person) });
     // A conversation’s items by range, and its search (#1155).
     const itemsDid = itemsRoute(store, search, path, req.method, url, headers);
     if (itemsDid) return send(res, 200, itemsDid);
@@ -306,10 +316,14 @@ export async function start({
 
     const body = req.method === 'POST' || req.method === 'PATCH' || req.method === 'PUT' ? (path === '/api/files' ? null : await json(req)) : null;
 
+    // A person’s own (#558): who they are here, their profile, and their queue.
+    if (path === '/api/me' && req.method === 'GET') return send(res, 200, who.page(person));
+    if (path === '/api/me' && req.method === 'PATCH') return send(res, 200, who.edit(person, body));
+    if ((m = path.match(/^\/api\/me\/queue\/([^/]+)$/)) && req.method === 'POST') return send(res, 200, who.settle(person, m[1], body));
     if (path === '/api/threads' && req.method === 'POST') return send(res, 201, rt.createThread(body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, patchThread(rt, m[1], body));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, who.sendAs(m[1], body, person));
     // A backend’s models, asked of its harness when a model field opens, here or on body.hostId’s host
     // (server/model-lists.mjs). A POST, so the page’s token gates the process it starts.
     if ((m = path.match(/^\/api\/backends\/([^/]+)\/models$/)) && req.method === 'POST')

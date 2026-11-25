@@ -35,7 +35,7 @@ const SOURCE_NOTE = {
 
 /** Who an entry is from: the person, an agent by its handle, or Postbox for what no one wrote. */
 function sender(/** @type {Entry} */ e) {
-  if (e.from === 'you') return 'The person';
+  if (e.from === 'you') return /** @type {any} */ (e).fromName ?? 'The person';
   return e.from ? `@${e.from}` : 'Postbox';
 }
 
