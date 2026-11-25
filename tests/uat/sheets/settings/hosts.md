@@ -11,7 +11,7 @@ Agents can run on another computer you reach with `ssh`. Its hosts are managed a
 - **The list** has each host by name with its status in a line (“Not heard from yet” until its daemon answers), in the order they were added. The first is picked.
 - A click or the arrow keys move the pick, and focus goes with it. One card shows, the pick’s, with its status, what its daemon found, and Install….
 - **The bar**, pinned under the sheet: + (Add a host), − (Remove, which asks first) and Edit, each naming the pick.
-- + shows the New host form in the list’s place, with focus in SSH destination, Add host pinned under it, and “All hosts” to go back with the pick kept. The host you add is picked.
+- The bar’s + shows the New host form in the list’s place, with focus in SSH destination, Add host pinned under it, and “All hosts” to go back with the pick kept. The host you add is picked.
 - Edit, Enter or a double click opens the picked host’s settings in its card, with Save and Cancel pinned under the sheet in the bar’s place. Cancel returns focus to Edit. Picking another host closes an editor left open, without saving.
 - The list draws again when a host’s status changes; a control of the bar that had focus keeps it.
 

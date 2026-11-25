@@ -10,7 +10,7 @@ A room’s title, its members and its limits were each changed somewhere else: a
 
 - **The list** has every conversation and room by title, each with its agents and its project. The first row is picked. A click or the arrow keys move the pick, and focus goes with it.
 - **The bar**, pinned under the sheet, acts on the pick and names it: + (New room), − (Delete…), Edit and Open. All four are in view at once, at every width.
-- + leaves the menu for the [New room sheet](../new-conversation-and-room.md), in the project that’s open. Open leaves it for the room.
+- The bar’s + leaves the menu for the [New room sheet](../new-conversation-and-room.md), in the project that’s open. Open leaves it for the room.
 - − opens the [delete confirm](../delete-conversation.md) over the menu. Cancel returns to the list, with focus on −. Once the room is deleted, the menu closes.
 - Edit, Enter or a double click shows **the room’s form** in the list’s place, with focus in Title, and “All rooms” to go back with the pick kept.
 - **Title:** Enter or Save saves it. Opened from the list, Save goes back to the list; opened from the room itself, Save closes the menu and focus returns to where you opened it. There is no rename sheet of its own.

@@ -23,7 +23,7 @@ Postbox knows who you are (#558), and a room’s Members list shows people besid
 
 ## Accessibility
 
-- + and − are announced as off, with the reason as their description.
+- The bar’s + and − are announced as off, with the reason as their description.
 
 ## How to check
 
