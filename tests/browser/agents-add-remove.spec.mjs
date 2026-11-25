@@ -89,6 +89,12 @@ test.describe('at 1280 px', () => {
     expect(handlesIn(t)).toEqual(['indexer', 'librarian']);
     await expect(page.locator('.sys-line', { hasText: 'indexer joined' })).toBeVisible();
     await expect(minus, 'two agents: − is on').toHaveAttribute('aria-disabled', 'false');
+    // A person is in every room: picked, − is off, says why, and a press asks nothing.
+    await list.getByRole('option').filter({ hasText: 'person' }).click();
+    await expect(minus).toHaveAttribute('aria-description', 'A person of this Postbox is in every room. Only an agent is added to a room or removed from it.');
+    await minus.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('alertdialog'), 'a press does nothing').toHaveCount(0);
   });
 });
 
