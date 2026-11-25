@@ -82,7 +82,6 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
 - **sheets/**
   - [New agent sheet](sheets/new-agent.md)
   - [New conversation and New room](sheets/new-conversation-and-room.md)
-  - [Rename](sheets/rename.md)
   - [Wake chain limit](sheets/wake-chain-limit.md)
   - [Delete conversation](sheets/delete-conversation.md)
   - [Delete session](sheets/delete-session.md)
@@ -93,6 +92,9 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Settings: Profile](sheets/settings/profile.md)
     - [Settings: Personas](sheets/settings/personas.md)
     - [Settings: Projects](sheets/settings/projects.md)
+    - [Settings: Rooms, and a room’s form](sheets/settings/rooms.md)
+    - [Settings: People](sheets/settings/people.md)
+    - [Settings: Hosts](sheets/settings/hosts.md)
     - [Settings: Backends](sheets/settings/connect-an-agent.md)
 
 ## Runs
