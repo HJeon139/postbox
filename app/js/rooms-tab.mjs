@@ -127,7 +127,11 @@ function roomForm(
     sectionHead('Members'),
     members.list,
     members.bar,
-    h('span.help', 'The people of this Postbox are in every room. + adds an agent you have, and − removes the one picked.'),
+    // Why − can be off, in words on the page: a title shows only under a pointer.
+    h(
+      'span.help',
+      'The people of this Postbox are in every room, and a room keeps at least one agent. + adds an agent you have, and − removes the one picked.',
+    ),
     sectionHead('More'),
     h(
       'div.row-flex.wrap',

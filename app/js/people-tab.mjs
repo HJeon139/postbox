@@ -32,5 +32,10 @@ export function peopleTab(go, setFoot, at) {
     ],
   });
   setFoot(bar);
-  return [list, h('span.help', 'Everyone here sees every room and each other’s profile. What agents are told of a person is what that person saved.')];
+  return [
+    list,
+    // Why + and − are off, in words on the page: a title shows only under a pointer.
+    h('span.help', theirs),
+    h('span.help', 'Everyone here sees every room and each other’s profile. What agents are told of a person is what that person saved.'),
+  ];
 }

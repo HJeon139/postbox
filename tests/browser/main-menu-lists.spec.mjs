@@ -61,6 +61,8 @@ test('People: + and − are in view and off, saying why, and Edit goes to your o
     await expect(sign).toHaveAttribute('aria-description', 'On this computer, you are the account Postbox runs as. There is no one to add or remove.');
   }
   await dialog.getByRole('button', { name: 'Edit your profile' }).click();
+  // The why is in words on the page too: a title shows only under a pointer.
+  await expect(dialog.locator('.help', { hasText: 'On this computer, you are the account Postbox runs as. There is no one to add or remove.' })).toBeVisible();
   await expect(dialog.getByRole('tab', { name: 'Profile' })).toHaveAttribute('aria-selected', 'true');
   await expect(dialog.getByLabel('Name')).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Save profile' })).toBeInViewport({ ratio: 1 });

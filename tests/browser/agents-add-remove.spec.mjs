@@ -73,6 +73,8 @@ test.describe('at 1280 px', () => {
     await expect(minus).toHaveAttribute('aria-disabled', 'true');
     await expect(minus).toHaveCSS('opacity', '0.5');
     await expect(minus).toHaveAttribute('aria-description', LAST);
+    // And in words on the page: a title shows only under a pointer.
+    await expect(page.getByRole('dialog', { name: 'Settings' }).locator('.help', { hasText: 'a room keeps at least one agent' })).toBeVisible();
     await minus.focus();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('alertdialog'), 'a press does nothing').toHaveCount(0);
