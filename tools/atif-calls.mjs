@@ -8,6 +8,16 @@
 // server/harness-text.mjs) are no call: they’re the reply’s narration, in its extra.
 
 import { READ_TOOLS } from '../shared/work.mjs';
+import { iso } from './atif-time.mjs';
+
+/** The most of one call's output a result carries, in characters: a longer one is cut, and says so. */
+export const RESULT_CHARS = 16_384;
+
+/** An output as a result's content, cut at RESULT_CHARS. @param {string} text */
+const resultContent = (text) =>
+  text.length > RESULT_CHARS
+    ? `${text.slice(0, RESULT_CHARS)}\n[cut by the exporter: ${RESULT_CHARS.toLocaleString('en-US')} of ${text.length.toLocaleString('en-US')} characters]`
+    : text;
 
 /** The work ledger’s entries for one call that keep its arguments: a command, an external MCP call and a read. */
 export const CALL_KINDS = new Set(['command', 'external', 'read']);
@@ -63,11 +73,13 @@ const argumentsSource = (w, args, asked) => {
 };
 
 /**
- * The tool calls, their results, the thoughts and the narration of one reply.
+ * The tool calls, their results, the thoughts and the narration of one reply. A call's start time and exit code are its
+ * ledger entry's; its output is what a live frame showed, else the store's blob the ledger names (`output.sha256`).
  * @param {any} it  the reply, with its steps @param {Map<string, any>} ledger  the work ledger’s calls, by tool call id
  * @param {Map<string, any[]>} [questions]  each AskUserQuestion call’s blocks, by its id
+ * @param {(sha256: string) => string | null} [blob]  a stored blob's text, or null when it isn't there
  */
-export function callsOf(it, ledger, questions = new Map()) {
+export function callsOf(it, ledger, questions = new Map(), blob = () => null) {
   const steps = [...it.steps.values()].filter((s) => s.label && s.kind !== 'reply');
   const thoughts = steps.filter((s) => s.kind === 'thought').map((s) => s.detail ?? s.label);
   const narration = steps.filter((s) => s.kind === 'said').map((s) => ({ step_id: s.id, text: s.detail ?? s.label, ...(s.who ? { who: s.who } : {}) }));
@@ -85,6 +97,8 @@ export function callsOf(it, ledger, questions = new Map()) {
         label: s.label,
         state: s.state ?? null,
         ...(typeof s.ms === 'number' ? { ms: s.ms } : {}),
+        ...(iso(w?.at) ? { started_at: iso(w.at) } : {}),
+        ...(typeof w?.exit === 'number' ? { exit: w.exit } : {}),
         ...(s.kind ? { kind: s.kind } : {}),
         ...(name ? {} : { function_name: 'not recorded' }),
         arguments_source: argumentsSource(w, args, asked),
@@ -93,9 +107,12 @@ export function callsOf(it, ledger, questions = new Map()) {
       },
     };
   });
-  const results = calls
-    .filter((s) => typeof s.output === 'string' || typeof s.detail === 'string')
-    .map((s) => ({ source_call_id: s.id, content: s.output ?? s.detail }));
+  const results = calls.flatMap((s) => {
+    if (typeof s.output === 'string' || typeof s.detail === 'string') return [{ source_call_id: s.id, content: s.output ?? s.detail }];
+    const h = ledger.get(s.id)?.output?.sha256;
+    const text = typeof h === 'string' ? blob(h) : null;
+    return typeof text === 'string' ? [{ source_call_id: s.id, content: resultContent(text) }] : [];
+  });
   return { tool_calls, results, thoughts, narration };
 }
 

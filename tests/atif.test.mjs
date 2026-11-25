@@ -176,6 +176,8 @@ test('a tool call names the tool its harness ran, with the arguments the work le
         label: 'Print CLAUDE_EFFORT environment variable',
         state: 'done',
         ms: reply.tool_calls[0].extra.ms,
+        started_at: '2026-11-20T01:52:56.530Z',
+        exit: 0,
         arguments_source: 'work ledger',
         display_input: 'command: printenv CLAUDE_EFFORT',
       },
