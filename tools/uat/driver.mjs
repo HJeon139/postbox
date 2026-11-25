@@ -8,6 +8,7 @@ import { js, sleep } from '../browser.mjs';
 import { targetScript } from './app-target.mjs';
 import { agentPanel } from './driver-panel.mjs';
 import { pointer } from './driver-pointer.mjs';
+import { newProject } from './driver-projects.mjs';
 import { review } from './driver-review.mjs';
 import { keeper, shots } from './driver-shots.mjs';
 import { pressKey } from './keys.mjs';
@@ -73,15 +74,7 @@ export function driver(page, hooks = {}) {
     // What tools/uat/driver-hosts.mjs drives the Hosts tab and a persona’s Runs on with (#120).
     kit: { ev, clickAt, press, page },
 
-    async newProject(name, folder) {
-      await clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
-      await clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Projects'), 'the Projects tab');
-      await typeInto(`document.getElementById('pj-n')`, name, 'the project name field');
-      await typeInto(`document.getElementById('pj-f')`, folder, 'the project folder field');
-      await clickAt(byText('document.querySelector(".dialog")', 'button', 'Create project'), 'Create project');
-      await sleep(400);
-      await press('Escape');
-    },
+    newProject: (name, folder) => newProject({ clickAt, typeInto, press }, name, folder),
 
     /** Opens a project from the Postbox menu, then starts a conversation (or room) with these agents. */
     async newConversation(project, title, handles) {
