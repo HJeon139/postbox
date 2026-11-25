@@ -1,6 +1,6 @@
 // The conversation action’s and the local restart’s rules that need no page (tools/uat/conversation-step.mjs,
-// tools/uat/steps.mjs). Their clicks were tried against a Postbox of their own through a real page; the run’s
-// records are in facts.probes.conversation.
+// tools/uat/steps.mjs). Its delete and open run against the real page in tests/browser/uat-conversation-step.spec.mjs;
+// the run’s records are in facts.probes.conversation.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { delayUntil, waitUntil } from '../tools/uat/conversation-step.mjs';
@@ -84,7 +84,7 @@ test('a delete with at opens its confirm first, and presses Delete no earlier th
   const thread = { id: 'th_1', title: 'T', projectId: 'p1' };
   const c = ctx();
   c.d.kit.ev = async () => '#/t/th_1';
-  c.d.kit.clickAt = async (_expr, what) => clicks.push({ what, at: Date.now() });
+  c.d.kit.clickAt = async (expr, what) => clicks.push({ what, at: Date.now(), expr });
   // Gone from the state once the confirm’s Delete is pressed, as the server does since #1224: there is no Undo window.
   c.api = async () => ({ state: { threads: clicks.length >= 4 ? {} : { th_1: thread }, sessions: {}, projects: {} } });
   const at = new Date(Date.now() + 400).toISOString();
@@ -94,6 +94,10 @@ test('a delete with at opens its confirm first, and presses Delete no earlier th
     // Delete is in the room’s form in the main menu (#1735), which the conversation’s menu goes to.
     ['the conversation’s menu', 'Manage room and members in its menu', 'Delete… under the room’s form', 'the confirm’s Delete'],
   );
+  // The confirm is found by its role, since the main menu is a dialog still open under it, and its button is named
+  // for the kind: this one has one agent. tests/browser/uat-conversation-step.spec.mjs runs both kinds on the page.
+  assert.match(clicks[3].expr, /\.dialog\[role=alertdialog\]/);
+  assert.match(clicks[3].expr, /delete conversation/);
   assert.ok(clicks[2].at < Date.parse(at), 'the confirm opened before at');
   assert.ok(clicks[3].at >= Date.parse(at), `Delete pressed ${Date.parse(at) - clicks[3].at} ms before at`);
   assert.match(said, /waited for its at/);

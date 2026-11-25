@@ -15,6 +15,7 @@ export async function runnerPage(page, onKey = async () => {}) {
   await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
   return {
     evaluate: (/** @type {string} */ expr) => page.evaluate(expr),
+    waitFor: (/** @type {string} */ expr) => page.waitForFunction(expr),
     frameOf: async (/** @type {string} */ expr) => {
       const handle = await page.evaluateHandle(expr);
       const frame = (await handle.asElement()?.contentFrame()) ?? null;

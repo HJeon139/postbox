@@ -109,7 +109,7 @@ const AFTER = [
   ['new-agent-sheet', 'Asset explorer', q('.dialog'), 'new-agent'],
   ['new-room-sheet', 'Asset explorer', q('.dialog'), 'new-room'],
   ['rename-sheet', 'Index planning', q('.dialog'), 'rename'],
-  ['delete-conversation-sheet', 'Index planning', q('.dialog'), 'delete-conversation'],
+  ['delete-conversation-sheet', 'Index planning', q('.dialog[role=alertdialog]'), 'delete-conversation'],
   ['delete-session-sheet', 'Index planning', q('.dialog'), 'delete-session'],
   ['command-palette', 'Asset explorer', q('.dialog'), 'palette'],
   ['settings-appearance', 'Asset explorer', q('.dialog'), 'settings:appearance'],
