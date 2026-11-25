@@ -118,6 +118,8 @@ for (const width of [1280, 375])
       await expect(frame.locator('.seg')).toBeVisible();
       bad.push(...unmarked(await frame.locator('body').evaluate(amberIn), 'the app', ['seg']));
       await page.locator('header.topbar').getByRole('button', { name: 'Settings', exact: true }).click();
+      // The button opens on your profile (#558); the segments are Appearance’s.
+      await page.getByRole('dialog', { name: 'Settings' }).getByRole('tab', { name: 'Appearance' }).click();
       await expect(page.locator('.dialog .seg button[aria-checked=true]').first()).toBeVisible();
       bad.push(...unmarked(await page.evaluate(amberIn, '.dialog'), 'Settings', ['seg']));
       expect(bad).toEqual([]);
