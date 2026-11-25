@@ -20,7 +20,7 @@ import { h, icon } from './dom.mjs';
  * @returns {{ list: HTMLElement, bar: HTMLElement }}  the bar goes under the list, or in the sheet’s foot
  */
 export function pickList({ label, rows, empty, at, name, controls, open, onPick }) {
-  const bar = h('div.list-bar', { role: 'toolbar', 'aria-label': `${label}: add, remove and edit` });
+  const bar = h('div.list-bar', { role: 'toolbar', 'aria-label': `${label}: actions` });
   const picked = () => rows.find((r) => r.key === at[name]) ?? rows[0] ?? null;
   const list = h('ul.list-rows.pick-list', { role: 'listbox', 'aria-label': label });
   const draw = () => {
