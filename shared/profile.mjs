@@ -84,6 +84,13 @@ export function aboutThePerson(profile) {
 }
 
 /**
+ * The heading over what a turn says of the person. It says where the words come from: an agent given “in their own
+ * words” took them as said in the room, and told the person so (#558’s UAT run). The UAT trigger reads it from here.
+ */
+export const ABOUT_THE_PERSON = '[Postbox] About the person, from the profile they saved in Settings (not said in this conversation):';
+const ABOUT_THE_PEOPLE = '[Postbox] About the people here, each from the profile they saved in Settings (not said in this conversation):';
+
+/**
  * What a turn says of the people of this Postbox who saved a profile, or nothing while none has. With one, it is
  * “the person”, as agents have always called them; with several, each in turn.
  * @param {{ profile?: ReturnType<typeof profileOf> }[]} people @returns {string | null}
@@ -91,6 +98,6 @@ export function aboutThePerson(profile) {
 export function aboutPeople(people) {
   const told = people.map((p) => aboutThePerson(p.profile)).filter((lines) => lines.length);
   if (!told.length) return null;
-  if (told.length === 1) return `[Postbox] About the person, in their own words:\n${told[0].join('\n')}`;
-  return `[Postbox] About the people here, each in their own words:\n${told.map((lines) => lines.join('\n')).join('\n\n')}`;
+  if (told.length === 1) return `${ABOUT_THE_PERSON}\n${told[0].join('\n')}`;
+  return `${ABOUT_THE_PEOPLE}\n${told.map((lines) => lines.join('\n')).join('\n\n')}`;
 }

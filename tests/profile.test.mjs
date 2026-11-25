@@ -19,7 +19,7 @@ async function turn({ rt, t, adapter }, text = '@alpha hello') {
   assert.equal(message.kind, 'input');
   return message.text;
 }
-const HEAD = '[Postbox] About the person, in their own words:';
+const HEAD = '[Postbox] About the person, from the profile they saved in Settings (not said in this conversation):';
 /** A fixture person: nothing here reads the computer’s account. */
 const ROBIN = { provider: 'unix', issuer: 'unix:fixture', subject: 'robin', username: 'robin', name: 'Robin Example' };
 /** The fixture person saves a profile, as the route does for whoever is asking. */

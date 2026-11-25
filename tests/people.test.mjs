@@ -82,7 +82,10 @@ test('what a person saves is what agents are told, the sender still reads “The
   const saved = people.saveProfile(person, { name: 'Robin', pronouns: 'they/them' });
   assert.deepEqual([saved.id, saved.name, saved.profile], [person.id, 'Robin Example', { name: 'Robin', pronouns: 'they/them' }]);
   const text = await turn(room, '@alpha after a profile');
-  assert.ok(text.includes('[Postbox] About the person, in their own words:\n- Name: Robin\n- Pronouns: they/them'), text);
+  assert.ok(
+    text.includes('[Postbox] About the person, from the profile they saved in Settings (not said in this conversation):\n- Name: Robin\n- Pronouns: they/them'),
+    text,
+  );
   assert.match(text, /\] The person, \d\d:\d\d UTC: @alpha after a profile/);
   assert.doesNotMatch(text, /Robin Example/, 'the provider’s name isn’t told');
   // Refused whole: the profile kept is the one before.
@@ -106,5 +109,10 @@ test('the same tooling holds more than one person: each saves their own profile,
   people.saveProfile(sam, { name: 'Sam', pronouns: 'he/him' });
   assert.deepEqual([people.known(ROBIN).profile, room.rt.store.state.people[sam.id].profile], [{ name: 'Robin' }, { name: 'Sam', pronouns: 'he/him' }]);
   const text = await turn(room);
-  assert.ok(text.includes('[Postbox] About the people here, each in their own words:\n- Name: Robin\n\n- Name: Sam\n- Pronouns: he/him'), text);
+  assert.ok(
+    text.includes(
+      '[Postbox] About the people here, each from the profile they saved in Settings (not said in this conversation):\n- Name: Robin\n\n- Name: Sam\n- Pronouns: he/him',
+    ),
+    text,
+  );
 });

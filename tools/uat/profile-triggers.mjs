@@ -3,10 +3,9 @@
 // person. A run that never saved a profile never fires it, so it reads as a gap in coverage, not a pass. Whether the
 // agent then used it is the tester's to judge.
 
+import { ABOUT_THE_PERSON as HEAD } from '../../shared/profile.mjs';
 import { inputsOf } from './room-delivery.mjs';
 import { clip } from './trigger-facts.mjs';
-
-const HEAD = '[Postbox] About the person, in their own words:';
 
 /** Every prompt an agent was given in the run, with whose it was. @param {any} f */
 const prompts = (f) =>

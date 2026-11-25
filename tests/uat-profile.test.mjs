@@ -9,7 +9,8 @@ import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
 
 const prompt = (/** @type {string} */ text, at = '2026-11-26T10:00:00.000Z') => ({ type: 'user', timestamp: at, message: { role: 'user', content: text } });
-const NOTE = '[Postbox] About the person, in their own words:\n- Name: Robin\n- Also written as: robin-example (github)';
+const NOTE =
+  '[Postbox] About the person, from the profile they saved in Settings (not said in this conversation):\n- Name: Robin\n- Also written as: robin-example (github)';
 const TURN = `[Postbox] 1 message for you in this room. Your reply posts there.\n\n[it_1] The person, 10:00 UTC: @developer hello\n\n${NOTE}`;
 
 test('profile-told fires for each agent whose prompt carries the part about the person, and not before a profile is saved', () => {
