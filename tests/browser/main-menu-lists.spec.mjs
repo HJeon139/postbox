@@ -2,6 +2,7 @@
 // pick a row in, with one bar under it whose + and − act on the pick, and one form at a time.
 
 import { expect, test } from '@playwright/test';
+import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -108,4 +109,49 @@ test('Hosts: the pick’s status shows under the list, − and Edit name it, + s
   await expect(rows).toHaveCount(0);
   await dialog.getByRole('button', { name: 'All hosts' }).click();
   await expect(rows.nth(1), 'the pick is kept').toHaveAttribute('aria-selected', 'true');
+});
+
+// Last in the file: it renames a room and deletes one.
+test('Rooms: Save from the list stays in the menu, − asks over it and Cancel returns to it, and Open, + and a delete leave it', async ({ page }) => {
+  const { rt } = app;
+  const projectId = Object.values(rt.store.state.projects)[0].id;
+  const personaIds = [arrange.persona(rt, 'librarian').id];
+  const kept = rt.createThread({ projectId, title: 'Zeta keep', personaIds });
+  rt.createThread({ projectId, title: 'Zeta gone', personaIds });
+  let dialog = await menu(page, 'Rooms');
+  const list = () => dialog.getByRole('listbox', { name: 'Rooms and conversations' });
+  const row = (title) =>
+    list()
+      .getByRole('option')
+      .filter({ has: page.locator('b', { hasText: new RegExp(`^${title}$`) }) });
+  // Save in a room’s form opened from the list goes back to the list, in the menu.
+  await row('Zeta keep').click();
+  await dialog.getByRole('button', { name: 'Edit Zeta keep', exact: true }).click();
+  await dialog.getByLabel('Title').fill('Zeta kept');
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(row('Zeta kept')).toBeVisible();
+  // −: the confirm opens over the menu, and Cancel returns to the list and its −.
+  await row('Zeta gone').click();
+  const minus = dialog.getByRole('button', { name: 'Delete Zeta gone…', exact: true });
+  await minus.click();
+  const confirm = page.getByRole('alertdialog', { name: 'Delete the conversation “Zeta gone”?' });
+  await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(row('Zeta gone')).toHaveAttribute('aria-selected', 'true');
+  await expect(minus).toBeFocused();
+  // Deleted, the menu closes: what it was on is gone.
+  await minus.click();
+  await confirm.getByRole('button', { name: 'Delete conversation', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0);
+  await expect.poll(() => Object.values(rt.store.state.threads).some((t) => t.title === 'Zeta gone')).toBe(false);
+  // Open leaves the menu for the room.
+  dialog = await menu(page, 'Rooms');
+  await row('Zeta kept').click();
+  await dialog.getByRole('button', { name: 'Open Zeta kept', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`#/t/${kept.id}$`));
+  // + leaves it for the New room sheet.
+  dialog = await menu(page, 'Rooms');
+  await dialog.getByRole('button', { name: 'New room', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'New room' })).toBeVisible();
 });

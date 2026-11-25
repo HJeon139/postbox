@@ -24,6 +24,8 @@ const agentsIn = (/** @type {string} */ id) => sessionsOf(id).filter((/** @type 
 /**
  * @param {() => void} paint @param {(...actions: any[]) => null} setFoot @param {Record<string, any>} at  the room being edited, and the picks
  * @param {Record<string, Function>} sheets  the sheets the tab opens, and close, which closes the menu
+ *
+ * − asks over the menu, as every list’s confirm does, so Cancel returns to the list; the menu closes once the room is gone.
  */
 export function roomsTab(paint, setFoot, at, sheets) {
   const back = () => {
@@ -66,12 +68,7 @@ export function roomsTab(paint, setFoot, at, sheets) {
         leave(() => sheets.openNewThread(openProject(), { room: true })),
         { id: 'rm-new' },
       ),
-      r &&
-        barSign(
-          '−',
-          `Delete ${r.name}…`,
-          leave(() => sheets.confirmDeleteThread(r.key)),
-        ),
+      r && barSign('−', `Delete ${r.name}…`, () => sheets.confirmDeleteThread(r.key, sheets.close)),
       r && barAction('Edit', r.name, () => edit(r.key)),
       r &&
         barAction(
@@ -110,10 +107,7 @@ function roomForm(
       {
         type: 'button',
         'aria-label': `Delete ${t.title}…`,
-        onclick: () => {
-          sheets.close();
-          sheets.confirmDeleteThread(t.id);
-        },
+        onclick: () => sheets.confirmDeleteThread(t.id, sheets.close),
       },
       'Delete…',
     ),

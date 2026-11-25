@@ -621,8 +621,8 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
 // New conversation moved to new-thread-sheet.mjs; kept here for those that open it from this module.
 export { openNewThread } from './new-thread-sheet.mjs';
 
-/** Deletes a conversation or room, after saying what goes and what stays. */
-export function confirmDeleteThread(threadId) {
+/** Deletes a conversation or room, after saying what goes and what stays. `deleted` runs once it’s gone. */
+export function confirmDeleteThread(threadId, deleted = () => {}) {
   const t = S().threads[threadId];
   if (!t) return;
   const ses = sessionsOf(threadId);
@@ -663,6 +663,7 @@ export function confirmDeleteThread(threadId) {
             api(`/api/threads/${threadId}`, null, 'DELETE')
               .then(async () => {
                 dlg.close();
+                deleted();
                 // Once the page has heard it's gone: else the project's latest conversation is still this one, and
                 // opening it asks for items the server has erased (#1155).
                 await heard(() => !S().threads[threadId]);
