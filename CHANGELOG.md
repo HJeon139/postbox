@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.46.0 (2026-11-25)
+
+### Features
+
+- **settings:** one main menu, where every control is applied
+
+### Fixes
+
+- **uat:** the runner's delete finds the confirm over the main menu
+- **settings:** a room renamed from the list shows its new title there
+- **settings:** a list's bar is named for its actions, not for an Edit some lists lack
+- **settings:** a room's delete confirm opens over the main menu
+- **settings:** say on the page why People's and Members' controls are off
+- **settings:** an arrow key in the Hosts list keeps focus on the pick
+
 ## 4.45.0 (2026-11-25)
 
 ### Features
