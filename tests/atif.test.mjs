@@ -283,3 +283,16 @@ test('a reply with no time keeps its step, with no timestamp, and every trajecto
   assert.ok(step, 'its step is kept');
   assert.equal(step.timestamp, undefined);
 });
+
+test('a call’s ledger entry is its own session’s, though another session’s call has the same id', () => {
+  // From the recorded run: @dry and @dry2 each ran `printenv CLAUDE_EFFORT` under the same tool call id. With @dry2’s
+  // command line changed, @dry’s call still names its own.
+  const events = rec.events.map((e) =>
+    e.type === 'work.add' && e.data.entry.kind === 'command' && e.data.entry.handle === 'dry2'
+      ? { ...e, data: { ...e.data, entry: { ...e.data.entry, command: 'echo not dry' } } }
+      : e,
+  );
+  const call = (h) => of(h, events).steps.find((s) => s.tool_calls)?.tool_calls[0];
+  assert.equal(call('dry').arguments.command, 'printenv CLAUDE_EFFORT');
+  assert.equal(call('dry2').arguments.command, 'echo not dry');
+});

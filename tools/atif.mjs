@@ -251,7 +251,8 @@ function carry(ctx, entry, what) {
 /** The context one session’s steps are built in. @param {ReturnType<typeof foldEvents>} f @param {string} sessionId */
 function contextOf(f, sessionId) {
   const turns = new Map([...f.work.values()].filter((w) => w.kind === 'turn' && w.sessionId === sessionId).map((w) => [w.id, w]));
-  const calls = new Map([...f.work.values()].filter((w) => CALL_KINDS.has(w.kind) && w.toolUseId).map((w) => [w.toolUseId, w]));
+  // Its own calls only: a tool call's id is its backend's, so another session's call can carry the same one.
+  const calls = new Map([...f.work.values()].filter((w) => CALL_KINDS.has(w.kind) && w.toolUseId && w.sessionId === sessionId).map((w) => [w.toolUseId, w]));
   // Taken by one of its turns, as it was when taken: an entry still waiting (sent after its clock expired, say) never
   // reached the agent, and one taken and given back by a retry did (noteTake).
   const delivered = new Map([...f.takes.values()].filter((t) => t.sessionId === sessionId).map((t) => [t.itemId, t]));
