@@ -10,7 +10,7 @@ One file per UI component, nested the way the interface is. Each says why the co
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. For the real-agent steps: Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>.
-3. Work through the files below. For each, follow the steps, compare with the expected functionality, and mark it pass or fail.
+3. Work through the files below. For each, follow the steps, compare with the expected functionality, and mark it pass or fail. You are the person: do each step yourself in the browser. Don’t add an agent to a room to play the person (e2e/README.md, “The person is whoever drives the page”).
 4. File each failure as a GitHub issue with the bug template: impacted component, urgency, steps to reproduce, what was expected, what happened instead.
 
 Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,composer node tools/shoot-uat.mjs` (some). They’re taken at 1280 px in light mode, after the demo has played.

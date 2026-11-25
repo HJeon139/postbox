@@ -83,7 +83,7 @@ export function scenarioAgents(scenario, personas) {
     const persona = personas.find((p) => p.handle === h);
     if (persona) return persona;
     throw new Error(
-      `The scenario names the agent @${h}, which tests/uat/e2e/personas.json doesn’t have. Its agents are the agents under test: add @${h} there first. The person is the tester, described on the scenario’s “- persona:” line, never an agent in the room.`,
+      `The scenario’s “- agents:” line names @${h}, which tests/uat/e2e/personas.json doesn’t have. If @${h} is there to play the person, take it out: the person is the tester, described on the “- persona:” line, never an agent in the room. If it’s an agent under test, add it to personas.json first.`,
     );
   });
 }

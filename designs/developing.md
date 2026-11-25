@@ -71,6 +71,8 @@ If it costs more than it gives back to that intent, decline it. Put it under “
 
 **End-to-end UAT is Claude only, except a batch’s.** A scenario that puts an agent on another backend (the Kiro CLI, the Antigravity CLI or Codex) is a compatibility run, with a model that backend offers (for Kiro, one that `kiro-cli chat --list-models` lists): `tools/uat-run.mjs` refuses it without `--compat`, and it runs only when a task asks for it or in a batch UAT, which runs on every backend (review-guide.md, “Batch UAT”).
 
+**In a UAT, the person is whoever drives the page.** That’s the runner’s tester, through the page, or you in a browser. A room where an agent, a persona or a script plays the person, the customer or the user isn’t a UAT: nobody used the page, and its records describe a conversation no person had (tests/uat/e2e/README.md, “The person is whoever drives the page”).
+
 **The screenshot tools and the end-to-end UAT** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`) run only when the task asks for them, or in the reviewing session. That session runs them on the merged UI: the demo screenshots (not committed), with axe over every scene; the UAT doc screenshots; and the end-to-end scenarios. It reports findings per pull request, including accessibility violations, and commits the refreshed UAT doc screenshots (`tests/uat/screenshots/`) and nothing else under `screenshots/` (“Screenshots”).
 
 **Hand off.**
