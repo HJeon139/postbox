@@ -46,8 +46,13 @@ const blobsIn = (dirs) => {
   return (sha256) => {
     if (!/^[a-f0-9]{64}$/.test(sha256)) return null;
     const file = join(root, sha256.slice(0, 2), sha256.slice(2));
-    if (!existsSync(file)) return null;
-    const buf = readFileSync(file);
+    // A blob that can’t be read (missing, a folder, not the owner’s) is no output, never a failed export.
+    let buf;
+    try {
+      buf = readFileSync(file);
+    } catch {
+      return null;
+    }
     return createHash('sha256').update(buf).digest('hex') === sha256 ? buf.toString('utf8') : null;
   };
 };

@@ -70,6 +70,8 @@ test('reading a data folder reads its blobs, checked against their hash', () => 
     const outside = `../${'./'.repeat(30)}.`;
     assert.equal(outside.length, 64);
     assert.equal(data.blob?.(outside), null);
+    mkdirSync(join(dir, 'blobs', 'aa', 'a'.repeat(62)), { recursive: true });
+    assert.equal(data.blob?.('a'.repeat(64)), null, 'a folder where a blob should be');
     writeFileSync(join(dir, 'blobs', h.slice(0, 2), h.slice(2)), 'damaged');
     assert.equal(readRecording(dir).blob?.(h), null, 'bytes that no longer match their hash');
   } finally {
