@@ -67,3 +67,17 @@ for (const width of [320, 375, 800, 1280, 1920])
     ).toBe(true);
     for (const name of ['Save', 'Retire', 'Delete…']) await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
   });
+
+test('a description typed over several lines is saved as one, so its row in the list reads as a line', async ({ page }) => {
+  const made = app.rt.createPersona({ handle: 'liner' });
+  await page.goto(`${app.origin}/`);
+  await synced(page, app);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByRole('tab', { name: 'Personas' }).click();
+  await dialog.locator('li.persona-row', { has: page.getByText('liner', { exact: true }) }).click();
+  await dialog.getByRole('button', { name: 'Edit liner', exact: true }).click();
+  await dialog.getByLabel('What it does').fill('Line one\n   line two\n');
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => app.rt.store.state.personas[made.id].description).toBe('Line one line two');
+});
