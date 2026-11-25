@@ -22,10 +22,14 @@ export const who = (it, { you = false, threadId = '' } = {}) => {
   const ts = h('span.ts', { title: `${dayOf(it.at)} ${timeOf(it.at)}` }, timeOf(it.at));
   // A turn typed into Claude Code in a terminal, mirrored here, says so.
   const via = it.via === 'terminal' ? h('span.via', 'from terminal') : null;
-  if (you) return h('div.who', ts, h('b', 'You'), via);
+  // Another person’s message carries their name (#558); your own, and one from before profiles, reads “You”.
+  const mine = !it.by || it.by.id === client.who?.me?.id;
+  if (you) return h('div.who', ts, h('b', mine ? 'You' : it.by.name), mine ? null : h('span.via', `@${it.by.handle}`), via);
   const { ring, word } = se ? replyLine(it, se, threadId) : { ring: h('pb-ring', { name: it.handle, state: 'idle', ctx: '0', size: 'xs' }), word: null };
   const woke = it.woke ? h('span.woke', wokeText(it.woke)) : null;
-  return h('div.who', ring, h('b', it.handle), mockMarker(se), word, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
+  // A reply that @-mentions you is in your queue (#558).
+  const forYou = it.forPeople?.some((/** @type {any} */ p) => p.id === client.who?.me?.id) ? h('span.woke', 'mentions you') : null;
+  return h('div.who', ring, h('b', it.handle), mockMarker(se), word, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, forYou, ts);
 };
 
 /**

@@ -29,6 +29,8 @@ export const client = {
   /** @type {Map<string, import('./item-ranges.mjs').Range>} */
   ranges: new Map(),
   config: null,
+  /** Who is looking, and the people here (#558): { me, people, mode }. */
+  who: null,
   seq: 0,
   epoch: '',
   // Whether the server can save changes, and why not (ST-3): { writable, cause: { code, message } | null, lost, warning,
@@ -49,7 +51,8 @@ export const client = {
 export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
-  const { seq, epoch, state, config, store, headers, live } = await r.json();
+  const { seq, epoch, state, config, store, headers, live, who } = await r.json();
+  client.who = who;
   const next = ownState(state);
   await refill(next, epoch);
   client.state = next;

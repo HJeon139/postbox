@@ -12,7 +12,7 @@ export const drawsNothing = (it, threadId) => it.kind === 'agent' && (it.status 
 
 /** @param {any} it @param {string} threadId */
 function speaker(it, threadId) {
-  if (it.kind === 'user') return 'you';
+  if (it.kind === 'user') return `you:${it.by?.id ?? ''}`; // each person is a speaker of their own (#558)
   if (it.kind === 'agent') return drawsNothing(it, threadId) ? null : `s:${it.sessionId}`;
   return it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null;
 }
