@@ -2,6 +2,12 @@
 
 The component docs one level up check each part of the interface against the demo’s mock agent. This UAT checks the product as a whole: real agents, real data and a real browser, through a long piece of work, the way the defects in the issue tracker were found. A tester model plays the person, and deterministic checks run alongside it.
 
+**The person is whoever drives the page, never an agent in the room.** In a run, that’s the tester: it reads the screen and acts through the driver’s real clicks and typing, as the scenario’s person. By hand, it’s you, in a browser. No agent, persona or script in the conversation plays the person, the customer or the user:
+- A scenario’s `- persona:` line describes the person the tester plays. It isn’t one of Postbox’s personas, and it seeds no agent.
+- A scenario’s `- agents:` are the agents under test, from [`personas.json`](personas.json). None of them stands in for the person, and `tests/uat-scenario-agents.test.mjs` fails a scenario that names an agent the file doesn’t have.
+- A room where an agent is told to act as the person tests none of what the UAT is for. Nobody uses the page, so the composer, blocks, “needs you”, the rings and reviews go untried. The agents under test get another agent’s messages, with their mentions, wake limits and reply rules, where a person’s messages have none. And what the run records, its events, its report and its ATIF export, describes a conversation no person had.
+- To run a UAT, run `tools/uat-run.mjs` with a scenario, or walk a UAT doc’s steps yourself in a browser. Don’t build one by adding an agent to a room.
+
 **It’s working when a run catches the defects already reported on GitHub.** Each report ends with a coverage table: which open issues the run caught again, and which ones a check watches for but didn’t see.
 
 **A run confirms a fix; it doesn’t decide it.** Real agents don’t keep to an exact order of events, so an issue whose behavior depends on one names its deterministic `node:test` test in its acceptance before a paid run is planned for it, and that test decides the fix (#439, whose host runs took three tries to reach its order). A check or trigger is tested the same way: from a run’s recorded records, not from results written by hand, which can’t show what real agents and Postbox did (the hostwakes scenario’s checks, #451).
