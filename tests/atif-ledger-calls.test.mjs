@@ -66,6 +66,10 @@ test('reading a data folder reads its blobs, checked against their hash', () => 
     const data = readRecording(dir);
     assert.equal(data.blob?.(h), 'high');
     assert.equal(data.blob?.('0'.repeat(64)), null, 'a blob the folder lacks');
+    // A name that isn't a SHA-256 is refused before any path is built: this one would resolve to the data folder itself.
+    const escape = `../${'./'.repeat(30)}.`;
+    assert.equal(escape.length, 64);
+    assert.equal(data.blob?.(escape), null);
     writeFileSync(join(dir, 'blobs', h.slice(0, 2), h.slice(2)), 'damaged');
     assert.equal(readRecording(dir).blob?.(h), null, 'bytes that no longer match their hash');
   } finally {
