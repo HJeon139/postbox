@@ -34,6 +34,7 @@ import { createPersonaFor } from './persona-create.mjs';
 import { projectsRoute } from './project-routes.mjs';
 import { hostModels } from './remote/hosts-models.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
+import { requestGate } from './request-gate.mjs';
 import { settleInterrupted, stopStreaming } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
@@ -46,7 +47,6 @@ import { seed } from './seed.mjs';
 import { decodePath, file, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { setupRoute } from './setup-routes.mjs';
-import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { storedFileRoute } from './stored-files.mjs';
 import { searchOf } from './thread-search.mjs';
@@ -173,13 +173,8 @@ export async function start({
   const fromBrowser = (req) =>
     req.headers['sec-fetch-mode'] === 'navigate' || req.headers['sec-fetch-site'] === 'same-origin' || req.headers['sec-fetch-site'] === 'none';
 
-  // `!` runs commands as the person (#67), and an app’s link starts their browser (#1480), so both are off unless Postbox
-  // listens on this computer alone and the request came from it, on top of the page’s token. Postbox listens on
-  // 127.0.0.1 today; a later change to that can’t open these silently. `does` says what is refused: “! commands run”.
-  const hereAlone = (req, does) => {
-    if (!isLoopback(host)) throw httpError(403, `${does} only while Postbox listens on this computer alone (127.0.0.1), and it’s listening on ${host}.`);
-    if (!isLoopback(req.socket?.remoteAddress)) throw httpError(403, `${does} only from this computer.`);
-  };
+  // Who it answers before any route, and what runs only on this computer alone (server/request-gate.mjs).
+  const gate = requestGate({ port, host: () => host });
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
   const { streams, stop: stopStreams, stream, headers } = liveStreams(store, undefined, { running: rt.running });
@@ -211,12 +206,8 @@ export async function start({
   async function route(req, res) {
     const url = new URL(req.url, origin);
     const path = url.pathname;
-    // Postbox listens on localhost only; refuse other hosts (DNS rebinding) and cross-site writes.
     const host = (req.headers.host ?? '').toLowerCase();
-    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`)
-      throw httpError(421, 'Postbox only answers requests addressed to 127.0.0.1 or localhost.');
-    if (req.method !== 'GET' && req.headers.origin && !['http://127.0.0.1:' + port, 'http://localhost:' + port].includes(req.headers.origin))
-      throw httpError(403, 'Requests from other sites aren’t allowed.');
+    gate.admit(req);
     // Every write needs the page’s token (#74), except /mcp, where agents call Postbox’s tools with their session.
     if (req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && !hasToken(req))
       throw Object.assign(
@@ -359,7 +350,7 @@ export async function start({
     if (sessionDid) return send(res, sessionDid.status, sessionDid.body);
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell$/)) && req.method === 'POST') {
-      hereAlone(req, '! commands run');
+      gate.hereAlone(req, '! commands run');
       return send(res, 201, await rt.runShellCommand(m[1], body.command));
     }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/files\/([^/]+)\/restore$/)) && req.method === 'POST')
@@ -383,7 +374,7 @@ export async function start({
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|note|state|query|open|publish|animating)$/)) && req.method === 'POST') {
       const id = decodePath(m[1]);
       if (m[2] === 'open') {
-        hereAlone(req, 'Links from apps open');
+        gate.hereAlone(req, 'Links from apps open');
         return send(res, 200, await openLink(rt, id, body.url, { run: openUrl }));
       }
       if (m[2] === 'publish') return send(res, 200, publishApp(rt, id, body.data));
