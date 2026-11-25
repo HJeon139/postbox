@@ -154,7 +154,7 @@ function removeGo(host, status, { noToken, label }, close) {
           const r = await api(`/api/hosts/${host.id}`, undefined, 'DELETE');
           close();
           // Its card, and the Remove… focus would go back to, are gone.
-          document.getElementById('ho-add')?.focus();
+          document.getElementById('ho-new')?.focus(); // the list’s +, where the next host is added
           toast({ title: `Removed ${host.name}`, text: r.stopped ? `Stopped ${plural(r.stopped, 'turn')} there first.` : '' });
         } catch (e) {
           fill(status, removeFailed(e));

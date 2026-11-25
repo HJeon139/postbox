@@ -18,13 +18,20 @@ async function until(kit, expr, what, ms = 15_000) {
   throw new Error(`Timed out waiting for ${what}.`);
 }
 
-/** Opens Settings › Hosts unless it’s open. @param {any} kit */
-export async function openHosts(kit) {
-  if (await kit.ev(`!!document.getElementById('ho-add')`)) return;
-  await closeAll(kit);
-  await kit.clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
-  await kit.clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Hosts'), 'the Hosts tab');
-  await until(kit, `document.getElementById('ho-add')`, 'the Hosts tab');
+/**
+ * Opens Settings › Hosts unless it’s open, on its list (#558: its + is there), and picks a host’s row, so its card
+ * shows under the list and the list’s bar acts on it. @param {any} kit @param {string} [id]  the host to pick
+ */
+export async function openHosts(kit, id) {
+  if (!(await kit.ev(`!!document.getElementById('ho-new')`))) {
+    await closeAll(kit);
+    await kit.clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
+    await kit.clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Hosts'), 'the Hosts tab');
+    await until(kit, `document.getElementById('ho-new')`, 'the Hosts tab');
+  }
+  if (!id || (await kit.ev(`!!${CARD(id)}`))) return;
+  await kit.clickAt(`document.querySelector(${js(`.dialog li[role="option"][data-key="${id}"]`)})`, 'the host’s row');
+  await until(kit, CARD(id), 'the host’s card');
 }
 
 /** Closes every dialog, as Escape does. @param {any} kit */
@@ -61,6 +68,8 @@ const pick = (kit, sel, value) =>
  */
 export async function addHost(kit, destination) {
   await openHosts(kit);
+  await kit.clickAt(`document.getElementById('ho-new')`, 'Add a host');
+  await until(kit, `document.getElementById('ho-add')`, 'the New host form');
   await typeOver(kit, '#ho-add', destination);
   await kit.clickAt(`document.getElementById('ho-add-btn')`, 'Add host');
   const card = `[...document.querySelectorAll('[data-host]')].find((c) => c.querySelector('h3')?.textContent === ${js(destination)})`;
@@ -112,7 +121,7 @@ const flat = (settings) =>
  * @param {any} kit @param {string} id @param {Record<string, any>} settings @param {{ project?: string, folder?: string }} [o]
  */
 export async function editHost(kit, id, settings, { project, folder } = {}) {
-  await openHosts(kit);
+  await openHosts(kit, id);
   await kit.clickAt(`document.getElementById(${js(`ho-${id}-edit`)})`, 'Edit settings');
   await until(kit, `document.getElementById(${js(`ho-${id}-save`)})`, 'the host’s editor');
   for (const [k, v] of flat(settings)) await setField(kit, id, k, v);
@@ -135,7 +144,7 @@ export async function editHost(kit, id, settings, { project, folder } = {}) {
  * @param {any} kit @param {string} id @returns {Promise<{ installOffered: boolean, card: string, confirm: string, commands: string[] }>}
  */
 export async function install(kit, id) {
-  await openHosts(kit);
+  await openHosts(kit, id);
   const button = `document.getElementById(${js(`ho-${id}-install`)})`;
   let installOffered = false;
   for (let i = 0; i < 20 && !(installOffered = await kit.ev(`!!${button}`)); i++) await sleep(250);
@@ -167,6 +176,9 @@ export async function placePersona(kit, handle, hostId) {
   await closeAll(kit);
   await kit.clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
   await kit.clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Personas'), 'the Personas tab');
+  // Its row picked, then Edit in the list’s bar (#558).
+  const row = `[...document.querySelectorAll('.dialog li[role="option"]')].find((li) => li.querySelector('b')?.textContent === ${js(handle)})`;
+  await kit.clickAt(row, `${handle}’s row`);
   await kit.clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit ${handle}"]`)})`, `Edit ${handle}`);
   await until(kit, `document.getElementById('pe-where')`, `Runs on in @${handle}’s editor`);
   await pick(kit, '#pe-where', hostId ?? '');
@@ -189,7 +201,7 @@ export async function placePersona(kit, handle, hostId) {
  * @param {any} kit @param {string} id @returns {Promise<string>}
  */
 export async function removeHost(kit, id) {
-  await openHosts(kit);
+  await openHosts(kit, id);
   await kit.clickAt(`document.getElementById(${js(`ho-${id}-remove`)})`, 'Remove…');
   await until(kit, `document.getElementById('ho-remove-go')`, 'the remove confirm');
   const confirm = String(await kit.ev(`${TOP}?.innerText ?? ''`)).replace(/\s+/g, ' ');

@@ -80,18 +80,30 @@ test('#1326 the New agent sheet’s Create agent stays under the pointer while i
   expect.soft(under, 'Create agent is still under the pointer').toBe('Create agent');
 });
 
-test('#1326 Settings’ other tabs still fit what they show: only an agent’s form takes the full height', async ({ page }) => {
+test('#558 Settings takes the full height on every tab, so switching tabs moves no tab', async ({ page }) => {
   const persona = started.app.rt.createPersona({ handle: 'fits', backend: 'claude-code' });
   await page.goto(`${started.app.origin}/`);
   await synced(page, started.app);
   await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('appearance')));
   const dialog = page.getByRole('dialog');
   const height = () => dialog.evaluate((d) => d.getBoundingClientRect().height);
+  const tabsTop = () => dialog.getByRole('tablist').evaluate((t) => t.getBoundingClientRect().top);
   const room = await page.evaluate(() => innerHeight - 32);
   await settled(page);
-  expect(await height(), 'Appearance fits what it shows').toBeLessThan(room - 100);
+  const top = await tabsTop();
+  for (const name of ['Appearance', 'Profile', 'Personas', 'Projects', 'Hosts', 'Backends']) {
+    await dialog.getByRole('tab', { name }).click();
+    await settled(page);
+    expect(Math.abs((await height()) - room), `${name} takes the full height`).toBeLessThanOrEqual(1);
+    expect(await tabsTop(), `the tabs stay where they were on ${name}`).toBe(top);
+  }
   await dialog.getByRole('tab', { name: 'Personas' }).click();
+  await dialog.locator('li[role="option"]', { hasText: 'fits' }).click();
   await dialog.locator(`#pe-edit-${persona.id}`).click();
   await settled(page);
   expect(Math.abs((await height()) - room), 'a persona’s form takes the full height').toBeLessThanOrEqual(1);
+  expect(await tabsTop(), 'the tabs stay where they were on a persona’s form').toBe(top);
+  // Its actions are under the form, not in it: in view however long the form is.
+  await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeInViewport({ ratio: 1 });
+  await expect(dialog.getByRole('button', { name: 'Delete…', exact: true })).toBeInViewport({ ratio: 1 });
 });

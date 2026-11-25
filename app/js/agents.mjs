@@ -23,7 +23,7 @@ import { fill, h, syncList, timeOf } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { hostLine, hostOf, turnLine } from './remote.mjs';
 import { ringFor } from './ring.mjs';
-import { confirmDelete, openNewAgent, openSettings } from './sheets.mjs';
+import { openSettings } from './sheets.mjs';
 
 export { subagentNow } from './agent-tree.mjs';
 
@@ -39,7 +39,7 @@ const S = () => client.state;
 export function agentsSection(threadId) {
   const headId = `agents-head-${threadId}`;
   const list = h('ul.agent-rows', { 'aria-labelledby': headId });
-  const head = agentsHeaderButtons(threadId, { openNewAgent, confirmDelete });
+  const head = agentsHeaderButtons(threadId, { openSettings });
   const el = h('section.agents-sec', h('div.rail-sec', h('h2.label', { id: headId }, 'Agents'), head.el), list);
   const paint = () => {
     const ses = sessionsOf(threadId).filter((x) => !x.retiredFork);

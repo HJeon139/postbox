@@ -10,14 +10,18 @@ const S = () => client.state;
 /**
  * The sheet’s last two buttons: Retire (or Bring back), and Delete, which asks first.
  * @param {any} p  the persona @param {() => void} back  what the sheet does after Save
+ * @param {'' | 'sm'} [size]  small on a persona’s row in the list
  */
-export const lifeButtons = (p, back) => [
+export const lifeButtons = (p, back, size = '') => [
   h(
-    'button.btn',
-    { type: 'button', onclick: () => api(`/api/personas/${p.id}`, { retired: !p.retired }, 'PATCH').then(back) },
+    `button.btn${size ? `.${size}` : ''}`,
+    {
+      type: 'button',
+      onclick: () => api(`/api/personas/${p.id}`, { retired: !p.retired }, 'PATCH').then(back),
+    },
     p.retired ? 'Bring back' : 'Retire',
   ),
-  h('button.btn.danger', { type: 'button', onclick: () => confirmDeletePersona(p, back) }, 'Delete…'),
+  h(`button.btn.danger${size ? `.${size}` : ''}`, { type: 'button', onclick: () => confirmDeletePersona(p, back) }, 'Delete…'),
 ];
 
 /** @param {any} p  the persona @param {() => void} back  what the sheet does after, as Save and Retire do */
