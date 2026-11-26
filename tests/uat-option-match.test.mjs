@@ -13,6 +13,8 @@ const chip = (label, description) => ({
   textContent: description ? `${label}${description}` : label,
   offsetParent: {},
   getAttribute: () => null,
+  // The label's own span, as `span.chip-text > span` draws it; a chip with no description has none.
+  querySelector: (sel) => (description && sel === '.chip-text > span' ? { textContent: label } : null),
   label,
 });
 
@@ -23,8 +25,8 @@ const chips = [
 ];
 
 /** Runs the driver's expression in a page whose item holds these chips, and returns the label of the one it found. */
-function found(expr) {
-  const doc = { querySelector: () => ({ querySelectorAll: () => chips }) };
+function found(expr, list = chips) {
+  const doc = { querySelector: () => ({ querySelectorAll: () => list }) };
   const el = new Function('document', `return ${expr};`)(doc);
   return el?.label ?? null;
 }
@@ -44,4 +46,12 @@ test('an option named by its label alone, or by its whole text, is still found a
 
 test('a name that matches no option still finds none, so the step fails as before', () => {
   assert.equal(found(byOption(ITEM, SEL, 'Something else — entirely')), null);
+});
+
+test('the label fallback picks only an exact label, not the first label that contains it', () => {
+  // hydrant-critic's case: “Weekly with alerts” is drawn first, and the tester means “Weekly”.
+  const list = [chip('Weekly with alerts', 'a summary and an alert on drops'), chip('Weekly', 'every Monday')];
+  assert.equal(found(byOption(ITEM, SEL, 'Weekly — every Monday'), list), 'Weekly');
+  // And a joined name whose label is no option's whole label finds none, so the step fails rather than guess.
+  assert.equal(found(byOption(ITEM, SEL, 'Week — every Monday'), list), null);
 });

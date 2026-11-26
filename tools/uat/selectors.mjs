@@ -15,8 +15,11 @@ export const byText = (scope, sel, text) =>
 export const THREAD_LINK = (key) => `(${ITEM(key)}?.querySelector('.msg-actions a.replies') ?? ${byText(ITEM(key), '.msg-actions button', 'Reply in thread')})`;
 // Matches a block's option as the tester names it (#1750). A chip draws its label and description as separate spans
 // (app/js/blocks.mjs), so its text joins them with nothing between, and a name the tester writes as “label — description”
-// matches nothing whole: then the part before the first “ — ” is matched, which is the label.
+// matches nothing whole. Then the part before the first “ — ” must equal a chip's label exactly (its `.chip-text > span`,
+// or its whole text when it has no description), so “Weekly — …” never picks “Weekly with alerts”.
 export const byOption = (scope, sel, text) => {
   const head = String(text).split(' — ')[0].trim();
-  return head && head !== String(text).trim() ? `(${byText(scope, sel, text)} ?? ${byText(scope, sel, head)})` : byText(scope, sel, text);
+  if (!head || head === String(text).trim()) return byText(scope, sel, text);
+  const label = `[...(${scope}?.querySelectorAll(${js(sel)}) ?? [])].find((e) => e.offsetParent !== null && ((e.querySelector('.chip-text > span') ?? e).textContent).replace(/\\s+/g, ' ').trim().toLowerCase() === ${js(head.toLowerCase())})`;
+  return `(${byText(scope, sel, text)} ?? ${label})`;
 };
