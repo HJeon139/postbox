@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.49.1 (2026-11-26)
+
+### Fixes
+
+- **remote:** a host refuses an update_app with neither code nor files in the call
+- **server:** a session's delete counts live agents, as its confirm does
+- **app:** count live agents for the remove confirm, and say it in the docs
+- **app:** make the remove confirm true, and keep the room on every path
+- **app:** removing an agent from a room reads as leaving it, and keeps its history
+- **apps:** remove an app's data file blobs when the call doesn't keep them
+- **kiro:** match any path with ** for file tools in Auto with Shell
+- **apps:** keep an app's permissions when show_app sends new files alone
+- **kiro:** in Auto with Shell, file tools follow the shell's rule
+- **apps:** let update_app refresh an app's data files without resending its code
+
 ## 4.49.0 (2026-11-26)
 
 ### Features
