@@ -50,7 +50,7 @@
 // Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit. POSTBOX_AGY_RECORD=<folder> saves each turn’s raw stream.
 
 import { spawn } from 'node:child_process';
-import { rm, rmdir, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL, modelDefault } from '../../shared/agent-facts.mjs';
@@ -68,7 +68,7 @@ import { HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, probeAgyHook } from './agy-hook-check.mjs';
 import { agyHookVars } from './agy-hook-env.mjs';
 import { modelIds } from './agy-model-ids.mjs';
-import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
+import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, removeAgyPlugin, writeAgyPlugin } from './agy-plugin.mjs';
 import { hookPromptCard } from './agy-prompt-card.mjs';
 import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { repeatsLastError } from './agy-repeated-error.mjs';
@@ -646,9 +646,7 @@ export class AntigravityCliAdapter {
           await this.run({ ...each, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed: await confirmed() });
         }
       } finally {
-        await rm(plugin, { recursive: true, force: true }).catch(() => {});
-        // The folders above it, only if the plugin was all they held.
-        for (const dir of [dirname(plugin), dirname(dirname(plugin))]) await rmdir(dir).catch(() => {});
+        await removeAgyPlugin(plugin);
       }
     });
     await (this.usage ? this.usage.reportAfter(ctx, asked, ran) : ran);
