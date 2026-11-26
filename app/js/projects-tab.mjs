@@ -4,7 +4,7 @@
 import { api, client } from './client.mjs';
 import { h } from './dom.mjs';
 import { heard } from './go-when-there.mjs';
-import { barAction, barSign, formHead, pickList } from './manage-list.mjs';
+import { barAction, barSign, formHead, listHead, pickList } from './manage-list.mjs';
 import { confirmDeleteProject, deleteProjectButton, LAST } from './project-delete.mjs';
 import { toast } from './ui.mjs';
 
@@ -46,8 +46,7 @@ export function projectsTab(paint, setFoot, at) {
       r && barAction('Edit', r.name, () => open(r.key, `pj-push-${r.key}`), { id: `pj-edit-${r.key}` }),
     ],
   });
-  setFoot(bar);
-  return [list];
+  return [listHead('Projects', bar, { pinned: true }), list];
 }
 
 /** @param {(...actions: any[]) => null} setFoot @param {() => void} back */

@@ -1,22 +1,22 @@
 // The main menu’s list of personas (#1735, app/js/manage-list.mjs): each with its version, its host and what it does,
-// and the bar under it: + for a new agent, − to delete the one picked, Edit, and Retire or Bring back.
+// and the bar in the row of its heading: + for a new agent, − to delete the one picked, Edit, and Retire or Bring back.
 
 import { mockMarker } from './agent-facts.mjs';
 import { api, client } from './client.mjs';
 import { h } from './dom.mjs';
-import { barAction, barSign, pickList } from './manage-list.mjs';
+import { barAction, barSign, listHead, pickList } from './manage-list.mjs';
 import { confirmDeletePersona } from './persona-delete.mjs';
 
 const S = () => client.state;
 
 /**
- * @param {{ at: Record<string, any>, paint: () => void, edit: (personaId: string) => void, setFoot: (...actions: any[]) => null,
- *           openNewAgent: Function, closeSettings: () => void }} tab
- *   at: where the pick is kept; edit: shows a persona’s form; setFoot: pins the bar; openNewAgent and closeSettings
- *   come from the caller, as the boilerplate row’s do: sheets.mjs imports this module
- * @returns {HTMLElement}  the list
+ * @param {{ at: Record<string, any>, paint: () => void, edit: (personaId: string) => void, openNewAgent: Function,
+ *           closeSettings: () => void }} tab
+ *   at: where the pick is kept; edit: shows a persona’s form; openNewAgent and closeSettings come from the caller, as
+ *   the boilerplate row’s do: sheets.mjs imports this module
+ * @returns {HTMLElement[]}  the list’s heading with its bar, then the list
  */
-export function personasList({ at, paint, edit, setFoot, openNewAgent, closeSettings }) {
+export function personasList({ at, paint, edit, openNewAgent, closeSettings }) {
   // +: the New agent sheet, in the menu’s place.
   const newAgent = () => {
     closeSettings();
@@ -50,6 +50,5 @@ export function personasList({ at, paint, edit, setFoot, openNewAgent, closeSett
       ];
     },
   });
-  setFoot(bar);
-  return list;
+  return [listHead('Personas', bar, { pinned: true }), list];
 }
