@@ -57,17 +57,17 @@ export function unreadAnswer(apps, sessionId, threadId, it, outcome = false) {
       : it.block.type === 'review'
         ? `${a.values?.verdict}${n ? `, ${n} comment${n === 1 ? '' : 's'}` : ''}`
         : `${a.action} ${clipText(full, 300)}`;
+  const then = outcome ? 'then record the outcome' : 'then update';
   const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
-  // Only an answer the refusal can give whole is settled: past the cut, it still comes whole at the turn's end.
+  // Only an answer the refusal can give whole is settled: past the cut, it still comes whole at the turn’s end.
   const fits = full.length <= CATCH_UP_CHARS;
   const waited = settleWaiting(apps, sessionId, it, fits);
-  if (waited && !fits)
-    return { ok: false, message: `${said} It reaches you whole when this turn ends: read it, ${outcome ? 'then record the outcome' : 'then update'}.` };
+  if (waited && !fits) return { ok: false, message: `${said} It reaches you whole when this turn ends: read it, ${then}.` };
   apps.threads.patchItem(threadId, it.id, { answer: { ...a, read: true } });
   const why = waited ? 'It was waiting for this turn to end, and comes here instead' : 'It didn’t reach you in a turn';
   const whole =
     it.block.type !== 'review' && full.length <= 300 ? 'that’s the whole answer' : `here it is in full: ${a.action} ${clipText(full, CATCH_UP_CHARS)}`;
-  return { ok: false, message: `${said} ${why}, so ${whole}. Read it, ${outcome ? 'then record the outcome' : 'then update'}.` };
+  return { ok: false, message: `${said} ${why}, so ${whole}. Read it, ${then}.` };
 }
 
 /**
@@ -92,8 +92,7 @@ function settleWaiting(apps, sessionId, it, settle = true) {
     for (const p of carrying.filter((x) => typeof x.message.turnId === 'string'))
       entries.push(...apps.delivery.takenBy(sessionId, p.message.turnId).filter((e) => e.itemId === it.id && answer(e.message)));
   }
-  if (!settle) return held || entries.length > 0;
-  if (entries.length) apps.delivery.deliveredNow(entries);
+  if (settle && entries.length) apps.delivery.deliveredNow(entries);
   return held || entries.length > 0;
 }
 
