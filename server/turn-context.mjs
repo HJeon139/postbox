@@ -271,15 +271,15 @@ function reportCallbacks(rt, turn, live) {
           name: String(x.name).slice(0, 40),
           state: x.state,
           ctx: Number.isFinite(x.ctx) ? Math.max(0, Math.min(100, x.ctx)) : null, // null: unknown (#189)
-          doing: x.doing ? String(x.doing).slice(0, 120) : '',
+          doing: x.doing ? cutText(String(x.doing), 120) : '',
           ...(x.thinking === true ? { thinking: true } : {}),
-          ...(x.asked ? { asked: String(x.asked).slice(0, 120) } : {}),
-          ...(x.said ? { said: String(x.said).slice(0, 200) } : {}),
+          ...(x.asked ? { asked: cutText(String(x.asked), 120) } : {}),
+          ...(x.said ? { said: cutText(String(x.said), 200) } : {}),
           ...(x.since === true ? { since: true } : {}),
           ...(typeof x.parent === 'string' && x.parent ? { parent: x.parent.slice(0, 100) } : {}),
           ...(x.bg === true ? { bg: true } : {}),
         }));
-      if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
+      if (typeof patch.currentStep === 'string') allowed.currentStep = cutText(patch.currentStep, 200);
       // A line of what it’s thinking or writing right now; cleared when the turn ends.
       if (typeof patch.glimpse === 'string') allowed.glimpse = glimpseOf(patch.glimpse);
       liveUpdate(rt, turn, allowed);

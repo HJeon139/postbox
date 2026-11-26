@@ -189,9 +189,7 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
       { edited: it.tool === 'Bash' ? input.command : JSON.stringify(input, null, 2) },
     );
   } else {
-    const reason = String(values?.reason ?? '')
-      .trim()
-      .slice(0, MAX_REASON);
+    const reason = cutText(String(values?.reason ?? '').trim(), MAX_REASON);
     rt.threads.addItem(threadId, { kind: 'voice', text: `Didn’t allow: ${asked}${reason ? ` (“${reason}”)` : ''}` });
     rt.settlePermission(
       itemId,
@@ -329,10 +327,10 @@ function writeOf(tool, input, detail, given) {
       ? JSON.stringify({ ...input, [draft.field]: '(the draft above)' }, null, 2)
       : null;
   return {
-    detail: String(rest ?? detail).slice(0, 4000),
+    detail: cutText(String(rest ?? detail), 4000),
     // Where it lands, so the card can say so before anything exists there.
     ...(outside ? { outside: true, where: whereOf(String(tool ?? ''), input) } : {}),
-    ...(draft ? { draft: { field: draft.field, text: String(draft.text).slice(0, 20000) } } : {}),
+    ...(draft ? { draft: { field: draft.field, text: cutText(String(draft.text), 20000) } } : {}),
   };
 }
 

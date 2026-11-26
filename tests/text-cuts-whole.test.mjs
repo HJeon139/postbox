@@ -5,9 +5,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { questionBlocks } from '../server/ask-question.mjs';
+import { liveFields } from '../server/live-buffer.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { draftOf } from '../server/write-guard.mjs';
+import { draftOf, whereOf } from '../server/write-guard.mjs';
 import * as arrange from './arrange.mjs';
 import { settle } from './blocks-fixture.mjs';
 
@@ -17,7 +18,7 @@ const across = (n, pad = 'x') => pad.repeat(n - 1) + EMOJI + 'tail';
 /** Whether text holds a lone half of a surrogate pair. */
 const lone = (s) => /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(String(s));
 function whole(s, where) {
-  assert.equal(typeof s, 'string', `${where} wasn’t found`);
+  assert.ok(typeof s === 'string' && s.length > 0, `${where} wasn’t found`);
   assert.equal(lone(s), false, `${where} ends inside a character`);
 }
 
@@ -133,4 +134,44 @@ test('#1686 a write’s draft text and a question’s fallback are cut whole', (
   const blocks = questionBlocks({ questions: [{ question, options: labels.map((label) => ({ label })) }] });
   assert.ok(blocks, 'the question can be shown as a choice');
   whole(blocks[0].fallback, 'the question’s fallback');
+});
+
+test('#1686 a permission card’s detail and the person’s reason for not allowing it are cut whole', async () => {
+  const r = room();
+  await r.during(async () => {
+    void r.rt.requestPermission(r.se.id, { tool: 'Bash', summary: 'Run it', detail: across(4000) });
+  });
+  const card = r.items('permission')[0];
+  whole(card?.detail, 'the card’s detail');
+  // Asked again, and answered with a long reason: its voice line quotes the reason cut whole.
+  let release = () => {};
+  const busy = r.during(() => new Promise((ok) => (release = ok)));
+  for (let i = 0; i < 100 && !r.rt.turns.get(r.se.id); i++) await new Promise((ok) => setTimeout(ok, 5));
+  void r.rt.requestPermission(r.se.id, { tool: 'Bash', summary: 'Run it again', detail: 'ls' });
+  for (let i = 0; i < 100 && r.items('permission').length < 2; i++) await new Promise((ok) => setTimeout(ok, 5));
+  const asked = r.items('permission').at(-1);
+  r.rt.resolvePermission(r.t.id, asked.id, 'deny', { reason: across(400) });
+  release();
+  await busy;
+  whole(r.items('voice').find((i) => /Didn’t allow/.test(i.text))?.text, 'the reason');
+});
+
+test('#1686 a proposed agent’s description, a write’s destination, and a subagent’s lines in the status are cut whole', async () => {
+  const r = room();
+  // The status as the turn left it, read outside the turn, where a failed assertion fails the test.
+  const se = await r.during(async (ctx) => {
+    r.rt.toolsFor(r.se.id, r.rt.turns.get(r.se.id)).propose_agent({ handle: 'gamma', description: across(500), instructions: 'Help.' });
+    ctx.status({
+      state: 'tool',
+      currentStep: across(200),
+      subagents: [{ id: 'a1', name: 'helper', state: 'run', doing: across(120), asked: across(120), said: across(200) }],
+    });
+    return structuredClone(liveFields(r.rt, r.rt.turns.get(r.se.id)));
+  });
+  whole(se?.currentStep, 'the current step');
+  for (const k of ['doing', 'asked', 'said']) whole(se?.subagents?.[0]?.[k], `a subagent’s ${k}`);
+  const proposal = r.items('proposal')[0];
+  whole(proposal?.proposal?.description, 'the proposal’s description');
+  const where = whereOf('mcp__claude_ai_Notion__notion-create-pages', { folder: across(120), content: 'x' });
+  whole(where?.target?.name, 'the write’s destination');
 });

@@ -147,7 +147,7 @@ export function whereOf(tool, input) {
   for (const [field, what] of TARGET_FIELDS) {
     const v = i[field];
     const text = typeof v === 'string' ? v : v && typeof v === 'object' ? Object.values(v).find((x) => typeof x === 'string') : null;
-    if (text?.trim()) return { server, target: { what, name: String(text).slice(0, 120) } };
+    if (text?.trim()) return { server, target: { what, name: cutText(String(text), 120) } };
   }
   return { server, target: null };
 }

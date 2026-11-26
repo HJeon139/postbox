@@ -114,7 +114,7 @@ function defineTerm(rt, { turn, se, threadId }, { term, definition, key, source 
 function proposeAgent(rt, sessionId, { turn, se, threadId, endSegment }, { handle, description, instructions, tools = [], model = 'mock', backend = 'mock' }) {
   const mine = new Set(rt.persona(se().personaId)?.tools ?? []);
   // Agents send JSON: anything that isn’t a string here is coerced, so it can only ever show as text.
-  const str = (v, max) => String(v ?? '').slice(0, max);
+  const str = (v, max) => cutText(String(v ?? ''), max);
   handle = str(handle, 40);
   description = str(description, 500);
   instructions = str(instructions, 20000);
