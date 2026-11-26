@@ -22,8 +22,9 @@ export function runAgentCommand(rt, threadId, { sessionId, text }) {
   if (rt.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
   // A command its backend can’t run now is refused here, before anything is posted or woken, as Codex refuses /compact
   // with no conversation to compact (#425).
-  const refused = rt.adapters.get(rt.personas.forSession(se)?.backend)?.refuses?.(line, se.backendState ?? {});
-  if (refused) throw httpError(422, `@${se.handle}: ${refused}`);
+  // An agent whose backend isn’t registered has no adapter to ask: its turn fails with the reason (#874).
+  const refused = rt.placement.registeredAdapter(rt.personas.forSession(se))?.refuses?.(line, se.backendState ?? {}, se.handle);
+  if (refused) throw httpError(422, refused);
   const item = rt.threads.addItem(threadId, { kind: 'user', text: line, attachments: [], to: [se.handle], command: { sessionId: se.id, handle: se.handle } });
   rt.threads.patch(threadId, { hops: 0 });
   if (rt.sessions.pendingIn(threadId).length > 1) rt.threads.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });

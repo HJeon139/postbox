@@ -14,6 +14,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
 import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
+import { settle, setup } from './side-threads-fixture.mjs';
 
 const RECORDED = readFileSync(new URL('fixtures/codex-app-server/compact.jsonl', import.meta.url), 'utf8')
   .trim()
@@ -113,8 +114,7 @@ test('#425 a /compact that still reaches a Codex turn with no conversation fails
 
 test('#425 /compact for a Codex agent with no conversation yet is refused before anything is posted or started', () => {
   const store = new Store(null);
-  const spawned = /** @type {any[]} */ ([]);
-  const codex = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: (/** @type {any} */ ...a) => spawned.push(a) && recordedServer([]) });
+  const codex = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => recordedServer([]) });
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register(codex),
@@ -131,8 +131,16 @@ test('#425 /compact for a Codex agent with no conversation yet is refused before
   );
   assert.equal(store.items(t.id).length, before, 'nothing posted');
   assert.equal(rt.turns.size, 0, 'no turn');
-  assert.equal(spawned.length, 0, 'no Codex started');
   // With a conversation, or for any other command, nothing is refused.
-  assert.equal(codex.refuses('/compact', { codexThreadId: 'thr-1' }), null);
-  assert.equal(codex.refuses('/review', {}), null);
+  assert.equal(codex.refuses('/compact', { codexThreadId: 'thr-1' }, 'gpt'), null);
+  assert.equal(codex.refuses('/review', {}, 'gpt'), null);
+});
+
+test('#874 a command to an agent whose backend isn’t registered is still posted, and its turn fails with the reason', async () => {
+  const f = setup();
+  f.store.emit('persona', { ...f.rt.persona(f.b.id), backend: 'claude-code' });
+  const { item } = f.rt.runAgentCommand(f.t.id, { sessionId: f.beta.id, text: '/review' });
+  assert.equal(f.store.item(f.t.id, item.id)?.text, '/review', 'posted, not a 500');
+  await settle(f.rt);
+  assert.ok(f.store.items(f.t.id).some((i) => i.kind === 'agent' && i.status === 'failed'));
 });

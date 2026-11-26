@@ -110,7 +110,10 @@
  * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, promptTool?: boolean, promptHook?: boolean, models?: string[],
  *   remote?: RemoteCapabilities },
  *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void,
- *   promptCard?(call: any, args: any): { tool: string, input: any } | null }} Adapter
+ *   promptCard?(call: any, args: any): { tool: string, input: any } | null,
+ *   refuses?(line: string, state: object, handle: string): string | null }} Adapter
+ *   refuses: why a command (`/name args`) can’t run now, asked before it’s posted (agent-commands.mjs); a reason
+ *   refuses it with a 422, as Codex refuses /compact with no conversation (#425).
  */
 
 /**

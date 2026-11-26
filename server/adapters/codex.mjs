@@ -70,6 +70,9 @@ export function codexConfigArgs(mcpUrl) {
   ];
 }
 
+/** The Codex thread a turn continues: a fork’s source, else the session’s own, or none. @param {any} state */
+const threadOf = (state) => (state.fork ?? state.forkFrom)?.threadId ?? state.codexThreadId;
+
 /**
  * Whether a turn’s message is the /compact command, run as Codex’s compaction (#425). Codex’s takes no instructions,
  * so any after it are left out rather than sent to the model as a prompt. @param {any} message
@@ -108,7 +111,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   const openConfig = { developerInstructions: guide, ...(mcpConfig ? { config: mcpConfig } : {}) };
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;
-  const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
+  const sourceThreadId = threadOf(ctx.state);
   if (compacts(message) && !sourceThreadId) throw new Error('There’s nothing to compact yet: this agent has no Codex conversation.');
   const { opened, fresh } = await openCodexThread(ctx, request, { sourceThreadId, fork, cwd, model, openConfig }).catch((e) => {
     throw codexRefusal(ctx, e);
@@ -152,11 +155,11 @@ export class CodexAdapter {
   }
   /**
    * Why a command can’t run now, or null (agent-commands.mjs): /compact with no Codex thread has nothing to compact
-   * (#425). @param {string} line @param {any} state  the session’s saved state
+   * (#425). @param {string} line @param {any} state  the session’s saved state @param {string} handle
    */
-  refuses(line, state) {
-    return compacts({ slash: true, text: line }) && !state?.codexThreadId && !state?.fork?.threadId && !state?.forkFrom?.threadId
-      ? 'there’s nothing to compact yet: it has no Codex conversation.'
+  refuses(line, state, handle) {
+    return compacts({ slash: true, text: line }) && !threadOf(state ?? {})
+      ? `There’s nothing to compact yet: @${handle} has no Codex conversation. Send it a message first.`
       : null;
   }
   /**
