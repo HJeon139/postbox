@@ -21,6 +21,7 @@
 // conversations, and every turn in a folder that isn’t in git.
 
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { access, mkdir, readFile, realpath, rm } from 'node:fs/promises';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { storedFolder } from '../folder-path.mjs';
@@ -216,6 +217,30 @@ export function turnFolders(cwd, ctx, workRoot) {
 }
 
 /**
+ * The branch the worktree holding cwd is on now, read from git’s own files with no git run (the agent may have
+ * checked out another), or null when it isn’t on one or there’s no worktree there.
+ * @param {string} cwd @param {string} workRoot
+ */
+function branchIn(cwd, workRoot) {
+  const root = resolve(worktreesRootFor(workRoot));
+  for (let dir = resolve(cwd); dir.startsWith(`${root}${sep}`); dir = dirname(dir)) {
+    let admin;
+    try {
+      admin = gitPointer(readFileSync(join(dir, '.git'), 'utf8'), 'gitdir: ');
+    } catch {
+      continue; // no .git here: the worktree’s top is further up
+    }
+    if (!admin) return null;
+    try {
+      return /^ref: refs\/heads\/(.+)$/m.exec(readFileSync(join(resolve(dir, admin), 'HEAD'), 'utf8'))?.[1]?.trim() ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
  * What an agent in its own worktree is told about where it works (#1709, the person’s decision of 26 November 2026:
  * the person merges an agent’s branch, and the agent says which branch its work is on). Empty for a turn in the
  * project’s shared folder.
@@ -228,6 +253,6 @@ export function worktreeNote(cwd, persona, project, workRoot) {
   return [
     '## Where you work',
     '',
-    `Your current folder is your own git worktree, on branch ${branchFor(persona, project)}. The project’s folder, ${project.folder}, is the person’s: read it, but don’t work there. Your work reaches the person and other agents only as commits on your branch, which the person merges; it doesn’t follow their later commits. When you commit, name your branch in your reply.`,
+    `Your current folder is your own git worktree, on branch ${branchIn(cwd, workRoot) ?? branchFor(persona, project)}. The project’s folder, ${project.folder}, is the person’s: read it, but don’t work there. Your work reaches the person and other agents only as commits on your branch, which the person merges; it doesn’t follow their later commits. When you commit, name your branch in your reply.`,
   ].join('\n');
 }

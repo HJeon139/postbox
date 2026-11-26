@@ -197,4 +197,9 @@ test('#1709 an Antigravity turn in an agent’s worktree is told its branch and 
   assert.ok(turn.rules.includes(`branch postbox/pr_told-gem-pe_a`), turn.rules.slice(0, 400));
   assert.ok(turn.rules.includes(p.folder));
   assert.match(turn.rules, /which the person merges/);
+  // The branch it’s on now, which the agent may have changed, is the one it’s told.
+  git(turn.cwd, ['checkout', '-q', '-b', 'gem-own-name']);
+  seen.length = 0;
+  await adapter.deliver({}, { kind: 'user', text: 'Again.' }, ctx).catch(() => {});
+  assert.ok(seen.find((x) => x.rules)?.rules.includes('branch gem-own-name'));
 });
