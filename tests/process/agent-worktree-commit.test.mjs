@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { agentWorktree, gitTimeoutFor } from '../../server/adapters/agent-worktree.mjs';
@@ -210,4 +210,23 @@ test('#1709 a repository that writes relative worktree paths still has the turn�
   const dir = await agentWorktree(agent, p, workRoot);
   await writeFile(join(dir, 'agent.txt'), 'the agent’s work\n');
   assert.equal(await commitTurn(dir, agent, p, workRoot, { log: () => {} }), true);
+});
+
+test('#1709 each agent’s commit uses its own record among the repository’s worktrees, and none once that record is gone', async () => {
+  const { project: p, workRoot } = await project('records');
+  /** @type {string[]} */
+  const logs = [];
+  const log = (/** @type {string} */ l) => logs.push(l);
+  const agents = [agent, { id: 'pe_b', handle: 'gpt' }];
+  const dirs = [await agentWorktree(agents[0], p, workRoot), await agentWorktree(agents[1], p, workRoot)];
+  for (const [i, who] of agents.entries()) {
+    await writeFile(join(dirs[i], 'agent.txt'), `@${who.handle}’s work\n`);
+    assert.equal(await commitTurn(dirs[i], who, p, workRoot, { log }), true, logs.join('\n'));
+    assert.equal(git(p.folder, ['show', `postbox/pr_records-${who.handle}-${who.id}:agent.txt`]), `@${who.handle}’s work\n`);
+  }
+  // Its record gone, as after the repository is cloned again: nothing is committed, and the log says why.
+  await writeFile(join(dirs[0], 'more.txt'), 'more\n');
+  await rm(git(dirs[0], ['rev-parse', '--absolute-git-dir']).trim(), { recursive: true });
+  assert.equal(await commitTurn(dirs[0], agent, p, workRoot, { log }), false);
+  assert.match(logs.at(-1) ?? '', /isn’t one the project’s repository lists/);
 });
