@@ -46,6 +46,7 @@ import { convertQueues } from './queue-convert.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { Hosts } from './remote/host-service.mjs';
+import { hostTurnsPort } from './remote/host-turns-port.mjs';
 import { Placement } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { Running } from './running.mjs';
@@ -239,23 +240,9 @@ export class Runtime {
       config,
     });
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
-    // The person’s remote hosts (designs/architecture/services.md, “Hosts”). A rename refuses while turns run on the
-    // host, and a removal stops them first, through the hostTurns port; each part looks the runtime’s own up as it’s
-    // called, so it is the one in place then.
-    this.hostService = new Hosts({
-      store,
-      personas: this.personas,
-      running: this.running,
-      hostTurns: {
-        busyOn: (hostId) => this.remote.busyOn(hostId),
-        sessionsOn: (hostId) => this.remote.sessionsOn(hostId),
-        stopOn: (sessionId) => this.stop(sessionId, { silent: true }),
-        cancel: (sessionId) => this.remote.cancel(sessionId),
-        confirmStops: (hostId, waitMs) => this.remote.confirmStops(hostId, waitMs),
-        stoppingSession: (turnId) => this.remote.stopping.get(turnId)?.sessionId,
-      },
-      hosts: this.hosts,
-    });
+    // The person’s remote hosts (designs/architecture/services.md, “Hosts”), which reach the turns on a host through
+    // the hostTurns port (host-turns-port.mjs).
+    this.hostService = new Hosts({ store, personas: this.personas, running: this.running, hostTurns: hostTurnsPort(this), hosts: this.hosts });
     this.listenToPersonas();
     // Conversations can’t be archived any more: one an older Postbox archived comes back as a live one.
     this.sessions.unarchive();
