@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.4 (2026-11-26)
+
+### Fixes
+
+- **view:** a pointer resting on a button holds it beside a reply at its estimate
+- **sheets:** an agent sheet takes hold of what's pressed as it's pressed
+- **view:** a press holds what it pressed beside a reply at its estimate
+
 ## 4.52.3 (2026-11-26)
 
 ### Fixes
