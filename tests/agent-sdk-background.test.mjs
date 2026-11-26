@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
+import { stoppedAfterReply } from '../server/adapters/sdk-background.mjs';
 import { QUIET } from '../shared/limits.mjs';
 import { fixtureLines } from './fake-daemon.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -108,4 +109,15 @@ test('#1714 a background subagent stopped while it was still sending its own mes
   const stopped = RECORDED.find((m) => m.subtype === 'task_notification' && m.status === 'stopped');
   const { told } = await turnOver([result, forwarded, stopped]);
   assert.equal(told.length, 1);
+});
+
+test('#1714 a stopped work’s summary is told as one line, cut at a whole character, and an empty one by its task', () => {
+  const watch = stoppedAfterReply();
+  watch.push({ type: 'result' });
+  const stopped = { type: 'system', subtype: 'task_notification', status: 'stopped' };
+  watch.push({ ...stopped, summary: `run\n  the\tgate ${'x'.repeat(106)}😀tail` });
+  watch.push({ ...stopped, summary: ' \n ', task_id: 'task_7' });
+  const told = watch.told() ?? '';
+  assert.match(told, /“run the gate x{106}”, “task_7”/);
+  assert.doesNotMatch(told, /[\n\t]|[\ud800-\udbff](?![\udc00-\udfff])/);
 });

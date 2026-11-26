@@ -26,15 +26,13 @@ export function stoppedAfterReply() {
       if (m?.type === 'result') replied = true;
       // The agent at work again: its own message, not one a subagent forwards (parent_tool_use_id) while it runs on.
       else if (m?.type === 'assistant' && !m.parent_tool_use_id) replied = false;
-      else if (replied && m?.type === 'system' && m.subtype === 'task_notification' && m.status === 'stopped')
-        stopped.push(
-          cutText(
-            String(m.summary || m.task_id || 'background work')
-              .replace(/\s+/g, ' ')
-              .trim(),
-            120,
-          ),
-        );
+      else if (replied && m?.type === 'system' && m.subtype === 'task_notification' && m.status === 'stopped') {
+        // One line, cut at a whole character: a summary is the agent’s own words and can run to paragraphs.
+        const summary = String(m.summary ?? '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        stopped.push(cutText(summary || String(m.task_id || 'background work'), 120));
+      }
     },
     /** What the agent hears at its next turn, or null when nothing was stopped. */
     told() {
