@@ -2,8 +2,9 @@
 // replay the event types it doesn’t know (apply throws on them, shared/state.mjs), so it started without what the newer
 // one had logged since its last snapshot, and its next snapshot made that loss permanent. The folder now records the
 // version of the last Postbox to load it, in `format.json`, and an older Postbox refuses it before it takes the lock,
-// changing nothing in it. Only an older release refuses: a build of the same version (another branch on the same
-// folder) or a newer one (an upgrade, which reads what it replaced) loads it as before. Reload and Retry read the
+// changing nothing in it. Only an older release refuses: a build of the same version or a newer one (an upgrade, which
+// reads what it replaced) loads it as before. A branch older than the release that last opened a shared folder is
+// refused too, so its message names --data, for a folder of its own. Reload and Retry read the
 // folder again under the lock this store holds (server/store-retry.mjs), so no other Postbox can have opened it since.
 
 import { readFileSync } from 'node:fs';
@@ -35,7 +36,9 @@ export async function checkFormat(io, at, warn = console.warn) {
     text = await io.readFile(at(FORMAT_FILE), 'utf8');
   } catch (e) {
     if (/** @type {any} */ (e).code === 'ENOENT') return;
-    throw e;
+    return warn(
+      `Postbox couldn’t read which version last opened this data folder (${FORMAT_FILE}: ${e instanceof Error ? e.message : e}), so it loads it as before.`,
+    );
   }
   let version;
   try {
@@ -43,10 +46,12 @@ export async function checkFormat(io, at, warn = console.warn) {
   } catch {}
   const was = partsOf(version);
   if (!was) return warn(`Postbox couldn’t read which version last opened this data folder (${FORMAT_FILE}), so it loads it as before.`);
-  if (!newer(was, /** @type {number[]} */ (partsOf(OURS)))) return;
+  const ours = partsOf(OURS);
+  // A build whose own version isn’t a release’s, which releases never make, can’t say what’s newer.
+  if (!ours || !newer(was, ours)) return;
   throw Object.assign(
     new Error(
-      `This data folder was last opened by Postbox ${version}, which may have recorded what this older Postbox (${OURS}) can’t read. Run Postbox ${version} or newer on it. Postbox left the folder as it was.`,
+      `This data folder was last opened by Postbox ${version}, which may have recorded what this older Postbox (${OURS}) can’t read. Run Postbox ${version} or newer on it, or start this one with --data <another folder>. Postbox left the folder as it was.`,
     ),
     { code: 'NEWER_FORMAT' },
   );

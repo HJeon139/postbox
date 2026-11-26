@@ -128,6 +128,8 @@ export async function load(store, { fresh = false } = {}) {
   await store.io.mkdir(store.dir, { recursive: true });
   store.lock = await lockStore(store.io, store.dir);
   try {
+    // Again under the lock: a newer Postbox could have opened the folder and gone between the first read and the lock.
+    if (!fresh) await checkFormat(store.io, (n) => store.at(n));
     // A fresh start empties the folder only once it holds the lock, so a running Postbox’s files are never deleted
     // under it (the integrator’s review of 1a).
     // The asset folder goes too: its files belong to the state this empties, and left there, the asset pass at load
@@ -135,8 +137,9 @@ export async function load(store, { fresh = false } = {}) {
     if (fresh)
       for (const n of await store.io.readdir(store.dir))
         if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n) || n === 'assets') await store.io.rm(store.at(n), { force: true, recursive: true });
-    // A snapshot’s or the format record’s temporary file left by a process that stopped while writing it (#1314, #683): up to about 190 MB at
-    // 1,000,000 items, and nothing else removes it. With the lock held, no other store is writing one here.
+    // A snapshot’s temporary file left by a process that stopped while writing it (#1314): up to about 190 MB at
+    // 1,000,000 items, and nothing else removes it. The format record’s, likewise (#683). With the lock held, no other
+    // store is writing one here.
     for (const n of await store.io.readdir(store.dir)) if (/^(snapshot|format)\.json\.\d+\.tmp$/.test(n)) await store.io.rm(store.at(n), { force: true });
     install(store, await recover(store));
     await recordFormat(store.io, (n) => store.at(n));

@@ -15,7 +15,8 @@ import { FORMAT_FILE } from '../server/store-format.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-const NEWER = VERSION.replace(/^(\d+)\./, (_, major) => `${Number(major) + 1}.`);
+const [MAJOR, MINOR, PATCH] = VERSION.split('.').map(Number);
+const NEWER = `${MAJOR + 1}.0.0`;
 
 /** Every file in the folder, by name, with a hash of its bytes. @param {string} dir */
 const filesOf = (dir) =>
@@ -64,7 +65,7 @@ test('#683 a folder a newer Postbox opened is refused, naming the version to run
     assert.equal(/** @type {any} */ (e).code, 'NEWER_FORMAT');
     assert.equal(
       e.message,
-      `This data folder was last opened by Postbox ${NEWER}, which may have recorded what this older Postbox (${VERSION}) can’t read. Run Postbox ${NEWER} or newer on it. Postbox left the folder as it was.`,
+      `This data folder was last opened by Postbox ${NEWER}, which may have recorded what this older Postbox (${VERSION}) can’t read. Run Postbox ${NEWER} or newer on it, or start this one with --data <another folder>. Postbox left the folder as it was.`,
     );
     return true;
   });
@@ -138,4 +139,20 @@ test('#683 a load that finds its own record leaves it as it is, with no write', 
   const ino = statSync(join(dir, FORMAT_FILE)).ino;
   await loaded(dir);
   assert.equal(statSync(join(dir, FORMAT_FILE)).ino, ino, 'not written again');
+});
+
+test('#683 versions compare by number, part by part: a newer minor or patch is refused, a lower one loads', async () => {
+  const refused = [`${MAJOR}.${MINOR}.${PATCH + 1}`, `${MAJOR}.${MINOR + 1}.0`, `${MAJOR + 1}.0.0`];
+  // Lower by number but not as text where the part has two digits: 9 is less than 50, though “9” sorts after “50”.
+  const loads = [`${MAJOR}.${MINOR}.${PATCH}`, `${MAJOR - 1}.99.99`, ...(MINOR >= 10 ? [`${MAJOR}.9.0`] : [])];
+  for (const version of refused) {
+    const dir = await written();
+    recordAs(dir, `${JSON.stringify({ version })}\n`);
+    await assert.rejects(new Store(dir).load(), { code: 'NEWER_FORMAT' }, version);
+  }
+  for (const version of loads) {
+    const dir = await written();
+    recordAs(dir, `${JSON.stringify({ version })}\n`);
+    assert.equal((await loaded(dir)).state.threads.th_1?.title, 'Kept', version);
+  }
 });
