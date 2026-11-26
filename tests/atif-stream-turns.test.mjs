@@ -234,3 +234,18 @@ test('#1758 a stream whose step’s reply names no turn still marks its turn as 
   assert.equal(r.byId.has('x'), true);
   assert.equal(r.turnsWithoutStream, 0);
 });
+
+test('#1758 a stream whose step’s reply names no turn never marks another session’s turn as streamed', () => {
+  const use = (/** @type {string} */ id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'T', input: {} }] } });
+  const sessions = new Map([
+    ['A', [{ id: 'a1', steps: new Map([['x', {}]]) }]],
+    ['B', [{ id: 'b1', turnId: 'tB', steps: new Map() }]],
+  ]);
+  // tB, in session B, started after tA and has no stream: the latest turn by time, but not the step’s session’s.
+  const turns = [
+    { id: 'tA', sessionId: 'A', startedAt: 1000, toolCalls: 1 },
+    { id: 'tB', sessionId: 'B', startedAt: 1002, toolCalls: 1 },
+  ];
+  const streams = [{ handle: 'h', started: 1003, events: [use('x')] }];
+  assert.equal(recordedCalls(streams, 'h', { sessions, turns }, 'B').turnsWithoutStream, 1, 'tB’s gap stays counted');
+});

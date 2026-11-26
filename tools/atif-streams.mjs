@@ -133,8 +133,10 @@ export function recordedCalls(streams, handle, { sessions, turns }, sessionId) {
       .map((c) => ({ ...c, seq: seq++ }));
     for (const c of calls) seen.add(c.id);
     const place = placeOf(calls, owner, sessions, turns, s.started, mine[i + 1]?.started);
-    // A reply that names no turn still had one: the stream’s by time, so its turn isn’t counted as a gap.
-    const turnId = place?.turnId ?? (place ? turnOf(turns, s.started)?.id : null);
+    // A reply that names no turn still had one: the stream’s by time, in the step’s own session, so that turn isn’t
+    // counted as a gap. One in another session isn’t marked, so its own gap stays counted.
+    const byTime = place && !place.turnId ? turnOf(turns, s.started) : null;
+    const turnId = place?.turnId ?? (byTime?.sessionId === place?.sessionId ? byTime?.id : null);
     if (turnId) streamed.add(turnId);
     if (!place?.replies.length) {
       if (sessionId === [...sessions.keys()][0]) unplaced += calls.length;
