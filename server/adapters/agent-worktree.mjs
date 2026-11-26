@@ -288,12 +288,31 @@ export function worktreeNote(cwd, persona, project, workRoot) {
  */
 export async function commitTurn(cwd, persona, project, workRoot, { git = defaultGit, log = (l) => console.error(l) } = {}) {
   if (!project?.folder || sharedFolder(cwd, project, workRoot)) return false;
-  const changed = await git(cwd, ['status', '--porcelain']);
+  // Every untracked file, whatever status.showUntrackedFiles says, or a turn that only made files commits nothing.
+  const changed = await git(cwd, ['status', '--porcelain', '--untracked-files=all']);
   if (changed.code !== 0 || !changed.stdout.trim()) return false;
+  // A merge, rebase or cherry-pick the agent left half done would be committed as resolved, markers and all.
+  const midway = await inProgress(git, cwd);
+  if (midway) {
+    log(`Postbox didn’t commit @${persona.handle}’s work in ${cwd}: a ${midway} is in progress there, so it stays uncommitted.`);
+    return false;
+  }
   const added = await git(cwd, ['add', '-A']);
   // Unsigned: signing would run gpg.program, a program from the repository’s or the person’s config, and could wait
   // on a passphrase.
-  const identity = ['-c', 'user.name=Postbox', '-c', 'user.email=postbox@postbox.invalid', '-c', 'commit.gpgSign=false'];
+  // And no automatic maintenance, whose gc can prune the repository’s worktrees, the person’s own included.
+  const identity = [
+    '-c',
+    'user.name=Postbox',
+    '-c',
+    'user.email=postbox@postbox.invalid',
+    '-c',
+    'commit.gpgSign=false',
+    '-c',
+    'maintenance.auto=false',
+    '-c',
+    'gc.auto=0',
+  ];
   const author = `--author=@${persona.handle} <${persona.handle}@postbox.invalid>`;
   const made = added.code === 0 ? await git(cwd, [...identity, 'commit', '-q', author, '-m', `@${persona.handle}’s work at the end of a turn`]) : added;
   if (made.code === 0) return true;
@@ -301,4 +320,17 @@ export async function commitTurn(cwd, persona, project, workRoot, { git = defaul
     `Postbox couldn’t commit @${persona.handle}’s work in ${cwd} (${made.stderr.trim().split('\n').at(-1) || `git exited with ${made.code}`}), so it stays there, uncommitted.`,
   );
   return false;
+}
+
+/** What git leaves half done in a worktree, by the file it keeps while it’s under way. */
+const MIDWAY = { MERGE_HEAD: 'merge', CHERRY_PICK_HEAD: 'cherry-pick', REVERT_HEAD: 'revert', 'rebase-merge': 'rebase', 'rebase-apply': 'rebase' };
+
+/** Which operation is half done in the worktree at cwd, or null. @param {Git} git @param {string} cwd */
+async function inProgress(git, cwd) {
+  const names = Object.keys(MIDWAY);
+  const paths = await git(cwd, ['rev-parse', ...names.flatMap((n) => ['--git-path', n])]);
+  if (paths.code !== 0) return 'git operation';
+  const lines = paths.stdout.split('\n');
+  for (const [i, name] of names.entries()) if (lines[i] && (await exists(resolve(cwd, lines[i])))) return MIDWAY[/** @type {keyof typeof MIDWAY} */ (name)];
+  return null;
 }

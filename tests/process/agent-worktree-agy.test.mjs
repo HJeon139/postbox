@@ -8,6 +8,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
+import { commitTurn } from '../../server/adapters/agent-worktree.mjs';
 import { PLUGIN_DIR } from '../../server/adapters/agy-plugin.mjs';
 import { AntigravityCliAdapter } from '../../server/adapters/antigravity-cli.mjs';
 import { git, home, project } from './agent-worktree-fixture.mjs';
@@ -135,4 +136,35 @@ test('#1709 the commit at a turn’s end runs no signing program from the reposi
   await agy.turn('Write your notes.');
   assert.equal(git(dir, ['status', '--porcelain']), '', 'committed, unsigned');
   assert.equal(git(dir, ['log', '-1', '--format=%an']).trim(), '@gem');
+});
+
+test('#1709 a merge the agent left half done isn’t committed as resolved: the work stays, and the log says why', async () => {
+  const { project: p, workRoot } = await project('midway');
+  const dir = await agyOver(p, workRoot, 'midway').folder();
+  // Two branches that change one line, merged in the worktree with a conflict left in it.
+  git(dir, ['checkout', '-q', '-b', 'other']);
+  writeFileSync(join(dir, 'README.md'), 'theirs\n');
+  git(dir, ['commit', '-qam', 'theirs']);
+  git(dir, ['checkout', '-q', 'postbox/pr_midway-gem-pe_a']);
+  writeFileSync(join(dir, 'README.md'), 'ours\n');
+  git(dir, ['commit', '-qam', 'ours']);
+  try {
+    git(dir, ['merge', '-q', 'other']);
+  } catch {} // the conflict
+  const head = git(dir, ['rev-parse', 'HEAD']);
+  /** @type {string[]} */
+  const logs = [];
+  assert.equal(await commitTurn(dir, { handle: 'gem' }, p, workRoot, { log: (l) => logs.push(l) }), false);
+  assert.equal(git(dir, ['rev-parse', 'HEAD']), head, 'nothing committed');
+  assert.match(logs[0] ?? '', /a merge is in progress there/);
+});
+
+test('#1709 a turn that only made files is committed, whatever status.showUntrackedFiles says, and the plugin isn’t in it', async () => {
+  const { project: p, workRoot } = await project('untracked');
+  git(p.folder, ['config', 'status.showUntrackedFiles', 'no']);
+  const agy = agyOver(p, workRoot, 'untracked', { writes: 'new.md' });
+  const dir = await agy.folder();
+  await agy.turn('Write a new file.');
+  const files = git(dir, ['show', '--name-only', '--format=', 'HEAD']).trim().split('\n');
+  assert.deepEqual(files, ['new.md'], 'the new file, and nothing of the plugin');
 });
