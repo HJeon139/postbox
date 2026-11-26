@@ -4,10 +4,13 @@
 // (tests/fixtures/atif/uat-pairwork.md), one stream per turn.
 
 import assert from 'node:assert/strict';
+import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { trajectories } from '../tools/atif.mjs';
 import { POSTBOX_VERSION, readRecording } from '../tools/atif-export.mjs';
 import { recordedCalls } from '../tools/atif-streams.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const DIR = new URL('fixtures/atif/uat-pairwork/', import.meta.url).pathname;
 const rec = readRecording(DIR);
@@ -105,4 +108,19 @@ test('#1758 a turn’s stream with no call is an empty file, read with its agent
     '1795679554388-critic',
     '1795679687329-critic',
   ]);
+});
+
+test('#1758 an agent whose streams another backend recorded, in streams/sdk/, has its calls from its steps', () => {
+  // The run as if the developer ran on the Agent SDK: its streams are in streams/sdk/, which the exporter doesn’t read.
+  const dir = tempDir('pb-atif-sdk-');
+  mkdirSync(join(dir, 'streams', 'sdk'), { recursive: true });
+  copyFileSync(join(DIR, 'events.jsonl'), join(dir, 'events.jsonl'));
+  for (const f of readdirSync(join(DIR, 'streams')))
+    copyFileSync(join(DIR, 'streams', f), join(dir, 'streams', ...(f.endsWith('-developer.jsonl') ? ['sdk', f] : [f])));
+  const run = readRecording(dir);
+  assert.deepEqual([...new Set(run.streams?.map((s) => s.handle))], ['critic'], 'streams/sdk/ isn’t read');
+  const { developer, critic } = byHandle(run.events, run.streams);
+  assert.equal(developer.extra.calls_from, 'steps');
+  assert.match(developer.notes, /since the run has no Claude Code stream of this agent’s turns\.$/);
+  assert.equal(critic.extra.calls_from, 'recorded streams');
 });
