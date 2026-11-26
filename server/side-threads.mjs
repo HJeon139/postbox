@@ -91,14 +91,29 @@ export function agentWake(
   // The woken agent answers from its session in the conversation (#110): the message is an entry in its inbox there,
   // which starts its turn now, or once its turn ends (designs/rooms-at-scale.md, “Delivery”).
   const waits = rt.running.busy(target.id);
-  const entry = { sessionId: target.id, threadId: at, source: 'mention', itemId: it.id, from: from.handle, ...(retryId ? { retryId } : {}), bounce };
-  rt.delivery.send(entry, { wake });
+  rt.delivery.send(mentionEntry(target, at, it, from, retryId, { bounce }), { wake });
   // A card asking to wake it is stale once it’s woken now, or at the end of the waker’s turn under way (#439); one
   // woken once its own turn ends keeps the card the person may answer.
   if (!waits) retireStale(rt, at, target, `@${from.handle} woke it`);
   // itemId: the message the wake went out as, so a turn’s further mentions reuse it rather than post it again.
   return { ok: true, itemId: it.id, message: waits ? `Woke @${p.handle}: it’s busy, so it answers when its current turn ends.` : `Woke @${p.handle}.` };
 }
+
+/**
+ * The entry a mention makes in the woken agent’s inbox (delivery.mjs, Entry): the message it went out as, who wrote it,
+ * and what kind of reply it is, if it is one.
+ * @param {any} target  the woken agent’s session @param {string} at  the thread @param {any} it  the message
+ * @param {any} from  the waker’s session @param {string | undefined} retryId @param {{ bounce: boolean }} kind
+ */
+const mentionEntry = (target, at, it, from, retryId, kind) => ({
+  sessionId: target.id,
+  threadId: at,
+  source: 'mention',
+  itemId: it.id,
+  from: from.handle,
+  ...(retryId ? { retryId } : {}),
+  ...kind,
+});
 
 /** An agent whose turn runs in a side thread from before #372 is told, once, that hand-offs happen in the conversation. */
 function sideThreadsGone(rt, se) {
