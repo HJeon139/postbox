@@ -6,6 +6,7 @@
 // so the log doesn’t carry the list again.
 
 import { STEP_TEXT } from './limits.mjs';
+import { cutText } from './text-parts.mjs';
 
 const LIVE = ['input', 'output', 'diff', 'at', 'part'];
 
@@ -13,7 +14,7 @@ const LIVE = ['input', 'output', 'diff', 'at', 'part'];
 export function foldedStep(s) {
   const kept = { ...s };
   for (const k of LIVE) delete kept[k];
-  if (typeof kept.detail === 'string' && kept.detail.length > STEP_TEXT.detail) kept.detail = kept.detail.slice(0, STEP_TEXT.detail);
+  if (typeof kept.detail === 'string' && kept.detail.length > STEP_TEXT.detail) kept.detail = cutText(kept.detail, STEP_TEXT.detail);
   return kept;
 }
 

@@ -92,7 +92,7 @@ test('an agent’s row says what it runs or waits on, from its session, its jobs
   await row.sameNode();
 });
 
-test('an agent’s row says when it is out of quota, needs you or failed', async ({ page }) => {
+test('an agent’s row says when it is out of quota, retrying, needs you or failed', async ({ page }) => {
   const row = await openIdle(page);
   // Its harness ran out of quota, with the reset time it gave.
   const reset = Date.now() + 3 * 3600_000;
@@ -100,6 +100,15 @@ test('an agent’s row says when it is out of quota, needs you or failed', async
   await expect(words(page, indexer)).toHaveText(` · out of quota until ${clockOf(reset)}`);
   await row.sizeHolds('out of quota');
   arrange.setSession(app.rt, indexer.id, { quota: null });
+
+  // Its provider failed its turn for a while, and Postbox tries it again on its own at a set time (#1713): the row says
+  // when, the ring isn’t the alert color of a failure, and it never reads as needs you.
+  const at = Date.now() + 2 * 60_000;
+  arrange.setSession(app.rt, indexer.id, { state: 'failed', autoRetry: { tries: 1, at, status: 529 } });
+  await expect(words(page, indexer)).toHaveText(` · retrying at ${clockOf(at)}`);
+  await expect(page.locator(`.rail pb-ring[name="indexer"]`).first()).toHaveAttribute('state', 'retrying');
+  await row.sizeHolds('retrying');
+  arrange.setSession(app.rt, indexer.id, { state: 'idle', autoRetry: null });
 
   arrange.setSession(app.rt, indexer.id, { state: 'needs' });
   await expect(words(page, indexer)).toHaveText(' · needs you');

@@ -30,7 +30,7 @@ function erasedWith(rt, t) {
 /**
  * Deletes a session at once: its turn stops, its wakes and queued messages go, and if it was alone in its conversation,
  * the conversation goes with it, unless keepConversation asks that it stay, which refuses the delete instead. In a room
- * it leaves, and its past messages stay, marked deleted. The persona stays. There is no Undo window, so nothing is held
+ * it leaves, and its past messages stay as they were, under its name (#1743). The persona stays. There is no Undo window, so nothing is held
  * for it (#604, #599).
  */
 export function deleteSession(rt, sessionId, { keepConversation = false } = {}) {
@@ -40,13 +40,14 @@ export function deleteSession(rt, sessionId, { keepConversation = false } = {}) 
   if (!se) throw httpError(404, 'That session doesn’t exist. It may have been deleted.');
   const t = rt.store.pending.thread(se.threadId); // a member that joined behind a held commit keeps its room (#796)
   const others = (t?.members ?? []).filter((id) => id !== sessionId && rt.store.pending.session(id));
-  // Alone there, its own conversation goes with it, as deleting the conversation does (#320).
-  const erase = t && !others.length ? erasedWith(rt, t) : null;
-  // A remove from the Agents header’s − keeps the conversation (#1620): as the last agent’s, it’s refused, so a remove
-  // that raced another doesn’t erase what its dialog said would stay. The conversation’s own Delete still erases it.
-  // It counts live agents, as the page’s − does: a retired fork beside it can’t take a message.
-  const lastLive = !others.some((id) => !rt.store.pending.session(id)?.retiredFork);
-  if (t && keepConversation && lastLive)
+  // The live ones: a retired fork beside it can’t take a message, so it doesn’t keep the room (#1620), as the page
+  // counts them when it picks the confirm (#1743).
+  const live = others.filter((id) => !rt.store.pending.session(id)?.retiredFork);
+  // The last live agent there: its conversation goes with it, as deleting the conversation does (#320).
+  const erase = t && !live.length ? erasedWith(rt, t) : null;
+  // A remove from the Members bar or /delete in a room keeps the conversation (#1620, #1743): as the last agent’s, it’s
+  // refused, so a remove that raced another doesn’t erase what its dialog said would stay.
+  if (t && keepConversation && !live.length)
     throw httpError(409, `@${se.handle} is the last agent here, so removing it would delete the conversation. To end it, delete the conversation.`);
   rt.stop(sessionId, { silent: true });
   // A turn of one on a host, waiting to be attached again or to resume, is neither, as deleting a conversation does.

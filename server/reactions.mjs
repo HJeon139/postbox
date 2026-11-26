@@ -6,6 +6,7 @@
 // reaction goes through it (server/threads.mjs, Threads.toggleReaction).
 
 import { REACTIONS } from '../shared/reactions.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { httpError } from './helpers.mjs';
 
 /** The act that reacts (POST …/items/<id>/act). An agent’s action ids can’t start with @, so none of theirs is this one. */
@@ -30,7 +31,7 @@ export function toggleReaction(store, threadId, itemId, emoji, by = null) {
   if (!it) throw httpError(404, 'That message doesn’t exist any more.');
   if (!REACTABLE.has(it.kind) || (it.kind === 'block' && !it.valid)) throw httpError(409, 'You can react to a message, a block or an app.');
   if (it.status === 'streaming') throw httpError(409, 'That reply is still being written. React once it’s done.');
-  if (it.deletedAgent) throw httpError(409, 'That agent was deleted, so it can’t hear a reaction.');
+  if (it.deletedAgent) throw httpError(409, 'That agent isn’t in this conversation any more, so it can’t hear a reaction.');
   const was = it.reactions ?? [];
   const on = !was.some((r) => r.emoji === emoji && whose(r, by));
   const at = Date.now();
@@ -55,7 +56,7 @@ export function reactTool(threads, se, { id, emoji } = {}) {
       .map((i) => [th, i]),
   );
   if (found.length > 1) return { ok: false, message: `More than one block is called “${key}”. React to one by its item id, from read_conversation.` };
-  if (!found.length) return { ok: false, message: `There’s no item “${key.slice(0, 80)}” in this conversation. read_conversation gives each item’s id.` };
+  if (!found.length) return { ok: false, message: `There’s no item “${cutText(key, 80)}” in this conversation. read_conversation gives each item’s id.` };
   const [[threadId, it]] = found;
   try {
     const r = threads.toggleReaction(threadId, it.id, emoji, { id: se.id, handle: se.handle });

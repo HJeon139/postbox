@@ -30,10 +30,10 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
-import { withQuota } from '../harness-failure.mjs';
+import { withQuota, withTransient } from '../harness-failure.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
@@ -45,6 +45,7 @@ import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-gr
 import { recordOnceWritten } from './prompt-sent.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
+import { checkoutSteering } from './steering.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
 export { CLAUDE_CODE_CAPABILITIES, remoteClaudeProblem } from './claude-code-remote.mjs';
@@ -208,7 +209,7 @@ export class ClaudeCodeAdapter {
     const id = sessionId ?? randomUUID();
     // A resume (not a fork, not a fresh start) of a turn the host lost goes on with it (D2).
     const remote = ctx.remote && turn ? remoteTurn(ctx.remote, cwd, turn, Boolean(resume && !fork && ctx.remote.resumeInterrupted), attach) : null;
-    const args = runArgs(this.workRoot, { ctx, id, resume, guide, addDirs, fork, remote });
+    const args = runArgs(this.workRoot, { ctx, cwd, id, resume, guide, addDirs, fork, remote });
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model), effort: effortOf(ctx.persona) });
     // A subagent’s permission prompt arrives at Postbox’s MCP tool with its id; the stream knows its name.
     ctx.subagentNames?.((ids) => mapper.who(ids));
@@ -277,7 +278,9 @@ export class ClaudeCodeAdapter {
         const failure = resultError(mapper.result);
         if (failure) {
           const why = stderr.trim().split('\n').slice(-3).join(' ').slice(0, 400);
-          return reject(withQuota(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`), mapper.quota));
+          const error = withQuota(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`), mapper.quota);
+          // A provider error that passes, such as 529 Overloaded, by the result’s HTTP status (#1713).
+          return reject(withTransient(error, mapper.result?.api_error_status));
         }
         resolve({});
       };
@@ -298,9 +301,10 @@ export class ClaudeCodeAdapter {
 /**
  * A run’s command line (server/adapters/claude-code-args.mjs), from its turn’s context: on a host, its memory folder
  * and its shim as Postbox’s server there.
- * @param {string} workRoot @param {{ ctx: any, id: string, resume: boolean, guide: string, addDirs: string[], fork: any, remote: any }} o
+ * A turn here, not on a host, keeps the checkout’s steering from an agent in the data folder (steering.mjs).
+ * @param {string} workRoot @param {{ ctx: any, cwd: string, id: string, resume: boolean, guide: string, addDirs: string[], fork: any, remote: any }} o
  */
-function runArgs(workRoot, { ctx, id, resume, guide, addDirs, fork, remote }) {
+function runArgs(workRoot, { ctx, cwd, id, resume, guide, addDirs, fork, remote }) {
   return claudeArgs({
     persona: ctx.persona,
     sessionId: id,
@@ -311,5 +315,6 @@ function runArgs(workRoot, { ctx, id, resume, guide, addDirs, fork, remote }) {
     fork,
     ...fromContext(ctx, ctx.remote ? hostMemoryRoot(ctx.remote) : memoryRootFor(workRoot)),
     ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : {}),
+    claudeMdExcludes: ctx.remote ? [] : checkoutSteering(cwd, dirname(workRoot)),
   });
 }

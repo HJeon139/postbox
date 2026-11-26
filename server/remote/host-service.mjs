@@ -13,10 +13,13 @@ import { describeHostInstall, hostStatus, installHost, retryHost, setHostKeepUpd
  * @typedef {{ busyOn: (hostId: string) => boolean, sessionsOn: (hostId: string) => string[],
  *             stopOn: (sessionId: string) => boolean, cancel: (sessionId: string) => boolean,
  *             confirmStops: (hostId: string, waitMs: number) => Promise<{ left: string[], noToken: boolean }>,
- *             stoppingSession: (turnId: string) => string|null|undefined }} HostTurns
+ *             stoppingSession: (turnId: string) => string|null|undefined,
+ *             stoppingPersonas: (hostId: string) => (string|undefined)[],
+ *             onStopEnded: (heard: (hostId: string) => void) => void }} HostTurns
  *   The host turns that a rename refuses for and a removal stops (the port; designs/architecture/services.md, “The
  *   services”): whether any runs or waits on a host, the sessions with one there, Stop for one, giving up one waiting to
- *   be attached again, the host’s confirmation that those it stopped are over, and whose a stopped one was.
+ *   be attached again, the host’s confirmation that those it stopped are over, and whose a stopped one was. A deleted
+ *   persona’s memory removal waits for its stopping turns on that host, and goes once they’re over (#1680).
  */
 
 export class Hosts {

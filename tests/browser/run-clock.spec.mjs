@@ -53,3 +53,16 @@ test('a reply a run clock stopped says the clock stopped it, at its budget or it
   await expect.soft(tag(paused)).toHaveText(/^Stopped at .+: its run clock was paused$/);
   await expect.soft(tag(yours)).toHaveText(/^Stopped by you at /);
 });
+
+test('#1749 the conversation shows a run the person ended, with its time used and what it means', async ({ page }) => {
+  const p = app.rt.createPersona({ handle: 'ended', description: 'Ended early' });
+  const t = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: 'An ended run', personaIds: [p.id] });
+  const se = arrange.agentIn(app.rt, t.id);
+  const t0 = Date.now();
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  arrange.runClock(app.rt, se.id, { action: 'start', budgetS: 60 }, () => t0);
+  arrange.runClock(app.rt, se.id, { action: 'stop' }, () => t0 + 12_000);
+  await expect(page.getByText(/^@ended’s run clock ended at 12s of 60s, because you stopped it\. Messages to @ended here now wait/)).toBeVisible();
+  await expect(page.getByText(/@ended’s run clock is paused/), 'not shown as paused').toHaveCount(0);
+});

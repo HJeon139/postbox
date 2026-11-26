@@ -2,7 +2,7 @@
 // ~/.postbox-remote/memory/<persona id>, goes, and nothing else does; Postbox hears `forgotten`.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, promises as fsp, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -17,10 +17,12 @@ import { hostHome } from './socket-base.mjs';
 /** A daemon in a temp home, with Postbox said hello: its paths, what it sent, and a send. @param {import('node:test').TestContext} t */
 async function daemon(t) {
   const home = hostHome('pbfg-');
+  /** @type {string[]} */
+  const logs = [];
   const p = hostPaths(home, VERSION);
   mkdirSync(p.root, { recursive: true, mode: 0o700 });
   writeFileSync(p.token, TOKEN, { mode: 0o600 });
-  const { daemon: d } = inProcessDaemon(home);
+  const { daemon: d } = inProcessDaemon(home, { log: (/** @type {string} */ l) => logs.push(l) });
   t.after(async () => {
     d.close();
     await rm(home, { recursive: true, force: true });
@@ -33,7 +35,7 @@ async function daemon(t) {
   const send = (/** @type {string} */ type, body = {}) => input.write(encode(message('postbox-to-daemon', type, body)));
   send('hello', { version: PROTOCOL_VERSION, token: TOKEN });
   await msgs.next('welcome');
-  return { p, msgs, send, memory: join(p.root, 'memory') };
+  return { p, msgs, send, logs, memory: join(p.root, 'memory') };
 }
 
 /** A persona’s memory folder with a project’s file in it. @param {string} memory @param {string} id */
@@ -119,6 +121,31 @@ test('#491 a memory/ that is a link isn’t followed: nothing is removed, and Po
   send('forget', { persona: 'pe_gone' });
   const refused = await msgs.next('error');
   assert.equal(refused.re, 'forget');
+  assert.equal(refused.persona, 'pe_gone', 'the refusal names its persona (#1683)');
   assert.match(refused.message, /isn’t a folder/);
   assert.equal(existsSync(join(elsewhere, 'pe_gone', 'pr_1', 'MEMORY.md')), true);
 });
+
+// The two failures the file system can give (#1683): each refusal names its persona, and the daemon’s log keeps it.
+for (const [what, method] of [
+  ['memory/ can’t be read', 'lstat'],
+  ['the folder can’t be removed', 'rm'],
+]) {
+  test(`#1683 when ${what}, the refusal names its persona and the daemon logs it`, async (t) => {
+    const { msgs, send, logs, memory } = await daemon(t);
+    remembered(memory, 'pe_gone');
+    const real = fsp[method];
+    t.mock.method(fsp, method, (/** @type {string} */ path, /** @type {any} */ o) =>
+      String(path).startsWith(memory) ? Promise.reject(Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })) : real(path, o),
+    );
+    send('forget', { persona: 'pe_gone' });
+    const refused = await msgs.next('error');
+    assert.deepEqual([refused.re, refused.persona, refused.code], ['forget', 'pe_gone', 'internal']);
+    assert.match(refused.message, /permission denied\.$/, 'a sentence, so Postbox’s log line reads on');
+    assert.equal(existsSync(join(memory, 'pe_gone', 'pr_1', 'MEMORY.md')), true, 'nothing removed');
+    assert.ok(
+      logs.some((l) => l.includes('pe_gone') && l.includes('permission denied')),
+      logs.join('\n'),
+    );
+  });
+}

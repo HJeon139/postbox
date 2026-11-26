@@ -22,6 +22,7 @@ import { PROFILE_TRIGGERS } from './profile-triggers.mjs';
 import { REFUSAL_TRIGGERS } from './refusal-triggers.mjs';
 import { REVIEW_FIGURE_TRIGGERS } from './review-figures-triggers.mjs';
 import { NEEDS_TRIGGERS } from './room-checks-needs.mjs';
+import { SPRINT_TRIGGERS } from './sprint-triggers.mjs';
 import { SWITCH_TRIGGERS } from './switch-triggers.mjs';
 import { cell as esc } from './trigger-facts.mjs';
 import { HOST_TRIGGERS } from './triggers-host.mjs';
@@ -59,6 +60,7 @@ export const TRIGGERS = {
   ...SWITCH_TRIGGERS,
   ...REFUSAL_TRIGGERS,
   ...IDLE_TRIGGERS,
+  ...SPRINT_TRIGGERS,
 };
 
 /**

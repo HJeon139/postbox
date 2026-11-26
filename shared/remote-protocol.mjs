@@ -91,6 +91,8 @@
 // - `forget { persona }` asks the daemon to remove a deleted persona’s memory folder, ~/.postbox-remote/memory/<persona>,
 //   and nothing else; `forgotten` answers it, also when there was none. Also new without a version number: a daemon
 //   from before it refuses it as `models`’ do, and the removal stays owed until the host runs this version (#491).
+//   A refused `forget` is an `error` with `re: 'forget'` and its `persona`, so Postbox settles nothing but that one and
+//   reads the rest of that connection’s answers (#1683).
 //
 // This module is the protocol’s one entry point, and its parts are the remote-protocol-*.mjs modules beside it, one
 // concern each: constants, checks (single values), parts (what several messages carry), files (the host’s), the

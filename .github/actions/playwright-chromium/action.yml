@@ -1,0 +1,80 @@
+# Playwright’s Chromium and the system libraries it needs, from Ubuntu’s mirror (#869). The mirror can stall on one
+# font package for minutes, and that stall was the largest and most variable part of a pull request’s CI time. So apt
+# keeps what it fetched in a folder the runner caches, and a warm run installs the packages from the cache and fetches
+# none. apt installs a package it finds in that folder by its size alone, with no hash check, so each restored package
+# is checked against the signed index first, and one that doesn’t match is deleted and fetched again.
+name: Playwright’s Chromium
+description: Installs Playwright’s Chromium with its system libraries, through a cache of the apt packages.
+inputs:
+  only-shell:
+    description: Install only the headless shell, as the process tests need.
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Point apt at a cached folder
+      id: apt
+      shell: bash
+      run: |
+        # Outside the runner’s home, which apt’s own _apt user can’t enter: there apt would fetch as root.
+        dir=/tmp/postbox-apt-archives
+        mkdir -p "$dir/partial"
+        printf '%s\n' \
+          'APT::Keep-Downloaded-Packages "true";' \
+          "Dir::Cache::Archives \"$dir/\";" | sudo tee /etc/apt/apt.conf.d/99postbox-ci > /dev/null
+        echo "dir=$dir" >> "$GITHUB_OUTPUT"
+        # The runner image, from the runner’s own environment variables, which an action’s env context doesn’t hold.
+        echo "os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+        echo "playwright=$(node -p "require('./package.json').devDependencies['@playwright/test']")" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.apt.outputs.dir }}
+        # A new runner image or Playwright version can want other packages, so either starts a new cache, from the newest
+        # one for the same image OS: apt fetches only what that one lacks.
+        key: apt-${{ runner.os }}-${{ steps.apt.outputs.os }}-${{ steps.apt.outputs.image }}-playwright-${{ steps.apt.outputs.playwright }}-${{ inputs.only-shell }}
+        restore-keys: apt-${{ runner.os }}-${{ steps.apt.outputs.os }}-
+    # Each package is named by its file (name_version_arch.deb, a version’s colon written %3a), never by reading the
+    # archive, and kept only when its SHA-256 is one the signed index gives that name and version.
+    - name: Keep only the cached packages the signed index vouches for
+      shell: bash
+      env:
+        ARCHIVES: ${{ steps.apt.outputs.dir }}
+      run: |
+        shopt -s nullglob
+        debs=("$ARCHIVES"/*.deb)
+        [ ${#debs[@]} -eq 0 ] && exit 0
+        sudo apt-get update -q
+        for f in "${debs[@]}"; do
+          base=$(basename "$f" .deb)
+          pkg=${base%%_*}
+          rest=${base#*_}
+          ver=${rest%_*}
+          ver=${ver//"%3a"/:}
+          # An entry sha256sum can’t read (a directory, a broken link) is no package: it goes too, so the job goes on.
+          sum=$(sha256sum "$f" 2>/dev/null | cut -d' ' -f1) || sum=
+          # The index is read whole before grep, so a grep that stops at its match can’t kill apt-cache with SIGPIPE,
+          # which pipefail would read as no match.
+          index=$(apt-cache show "$pkg=$ver" 2>/dev/null) || index=
+          if [ -z "$sum" ] || ! grep -qx "SHA256: $sum" <<<"$index"; then
+            echo "Not in the index, fetched again: $base"
+            rm -rf "$f"
+          fi
+        done
+    - name: Install Playwright’s Chromium
+      shell: bash
+      env:
+        ONLY_SHELL: ${{ inputs.only-shell }}
+      run: |
+        if [ "$ONLY_SHELL" = true ]; then npx playwright install --with-deps --only-shell chromium
+        else npx playwright install --with-deps chromium; fi
+    # apt wrote the folder as root, its lock file too: the runner’s cache step saves it as the runner’s user. Versions
+    # the mirror no longer offers go first, so a cache carried from an older image doesn’t keep growing.
+    - name: Let the cache read the packages apt kept
+      shell: bash
+      env:
+        ARCHIVES: ${{ steps.apt.outputs.dir }}
+      run: |
+        # Pruning is housekeeping: a failure keeps the old packages, never fails a job whose install passed.
+        sudo apt-get autoclean -q || echo "apt-get autoclean failed: the cache is saved unpruned."
+        sudo chown -R "$(id -u):$(id -g)" "$ARCHIVES"

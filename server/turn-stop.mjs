@@ -12,6 +12,7 @@ import { recordStopped } from './stop-record.mjs';
 import { STORE_STOPPED } from './store-outage.mjs';
 import { whenWritable } from './store-wait.mjs';
 import { endSubagent } from './subagent-end.mjs';
+import { forgetWait } from './turn-transient.mjs';
 import { entriesFirst } from './turns.mjs';
 
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
@@ -137,8 +138,15 @@ export function turnExited(rt, turn) {
   // A remote turn Postbox stopped because it hung says so instead (#120).
   const hung = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id;
   const stoppedBy = stoppedLine(turn, se, hung);
+  // A stopped turn ends a wait to try a provider’s failure again, and its count (#1713).
+  forgetWait(rt, se.id);
   if (se.state === 'stopping' || se.currentStep === 'Stopping')
-    rt.sessions.update(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
+    rt.sessions.update(se.id, {
+      state: se.state === 'stopping' ? 'idle' : se.state,
+      currentStep: stoppedBy,
+      finishedAt: Date.now(),
+      sideTurn: null,
+    });
   else if (se.sideTurn) rt.sessions.update(se.id, { sideTurn: null });
   const held = se.retiredFork ? [] : ex.held;
   // Shutting down, nothing starts a CLI: your messages wait in the agent’s inbox, which a restart keeps. One a turn took

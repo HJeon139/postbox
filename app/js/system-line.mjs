@@ -62,7 +62,9 @@ export function systemLine(it, _ctx) {
             icon('archive', 'i-sm'),
             'Context compacted · ',
             h('b', it.handle),
-            ` #${it.n} · kept ${Math.round(it.kept / 1000)}k of ${Math.round(it.total / 1000)}k tokens`,
+            ` #${it.n}`,
+            // A harness that doesn’t count what it kept, as Codex doesn’t (#425), shows no counts.
+            Number.isFinite(it.kept) && Number.isFinite(it.total) ? ` · kept ${Math.round(it.kept / 1000)}k of ${Math.round(it.total / 1000)}k tokens` : null,
             btn,
           ),
         ),
@@ -74,7 +76,7 @@ export function systemLine(it, _ctx) {
     case 'joined':
       return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', it.to), ' joined');
     case 'left':
-      return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', it.to), ' left (its session was deleted)');
+      return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', it.to), ' left');
     default:
       return h('div.col.sys-line', it.text ?? '');
   }

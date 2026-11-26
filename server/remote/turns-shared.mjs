@@ -52,8 +52,9 @@ export const clock = (at) => new Date(at).toLocaleTimeString('en-US', { hour: '2
 
 /**
  * A stop Postbox is waiting on. unconfirmed: its start was written but never confirmed, so a welcome that doesn’t list
- * it may have come before the start reached the daemon (server/remote/turns.mjs, the header).
- * @typedef {{ sessionId: string, hostId: string, waiters: (() => void)[], unconfirmed: boolean }} Stop
+ * it may have come before the start reached the daemon (server/remote/turns.mjs, the header). personaId: whose turn it
+ * is, kept here because deleting a persona deletes its sessions first, while the turn may still run on the host (#1680).
+ * @typedef {{ sessionId: string, hostId: string, waiters: (() => void)[], unconfirmed: boolean, personaId?: string }} Stop
  */
 
 /** The line a resumed turn starts with (the design, “Resuming says why”). @param {string} why @param {string} host */

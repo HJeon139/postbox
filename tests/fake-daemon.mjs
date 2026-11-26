@@ -66,13 +66,14 @@ export const callLine = (request) => (typeof request?.tool_use_id === 'string' &
 
 /**
  * @param {{ token?: string, lines?: string[], autoEnd?: boolean, exit?: { code: number | null, signal: string | null },
- *           stopExit?: { code: number | null, signal: string | null }, home?: string, now?: () => number,
+ *           stopExit?: { code: number | null, signal: string | null } | null, home?: string, now?: () => number,
  *           harnesses?: string[], problems?: { code: string, message: string }[], holdCaughtUp?: ('out' | 'in')[],
  *           check?: (argv: string[]) => { code: number | null } | Promise<{ code: number | null }>,
  *           remove?: 'removed' | 'refuse' | 'silent' | 'drop', callLines?: boolean }} [opts]
  *   lines: what each started turn’s out.jsonl holds (the fixture by default). autoEnd: a started turn has already
  *   exited with `exit` (true by default); false keeps it running until end() or a stop. stopExit: how a stopped turn
- *   ends (SIGINT, C5). harnesses: the ones the host has (all three by default). holdCaughtUp: logs whose `caught-up`
+ *   ends (SIGINT, C5), or null for one that hears the stop and runs on until end(), as a turn handling its SIGINT in
+ *   its own time does (#1680). harnesses: the ones the host has (all three by default). holdCaughtUp: logs whose `caught-up`
  *   a read doesn’t send until the test calls caughtUp(), so lines can arrive between a read’s first pass and it.
  *   check: how the host’s signInCheck exits, given the argv hello sent (exit 0 by default); a promise holds the answer.
  *   remove: how `remove` goes: removed (the default, as the real daemon’s: turns stopped, `removed`, closed), refuse

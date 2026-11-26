@@ -225,3 +225,23 @@ test('#780 a review block’s file outside the turn’s folder, or a link out of
     await h.done();
   }
 });
+
+test('#1751 the daemon refuses an update_app with neither code nor files in the call, and files alone cross', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    writeFileSync(join(h.work, 'data.csv'), 'a,b\n1,2\n');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    const r = await s.call('c1', 'update_app', { id: 'app_1', summary: 'nothing' });
+    assert.deepEqual([r.ok, r.text], [false, 'Send code, codePath or files: an update with none of them has nothing to change.']);
+    assert.equal((await s.call('c2', 'update_app', { id: 'app_1', files: [{ path: 'data.csv' }] })).ok, true);
+    assert.deepEqual(
+      k.sent.map((m) => [m.id, Object.keys(m.args)]),
+      [['c2', ['id', 'files']]],
+    );
+  } finally {
+    await h.done();
+  }
+});

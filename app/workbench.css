@@ -1118,7 +1118,6 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .skip:focus { top: 8px; }
 [hidden] { display: none !important; }
 .item:focus-visible, .turn:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
-.who .deleted { color: var(--dim); font-weight: 400; }
 .perm-detail, .perm-detail code { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* A write’s draft, as it will read (#112): bounded, so a long document doesn’t push the buttons away. */
 .perm-draft { gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); max-height: 420px; overflow: auto; }

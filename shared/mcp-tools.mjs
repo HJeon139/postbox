@@ -73,7 +73,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'update_app',
-    description: `Replace an app you showed with a new version, up to ${n('appCode')} characters inline or from codePath, rather than showing a second app. files replaces its data files; without it, the new version keeps the last one’s. The app moves to the newest point in the conversation, with its saved state, and its old place becomes a one-line link to it. Older versions stay in its version menu; summary (up to 300 characters) names what changed. Returns the saved version and the browser check’s result when a page in view runs it (or pending when none is open or it is still running); read_message { id } reads the current result.`,
+    description: `Replace an app you showed with a new version, up to ${n('appCode')} characters inline or from codePath, rather than showing a second app. files replaces its data files; without it, the new version keeps the last one’s, and with files alone it keeps the code, to refresh an app’s data. The app moves to the newest point in the conversation, with its saved state, and its old place becomes a one-line link to it. Older versions stay in its version menu; summary (up to 300 characters) names what changed. Returns the saved version and the browser check’s result when a page in view runs it (or pending when none is open or it is still running); read_message { id } reads the current result.`,
     inputSchema: {
       type: 'object',
       properties: {

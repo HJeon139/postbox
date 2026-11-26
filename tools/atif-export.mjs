@@ -13,8 +13,9 @@
 //   say what it lost.
 // Each turn’s prompt comes from prompts.jsonl, which a UAT run records in its data folder (#1528): beside the events
 // file, or in the run’s or the data folder. Without it, a trajectory says what it leaves out (tools/atif-prompts.mjs).
-// Each call’s output, where no live frame carried it, comes from the data folder’s blobs, which the work ledger names
-// by hash (tools/atif-calls.mjs).
+// Each call’s output comes from the data folder’s blobs, which the work ledger names by hash; from what a live frame
+// carried only where no blob reads back; and for a background command with neither, from the last output the ledger
+// kept, said to be possibly its job’s (tools/atif-calls.mjs, #1757).
 // Each trajectory goes to <out>/<handle>-<session>.atif.json; with no --out and one trajectory, to standard output.
 
 import { createHash } from 'node:crypto';
@@ -65,8 +66,8 @@ const promptsIn = (dirs) => {
 
 /**
  * A data folder’s snapshot as events placed before the log’s: each session, each item as it ended, the work ledger’s
- * turns and calls, each inbox’s entries, and each clock as it stood: its start, its expiry if it expired, with
- * `voided` if its run was void (tools/atif-clock.mjs, clockVoid). @param {Record<string, any>} snap
+ * turns and calls, each inbox’s entries, and each clock as it stood: its start, its expiry if it expired or its end if the
+ * person ended it (#1749), with `voided` if its run was void (tools/atif-clock.mjs, clockVoid). @param {Record<string, any>} snap
  */
 function snapshotEvents(snap) {
   const out = [];
@@ -82,6 +83,12 @@ function snapshotEvents(snap) {
         type: 'clock.expired',
         data: { sessionId: c.sessionId, elapsedMs: c.budgetMs, budgetMs: c.budgetMs, at: c.expiredAt, ...(c.voided ? { voided: c.voided } : {}) },
       });
+    // The person ended it before its budget (#1749), at the time it had used.
+    if (c.state === 'ended')
+      out.push({
+        type: 'clock.ended',
+        data: { sessionId: c.sessionId, elapsedMs: c.usedMs, budgetMs: c.budgetMs, at: c.endedAt, ...(c.voided ? { voided: c.voided } : {}) },
+      });
   }
   // Before every event of the log, in this order; items by their time across threads, as the conversation showed them.
   out.sort((a, b) => timeOf(a) - timeOf(b));
@@ -96,7 +103,7 @@ const timeOf = (e) => e.data.item?.at ?? e.data.entry?.startedAt ?? e.data.entry
  * keeps state there, not the events that made it (designs/architecture/store.md).
  */
 export const SNAPSHOT_LOSES = Object.freeze([
-  'each run clock’s pauses, resumes, turns, stops and restarts (only its start, and its expiry if it expired, with whether its run was void, are rebuilt)',
+  'each run clock’s pauses, resumes, turns, stops and restarts (only its start, and its expiry or end if it had one, with whether its run was void, are rebuilt)',
   'where each block’s answer came among the other events (it is placed beside its block)',
   'each item’s earlier revisions and the words of a reply as they streamed',
   'which inbox entries a turn took and then gave back (only each entry’s last state is kept)',

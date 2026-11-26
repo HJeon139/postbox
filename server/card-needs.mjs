@@ -5,6 +5,7 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { clip } from '../shared/text.mjs';
 import { httpError } from './helpers.mjs';
+import { forgetWait } from './turn-transient.mjs';
 
 /** The threads whose cards are the agent's: its own, and the side and topic threads off it. */
 const threadsOf = (rt, se) => [
@@ -249,6 +250,8 @@ export function dismissFailed(rt, threadId, itemId) {
   if (it?.kind !== 'agent' || it.status !== 'failed') throw httpError(409, 'Only a failed reply can be dismissed.');
   if (it.dismissed) return { ok: true };
   rt.threads.patchItem(threadId, itemId, { dismissed: true });
+  // Dismissed, it isn’t tried again on its own either (#1713).
+  if (rt.store.pending.session(it.sessionId)?.autoRetry?.itemId === itemId) forgetWait(rt, it.sessionId);
   releaseNeed(rt, rt.s.sessions[it.sessionId], itemId);
   return { ok: true };
 }

@@ -1,17 +1,19 @@
 // Plain summaries and details for Claude permission cards, shared by local, SDK and remote prompts.
 
+import { cutText, tailText } from '../../shared/text-parts.mjs';
+
 const clip = (s, n) => {
   const t = String(s ?? '')
     .replace(/\s+/g, ' ')
     .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+  return t.length > n ? `${cutText(t, n - 1)}…` : t;
 };
 const base = (path) => String(path ?? '').replace(/^.*\//, '');
 /** As much of a detail as a card keeps (permission-cards.mjs’s writeOf). */
 const DETAIL_MAX = 4000;
 const NO_PATH = 'This call’s path isn’t text, or it names none, so Postbox can’t say where it reads.';
 /** A string clipped to n characters by its middle, with a … there, so its start and its end, a file’s name, both show. */
-const clipMiddle = (s, n) => (s.length > n ? `${s.slice(0, Math.ceil((n - 1) / 2))}…${s.slice(s.length - Math.floor((n - 1) / 2))}` : s);
+const clipMiddle = (s, n) => (s.length > n ? `${cutText(s, Math.ceil((n - 1) / 2))}…${tailText(s, Math.floor((n - 1) / 2))}` : s);
 
 /**
  * A read card’s detail when it names several paths, as Antigravity’s hook sends a grep_search’s Path and SearchPath
@@ -49,7 +51,7 @@ export function describePermission(name, input = {}) {
         summary: `use ${String(name)
           .replace(/^mcp__([^_]+(?:_[^_]+)*)__(.+)$/, '$2 from $1')
           .replace(/_/g, ' ')}`,
-        detail: JSON.stringify(i, null, 2).slice(0, DETAIL_MAX),
+        detail: cutText(JSON.stringify(i, null, 2), DETAIL_MAX),
       };
   }
 }

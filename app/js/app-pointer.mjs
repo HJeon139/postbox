@@ -67,5 +67,9 @@ export function relookSoon() {
 }
 addEventListener('scroll', relookSoon, { capture: true, passive: true });
 addEventListener('resize', relookSoon);
+// A transcript item is skipped while off screen (content-visibility: auto), and what’s in a skipped item can’t be under
+// the pointer. A new item is skipped until the next rendering update finds it on screen, so the look its insertion
+// asked for can miss an app that mounted under a resting pointer: it looks again once the item renders (#1726).
+addEventListener('contentvisibilityautostatechange', relookSoon, { capture: true });
 // The transcript renders, an item is added, or an app resizes: what’s under the pointer may have changed.
 new MutationObserver(relookSoon).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });

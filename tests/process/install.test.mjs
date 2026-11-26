@@ -12,6 +12,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
+import { randomInt } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -52,7 +53,7 @@ async function freePort() {
         .listen(port, '127.0.0.1', () => s.close(() => ok(true)));
     });
   for (let i = 0; i < 100; i++) {
-    const port = 20000 + Math.floor(Math.random() * 12000);
+    const port = randomInt(20000, 32000);
     if (await free(port)) return port;
   }
   throw new Error('No free port between 20000 and 32000 after 100 tries.');
