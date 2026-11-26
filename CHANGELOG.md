@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.51.1 (2026-11-26)
+
+### Fixes
+
+- **review:** an app’s hint in a review is kept by the review, not by the app
+- **review:** an app mounted afresh in a review shows no hint from an earlier frame
+- **assets:** say a dropped release is dropped, and test it
+- **assets:** log a disagreement either way, and never count a kept file as unclaimed
+- **assets:** the load deletes a released file only when a recount agrees
+- **uat:** a select field with no option the tester named fails the step
+- **review:** let go of grafted review blocks the page dropped, and keep only a mounted app
+- **review:** keep an app's frame while the person comments on it in a review
+
 ## 4.51.0 (2026-11-26)
 
 ### Features
