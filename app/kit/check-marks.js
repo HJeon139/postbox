@@ -70,7 +70,7 @@
       const m = markOf(el, svg);
       if (m) found.push(m);
     }
-    const chart = found.filter((m) => m.kind === 'a dot').length >= CHART;
+    const chart = found.filter((m) => m.round || m.kind === 'a dot').length >= CHART;
     return found.filter((m) => !m.straight || chart);
   }
 
@@ -102,11 +102,14 @@
    * @param {Element} el @param {Element} svg
    */
   function clipOf(el, svg) {
-    for (let e = el; e && e !== svg.parentElement; e = e.parentElement) {
+    for (let e = el; e && e !== svg; e = e.parentElement) {
       const id = getComputedStyle(e).clipPath.match(/url\(["']?#([^"')]+)["']?\)/)?.[1];
       const clip = id && document.getElementById(id);
       const ctm = clip && /** @type {SVGGraphicsElement} */ (e).getScreenCTM?.();
       if (!clip || !ctm) continue;
+      // A clip in the box’s own units, or one transformed, isn’t read here: no box, so the mark is tested whole.
+      if (clip.getAttribute('clipPathUnits') === 'objectBoundingBox' || clip.hasAttribute('transform')) return null;
+      if ([...clip.children].some((c) => c.hasAttribute('transform'))) return null;
       const corners = [...clip.children].flatMap((c) => {
         const b = /** @type {SVGGraphicsElement} */ (c).getBBox?.();
         return b ? [new DOMPoint(b.x, b.y), new DOMPoint(b.x + b.width, b.y + b.height)].map((p) => p.matrixTransform(ctm)) : [];
@@ -127,7 +130,7 @@
     const commands = d.match(/[MLHVCSQTA]/gi)?.length ?? 0;
     // Only a bare moveto lists further points with no letters (“M0 0 10 10 20 20”); a curve’s numbers are its controls.
     if (commands > 1) return commands;
-    return Math.floor((d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/gi)?.length ?? 0) / 2);
+    return Math.floor((d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi)?.length ?? 0) / 2);
   }
 
   /** An SVG’s labels: its <text>, less a label with a halo and one on a backing. An axis’s labels count: on a data mark, they hide it too. */

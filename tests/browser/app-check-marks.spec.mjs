@@ -50,6 +50,10 @@ const APPS = {
   nodes: `<svg id="nodes" width="420" height="120" role="img" aria-label="Steps"><path d="M70 40 L330 80" stroke="var(--text)" stroke-width="2"/><circle cx="70" cy="40" r="30" fill="var(--s1)"/><circle cx="330" cy="80" r="30" fill="var(--s2)"/><text x="40" y="44" ${T}>Committee review</text><text x="180" y="65" ${T}>passes</text></svg>`,
   // A scatter with a dot drawn faint, in a group at a fifth of full opacity, for context, under a label.
   faint: `<svg id="faint" width="420" height="240" role="img" aria-label="Runs">${dots}<g opacity="0.2"><circle cx="320" cy="200" r="6" fill="var(--s1)"/></g><text x="306" y="204" ${T}>Last year</text></svg>`,
+  // The same clipped line with a label on its visible part, in the plot: that one is on the line.
+  clippedOn: `<svg id="clippedOn" width="420" height="260" role="img" aria-label="Runs"><defs><clipPath id="plot2"><rect x="40" y="10" width="360" height="210"/></clipPath></defs>${dots}<path d="M0 260 L420 0" stroke="var(--text)" stroke-width="2" clip-path="url(#plot2)"/><text x="200" y="140" ${T}>Break-even</text></svg>`,
+  // A scatter of open rings, with its two-point fit line under a label: rings make it a chart too.
+  rings: `<svg id="rings" width="420" height="240" role="img" aria-label="Runs">${DOTS.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="6" fill="none" stroke="var(--s1)" stroke-width="2"/>`).join('')}${fit}<text x="196" y="140" ${T}>5:56</text></svg>`,
   // A scatter whose reference line runs past its plot, clipped there, with the axis title under the hidden part.
   clipped: `<svg id="clipped" width="420" height="260" role="img" aria-label="Runs"><defs><clipPath id="plot"><rect x="40" y="10" width="360" height="210"/></clipPath></defs>${dots}<path d="M0 260 L420 0" stroke="var(--text)" stroke-width="2" clip-path="url(#plot)"/><text x="10" y="252" ${T}>Hours</text></svg>`,
   // A scatter with a level gridline under a label: a gridline isn’t a mark.
@@ -105,6 +109,11 @@ test('#952 labels drawn over a chart’s dot, ring and fit line are a warning th
   expect(message).toContain('“5:56” (on a line)');
   expect(message).not.toContain('Hill circuit');
   expect(check('onmarks').status, 'a warning: the version is shown, with a note').toBe('note');
+});
+
+test('#952 a label on the visible part of a clipped line, and on a ring scatter’s fit line, is on the line', () => {
+  expect(overMarks('clippedOn')[0], says('clippedOn')).toMatch(/“Break-even” \(on a line\)/);
+  expect(overMarks('rings')[0], says('rings')).toMatch(/“5:56” \(on a line\)/);
 });
 
 for (const id of ['clear', 'counts', 'nodes', 'faint', 'clipped', 'grid', 'halo', 'backed', 'axes'])
