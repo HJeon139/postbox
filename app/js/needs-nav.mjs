@@ -4,7 +4,8 @@
 // thread), waits for it to be drawn, then scrolls it into view, focuses it, and outlines it for a moment.
 
 import { conversationOf, needsOrder, whereNeeds } from '/shared/needs.mjs';
-import { client, hrefOf, liveSessions } from './client.mjs';
+import { client, liveSessions } from './client.mjs';
+import { itemHref } from './item-address.mjs';
 import { meId, needsMe } from './needs-mine.mjs';
 import { reach } from './open-threads.mjs';
 import { navigate, route, toast } from './ui.mjs';
@@ -62,8 +63,36 @@ export async function focusItem(itemId, threadId = null) {
  * @param {string} itemId @param {string} threadId
  */
 export function goToItem(itemId, threadId) {
-  if (threadId && here().at !== threadId) navigate(hrefOf(threadId));
-  return focusItem(itemId, threadId);
+  if (!threadId) return focusItem(itemId, null);
+  return goToAddress(itemId, threadId);
+}
+
+/**
+ * Goes to a message by its address (#168): a new address goes on the history, so Back returns, and the page goes to
+ * the message as the address comes in (focusAddressed); an address already open goes to it again.
+ * @param {string} itemId @param {string} threadId
+ */
+function goToAddress(itemId, threadId) {
+  const to = itemHref(threadId, itemId);
+  if (location.hash === to) return focusItem(itemId, threadId);
+  navigate(to);
+  return Promise.resolve(true);
+}
+
+let addressed = /** @type {string | null} */ (null);
+/**
+ * Goes to the message the address names (m=, #168), once each time the address comes to name it: as the page loads
+ * and as the address changes. One that isn’t in the thread opens the thread and says so.
+ */
+export function focusAddressed() {
+  const r = route();
+  const key = r.view === 'thread' && r.item ? location.hash : null;
+  if (key === addressed) return;
+  addressed = key;
+  if (!key || !r.item) return;
+  void focusItem(r.item, r.sideId ?? r.threadId).then(
+    (found) => found || toast({ title: 'That message isn’t here', text: 'It may have been deleted, or it’s in another conversation.' }),
+  );
 }
 
 let last = null;
@@ -72,8 +101,7 @@ export function goToNeeds(se) {
   if (!needsMe(se)) return;
   const where = whereNeeds(S(), se);
   last = { sessionId: se.id, where };
-  if (here().at !== where) navigate(hrefOf(where));
-  void focusItem(se.needs.itemId, where);
+  void goToAddress(se.needs.itemId, where);
 }
 
 /**

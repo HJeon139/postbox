@@ -14,7 +14,7 @@ export { rememberWork, workRemembered } from './work-memory.mjs';
 // Routes: #/ (home: the conversation you were last in, #320), #/t/<threadId>, and #/t/<threadId>/side/<sideThreadId> with a thread in the right pane.
 // After either, what else the pane shows (#132): ?work opens the conversation’s Work, turn=<turnId> scrolls it to a
 // turn, full=work or full=thread shows that view full screen (Work on that turn alone, with turn), and at=<id> opens
-// one item in full-screen Work. The Work page #138 had, #/t/<threadId>/work or /work/<turnId>, is read as oldWork,
+// one item in full-screen Work. m=<itemId> goes to one message in the thread the path names (#168). The Work page #138 had, #/t/<threadId>/work or /work/<turnId>, is read as oldWork,
 // and main.mjs sends it to the pane.
 
 export function route() {
@@ -34,6 +34,8 @@ export function route() {
       turn: q.get('turn') || m[4] || null,
       full,
       at: q.get('at') || null,
+      // A message in the thread the path names, to go to (#168).
+      item: q.get('m') || null,
       oldWork: Boolean(m[3]),
     };
   }

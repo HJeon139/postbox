@@ -2,9 +2,10 @@
 
 import { api, client, hrefOf } from './client.mjs';
 import { $, ago, h, icon, plural } from './dom.mjs';
+import { itemLink } from './item-address.mjs';
 import { focusUntouched } from './pane-focus.mjs';
 import { reactTo } from './reactions.mjs';
-import { navigate, toast } from './ui.mjs';
+import { navigate, say, toast } from './ui.mjs';
 
 const S = () => client.state;
 
@@ -66,13 +67,43 @@ function sendAction(it, ctx) {
   );
 }
 
+/**
+ * Copy link (#168): the message’s address, to keep, or to paste in a message for an agent. Opened, a reload, Back or a
+ * new tab included, it lands on the message. @param {any} it @param {any} ctx
+ */
+function copyAction(it, ctx) {
+  const b = h(
+    'button.btn.sm.ghost.reveal',
+    {
+      type: 'button',
+      'aria-label': 'Copy link to this message',
+      onclick: async () => {
+        const link = itemLink(ctx.threadId, it.id);
+        try {
+          await navigator.clipboard.writeText(link);
+          say('Link to the message copied.');
+          b.textContent = 'Copied';
+        } catch {
+          toast({ title: 'Couldn’t copy the link', text: link });
+        }
+        setTimeout(() => {
+          b.textContent = 'Copy link';
+        }, 2000);
+      },
+    },
+    'Copy link',
+  );
+  return b;
+}
+
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
-// topic or side thread (#128): “Send to conversation”. React, under every one (#251), on the left (#378). They appear on hover and focus, and always on touch.
+// topic or side thread (#128): “Send to conversation”. Copy link (#168) and React, under every one (#251), on the left (#378). They appear on hover and focus, and always on touch.
 export function messageActions(node, it, ctx) {
   if (!['user', 'agent', 'block', 'shared'].includes(it.kind) || it.status === 'streaming' || it.deletedAgent || (it.kind === 'block' && !it.valid)) return;
   if (it.status === 'replaced') return;
   const bar = h('div.msg-actions');
   if (ctx.kind === 'thread' || ctx.kind === 'room') bar.append(threadAction(it, ctx));
   else if ((ctx.kind === 'topic' || ctx.kind === 'side') && (it.kind === 'agent' || it.kind === 'user') && it.text) bar.append(sendAction(it, ctx));
+  bar.append(copyAction(it, ctx));
   node.append(reactTo(bar, node, it, ctx));
 }
