@@ -43,6 +43,7 @@ async function unregisteredRestart({
   startUp(r);
   if (!saved) await until(() => failed(r).length > 0, 'a failed item');
   await quiet(r);
+  await until(() => !r.se().remoteTurn?.stopping?.length, 'the host to confirm the stop');
   return { r, d, registered };
 }
 
