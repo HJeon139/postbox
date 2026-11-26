@@ -249,7 +249,7 @@ test('#63 a reply that ends with options in prose comes back as a lint turn, and
   const nudge = () => lints().find((m) => m.problems.some((p) => p.code === 'options-in-prose'));
   await expect.poll(() => !!nudge(), { message: 'a lint turn about the options' }).toBe(true);
   expect(formatMessage(nudge()), 'the agent reads that the reply should have been a choice block').toMatch(
-    /Your reply should have been a block:\n- It ends with options in a list\. Offer them as a choice block/,
+    /Your reply should have been a block:\n- It ends with options in a list\. If they’re for the person, offer them as a choice block/,
   );
   const choice = page.locator('.transcript .block', { hasText: 'How should I get the documents?' });
   for (const option of ['Share the folder', 'Paste the documents', 'Point me at an export'])

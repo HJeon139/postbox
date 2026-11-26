@@ -109,6 +109,9 @@ const SHOULD_BE_BLOCK = new Set(['options-in-prose', 'questions-in-prose', 'draf
 // Asking the person to pick: “pick one:”, “which do you…”, “would you rather…”. Not “we should pick one each”.
 const PICK = /\b(?:pick|choose) one\s*[:?]|\bwhich (?:one|option|do you|would you)\b|\bwould you (?:rather|prefer)\b|\bor should I\b/i;
 const DRAFT = /\b(?:draft|review|approve|looks? (?:good|right)|feedback|any changes)\b/i;
+// A reply that names an agent without the @ isn’t addressed to it (#1695 skips only a mention), so the nudge says a
+// block is for the person, and what to do when another agent is to answer (#1721).
+const FOR_AGENT = 'If they’re for another agent, @-mention it in your reply instead: only the person answers a block.';
 
 /**
  * A reply that should have been a block (#63): it ends with options or questions in prose, hands over a long draft,
@@ -139,13 +142,13 @@ export function blockProblems(text, shown = [], asked = '', { toAgent = false } 
   if (!asks && questions >= 3)
     out.push({
       code: 'questions-in-prose',
-      message: `It ends with ${questions} questions in prose. Ask them in a form block, one field per question.`,
+      message: `It ends with ${questions} questions in prose. If they’re for the person, ask them in a form block, one field per question. ${FOR_AGENT}`,
       scope: reply,
     });
   else if (!asks && ((numbered >= 2 && (questions >= 1 || pick)) || (bullets >= 2 && pick)))
     out.push({
       code: 'options-in-prose',
-      message: 'It ends with options in a list. Offer them as a choice block, so the person picks one with a click.',
+      message: `It ends with options in a list. If they’re for the person, offer them as a choice block, so the person picks one with a click. ${FOR_AGENT}`,
       scope: reply,
     });
   else if (!asks && prose.length >= 40 && DRAFT.test([...prose.slice(0, 3), ...prose.slice(-3)].join('\n')))
