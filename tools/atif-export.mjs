@@ -82,6 +82,12 @@ function snapshotEvents(snap) {
         type: 'clock.expired',
         data: { sessionId: c.sessionId, elapsedMs: c.budgetMs, budgetMs: c.budgetMs, at: c.expiredAt, ...(c.voided ? { voided: c.voided } : {}) },
       });
+    // The person ended it before its budget (#1749), at the time it had used.
+    if (c.state === 'ended')
+      out.push({
+        type: 'clock.ended',
+        data: { sessionId: c.sessionId, elapsedMs: c.usedMs, budgetMs: c.budgetMs, at: c.endedAt, ...(c.voided ? { voided: c.voided } : {}) },
+      });
   }
   // Before every event of the log, in this order; items by their time across threads, as the conversation showed them.
   out.sort((a, b) => timeOf(a) - timeOf(b));
@@ -96,7 +102,7 @@ const timeOf = (e) => e.data.item?.at ?? e.data.entry?.startedAt ?? e.data.entry
  * keeps state there, not the events that made it (designs/architecture/store.md).
  */
 export const SNAPSHOT_LOSES = Object.freeze([
-  'each run clock’s pauses, resumes, turns, stops and restarts (only its start, and its expiry if it expired, with whether its run was void, are rebuilt)',
+  'each run clock’s pauses, resumes, turns, stops and restarts (only its start, and its expiry or end if it had one, with whether its run was void, are rebuilt)',
   'where each block’s answer came among the other events (it is placed beside its block)',
   'each item’s earlier revisions and the words of a reply as they streamed',
   'which inbox entries a turn took and then gave back (only each entry’s last state is kept)',

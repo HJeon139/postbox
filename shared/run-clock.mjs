@@ -137,12 +137,14 @@ export const CLOCK_EVENTS = Object.freeze({
     apply: (/** @type {any} */ s, /** @type {any} */ d) => {
       check(d, ['elapsedMs', 'budgetMs']);
       withClock(s, d, (c) => {
+        // Only a run still going can end: an expired or void one stays as it is.
+        if (c.state !== 'running' && c.state !== 'paused') return;
         Object.assign(c, { usedMs: d.elapsedMs, since: null, state: 'ended', endedAt: d.at, stopping: stoppingOf(d) });
       });
     },
     public: true,
   },
-  // The host confirmed that a turn the clock’s pause or expiry asked to stop is over: a paused clock whose last such
+  // The host confirmed that a turn the clock’s pause, end or expiry asked to stop is over: a paused clock whose last such
   // turn it was stops counting here.
   'clock.stopped': {
     apply: (/** @type {any} */ s, /** @type {any} */ d) => {

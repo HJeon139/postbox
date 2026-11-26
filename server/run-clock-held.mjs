@@ -66,11 +66,12 @@ export function refuseWhileHeld(rt, sessionId, action) {
   if (!rt.runClock?.holds(sessionId)) return;
   const se = rt.store.pending.session(sessionId);
   const clock = rt.store.pending.clock(sessionId);
-  const resume = `Resume it with POST /api/sessions/${sessionId}/clock and {"action":"resume"}, then ${THEN[action]}.`;
-  throw httpError(
-    409,
-    clock?.state === 'paused'
-      ? `@${se?.handle}’s run clock is paused, so no turn of @${se?.handle} starts until it resumes. ${resume}`
-      : `@${se?.handle}’s run clock reached its budget, so no turn of @${se?.handle} starts in this conversation again. A new timed run goes in a new conversation.`,
-  );
+  const h = se?.handle;
+  if (clock?.state === 'paused') {
+    const resume = `Resume it with POST /api/sessions/${sessionId}/clock and {"action":"resume"}, then ${THEN[action]}.`;
+    throw httpError(409, `@${h}’s run clock is paused, so no turn of @${h} starts until it resumes. ${resume}`);
+  }
+  // Over for good: its budget ran out, or the person ended the run (#1749).
+  const why = clock?.state === 'ended' ? 'was stopped' : 'reached its budget';
+  throw httpError(409, `@${h}’s run clock ${why}, so no turn of @${h} starts in this conversation again. A new timed run goes in a new conversation.`);
 }

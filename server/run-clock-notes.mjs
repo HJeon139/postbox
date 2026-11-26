@@ -1,5 +1,5 @@
 // What the conversation shows of an agent’s run clock (server/run-clock.mjs): a line at each change of it, so the
-// person sees its state where they work, and why an agent with an expired or paused clock doesn’t answer. A system
+// person sees its state where they work, and why an agent with an expired, ended or paused clock doesn’t answer. A system
 // line with its text, which the page shows as it is (app/js/system-line.mjs); no turn reads it as a message.
 
 import { isLocalStop } from '../shared/run-clock.mjs';
@@ -48,7 +48,7 @@ const WORDS = {
   },
   ended: (h, d) => {
     const stop = expiredStop(h, d);
-    return `@${h}’s run clock ended at ${s(d.elapsedMs)} of ${s(d.budgetMs)}, as the person stopped it${stop ? `, so Postbox ${stop}` : ''}. Messages to @${h} here now wait, and no turn starts; a new timed run goes in a new conversation.`;
+    return `@${h}’s run clock ended at ${s(d.elapsedMs)} of ${s(d.budgetMs)}, because you stopped it${stop ? `, so Postbox ${stop}` : ''}. Messages to @${h} here now wait, and no turn starts; a new timed run goes in a new conversation.`;
   },
   voided: (h, d) =>
     `Postbox couldn’t confirm that @${h}’s stopped turn ended (${FORCED[d.forced] ?? d.forced}), so @${h} may still be working, uncounted. This timed run is void: no turn of @${h} starts here again, and a new timed run goes in a new conversation.`,

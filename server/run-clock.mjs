@@ -198,7 +198,7 @@ function expireClock(rt, sessionId, now) {
 }
 
 /**
- * A turn the clock’s pause or expiry stopped is over (server/remote/turns-stops.mjs, stopConfirmed, for a host’s turn;
+ * A turn the clock’s pause, end or expiry stopped is over (server/remote/turns-stops.mjs, stopConfirmed, for a host’s turn;
  * turnExited, as its CLI exits, for one here, `turn:` and its id): clock.stopped records when, and a paused clock whose
  * last such turn it was stops counting. While the store can’t be written, it’s recorded once it can, at that time.
  * forced: why Postbox stopped waiting for a turn here that may still work ('watchdog', 'unkilled', 'restart'): the

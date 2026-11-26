@@ -139,7 +139,7 @@ export function clockVoid(clocks) {
   for (const c of clocks) {
     if (c.type === 'clock.stopped' && c.data.forced) return { why: c.data.why, at: c.data.at ?? null };
     if (c.type === 'clock.restored') return { why: 'restored', at: c.data.at ?? null };
-    if (c.type === 'clock.expired' && c.data.voided) return { why: c.data.voided.why, at: c.data.voided.at ?? null };
+    if ((c.type === 'clock.expired' || c.type === 'clock.ended') && c.data.voided) return { why: c.data.voided.why, at: c.data.voided.at ?? null };
   }
   return null;
 }

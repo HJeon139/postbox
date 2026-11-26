@@ -65,7 +65,7 @@ test('#1749 the person’s stop ends a running clock: the turn stops, what it’
   assert.equal(adapter.calls.length, 1);
   assert.match(
     clockLines(store, t).find((i) => i.change === 'ended')?.text ?? '',
-    /^@\w+’s run clock ended at 5s of 600s, as the person stopped it, so Postbox stopped @\w+’s turn/,
+    /^@\w+’s run clock ended at 5s of 600s, because you stopped it, so Postbox stopped @\w+’s turn/,
   );
 });
 
@@ -76,7 +76,7 @@ test('#1749 a paused clock can be ended too, and a restart keeps it ended with i
   clockAction(rt, se.id, { action: 'stop' }, at(30_000));
   assert.equal(store.state.clocks[se.id].state, 'ended');
   assert.equal(store.state.clocks[se.id].usedMs, 10_000, 'the paused time isn’t counted');
-  assert.match(clockLines(store, t).at(-1)?.text ?? '', /run clock ended at 10s of 60s, as the person stopped it\. Messages to @\w+ here now wait/);
+  assert.match(clockLines(store, t).at(-1)?.text ?? '', /run clock ended at 10s of 60s, because you stopped it\. Messages to @\w+ here now wait/);
   const lines = clockLines(store, t).length;
   rearmClocks(rt, at(90_000));
   assert.equal(store.state.clocks[se.id].state, 'ended', 'not expired at its budget after the end');
@@ -112,7 +112,7 @@ test('#1749 an end whose line a kill lost gets it back as Postbox starts', () =>
     clockLines(store, t).map((i) => i.change),
     ['started', 'ended'],
   );
-  assert.match(clockLines(store, t).at(-1).text, /run clock ended at 15s of 60s, as the person stopped it\./);
+  assert.match(clockLines(store, t).at(-1).text, /run clock ended at 15s of 60s, because you stopped it\./);
 });
 
 test('#1749 a forced stop after the end voids the run and keeps it ended, at its time used', () => {
@@ -139,4 +139,29 @@ test('#1749 a host turn attached after the end stops as the person’s stop, not
   assert.equal(running.stopReason, 'stop');
   turn.exit();
   await sleep(10);
+});
+
+test('#1749 Retry after the end is refused with words that say the run was stopped, not that it ran out', async () => {
+  const { rt, store, t, se, adapter } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 600 });
+  adapter.next.push(async () => {
+    throw new Error('The backend fell over.');
+  });
+  rt.sendMessage(t.id, { text: 'Try this.' });
+  await sleep(1);
+  clockAction(rt, se.id, { action: 'stop' });
+  const failed = store.items(t.id).findLast((i) => i.kind === 'agent');
+  assert.throws(
+    () => rt.retry(t.id, failed.id),
+    (e) => e.status === 409 && /run clock was stopped, so no turn of @\w+ starts in this conversation again/.test(e.message),
+  );
+  assert.equal(adapter.calls.length, 1, 'no turn');
+});
+
+test('#1749 an end that comes after the expiry changes nothing: only a run still going can end', () => {
+  const s = emptyState();
+  apply(s, 'clock.started', { sessionId: 'se_1', threadId: 'th_1', budgetMs: 60_000, at: T0 });
+  apply(s, 'clock.expired', { sessionId: 'se_1', elapsedMs: 60_000, budgetMs: 60_000, at: T0 + 60_000 });
+  apply(s, 'clock.ended', { sessionId: 'se_1', elapsedMs: 70_000, budgetMs: 60_000, at: T0 + 70_000 });
+  assert.deepEqual([s.clocks.se_1.state, s.clocks.se_1.usedMs], ['expired', 60_000]);
 });
