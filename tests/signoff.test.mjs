@@ -114,6 +114,18 @@ test('Biome at each commit runs in a temporary worktree at that commit, never in
   assert.deepEqual(w.links[0], ['/repo/node_modules', `${biome[0].o.cwd}/node_modules`]);
 });
 
+test('step 3 reads each commit’s files NUL-separated and passes them after --, so no name is split or read as an option', async () => {
+  const names = [' lead.mjs', 'tools/a b.mjs', '-rf.mjs', 'tools/naïve.mjs'];
+  // As git answers: -z gives the names as they are, else one a line with a non-ASCII name quoted.
+  const diff = (argv) => ({ code: 0, out: argv.includes('-z') ? `${names.join('\0')}\0` : ' lead.mjs\ntools/a b.mjs\n-rf.mjs\n"tools/na\\303\\257ve.mjs"\n' });
+  const w = signed({ answers: [[/^git diff /, diff]] });
+  assert.equal(await signoff(['840'], w.d), EXIT.pass, w.lines.join('\n'));
+  for (const c of ran(w, /^git diff /)) assert.equal(c.argv.at(-1), '--', `${c.argv.join(' ')} ends its revisions with --`);
+  const biome = ran(w, /--no-errors-on-unmatched/);
+  assert.equal(biome.length, COMMITS.length);
+  for (const c of biome) assert.deepEqual(c.argv.slice(-5), ['--', ...names]);
+});
+
 test('a merge conflict with the freshly fetched base fails step 4, naming the files', async () => {
   const conflict = { code: 1, out: `${'e'.repeat(40)}\nserver/runtime.mjs\n\nAuto-merging server/runtime.mjs\nCONFLICT (content)\n` };
   const w = signed({ answers: [[/^git merge-tree /, conflict]] });

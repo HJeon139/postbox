@@ -74,6 +74,18 @@ export async function fetchBase(d, root, { pr, prUrl, base }) {
 }
 
 /**
+ * The files commit sha changes and keeps, each name as it is: -z leaves it unquoted and unsplit, and no trim cuts its
+ * spaces. Biome gets them after --, so a name that starts with - isn’t read as an option.
+ * @param {import('./deps.mjs').Deps} d @param {string} root @param {string} sha @param {import('./stop.mjs').Stop} stop
+ */
+async function changedFiles(d, root, sha, stop) {
+  const argv = ['git', 'diff', '-z', '--name-only', '--diff-filter=d', `${sha}^1`, sha, '--'];
+  const r = await exec(d, argv, { cwd: root, stop });
+  if (r.code !== 0) throw new Error(`${argv.join(' ')} exited ${r.code}: ${firstLine(r.out)}`);
+  return r.out.split('\0').filter(Boolean);
+}
+
+/**
  * Step 3: Biome on each commit’s changed files, at that commit.
  * @param {import('./deps.mjs').Deps} d @param {string} root @param {string} mergeBase
  */
@@ -85,11 +97,10 @@ export async function eachCommit(d, root, mergeBase) {
   const red = [];
   await inWorktree(d, root, shas[0], async (dir, stop) => {
     for (const sha of shas) {
-      const diff = ['git', 'diff', '--name-only', '--diff-filter=d', `${sha}^1`, sha];
-      const files = (await must(d, diff, { cwd: root, stop })).split('\n').filter(Boolean);
+      const files = await changedFiles(d, root, sha, stop);
       if (!files.length) continue;
       await must(d, ['git', 'checkout', '--quiet', '--detach', sha], { cwd: dir, stop });
-      const r = await exec(d, [...biome(root), '--no-errors-on-unmatched', '--files-ignore-unknown=true', ...files], { cwd: dir, stop });
+      const r = await exec(d, [...biome(root), '--no-errors-on-unmatched', '--files-ignore-unknown=true', '--', ...files], { cwd: dir, stop });
       if (r.code !== 0) red.push(`${sha.slice(0, 8)} (${firstLine(r.out)})`);
     }
   });

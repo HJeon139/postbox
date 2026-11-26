@@ -143,7 +143,7 @@ function defaults(head) {
     // The merge base of HEAD and the fetched base; a stale base has another, so a range from it is told apart.
     [/^git merge-base HEAD /, (argv) => ok(`${argv.at(-1) === BASE_SHA ? MERGE_BASE : '6'.repeat(40)}\n`)],
     [/^git rev-list --reverse /, ok(`${COMMITS.join('\n')}\n`)],
-    [/^git diff --name-only /, ok('tools/signoff.mjs\n')],
+    [/^git diff -z --name-only /, ok('tools/signoff.mjs\0')],
     [/^git (worktree|checkout) /, ok()],
     [/^git merge-tree /, ok(`${'e'.repeat(40)}\n`)],
     [/^git commit-tree /, ok(`${'f'.repeat(40)}\n`)],

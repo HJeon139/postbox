@@ -34,9 +34,9 @@ test('a signal while a quick git command runs in step 3 stops the next checkout 
   // git diff ends well, as a quick command does when the signal reaches only this script; the checkout after it must not run.
   const quick = (_a, _o, w) => {
     w.raise('SIGTERM');
-    return { code: 0, out: 'tools/signoff.mjs\n' };
+    return { code: 0, out: 'tools/signoff.mjs\0' };
   };
-  const w = world({ answers: [[new RegExp(`^git diff --name-only .* ${COMMITS[1]}$`), quick]] });
+  const w = world({ answers: [[new RegExp(`^git diff -z --name-only .* ${COMMITS[1]} --$`), quick]] });
   putLog(w, gateLog(w.head));
   await signoff(['840'], w.d);
   assert.deepEqual(
