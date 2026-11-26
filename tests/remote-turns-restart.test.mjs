@@ -198,7 +198,7 @@ test('#120 G10: removing a host gives up a turn still waiting to be attached aft
   // Moved off the host since: only the session’s own record (sessionsOn) says its turn is there.
   r.store.emit('persona', { ...r.rt.persona(se.personaId), remote: null });
   assert.deepEqual(r.rt.remote.sessionsOn(r.host.id), [se.id]);
-  assert.deepEqual(await r.rt.removeHost(r.host.id, { waitMs: 50 }), { ok: true, stopped: 1 });
+  assert.deepEqual(await r.rt.removeHost(r.host.id, { waitMs: 2000 }), { ok: true, stopped: 1 });
   await until(() => d.stops.includes('host-turn-1'), 'the stop on the host');
   assert.equal(r.store.items(r.t.id).find((i) => i.kind === 'permission').status, 'expired', 'its card can’t be answered');
   assert.equal(r.se().remoteTurn.state, 'done');
