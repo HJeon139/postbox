@@ -227,3 +227,30 @@ test('#168 going to a message in a topic thread of the conversation on screen ke
   await expect(page, 'the thread opens beside the conversation, Work kept').toHaveURL(new RegExp(`#/t/${t.id}/side/${topic}\\?work&m=${ask.id}$`));
   await expect.poll(() => landed(page, ask.id), { message: 'on the ask' }).toBe('landed');
 });
+
+test('#168 going to an ask with Work full screen shows the ask, with Work beside it', async ({ page }) => {
+  const { t, items } = longRoom('Address, full Work');
+  await page.goto(`${app.origin}/#/t/${t.id}?work&full=work`);
+  await synced(page, app);
+  await page.evaluate(
+    async ([itemId, threadId]) => {
+      const { goToItem } = await import('/app/js/needs-nav.mjs');
+      await goToItem(itemId, threadId);
+    },
+    [items[5].id, t.id],
+  );
+  await expect(page, 'Work kept, not full screen').toHaveURL(new RegExp(`#/t/${t.id}\\?work&m=${items[5].id}$`));
+  await expect.poll(() => landed(page, items[5].id), { message: 'the ask, not covered' }).toBe('landed');
+});
+
+test('#168 going on purpose to a message the thread doesn’t have says so', async ({ page }) => {
+  const { t } = longRoom('Address, gone on purpose');
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  allowPageError(page, /status of 404/);
+  await page.evaluate(async (threadId) => {
+    const { goToItem } = await import('/app/js/needs-nav.mjs');
+    await goToItem('it_deleted', threadId);
+  }, t.id);
+  await expect(page.getByText('That message isn’t here')).toBeVisible();
+});

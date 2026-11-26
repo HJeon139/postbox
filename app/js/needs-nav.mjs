@@ -80,12 +80,24 @@ function goToAddress(itemId, threadId) {
   const r = route();
   const conv = conversationOf(S(), threadId);
   const side = threadId === conv ? null : threadId;
-  const pane = { work: r.work, turn: r.turn, full: r.full, at: r.at };
+  // A full view stays only if it’s this thread’s: full-screen Work, or another thread, would cover the message.
+  const full = r.full === 'thread' && r.sideId === side ? r.full : null;
+  const pane = { work: r.work, turn: r.turn, full, at: null };
   const to = r.view === 'thread' && r.threadId === conv ? paneHref(conv, { ...pane, side, item: itemId }) : itemHref(threadId, itemId);
   // The address is this one’s: focusAddressed, as it comes in, doesn’t go to it a second time.
   addressed = { conv, key: `${threadId}?m=${itemId}` };
   navigate(to);
-  return focusItem(itemId, threadId);
+  return landOn(itemId, threadId);
+}
+
+/**
+ * Goes to a message, and says so when the thread doesn’t have it. One loaded but not drawn in time is a slow page, not
+ * a missing message. @param {string} itemId @param {string} threadId
+ */
+async function landOn(itemId, threadId) {
+  const found = await focusItem(itemId, threadId);
+  if (!found && !itemIn(threadId, itemId)) toast({ title: 'That message isn’t here', text: 'It may have been deleted, or it’s in another conversation.' });
+  return found;
 }
 
 /**
@@ -102,11 +114,7 @@ export function focusAddressed() {
   const key = `${thread}?m=${r.item}`;
   if (addressed?.key === key) return;
   addressed = { conv: r.threadId, key };
-  const item = r.item;
-  void focusItem(item, thread).then((found) => {
-    // Loaded but not drawn in time is a slow page, not a missing message.
-    if (!found && !itemIn(thread, item)) toast({ title: 'That message isn’t here', text: 'It may have been deleted, or it’s in another conversation.' });
-  });
+  void landOn(r.item, thread);
 }
 
 let last = null;
