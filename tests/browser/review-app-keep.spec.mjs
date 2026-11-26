@@ -96,3 +96,37 @@ test('#1726 an app that isn’t drawn has no hint about its parts: what its fram
   await expect(block.locator('iframe.app-iframe'), 'the app being fixed isn’t drawn').toHaveCount(0);
   await expect(block.locator('.rv-pins p'), 'no hint about parts of an app that isn’t there').toHaveText('');
 });
+
+test('#1726 an answered review of the same app, drawn again, leaves the open review its hint', async ({ page }) => {
+  const { rt, store } = app;
+  const thread = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title: 'Two', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, thread.id).id);
+  tools.show_app({ id: 'twice', title: 'Corpus summary', code: APP });
+  const review = (id) => {
+    tools.show_block({ block: { id, type: 'review', version: 1, fallback: 'Review the app', format: 'app', appId: 'twice' } });
+    return store.items(thread.id).find((i) => i.kind === 'block' && i.block.id === id);
+  };
+  const first = review('rv-first');
+  arrange.setItem(rt, thread.id, first.id, { answered: true, answer: { action: 'approve', values: {}, read: false } });
+  const open = review('rv-open');
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  const block = page.locator(`#main [data-key="${open.id}"]`);
+  const hint = block.locator('.rv-pins p[data-app-hint]');
+  await expect(hint).toHaveText('Or click a highlighted part of the app to comment on it.');
+  const answeredApp = `#main [data-key="${first.id}"] .rv-app`;
+  await page.locator(answeredApp).evaluate((el) => el.setAttribute('data-first-draw', ''));
+  // The answered review’s next frame never loads, so it never says what the app names: off screen, or waiting for
+  // another app’s check, it wouldn’t either.
+  await page.route('**/sandbox/app/twice/**', () => {});
+  try {
+    arrange.setItem(rt, thread.id, first.id, { answer: { action: 'approve', values: {}, read: true } });
+    await synced(page, app);
+    await expect(page.locator(`${answeredApp}:not([data-first-draw])`), 'the answered review is drawn again').toHaveCount(1);
+    await block.getByRole('button', { name: 'Comment on the whole app', exact: true }).click();
+    await expect(block.getByRole('textbox', { name: 'Comment on the whole app' })).toBeFocused();
+    await expect(hint, 'the open review’s app is still there, and so is its hint').toHaveText('Or click a highlighted part of the app to comment on it.');
+  } finally {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  }
+});

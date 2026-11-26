@@ -13,7 +13,10 @@ export const WHOLE_APP = 'the whole app';
 let keeping = null;
 /** An item’s block on the page, when a rerender kept the one that was there: a newer render’s handlers find it here. */
 const onPage = new Map();
-/** Each app’s latest hint, so a block rebuilt around the app shows it before the app reports its parts again. */
+/**
+ * Each review’s latest hint, by its item, so a block rebuilt around the app shows it: a kept app doesn’t report its parts
+ * again. By item, not app: another review of the same app, mounted afresh, starts its own hint and leaves this one.
+ */
 const hints = new Map();
 
 /**
@@ -87,8 +90,8 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
   // Open, the review always takes a comment on the whole app, the only way to comment on one that names no parts. The
   // button comes first, so the hint under it changes without moving it.
   // An app mounted afresh hasn’t said what it names yet: what an earlier version named isn’t its hint.
-  if (!kept) hints.delete(b.appId);
-  const hint = h('p.small.dim', { 'data-app-hint': b.appId }, hints.get(b.appId) ?? '');
+  if (!kept) hints.delete(itemId);
+  const hint = h('p.small.dim', { 'data-app-hint': itemId }, hints.get(itemId) ?? '');
   const onWhole = () => {
     startComment(d, WHOLE_APP);
     rerender();
@@ -98,12 +101,12 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
     mountApp(appEl, b.appId, {
       review: !done,
       // The app reports the parts it names once its page has loaded, and again each time it names them, after an await
-      // say. The hint follows the latest: every one for this app on the page, since a block rebuilt around the app
+      // say. The hint follows the latest: every one for this review on the page, since a block rebuilt around the app
       // (rerenderAround) has a new hint, and the next build starts from the latest.
       onAnchors: (names) => {
         const text = names.length ? 'Or click a highlighted part of the app to comment on it.' : 'This app marks no parts to comment on.';
-        hints.set(b.appId, text);
-        for (const el of document.querySelectorAll(`[data-app-hint="${CSS.escape(b.appId)}"]`)) if (el.textContent !== text) el.textContent = text;
+        hints.set(itemId, text);
+        for (const el of document.querySelectorAll(`[data-app-hint="${CSS.escape(itemId)}"]`)) if (el.textContent !== text) el.textContent = text;
       },
       onPin: (anchor) => {
         if (!done) {
