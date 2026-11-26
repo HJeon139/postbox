@@ -47,7 +47,7 @@ const FROM_PUBLISHED = {
 const NAMES = ['se', 'now', 'session'];
 
 /** What names a published session: each name (`se`), each getter's call (`se()`), and an index into the published map. @param {string[]} roots */
-const rootOf = (roots) => String.raw`(?:(?:${roots.join('|')})|[\w$.]*\bs\.sessions\[[^\]]*\])`;
+const rootOf = (roots) => String.raw`(?:(?:${roots.join('|')})|[\w$.]*\b(?:s|state)\.sessions\[[^\]]*\])`;
 const MEMBERS = String.raw`(?:\.[\w$]+|\[[^\]]*\])+`;
 /** Not a member of something else (`x.se.unread`), but a spread may come before it. */
 const START = String.raw`(?<![\w$])(?<![^.]\.)`;
