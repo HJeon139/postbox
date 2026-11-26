@@ -62,6 +62,8 @@ function rig({ hosts = manager(), busy = false, left = [], noToken = false, stop
     cancel: (/** @type {string} */ sessionId) => ask(`cancel ${sessionId}`, true),
     confirmStops: async (/** @type {string} */ id) => ask(`confirmStops ${id}`, { left, noToken }),
     stoppingSession: (/** @type {string} */ turnId) => (turnId === 'tu_1' ? 'se_1' : null),
+    stoppingPersonas: () => [],
+    onStopEnded: () => {},
   };
   const service = new Hosts({ store, personas, running, hostTurns, hosts });
   return { store, running, placed, asked, service, hosts };
