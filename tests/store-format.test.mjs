@@ -62,8 +62,8 @@ test('#683 a folder this Postbox loads records its data format and version', asy
 });
 
 /**
- * Each released format’s list, by its SHA-256. Never change a released format’s list: a new event type goes in the next
- * format’s, with DATA_FORMAT raised, and its hash added here.
+ * Each released format’s list, by the SHA-256 of the list as JSON, in its order, which is sorted. Never change a released
+ * format’s list: a new event type goes in the next format’s, with DATA_FORMAT raised, and its hash added here.
  */
 const RELEASED = { 1: 'f14fcd144b66da406cd71342390e7b4a8f62c117de85275135930ca25767343f' };
 
@@ -78,6 +78,7 @@ test('#683 DATA_FORMAT goes up with the event types: every type in EVENTS is in 
   // drops needs nothing: an older Postbox still replays what a newer one logs.
   const missing = Object.keys(EVENTS).filter((t) => !formats[DATA_FORMAT].includes(t));
   assert.deepEqual(missing, [], 'EVENTS gained a type with DATA_FORMAT where it was');
+  assert.deepEqual(Object.keys(RELEASED), Object.keys(formats), 'every format’s list is pinned');
   for (const [f, hash] of Object.entries(RELEASED))
     assert.equal(createHash('sha256').update(JSON.stringify(formats[f])).digest('hex'), hash, `format ${f}’s list changed after it was released`);
 });

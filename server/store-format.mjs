@@ -35,9 +35,10 @@ function formatOf(rec) {
 
 /** The refusal, naming the version to run when the record has one. @param {unknown} version */
 function newerWords(version) {
-  const by = typeof version === 'string' ? `Postbox ${version}` : 'a newer Postbox';
-  const run = typeof version === 'string' ? `Postbox ${version} or newer` : 'a newer Postbox';
-  return `This data folder was last opened by ${by}, which keeps what this older Postbox (${OURS}) can’t read. Run ${run} on it, or start this one with --data <another folder>. Postbox left the folder as it was.`;
+  const tail = `which keeps what this older Postbox (${OURS}) can’t read`;
+  const out = 'or start this one with --data <another folder>. Postbox left the folder as it was.';
+  if (typeof version !== 'string') return `This data folder was last opened by a newer Postbox, ${tail}. Run a newer Postbox on it, ${out}`;
+  return `This data folder was last opened by Postbox ${version}, ${tail}. Run Postbox ${version} or newer on it, ${out}`;
 }
 
 /**
