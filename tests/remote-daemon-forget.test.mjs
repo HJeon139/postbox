@@ -119,6 +119,7 @@ test('#491 a memory/ that is a link isn’t followed: nothing is removed, and Po
   send('forget', { persona: 'pe_gone' });
   const refused = await msgs.next('error');
   assert.equal(refused.re, 'forget');
+  assert.equal(refused.persona, 'pe_gone', 'the refusal names its persona (#1683)');
   assert.match(refused.message, /isn’t a folder/);
   assert.equal(existsSync(join(elsewhere, 'pe_gone', 'pr_1', 'MEMORY.md')), true);
 });
