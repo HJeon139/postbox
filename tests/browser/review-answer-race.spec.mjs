@@ -103,7 +103,6 @@ test('#518 revision 2’s draft is kept over a reload after the older answer set
 
 test('#518 when the page never drew the answered block, what it sent leaves the draft as revision 2 is drawn', async ({ page }) => {
   const r = await room(page, 'Away');
-  page.on('console', (m) => m.text().startsWith('DRAW') && console.log(m.text()));
   // The answer is held before it reaches Postbox and sent once the page is elsewhere, so it lands while the block isn’t
   // drawn; its reply to the page is held until after the agent revises.
   const { send, release } = await answeredThenRevised(page, r, { untilSent: true });
