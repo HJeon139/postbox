@@ -1,7 +1,7 @@
 // The actions under a message: its thread, sending it to the conversation, and React. Moved from app/js/thread.mjs.
 
 import { api, client, hrefOf } from './client.mjs';
-import { $, ago, h, icon, plural } from './dom.mjs';
+import { $, ago, h, plural } from './dom.mjs';
 import { itemLink } from './item-address.mjs';
 import { focusUntouched } from './pane-focus.mjs';
 import { reactTo } from './reactions.mjs';
@@ -15,9 +15,8 @@ function threadAction(it, ctx) {
   if (topic) {
     const unread = topic.unread ?? 0;
     return h(
-      'a.replies',
-      { href: hrefOf(topic.id) },
-      icon('thread', 'i-sm'),
+      'a.replies.i-thread',
+      { href: hrefOf(topic.id), dataset: { icon: '' } },
       it.replies ? plural(it.replies, 'reply', 'replies') : 'Thread',
       it.lastReplyAt ? h('span.dim', ` · last reply ${ago(it.lastReplyAt)}`) : null,
       unread ? h('span.badge', { 'aria-label': `${unread} new` }, String(unread)) : null,
@@ -27,7 +26,7 @@ function threadAction(it, ctx) {
     'button.btn.sm.ghost.reveal.i-thread',
     {
       type: 'button',
-      // Its icon is drawn by the button (workbench.css, .msg-actions [data-icon]): one element, not two (#168).
+      // Each action’s icon is drawn by the action (workbench.css, .msg-actions [data-icon]): one element, not two (#168).
       dataset: { icon: '' },
       onclick: () =>
         api(`/api/threads/${ctx.threadId}/items/${it.id}/topic`, {})
@@ -46,11 +45,12 @@ function threadAction(it, ctx) {
 
 /** “Send to conversation” under a message in a topic or side thread (#128), or that it was sent. @param {any} it @param {any} ctx */
 function sendAction(it, ctx) {
-  if (it.sharedAt) return h('span.small.dim', icon('check', 'i-sm'), ' Sent to the conversation');
+  if (it.sharedAt) return h('span.small.dim.i-check', { dataset: { icon: '' } }, ' Sent to the conversation');
   return h(
-    'button.btn.sm.ghost.reveal',
+    'button.btn.sm.ghost.reveal.i-right',
     {
       type: 'button',
+      dataset: { icon: '' },
       // Once: the button waits for its answer, and the reply then shows it was sent (#93).
       onclick: (e) => {
         const b = e.currentTarget;
@@ -63,7 +63,6 @@ function sendAction(it, ctx) {
           });
       },
     },
-    icon('right', 'i-sm'),
     'Send to conversation',
   );
 }
@@ -76,7 +75,7 @@ function copyAction(it, ctx) {
   let reset = 0;
   // An icon, drawn by the button itself, so it fits the row at 375 px and costs one element (#1155). Its name says what
   // it does, and what it did once pressed.
-  const b = h('button.btn.sm.ghost.reveal.i-link', {
+  const b = h('button.btn.sm.ghost.reveal.i-copy', {
     type: 'button',
     title: 'Copy link',
     'aria-label': 'Copy link',
@@ -88,13 +87,15 @@ function copyAction(it, ctx) {
         await navigator.clipboard.writeText(link);
         say('Link to the message copied.');
         b.setAttribute('aria-label', 'Link copied');
-        b.classList.replace('i-link', 'i-check');
+        b.setAttribute('title', 'Link copied');
+        b.classList.replace('i-copy', 'i-check');
       } catch {
         toast({ title: 'Couldn’t copy the link', text: link });
       }
       reset = window.setTimeout(() => {
         b.setAttribute('aria-label', 'Copy link');
-        b.classList.replace('i-check', 'i-link');
+        b.setAttribute('title', 'Copy link');
+        b.classList.replace('i-check', 'i-copy');
       }, 2000);
     },
   });

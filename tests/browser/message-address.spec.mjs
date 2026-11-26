@@ -68,6 +68,9 @@ test('#168 Copy link, by keyboard, copies the message’s address, and the addre
   await copy.evaluate((b) => b.setAttribute('data-test', 'copy'));
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-test="copy"]')).toHaveAttribute('aria-label', 'Link copied');
+  await expect(page.locator('[data-test="copy"]'), 'its icon a check, for those who see it').toHaveClass(/\bi-check\b/);
+  await expect(page.locator('[data-test="copy"]'), 'back to Copy link after a moment').toHaveAttribute('aria-label', 'Copy link', { timeout: 4000 });
+  await expect(page.locator('[data-test="copy"]')).toHaveClass(/\bi-copy\b/);
   const link = await page.evaluate(() => navigator.clipboard.readText());
   expect(link).toBe(`${app.origin}/#/t/${t.id}?m=${target.id}`);
   await page.goto(`${app.origin}/#/t/${t.id}`);
@@ -116,4 +119,19 @@ test('#168 an address to a message in the conversation lands there, though a thr
   await page.goto(`${app.origin}/#/t/${t.id}?m=${items[3].id}`);
   await expect(page, 'the address stays the message’s, with no thread added').toHaveURL(new RegExp(`#/t/${t.id}\\?m=${items[3].id}$`));
   await expect.poll(() => landed(page, items[3].id), { message: 'in the conversation, in view and focused' }).toBe('landed');
+});
+
+test('#168 in forced colors, a message’s Copy link icon still shows', async ({ page }) => {
+  const { t, items } = longRoom(app, 'Address, forced colors');
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const copy = page.locator(`[data-key="${items.at(-2).id}"]`).getByRole('button', { name: 'Copy link', exact: true });
+  await copy.scrollIntoViewIfNeeded();
+  const drawn = await copy.evaluate((b) => {
+    const s = getComputedStyle(b, '::before');
+    return { adjust: s.forcedColorAdjust, background: s.backgroundColor, color: getComputedStyle(b).color };
+  });
+  expect(drawn.adjust, 'the icon keeps its own color').toBe('none');
+  expect(drawn.background, 'in the system’s button text color, not Canvas').toBe(drawn.color);
 });
