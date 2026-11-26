@@ -17,6 +17,9 @@ import { sessionPatch } from './session-patch.mjs';
 import { newId } from './store.mjs';
 import { sessionWriting } from './store-live.mjs';
 
+/** The 404 for a session that isn’t there. */
+export const NO_SESSION = 'That session doesn’t exist. It may have been deleted.';
+
 /** The most skills and commands kept for an agent’s / menu. */
 const MAX_COMMANDS = 200;
 
@@ -59,7 +62,7 @@ export class Sessions {
   /** A session, or a 404 when it doesn’t exist. @param {string} id */
   get(id) {
     const se = this.store.state.sessions[id];
-    if (!se) throw httpError(404, 'That session doesn’t exist. It may have been deleted.');
+    if (!se) throw httpError(404, NO_SESSION);
     return se;
   }
 

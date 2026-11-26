@@ -58,6 +58,7 @@ function resumeRefusal(r) {
 for (const why of /** @type {const} */ (['moved', 'unregistered']))
   test(`#965 a turn the host lists as running is asked to stop when Postbox gives up attaching it (${why})`, async () => {
     const { d } = await gaveUp({ why });
+    await until(() => d.stops.length > 0, 'the stop');
     assert.deepEqual(d.stops, ['host-turn-1']);
   });
 
@@ -69,6 +70,7 @@ test('#965 a turn the host has no record of isn’t asked to stop: nothing there
 test('#965 Resume on the host is refused until it confirms the stop, then accepted', async (t) => {
   const free = holdStops(t);
   const { r, d } = await gaveUp({ why: 'unregistered' });
+  await until(() => d.stops.length > 0, 'the stop');
   assert.deepEqual(d.stops, ['host-turn-1'], 'asked, not yet confirmed');
   const before = starts(d).length;
   assert.equal(resumeRefusal(r), '@coder’s last turn on host.example.com hasn’t confirmed it stopped. Resume once it has.');
@@ -84,6 +86,7 @@ test('#965 Resume on the host is refused until it confirms the stop, then accept
 test('#965 the stop is asked again after a restart before the host confirmed it', async (t) => {
   holdStops(t);
   const { r, d } = await gaveUp({ why: 'unregistered' });
+  await until(() => d.stops.length === 1, 'the first stop');
   assert.equal(r.se().remoteTurn.stopping?.length, 1, 'saved on the session');
   r.rt.remote.close();
   d.drop();
@@ -99,6 +102,7 @@ test('#965 a stop still waiting on the host the agent moved off doesn’t hold i
   holdStops(t);
   const { r, d } = await gaveUp({ why: 'moved', to: 'host' });
   assert.notEqual(r.rt.persona(r.se().personaId).remote?.hostId, r.host.id, 'on another host now');
+  await until(() => d.stops.length > 0, 'the stop');
   assert.deepEqual(d.stops, ['host-turn-1'], 'the old host is asked');
   assert.equal(r.se().remoteTurn.stopping?.length, 1, 'not yet confirmed');
   assert.equal(resumeRefusal(r), null);
@@ -131,6 +135,7 @@ async function interruptedWith(t, { stopping }) {
 
 test('#965 an Interrupted turn isn’t resumed on its own while its host hasn’t confirmed a stop for the session', async (t) => {
   const { d } = await interruptedWith(t, { stopping: true });
+  await until(() => d.stops.length > 0, 'the earlier stop to be asked again');
   assert.deepEqual(d.stops, ['host-turn-0'], 'the earlier stop is asked again');
   assert.equal(starts(d).length, 0, 'nothing started beside it');
 });

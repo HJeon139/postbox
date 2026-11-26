@@ -8,9 +8,9 @@ import { whenWritable } from './store-wait.mjs';
 /** How often Postbox checks whether a background job it kept running has ended (#129). */
 const KEPT_POLL_MS = 5000;
 
-/** The kept jobs, everywhere. */
+/** The kept jobs, everywhere: pending, so one kept behind a held commit is watched, and stopped (#623). */
 export function keptJobs(rt) {
-  return Object.values(rt.s.sessions).flatMap((se) => (se.jobs ?? []).filter((j) => j.kept && keptGroupsOf(j).length));
+  return Object.values(rt.store.pending.sessions()).flatMap((se) => (se.jobs ?? []).filter((j) => j.kept && keptGroupsOf(j).length));
 }
 
 /** Checks on the jobs Postbox kept running, until none is left: one whose process group is gone has ended. */

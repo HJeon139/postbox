@@ -37,7 +37,9 @@ const busyIn = (summaries, threadId) =>
  */
 export function summarizerOf(summaries, threadId) {
   if (summaries.summarize !== undefined) return summaries.summarize;
-  const claude = summaries.sessions.in(summaries.threads.lineage(threadId).at(-1)).some((x) => summaries.personas.get(x.personaId)?.backend === 'claude-code');
+  const claude = summaries.sessions
+    .in(summaries.threads.conversationToWrite(threadId))
+    .some((x) => summaries.personas.get(x.personaId)?.backend === 'claude-code');
   const bin = claude ? claudeHere(summaries.adapters) : null;
   // A call that hangs is given up (claudeOnce), so the next settle can try again.
   return bin ? (prompt) => claudeOnce(bin, prompt, { model: SUMMARY_MODEL, timeoutMs: SUMMARY_TIMEOUT_MS }) : null;
