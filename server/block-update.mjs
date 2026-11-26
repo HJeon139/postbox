@@ -73,9 +73,9 @@ export function unreadAnswer(apps, sessionId, threadId, it, outcome = false) {
 /**
  * Settles what still carries an unread answer to the agent, once update_block’s refusal has given it whole (#1810), so
  * no later turn gives it again: its waiting entry in the agent’s inbox (designs/rooms-at-scale.md, “What an entry
- * is”), and a message holding its event behind the live turn, or a stopped one still exiting, with the entry taken for
- * it. Both are delivered, as a turn’s end delivers what it took. Returns whether anything waited; with `settle`
- * false it only says so, for an answer too long to give whole here.
+ * is”), and a message holding its event behind the live turn, with the entry taken for it. Both are delivered, as a
+ * turn’s end delivers what it took. Returns whether anything waited; with `settle` false it only says so, for an answer
+ * too long to give whole here.
  * @param {string} sessionId @param {any} it  the answered block item @param {boolean} [settle]
  */
 function settleWaiting(apps, sessionId, it, settle = true) {
@@ -83,13 +83,11 @@ function settleWaiting(apps, sessionId, it, settle = true) {
   // still comes, as the refusal gives only the answer (#1810).
   const answer = (/** @type {any} */ m) => m?.event?.action !== 'correct';
   const entries = apps.delivery.waiting(sessionId).filter((e) => e.source === 'answer' && e.itemId === it.id && answer(e.message));
-  let held = false;
-  for (const list of [apps.running.turnOf(sessionId)?.pending, apps.running.exitOf(sessionId)?.held]) {
-    const carrying = (list ?? []).filter((p) => p.message.blockItemId === it.id && answer(p.message));
-    if (!carrying.length) continue;
-    held = true;
-    if (!settle) continue;
-    list.splice(0, list.length, ...list.filter((p) => !carrying.includes(p)));
+  const list = apps.running.turnOf(sessionId)?.pending ?? [];
+  const carrying = list.filter((/** @type {any} */ p) => p.message.blockItemId === it.id && answer(p.message));
+  const held = carrying.length > 0;
+  if (held && settle) {
+    list.splice(0, list.length, ...list.filter((/** @type {any} */ p) => !carrying.includes(p)));
     // The entry a turn took for it, whose turn now never starts: left taken, a restart would give it again.
     for (const p of carrying.filter((x) => typeof x.message.turnId === 'string'))
       entries.push(...apps.delivery.takenBy(sessionId, p.message.turnId).filter((e) => e.itemId === it.id && answer(e.message)));

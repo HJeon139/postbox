@@ -176,23 +176,3 @@ test('#1810 a long answer held behind the running turn stays in its queue, and c
   assert.match(f.replies[0].message, /It reaches you whole when this turn ends/);
   assert.equal(answersGiven(f.adapter, f.item.id).length, 1, 'the queued turn gets it, whole, once');
 });
-
-test('#1810 an answer held for a stopped turn still exiting is settled there too', async () => {
-  // A stopped turn that hasn’t exited yet holds what arrives for it (Running.exitOf(...).held), and a later turn is
-  // given it. The refusal gave it, so it leaves that hold as it leaves a live turn’s queue.
-  /** @type {any} */
-  let exit = null;
-  const f = await answeredMidTurn({
-    during: ({ rt, se, item }) => {
-      exit = { held: [{ message: { kind: 'event', blockItemId: item.id, event: { action: 'submit', revision: 1 } } }] };
-      const real = rt.running.exitOf.bind(rt.running);
-      rt.running.exitOf = (id) => (id === se.id ? exit : real(id));
-    },
-  });
-  assert.equal(f.replies[0].ok, false);
-  assert.deepEqual(
-    exit.held.filter((p) => p.message.blockItemId === f.item.id),
-    [],
-    'the stopped turn no longer holds the answer',
-  );
-});
