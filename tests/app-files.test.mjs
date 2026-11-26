@@ -155,5 +155,11 @@ test('#1751: update_app with only new data files keeps the code, and a call with
   const empty = await call('update_app', { id: 'panel', summary: 'nothing' });
   assert.equal(empty.isError, true);
   assert.match(empty.text, /Send code, codePath or files/);
-  assert.equal(rt.store.state.apps.panel.versions.length, 2);
+  assert.equal((await call('update_app', { id: 'panel', code: null })).isError, true, 'a null code is no code');
+  // show_app on its own app with files alone does the same, and keeps the app’s permissions.
+  assert.equal((await call('update_app', { id: 'panel', code: '<p>panel</p>', permissions: ['assets.search'] })).isError, false);
+  const shown = await call('show_app', { id: 'panel', title: 'Panel', files: ['rows.csv'] });
+  assert.equal(shown.isError, false, shown.text);
+  const last = rt.store.state.apps.panel.versions.at(-1);
+  assert.deepEqual([last.code, last.permissions], ['<p>panel</p>', ['assets.search']]);
 });

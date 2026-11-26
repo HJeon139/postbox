@@ -220,9 +220,10 @@ export function appOf(apps, it) {
  * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string, intent?: string }} args
  * @param {{ files?: AppFile[] }} [given]  data files Postbox read from the agent’s folders (#54); never from the call
  */
-export function showApp(apps, sessionId, tools, { id, title, code, permissions = [], fallback, intent }, given = {}) {
+export function showApp(apps, sessionId, tools, { id, title, code, permissions, fallback, intent }, given = {}) {
   const blockId = id ?? newId('app');
   const existing = apps.store.pending.app(blockId);
+  // A new version keeps the permissions the call leaves out, as update_app does (#1751).
   if (existing?.sessionId === sessionId) return tools.update_app({ id: blockId, code, permissions, title, intent }, given);
   return tools.show_block(
     {
@@ -233,7 +234,7 @@ export function showApp(apps, sessionId, tools, { id, title, code, permissions =
         title: title ?? 'App',
         fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
         code,
-        permissions,
+        permissions: permissions ?? [],
         // As the agent said it: show_block trims it, cuts it and flags a long one, for every way an app is shown.
         ...(intent !== undefined && { intent }),
       },
@@ -253,7 +254,7 @@ export function updateApp(apps, sessionId, turn, threadId, endSegment, { id, cod
   const app = apps.store.pending.app(id);
   if (!app || app.sessionId !== sessionId) return notYours(apps, sessionId, id);
   // New data files alone keep the current code (#1751): a live panel refreshes its data without resending the app.
-  if (code === undefined && !given.files) return { ok: false, message: 'Send code, codePath or files: an update with none of them has nothing to change.' };
+  if (code == null && !given.files) return { ok: false, message: 'Send code, codePath or files: an update with none of them has nothing to change.' };
   code ??= app.versions[app.current - 1].code;
   const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
   if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
