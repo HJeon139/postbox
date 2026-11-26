@@ -16,6 +16,7 @@ import { ATTACH_IMAGE_TRIGGERS } from './attach-image-triggers.mjs';
 import { DELIVERY_TRIGGERS } from './delivery-triggers.mjs';
 import { DISMISS_TRIGGERS } from './dismiss-triggers.mjs';
 import { GIT_PUSH_TRIGGERS } from './gitpush-triggers.mjs';
+import { IDLE_TRIGGERS } from './idle-triggers.mjs';
 import { MEMBERS_TRIGGERS } from './members-triggers.mjs';
 import { PROFILE_TRIGGERS } from './profile-triggers.mjs';
 import { REFUSAL_TRIGGERS } from './refusal-triggers.mjs';
@@ -57,6 +58,7 @@ export const TRIGGERS = {
   ...ATTACH_IMAGE_TRIGGERS,
   ...SWITCH_TRIGGERS,
   ...REFUSAL_TRIGGERS,
+  ...IDLE_TRIGGERS,
 };
 
 /**
