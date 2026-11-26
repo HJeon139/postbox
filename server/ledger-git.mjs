@@ -4,12 +4,13 @@
 
 import { execFile } from 'node:child_process';
 import { dirname, relative, resolve, sep } from 'node:path';
+import { cutText } from '../shared/text-parts.mjs';
 import { lasting } from '../shared/work.mjs';
 import { newId } from './store.mjs';
 
 export const clip = (s, n) => {
   const t = String(s ?? '');
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+  return t.length > n ? `${cutText(t, n - 1)}…` : t;
 };
 /** Git’s state is asked for at most this many files per view; the rest show as uncommitted. */
 const GIT_FILES = 300;

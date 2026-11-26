@@ -26,7 +26,7 @@ export function askStop(rts, sessionId, hostId, turn, { send: now = true, state 
   if (!rts.hosts) return false;
   let s = rts.stopping.get(turn);
   if (!s) {
-    s = { sessionId, hostId, waiters: [], unconfirmed };
+    s = { sessionId, hostId, waiters: [], unconfirmed, personaId: rts.rt.s.sessions[sessionId]?.personaId };
     rts.stopping.set(turn, s);
     needHost(rts, hostId);
   }
@@ -75,6 +75,8 @@ export function stopConfirmed(rts, turn, unkilled = false) {
   if (rts.rt.runClock) clockStopConfirmed(rts.rt, s.sessionId, turn, rts.now(), unkilled ? 'unkilled' : undefined);
   releaseHost(rts, s.hostId);
   for (const w of s.waiters) w();
+  // A deleted persona’s memory there waits for its turns there to end (#1680).
+  for (const heard of rts.stopsEnded) heard(s.hostId);
 }
 
 /** A stop’s flags changed: its entry in remoteTurn.stopping says so, for a restart. @param {RemoteTurns} rts @param {string} sessionId @param {string} turn */

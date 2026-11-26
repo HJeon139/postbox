@@ -13,10 +13,10 @@ import { holdLint, lint } from './lint-delivery.mjs';
 const hashOf = (src) => createHash('sha256').update(src.trim()).digest('hex').slice(0, 16);
 
 export function rememberDiagrams(checks, sessionId, sources) {
-  const se = checks.store.state.sessions[sessionId];
-  if (!se) return;
+  if (!checks.store.pending.session(sessionId)) return;
   const hashes = sources.map(hashOf);
-  checks.sessions.update(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
+  // Built from the pending session, so a diagram remembered behind a held commit stays remembered (#623).
+  checks.sessions.update(sessionId, (s) => ({ diagramsLinted: [...new Set([...(s.diagramsLinted ?? []), ...hashes])].slice(-50) }));
 }
 
 /**
@@ -26,7 +26,8 @@ export function rememberDiagrams(checks, sessionId, sources) {
 export function diagramCheck(checks, threadId, itemId, { src, textPx, width, error }) {
   const it = checks.store.item(threadId, itemId);
   if (it?.kind !== 'agent' || it.lintReply || typeof src !== 'string') return { ok: true, sent: false };
-  const se = checks.store.state.sessions[it.sessionId];
+  // Pending: a diagram remembered behind a held commit was told already (#623).
+  const se = checks.store.pending.session(it.sessionId);
   const failed = error && typeof error === 'object' && typeof error.message === 'string';
   // Only a measurement at the conversation’s width counts; a narrow panel or phone shrinks every diagram.
   if (!se || (!failed && (!(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)))) return { ok: true, sent: false };

@@ -2,6 +2,38 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.51.4 (2026-11-26)
+
+### Fixes
+
+- **store:** read sessions as written where the read decides a write
+- **store:** read a held topic's glossary through its conversation, as written
+- **store:** read threads as written where the read decides a write
+
+## 4.51.3 (2026-11-26)
+
+### Fixes
+
+- **adapters:** a command to an agent with no registered backend is posted, as before
+- **adapters:** refuse /compact for a Codex agent with nothing to compact
+- **ui:** a compaction with no counts shows none, not NaN
+- **adapters:** /compact on a Codex agent runs Codex's compaction, not a prompt
+- **adapters:** list the checkout's rules by path, and match a linked data folder
+- **adapters:** keep the checkout's CLAUDE.md files too, and pin none on a host
+- **adapters:** keep the checkout's AGENTS.md from claude agents in its data folder
+
+## 4.51.2 (2026-11-26)
+
+### Fixes
+
+- **agent-sdk:** the stopped work’s summary reaches the agent as one cut line
+- **text:** a step’s output tail and a one-character glimpse are cut whole too
+- **text:** cut the clip helpers and step text only at a whole character
+- **agent-sdk:** tell of a stopped background subagent while it was still talking
+- **agent-sdk:** wait for background work as long as a host turn does, and say what was stopped
+- **apps:** let an app mounted under a resting pointer take it once its item renders
+- **remote:** a deleted agent's memory on a host waits for its turn there to stop
+
 ## 4.51.1 (2026-11-26)
 
 ### Fixes

@@ -1,13 +1,14 @@
 // What Postbox tells an Antigravity agent, and the person, about the calls agy refuses headless when the PreToolUse
 // hook isn’t running (server/adapters/antigravity-cli.mjs, “Permissions”).
 
+import { cutText } from '../../shared/text-parts.mjs';
 import { promptTooLong } from './arg-prompt.mjs';
 
 export const clip = (s, n) => {
   const t = String(s ?? '')
     .replace(/\s+/g, ' ')
     .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+  return t.length > n ? `${cutText(t, n - 1)}…` : t;
 };
 
 // A live turn (agy 1.4.5) had a command refused as “user denied permission to run command”. Nobody was asked, so

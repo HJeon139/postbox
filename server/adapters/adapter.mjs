@@ -19,7 +19,8 @@
 //   ctx.status({ state?, ctx?, subagents?, currentStep? })
 //                                           state: 'think' | 'gen' | 'tool'; ctx: % of context used;
 //                                           subagents: [{ name, state, ctx }]
-//   ctx.compaction({ kept, total, summary })  the agent's context was summarized
+//   ctx.compaction({ kept?, total?, summary })  the agent's context was summarized; kept and total only when its
+//                                           harness counts them (Codex doesn’t, #425)
 //   ctx.quota({ status, windows, seenAt? })  its backend’s quota usage (#442): status 'ok' | 'warning' | 'out';
 //                                           windows [{ name, used (0 to 1), resetsAt (epoch ms) | null }];
 //                                           seenAt: when it was read, if before now (epoch ms)
@@ -109,7 +110,10 @@
  * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, promptTool?: boolean, promptHook?: boolean, models?: string[],
  *   remote?: RemoteCapabilities },
  *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void,
- *   promptCard?(call: any, args: any): { tool: string, input: any } | null }} Adapter
+ *   promptCard?(call: any, args: any): { tool: string, input: any } | null,
+ *   refuses?(line: string, state: object, handle: string): string | null }} Adapter
+ *   refuses: why a command (`/name args`) can’t run now, asked before it’s posted (agent-commands.mjs); a reason
+ *   refuses it with a 422, as Codex refuses /compact with no conversation (#425).
  */
 
 /**
