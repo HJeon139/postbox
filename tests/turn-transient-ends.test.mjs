@@ -205,15 +205,63 @@ test('#1713 a retry refused with 409 while its reply is still failed, as by a pa
   assert.equal(needsYouNow(f.se()), true, 'still failed, with nothing to start it again');
 });
 
-test('#1713 the calls a retry is told to check are the agent’s own tools, not Postbox’s', () => {
+test('#1713 the calls a retry is told to check leave out Postbox’s own that did no work, such as a reaction', () => {
   const f = room();
   const turn = {
     steps: [
-      { id: 's1', label: 'react', kind: 'tool' },
+      { id: 's1', label: 'react', tool: 'mcp__postbox__react', kind: 'tool' },
       { id: 's2', label: 'Bash: git push', kind: 'tool' },
     ],
     postboxSteps: new Set(['s1']),
   };
   const r = transientRetry(f.rt, f.se(), turn, { kind: 'transient', status: 529 });
   assert.deepEqual(r?.started, ['Bash: git push']);
+});
+
+test('#1713 a turn whose only work was a Postbox tool that acts, such as open_topic, is told to check it before repeating', () => {
+  // Critic’s review of #1713’s merged head: such a turn took no step of the agent’s own, so its retry went with no
+  // line, and could post the topic and wake its agents again.
+  const f = room();
+  const turn = {
+    steps: [
+      { id: 's1', label: 'react', tool: 'mcp__postbox__react', kind: 'tool' },
+      { id: 's2', label: 'Open a topic', tool: 'mcp__postbox__open_topic', kind: 'tool' },
+    ],
+    postboxSteps: new Set(['s1', 's2']),
+    acted: true,
+  };
+  const r = transientRetry(f.rt, f.se(), turn, { kind: 'transient', status: 529 });
+  assert.deepEqual(r?.started, ['Open a topic']);
+  // One that only reacted did no work, so its retry is sent as it was.
+  const reacted = { ...turn, steps: [turn.steps[0]], acted: false };
+  assert.deepEqual(transientRetry(f.rt, f.se(), reacted, { kind: 'transient', status: 529 })?.started, []);
+});
+
+test('#1713 a retry refused because its reply is no longer failed ends the wait, and nobody is asked', async () => {
+  const f = room();
+  await overloadedOnce(f);
+  const failed = f.store.items(f.t.id).find((i) => i.kind === 'agent' && i.sessionId === f.beta.id);
+  f.rt.threads.patchItem(f.t.id, failed.id, { status: 'retried' });
+  f.rt.turnService.retry = async () => {
+    throw Object.assign(new Error('Only a failed reply can be retried.'), { status: 409 });
+  };
+  f.waits.shift()();
+  await settle(f.rt);
+  assert.equal(f.se().autoRetry ?? null, null, 'the wait ended');
+  assert.equal(needsYouNow(f.se()), false, 'nothing is owed: the reply isn’t failed');
+});
+
+test('#1713 a wait that ends while Postbox closes starts nothing and keeps the wait, for the restart to arm again', async () => {
+  const f = room();
+  await overloadedOnce(f);
+  const calls = f.adapter.calls.length;
+  const failed = f.store.items(f.t.id).find((i) => i.kind === 'agent' && i.sessionId === f.beta.id);
+  f.rt.running.shuttingDown = true;
+  f.waits.shift()();
+  await settle(f.rt);
+  f.rt.running.shuttingDown = false;
+  assert.equal(f.adapter.calls.length, calls);
+  assert.equal(f.store.item(f.t.id, failed.id).status, 'failed', 'its reply isn’t marked retried for a turn that never ran');
+  assert.ok(f.se().autoRetry, 'the wait is kept, so armAutoRetries starts it again after the restart');
+  assert.equal(needsYouNow(f.se()), false, 'nobody is asked for a retry the shutdown held');
 });

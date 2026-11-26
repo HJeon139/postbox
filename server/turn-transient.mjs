@@ -14,17 +14,32 @@
 
 import { TRANSIENT_RETRY } from '../shared/limits.mjs';
 import { tookStep } from './reply-back.mjs';
+import { isOwnWork, postboxTool } from './tool-gate.mjs';
 
 /** What each status says the provider did. */
 const STATUS_WORDS = { 429: 'was rate limiting requests', 529: 'was overloaded' };
 /** What the provider did, after its subject: “was overloaded (529)”. @param {number} status */
 const didWhat = (status) => `${STATUS_WORDS[/** @type {429|529} */ (status)] ?? 'had a server error'} (${status})`;
 
-/** The tools a turn started, by their labels, at most five, not Postbox’s own (reply-back.mjs, tookStep): what its retry checks. */
+/**
+ * Whether a step is work a retry may repeat: any of the agent’s own tools, and of Postbox’s, one that acts, such as
+ * open_topic, which posts and wakes again (tool-gate.mjs, isOwnWork). One whose tool wasn’t recorded counts, as it may
+ * have acted. @param {any} turn @param {any} s
+ */
+const repeatable = (turn, s) => {
+  if (!turn.postboxSteps?.has(s.id)) return true;
+  const name = s.tool ? (postboxTool(s.tool) ?? s.tool) : null;
+  return !name || isOwnWork(name);
+};
+
+/**
+ * The tools a turn started, by their labels, at most five: what its retry is asked to check before repeating. A turn
+ * whose only work was a Postbox tool that acted (`acted`) counts as having started work too (#1713).
+ */
 const startedLabels = (/** @type {any} */ turn) =>
-  tookStep(turn)
+  tookStep(turn) || turn.acted
     ? (turn.steps ?? [])
-        .filter((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said' && !turn.postboxSteps?.has(s.id))
+        .filter((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said' && repeatable(turn, s))
         .map((/** @type {any} */ s) => String(s.label ?? s.tool ?? 'a tool').slice(0, 80))
         .slice(0, 5)
     : [];
