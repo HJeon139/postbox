@@ -102,7 +102,7 @@ test('too few free inodes in the temp folder fails step 5 before the slot is tak
 });
 
 test('a working tree with changes fails step 5: the log would not be for HEAD', async () => {
-  const w = world({ answers: [[/^git status --porcelain$/, { code: 0, out: ' M server/store.mjs\n' }]] });
+  const w = world({ answers: [[/^git status --porcelain --untracked-files=all$/, { code: 0, out: ' M server/store.mjs\n' }]] });
   assert.equal(await signoff(['840', '--run-gate'], w.d), EXIT.gate);
   assert.match(line(w, /^✖ 5\./), /working tree has changes/);
   assert.equal(ran(w, /^npm run check$/).length, 0);
@@ -148,7 +148,7 @@ test('a long command prints a line at least once a minute while it runs, and sto
 
 test('a working tree changed while the gate waits for its slot fails step 5, and writes no log', async () => {
   let waited = false;
-  const w = world({ answers: [[/^git status --porcelain$/, () => ({ code: 0, out: waited ? ' M server/store.mjs\n' : '' })]] });
+  const w = world({ answers: [[/^git status --porcelain --untracked-files=all$/, () => ({ code: 0, out: waited ? ' M server/store.mjs\n' : '' })]] });
   const acquire = w.d.acquire;
   w.d.acquire = async (a) => {
     waited = true;
@@ -202,7 +202,7 @@ test('a working tree changed while the gate ran fails step 5, and writes no log'
   let ran = false;
   const w = world({
     answers: [
-      [/^git status --porcelain$/, () => ({ code: 0, out: ran ? '?? notes.md\n' : '' })],
+      [/^git status --porcelain --untracked-files=all$/, () => ({ code: 0, out: ran ? '?? notes.md\n' : '' })],
       [
         /^npm run check$/,
         () => {
@@ -216,4 +216,30 @@ test('a working tree changed while the gate ran fails step 5, and writes no log'
   assert.match(line(w, /^✖ 5\./), /the working tree changed while the gate ran/);
   assert.equal(w.files.has(`${GIT_DIR}/signoff/${w.head}.json`), false, 'no log');
   assert.equal(w.released, 1, 'the slot is let go');
+});
+
+test('an untracked file fails the clean checks even where status.showUntrackedFiles=no would hide it', async () => {
+  /** git status as it answers with showUntrackedFiles=no, unless the command asks for every untracked file. */
+  const hidingUntracked = (out) => (argv) => {
+    const all = argv.includes('--untracked-files=all');
+    return { code: 0, out: all ? out() : out().replace(/^\?\? .*\n/gm, '') };
+  };
+  const before = world({ answers: [[/^git status --porcelain/, hidingUntracked(() => '?? scratch.mjs\n')]] });
+  assert.equal(await signoff(['840', '--run-gate'], before.d), EXIT.gate);
+  assert.match(line(before, /^✖ 5\./), /working tree has changes/);
+  let ran = false;
+  const during = world({
+    answers: [
+      [/^git status --porcelain/, hidingUntracked(() => (ran ? '?? notes.md\n' : ''))],
+      [
+        /^npm run check$/,
+        () => {
+          ran = true;
+          return { code: 0, out: '' };
+        },
+      ],
+    ],
+  });
+  assert.equal(await signoff(['840', '--run-gate'], during.d), EXIT.gate);
+  assert.match(line(during, /^✖ 5\./), /the working tree changed while the gate ran/);
 });

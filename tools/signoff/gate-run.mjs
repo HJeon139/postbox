@@ -12,6 +12,9 @@ import { commands, FORMAT, logPath, WRITER } from './gate-log.mjs';
 import { untilStopped } from './stop.mjs';
 import { exec, loud, must } from './wait.mjs';
 
+/** The working tree’s changes, untracked files included whatever the person’s status.showUntrackedFiles says. */
+const STATUS = ['git', 'status', '--porcelain', '--untracked-files=all'];
+
 /** Free inodes the temp folder needs: Playwright, Chromium and the tests write many small files there. */
 export const MIN_FREE_INODES = 100_000;
 
@@ -20,7 +23,7 @@ export const MIN_FREE_INODES = 100_000;
  * @param {import('./deps.mjs').Deps} d @param {string} root @param {string[]} specs
  */
 async function blocked(d, root, specs) {
-  const status = await must(d, ['git', 'status', '--porcelain'], { cwd: root });
+  const status = await must(d, STATUS, { cwd: root });
   if (status) return `the working tree has changes HEAD doesn’t have: commit or stash them, so the log is for HEAD (${status.split('\n').length} paths)`;
   const missing = specs.filter((s) => !d.exists(join(root, s)));
   if (missing.length) return `no such spec file: ${missing.join(', ')}`;
@@ -37,7 +40,7 @@ async function blocked(d, root, specs) {
  * @param {import('./stop.mjs').Stop} stop
  */
 async function changed(d, root, head, when, stop) {
-  const status = await must(d, ['git', 'status', '--porcelain'], { cwd: root, stop });
+  const status = await must(d, STATUS, { cwd: root, stop });
   if (status) return `the working tree changed ${when} (${status.split('\n').length} paths): the log would not be for HEAD, so none is written`;
   const now = await must(d, ['git', 'rev-parse', 'HEAD'], { cwd: root, stop });
   if (now !== head) return `HEAD moved from ${head.slice(0, 8)} to ${now.slice(0, 8)} ${when}: the log would not be for either, so none is written`;

@@ -147,7 +147,7 @@ function defaults(head) {
     [/^git (worktree|checkout) /, ok()],
     [/^git merge-tree /, ok(`${'e'.repeat(40)}\n`)],
     [/^git commit-tree /, ok(`${'f'.repeat(40)}\n`)],
-    [/^git status --porcelain$/, ok()],
+    [/^git status --porcelain --untracked-files=all$/, ok()],
     [/node_modules\/\.bin\/biome check/, ok()],
     [/^npm run -s lint:project$/, ok()],
     [new RegExp(`^${NODE22} --version$`), ok('v22.11.0\n')],
