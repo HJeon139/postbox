@@ -354,6 +354,13 @@ export const PALETTES = Object.freeze([
   },
 ]);
 
+/**
+ * The agents’ asks a session’s turns ended without answering, kept on the session so a later reply that reaches the
+ * asker clears their “no reply” mark without reading the room (#634, server/reply-owed.mjs). An older one keeps its
+ * mark on its item; twenty is more than an agent leaves unanswered in the stored runs.
+ */
+export const OWED = Object.freeze({ kept: 20 });
+
 /** What a session keeps of the asks its replies made of people (#1742, server/person-mentions.mjs). */
 export const ASKS = Object.freeze({
   // The unread asks kept on the session, newest last, which a view reads at once. A bound on what every session

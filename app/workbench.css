@@ -853,7 +853,7 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 /* Turns on a host (#120): a Kiro turn’s notice that its message can be read there, a hung turn’s note, and a stop
    the host hasn’t confirmed. Quiet: none of them is a control, so none is amber. */
 .stopped-tag.hung-note { height: auto; min-height: 18px; white-space: normal; }
-.went-back { align-self: flex-start; font-size: 11px; line-height: 14px; color: var(--dim); }
+.went-back, .no-reply { align-self: flex-start; font-size: 11px; line-height: 14px; color: var(--dim); }
 .host-turns { display: flex; flex-direction: column; gap: 6px; }
 .host-turn { display: flex; align-items: flex-start; gap: 8px; color: var(--dim); }
 .host-turn b { color: var(--text); font-weight: 600; }

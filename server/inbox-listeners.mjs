@@ -8,6 +8,7 @@ import { mentionEntries, wakeMentioned } from './mention-entries.mjs';
 import { takePending } from './message-queue.mjs';
 import { markAsks, readAsks } from './person-mentions.mjs';
 import { planBack, replyBack } from './reply-back.mjs';
+import { noteOwed } from './reply-owed.mjs';
 import { entriesFirst } from './turns.mjs';
 
 /** Adds the inbox’s listeners to the runtime’s bus. @param {any} rt */
@@ -38,6 +39,8 @@ export function listenInbox(rt) {
     delivery.turnEnded(settle(turn));
     wakeMentioned(rt, turn);
     replyBack(rt, turn, se, back);
+    // An agent’s ask the reply didn’t reach is marked “no reply” under it, quietly (#634).
+    noteOwed(rt, turn, se, took, back?.to ?? []);
     if (first) takePending(rt, se, turn, true);
   });
   // L4: the person’s messages that waited for it wait for them now (#1146), unless it resends on its own, and a wake
@@ -45,6 +48,8 @@ export function listenInbox(rt) {
   // wakes the agent: lost to the network (harness-failure.mjs), it goes once more as a resend, ahead of what came
   // after it, and fails if it was one (#466).
   bus.on('turn.failed', ({ turn, se, lost, resends }) => {
+    // A failed turn answered no ask its reply didn’t @-mention; one lost to the network goes again, so it waits (#634).
+    if (!resends) noteOwed(rt, turn, se, delivery.takenBy(se.id, turn.id));
     if (!resends) delivery.failedWith(se.id);
     delivery.turnFailed({ ...settle(turn), lost });
     takePending(rt, se, turn, 'wakes');

@@ -84,3 +84,29 @@ test('an agent’s second reply in a row that only writes posts with no note, an
   await expect(page.getByText('Nothing more from me.')).toHaveCount(0);
   expect(app.store.items(thread.id).filter((it) => it.kind === 'hop')).toEqual([]);
 });
+
+test('an ask whose answer went to another agent reads “No reply from …” under it, until the answer reaches its asker (#634)', async ({ page }) => {
+  const [asker, answerer, third] = ['pinger', 'ponger', 'thirdy'].map((name) => app.rt.createPersona({ handle: name, backend: 'claude-code' }));
+  const thread = app.rt.createThread({
+    projectId: Object.keys(app.store.state.projects)[0],
+    title: 'No reply',
+    personaIds: [asker.id, answerer.id, third.id],
+  });
+  scripts.set('pinger', ['@ponger is the relay green?', REACT]);
+  scripts.set('ponger', ['@thirdy can you check the relay for me?', '@pinger yes, it’s green.']);
+  // thirdy ends it with a reaction, so nothing comes back to ponger before the person asks it.
+  scripts.set('thirdy', [REACT]);
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  app.rt.sendMessage(thread.id, { text: '@pinger find out if the relay is green' });
+
+  const reply = (text) => page.locator('.turn').filter({ has: page.getByText(text, { exact: true }) });
+  const ask = reply('@ponger is the relay green?');
+  await expect(ask.locator('.no-reply')).toHaveText('No reply from @ponger.');
+  // A quiet line: nothing asks the person.
+  expect(arrange.sessionsIn(app.rt, thread.id).map((se) => se.needs ?? null)).toEqual([null, null, null]);
+  // ponger answers pinger later, and the line goes.
+  app.rt.sendMessage(thread.id, { text: '@ponger tell pinger' });
+  await expect(reply('@pinger yes, it’s green.')).toBeVisible();
+  await expect(ask.locator('.no-reply')).toHaveCount(0);
+});

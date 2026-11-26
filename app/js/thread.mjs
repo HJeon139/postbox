@@ -47,7 +47,7 @@ import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
 import { welcome } from './welcome.mjs';
-import { wentBackNote } from './went-back.mjs';
+import { noReplyNote, wentBackNote } from './went-back.mjs';
 import { createWindow } from './window.mjs';
 import { windowOn } from './window-flag.mjs';
 import { focusedItem, keepFocused } from './window-keep.mjs';
@@ -419,6 +419,7 @@ function renderItem(it, prev, ctx) {
         it.work ? workChip(it, ctx) : null,
         hostEnd(it),
         wentBackNote(it),
+        noReplyNote(it),
         it.status === 'stopped' && !it.note ? stoppedTag(it) : null,
         it.status === 'failed' && !failedOnHost(it) ? failedCallout(ctx.threadId, it, failureText(it.error)) : null,
         it.status === 'retried' ? h('span.stopped-tag', 'Retried below') : null,
