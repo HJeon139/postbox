@@ -99,6 +99,50 @@ test('#1758 the count of unplaced calls stays on a trajectory when the agent’s
   assert.equal(t.extra.unplaced_calls, callsInStream(foreign.events).length);
 });
 
+test('#1758 a call’s result is what its stream says the model got, ahead of the stored output and the step’s text', () => {
+  // The developer’s commands have stored outputs the ledger names; read back, each would be this text instead.
+  const stored = trajectories(rec.events, { version: POSTBOX_VERSION, streams: rec.streams, blob: () => 'the stored output' });
+  const developer = stored.find((t) => t.handle === 'developer')?.trajectory;
+  const commands = callsOf(developer).filter((/** @type {any} */ c) => c.function_name === 'Bash');
+  assert.ok(commands.length > 0, 'the fixture has commands with stored outputs');
+  const got = resultsOf(developer);
+  for (const c of commands) {
+    const streamed = recorded('developer').find((r) => r.id === c.tool_call_id)?.result;
+    assert.equal(typeof streamed, 'string', `${c.tool_call_id} has a result in its stream`);
+    assert.equal(got.get(c.tool_call_id), streamed);
+  }
+});
+
+test('#1758 a call the ledger kept input for keeps it over its stream’s, and a subagent’s call names its parent', () => {
+  // The stream’s input differs from the ledger’s, as a Read’s absolute path does from the target the ledger shows.
+  const relabeled = rec.streams.map((st) =>
+    st.handle !== 'critic'
+      ? st
+      : {
+          ...st,
+          events: st.events.map((e) =>
+            e.type !== 'assistant'
+              ? e
+              : {
+                  ...e,
+                  parent_tool_use_id: 'toolu_parent',
+                  message: {
+                    ...e.message,
+                    content: e.message.content.map((/** @type {any} */ p) => (p.type === 'tool_use' ? { ...p, input: { from: 'the stream' } } : p)),
+                  },
+                },
+          ),
+        },
+  );
+  const reads = callsOf(byHandle(rec.events, relabeled).critic).filter((/** @type {any} */ c) => c.function_name === 'Read');
+  assert.equal(reads.length, 6);
+  for (const c of reads) {
+    assert.notDeepEqual(c.arguments, { from: 'the stream' }, 'the ledger’s input is kept');
+    assert.notEqual(c.extra.arguments_source, 'recorded stream');
+    assert.equal(c.extra.parent_tool_call_id, 'toolu_parent');
+  }
+});
+
 test('#1752 a call the ledger kept no input for takes it from its turn’s stream, and says so', () => {
   const noReads = rec.events.filter((e) => !(e.type === 'work.add' && e.data.entry.kind === 'read'));
   const critic = byHandle(noReads).critic;
