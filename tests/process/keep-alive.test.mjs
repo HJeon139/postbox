@@ -77,7 +77,7 @@ test('#1726 a response still going when Postbox closes doesn’t hold the close 
   t.after(() => agent.destroy());
   const reply = fetchOn(agent, `http://127.0.0.1:${port}/`);
   const res = /** @type {import('node:http').ServerResponse} */ (await inFlight);
-  // Close while the response is still going, then end it: the close comes once that response is done.
+  // Close while the response is still going, then end it: the close comes about a second after that response is done.
   const closed = closeServer(server).then(() => 'closed');
   res.end('ok');
   assert.deepEqual(await reply, { status: 200, reused: false });

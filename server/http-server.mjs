@@ -18,8 +18,8 @@ export function httpServer(handle) {
 }
 
 /**
- * Stops the server once its connections end: an idle one at once, and one whose response is still going as soon as
- * that response does, not KEEP_ALIVE_MS later.
+ * Stops the server once its connections end: an idle one at once, and one whose response is still going about a second
+ * after that response ends (Node’s keep-alive buffer), not KEEP_ALIVE_MS later.
  * @param {import('node:http').Server} server @returns {Promise<void>}
  */
 export function closeServer(server) {
