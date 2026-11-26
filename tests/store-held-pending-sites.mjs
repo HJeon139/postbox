@@ -9,7 +9,8 @@ export const PENDING = {
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
   // keptBlock: the block a turn kept, in any of the agent's threads, which decides the need its end writes (#647).
   // dismissFailed: whether the reply dismissed is the one the agent waits to try again, which ends that wait (#1713).
-  'card-needs.mjs': ['keptBlock', 'keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'dismissFailed'],
+  // threadsOf: the agent’s side and topic threads, whose cards decide its need, a topic opened behind a held commit too (#623).
+  'card-needs.mjs': ['threadsOf', 'keptBlock', 'keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'dismissFailed'],
   // The project a session is attached into, maybe deleted behind a held commit (#119); the mirrored reply a terminal
   // line adds to, maybe held behind a commit; and the session attachClaudeSession just made, whose transcript mirror
   // starts following.
@@ -65,7 +66,9 @@ export const PENDING = {
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
   'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],
-  'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
+  // the ledger reads back its own entries; the turn’s blocks and apps; and convOf, the conversation whose work list a
+  // turn’s entry goes in, through a topic maybe opened behind a held commit (#623)
+  'ledger.mjs': ['convOf', 'convOf', 'entries', 'recordPublishes', 'recordPublishes'],
   'diagram-check.mjs': ['syntaxCheck'], // the turn’s replies, maybe held behind a commit: their diagrams decide its lint turn and the session’s diagramsLinted (#731)
   'app-animating.mjs': ['appAnimating'], // the app, maybe held behind a commit: whether its version was told decides the write that marks it (#438)
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
@@ -150,6 +153,8 @@ export const PENDING = {
     'threadPersona',
     'threadPersona',
     'deletedFrom',
+    // the side thread whose line it updates, maybe opened behind a held commit (#623), and its items
+    'bumpSideLink',
     'bumpSideLink',
     'bumpSideLink',
     // the session whose last messages it keeps, maybe written behind a held commit (#623)
@@ -182,8 +187,9 @@ export const PENDING = {
     'conversationToWrite',
     'notify',
   ],
-  // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
-  'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
+  // A finished turn’s checks: its lineage, through a topic maybe opened behind a held commit (#623), its own block and
+  // the terms and apps it introduced, and the progress steps it stalls.
+  'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left
   'turn-end-work.mjs': ['workLine'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'turn-finish.mjs': ['endTurn'], // a turn’s end: its own items, maybe held behind a commit (#796)
@@ -202,8 +208,12 @@ export const PENDING = {
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
   // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637); and who answers in
-  // a new topic, read as the conversation was written (#1292)
+  // a new topic, read as the conversation was written (#1292); conversationOf’s topics, maybe opened behind a held commit (#623)
   'topic-open.mjs': ['startTopic', 'startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'],
   'wake-cards.mjs': ['lastAddAnswer', 'openCard'], // a declined add, so a mention asks no more (#693), and its lift by the person’s add (#789); another wake’s held hop card, so a second isn’t made
+  'asset-tools.mjs': ['assetTools'], // the room write_asset files into, through a topic maybe opened behind a held commit (#623)
+  // bring_to_conversation: the thread it’s called in and its conversation, where the post lands, maybe opened behind a held commit (#623)
+  'bring.mjs': ['offersBring', 'bringToConversation', 'bringToConversation'],
+  'share-back.mjs': ['shareText'], // the title a shared post carries, of a topic maybe opened behind a held commit (#623)
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };

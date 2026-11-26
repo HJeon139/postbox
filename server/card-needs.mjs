@@ -7,10 +7,10 @@ import { clip } from '../shared/text.mjs';
 import { httpError } from './helpers.mjs';
 import { forgetWait } from './turn-transient.mjs';
 
-/** The threads whose cards are the agent's: its own, and the side and topic threads off it. */
+/** The threads whose cards are the agent's: its own, and the side and topic threads off it, a held one too (#623). */
 const threadsOf = (rt, se) => [
   se.threadId,
-  ...Object.values(rt.s.threads)
+  ...Object.values(rt.store.pending.threads())
     .filter((t) => t.parentId === se.threadId)
     .map((t) => t.id),
 ];
