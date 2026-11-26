@@ -1,5 +1,5 @@
 // Settings at the longest data it allows (#1735): a persona’s handle of 24 characters, its description of 200 and its
-// host’s name of 60. At every width each row shows its host and its description whole, the bar under the list keeps
+// host’s name of 60. At every width each row shows its host and its description whole, the list’s bar keeps
 // its controls for the picked row in view, and a persona’s form shows all of its description and keeps its actions under it.
 
 import { expect, test } from '@playwright/test';
@@ -44,7 +44,7 @@ for (const width of [320, 375, 800, 1280, 1920])
       const row = dialog.locator('li.persona-row', { has: page.getByText(handle, { exact: true }) });
       await row.click();
       await expect(row, `${handle} is picked`).toHaveAttribute('aria-selected', 'true');
-      // The bar under the list acts on the pick: − and Edit name it, and all of it stays in view.
+      // The list’s bar acts on the pick: − and Edit name it, and all of it stays in view.
       for (const name of ['New agent', `Delete ${handle}…`, `Edit ${handle}`, `Retire ${handle}`])
         await expect(dialog.getByRole('button', { name, exact: true }), `${name} is in view`).toBeInViewport({ ratio: 1 });
       // Whole: nothing cut off with an ellipsis or by the row’s edge.

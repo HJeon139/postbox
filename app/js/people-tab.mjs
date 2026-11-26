@@ -2,11 +2,11 @@
 // in is the identity provider’s to decide, so there is nothing to add here, and a person edits only their own profile.
 
 import { h } from './dom.mjs';
-import { barAction, barSign, pickList } from './manage-list.mjs';
+import { barAction, barSign, listHead, pickList } from './manage-list.mjs';
 import { called, me, people } from './profile-tab.mjs';
 
-/** @param {(tab: string) => void} go  switches the menu to another tab @param {(...actions: any[]) => null} setFoot @param {Record<string, any>} at */
-export function peopleTab(go, setFoot, at) {
+/** @param {(tab: string) => void} go  switches the menu to another tab @param {Record<string, any>} at */
+export function peopleTab(go, at) {
   const mine = me();
   // Who is here isn’t added or removed in Postbox: it is whoever the computer’s account is, or whoever signs in.
   const theirs = 'On this computer, you are the account Postbox runs as. There is no one to add or remove.';
@@ -31,8 +31,8 @@ export function peopleTab(go, setFoot, at) {
         }),
     ],
   });
-  setFoot(bar);
   return [
+    listHead('People', bar, { pinned: true }),
     list,
     // Why + and − are off, in words on the page: a title shows only under a pointer.
     h('span.help', theirs),

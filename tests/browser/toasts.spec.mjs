@@ -1,7 +1,7 @@
 // Short-lived notices share one top-right region, bounded, with announcements intact (#444).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -34,4 +34,70 @@ for (const width of [375, 1280])
     await expect(region.getByRole('alert').filter({ hasText: 'Your message didn’t send' }), 'the new alert shows').toBeVisible();
     await expect(region.locator('.toast')).toHaveCount(3);
     await expect(region.locator('.toast', { hasText: '@agent1 needs you' }), 'the oldest made room').toHaveCount(0);
+  });
+
+test('over a sheet, each notice reaches assistive technology as it comes, a hidden one takes no focus, and Dismiss stays under the pointer', async ({
+  page,
+}) => {
+  await page.goto(`${app.origin}/`);
+  await synced(page, app);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+  const region = page.getByRole('region', { name: 'Notifications' });
+  const raise = (/** @type {{ title: string, text?: string, level?: string }} */ notice) =>
+    page.evaluate(async (n) => (await import('/app/js/ui.mjs')).toast(n), notice);
+  // One at a time: each is in the accessibility tree when it is added, alone, and the one before it has left the tree.
+  await raise({ title: 'Added host-1.example.com' });
+  await expect(region.getByRole('status')).toHaveText(/Added host-1/);
+  await raise({ title: 'Couldn’t save the room', text: 'A room keeps at least one agent, and this would leave it with none. '.repeat(3), level: 'blocking' });
+  await expect(region.getByRole('alert')).toHaveText(/Couldn’t save the room/);
+  await expect(region.getByRole('status')).toHaveCount(0);
+  await expect(page.locator('.toast')).toHaveCount(2);
+  const hiddenTakesFocus = await page.locator('.toast:not(:visible) button').evaluate((el) => {
+    /** @type {HTMLElement} */ (el).focus();
+    return document.activeElement === el;
+  });
+  expect(hiddenTakesFocus, 'a hidden notice’s button takes focus').toBe(false);
+  // Under the pointer the notice shows whole, and its Dismiss is still under the pointer once it has grown.
+  const shown = page.locator('.toast:visible');
+  const height = async () => /** @type {{ height: number }} */ (await shown.boundingBox()).height;
+  const dismiss = shown.getByRole('button', { name: 'Dismiss' });
+  const box = /** @type {{ x: number, y: number, width: number, height: number }} */ (await dismiss.boundingBox());
+  const at = [box.x + box.width / 2, box.y + box.height / 2];
+  const cut = await height();
+  await page.mouse.move(at[0], at[1]);
+  await settled(page);
+  expect(await height(), 'whole under the pointer').toBeGreaterThan(cut);
+  expect(await dismiss.evaluate((el, [x, y]) => el.contains(document.elementFromPoint(x, y)), at), 'Dismiss is still under the pointer').toBe(true);
+});
+
+for (const width of [1280, 375, 320])
+  test(`at ${width} px, a notice over a sheet shown whole under the pointer stays inside the window, however long its words`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 600 });
+    await page.goto(`${app.origin}/`);
+    await synced(page, app);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+    // More words than the window is tall, and one with nowhere to break, as a path or a URL in an error has.
+    const text = `${'A room keeps at least one agent, and this would leave it with none. '.repeat(60)}https://example.com/${'a'.repeat(400)}`;
+    await page.evaluate(async (t) => (await import('/app/js/ui.mjs')).toast({ title: 'Couldn’t save the room', text: t, level: 'blocking', timeout: 0 }), text);
+    const shown = page.locator('.toast:visible');
+    const dismiss = shown.getByRole('button', { name: 'Dismiss' });
+    const at = /** @type {{ x: number, y: number, width: number, height: number }} */ (await dismiss.boundingBox());
+    await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+    await settled(page);
+    // Whole: its words wrap, and scroll inside it past the window’s height.
+    const words = shown.locator('.t-body');
+    expect(await words.evaluate((el) => el.scrollHeight > el.clientHeight), 'its words scroll inside it').toBe(true);
+    const box = /** @type {{ x: number, y: number, width: number, height: number }} */ (await shown.boundingBox());
+    expect.soft(box.x, 'its left edge is in the window').toBeGreaterThanOrEqual(0);
+    expect.soft(box.y, 'its top is in the window').toBeGreaterThanOrEqual(0);
+    expect.soft(box.x + box.width, 'its right edge is in the window').toBeLessThanOrEqual(width);
+    expect.soft(box.y + box.height, 'its bottom is in the window').toBeLessThanOrEqual(600);
+    expect.soft(await words.evaluate((el) => el.scrollWidth <= el.clientWidth), 'no word runs out of it sideways').toBe(true);
+    await expect(dismiss).toBeInViewport({ ratio: 1 });
+    expect(
+      await dismiss.evaluate((el, [x, y]) => el.contains(document.elementFromPoint(x, y)), [at.x + at.width / 2, at.y + at.height / 2]),
+      'Dismiss is still under the pointer',
+    ).toBe(true);
   });
