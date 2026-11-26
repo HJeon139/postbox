@@ -135,3 +135,36 @@ test('a reply in a topic opened while a commit is held knows its conversation’
   await env.release();
   await env.close();
 });
+
+test('a reply in a topic opened while a commit is held may use a term the person used in its conversation (#623, checkTurn’s lineage)', async () => {
+  const { checkTurn } = await import('../server/turn-checks.mjs');
+  // The person’s message is published in the conversation; the topic isn’t.
+  const env = await topicWhileHeld(undefined, (e) => arrange.post(e.rt, e.t.id, { kind: 'user', text: 'Rank them by zorblax.' }));
+  const turn = { id: 'tu_x', threadId: env.topicId, said: 'We rank these with [Zorblax](term:zorblax).' };
+  const problems = checkTurn(env.rt.checks, turn, env.se).filter((p) => p.scope?.kind === 'term');
+  assert.deepEqual(problems, [], 'the person’s own word needs no definition in the held topic');
+  await env.release();
+  await env.close();
+});
+
+test('bring_to_conversation in a thread whose conversation is gone refuses, and posts nowhere (#623, bring)', async () => {
+  const env = await topicWhileHeld();
+  const side = arrange.putThread(env.rt, {
+    id: newId('th'),
+    projectId: env.t.projectId,
+    title: 'Side',
+    kind: 'side',
+    parentId: 'th_gone',
+    members: [],
+    lastSpeaker: null,
+    hops: 0,
+    queue: [],
+    createdAt: Date.now(),
+  });
+  const out = bringToConversation(env.rt, env.se.id, { kind: 'user', threadId: side.id }, { text: 'The short version.' });
+  assert.equal(out.ok, false, JSON.stringify(out));
+  assert.match(out.message, /conversation is gone/);
+  assert.deepEqual(env.store.pending.items(side.id), [], 'nothing is posted in the thread itself');
+  await env.release();
+  await env.close();
+});
