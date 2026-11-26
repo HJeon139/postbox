@@ -165,7 +165,8 @@ export class AgentSdkAdapter {
     return agentFolder(persona, project, this.workRoot);
   }
 
-  async deliver(session, message, ctx) {
+  /** A turn’s folders, guide, prompt and the SDK session it resumes or starts. @param {any} session @param {any} message @param {any} ctx */
+  async turnSetup(session, message, ctx) {
     const persona = ctx.persona;
     const cwd = await this.folderFor(persona, ctx.project);
     // The project’s folder, and the folders the person added for this conversation (#66).
@@ -176,6 +177,11 @@ export class AgentSdkAdapter {
     const fork = resume ? null : sdkForkPoint(ctx.state);
     const sessionId = ctx.state.sdkSessionId ?? randomUUID();
     if (!resume && !fork) ctx.saveState({ sdkSessionId: sessionId });
+    return { persona, cwd, addDirs, guide, prompt, resume, fork, sessionId };
+  }
+
+  async deliver(session, message, ctx) {
+    const { persona, cwd, addDirs, guide, prompt, resume, fork, sessionId } = await this.turnSetup(session, message, ctx);
 
     let stderr = '';
     /** @type {any} */
