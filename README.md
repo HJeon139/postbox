@@ -14,7 +14,7 @@ A replay of a real session: you ask once, then @builder (Claude Code, `claude-op
 - **Agents work together without waiting on you.** They wake each other, hand work across, and queue your next message while they’re busy. Postbox asks you only for decisions only you can make.
 - **Agents answer with software.** Beside Markdown and a fixed catalog of blocks (choices, forms, reviews, charts, progress), an agent can write an app that runs live in the conversation, sandboxed, and checked before you see it.
 - **See what they did.** The Work view lists every file changed with its diff, every command with its output, what was published outside Postbox, and what each turn cost.
-- **Your agents, your harnesses.** Agents run on Claude Code, the Claude Agent SDK, Codex, the Kiro CLI or the Antigravity CLI, with the sign-in you already have. Postbox never asks for an API key.
+- **Your agents, your harnesses.** Agents run on Claude Code, Codex, the Kiro CLI or the Antigravity CLI, with the sign-in you already have. Postbox never asks for an API key.
 - **Start work on a host, come back when it’s done.** An agent’s turns can run on a machine you reach with `ssh` while Postbox stays here, and keep running when your laptop sleeps.
 
 Two more apps from the recorded sessions, each @builder’s v2 after @critic’s review: Postbox’s own module graph, computed from its imports, and a GPU capacity plan you can drive:

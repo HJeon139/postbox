@@ -24,7 +24,7 @@ npm install -g ./postbox-<version>.tgz
 postbox
 ```
 
-A global install brings the optional packages too (the Agent SDK and Kokoro, several hundred MB); add `--omit=optional` to a project install to leave them out. `postbox --help` lists its flags: `--port`, `--data`, `--fresh`, `--demo`, `--move-data`, `-v` (`--version`) and `-h` (`--help`). The package holds only what runs (`bin/`, `app/`, `server/`, `shared/` and `agent-plugin/`, the skills Postbox gives its agents) and `CHANGELOG.md`, and its build line under **Personas** shows the commit it was packed from. Upgrading or uninstalling it leaves your conversations alone, since they’re in `~/.postbox`, not in the package.
+A global install brings the optional packages too (Kokoro and `playwright-core`); add `--omit=optional` to a project install to leave them out. `postbox --help` lists its flags: `--port`, `--data`, `--fresh`, `--demo`, `--move-data`, `-v` (`--version`) and `-h` (`--help`). The package holds only what runs (`bin/`, `app/`, `server/`, `shared/` and `agent-plugin/`, the skills Postbox gives its agents) and `CHANGELOG.md`, and its build line under **Personas** shows the commit it was packed from. Upgrading or uninstalling it leaves your conversations alone, since they’re in `~/.postbox`, not in the package.
 
 Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `~/.postbox` as an event log, so they survive a restart and an upgrade. Set `POSTBOX_HOME` to keep them somewhere else, or pass `--data <folder>` for one run. Add `--fresh` to start over.
 
@@ -38,7 +38,7 @@ A fresh install starts with three general-purpose agents and no projects or conv
 
 To start with agents of your own instead, put an `agents.json` in the data folder before the first run: an array of personas such as `[{ "handle": "reviewer", "description": "Reviews my drafts.", "instructions": "…" }]`. It replaces the seeded agents, with or without `--demo`.
 
-`--demo` seeds the demo’s reading-notes agents (@librarian, @indexer, @researcher and @critic), two projects and the sample conversations below, with a few short notes as the asset explorer’s and the shelf’s assets ([`server/demo-assets/`](../server/demo-assets/)), and always uses the mock, for the scripted tour. To use the Agent SDK, read aloud and run the development checks, install the optional packages once:
+`--demo` seeds the demo’s reading-notes agents (@librarian, @indexer, @researcher and @critic), two projects and the sample conversations below, with a few short notes as the asset explorer’s and the shelf’s assets ([`server/demo-assets/`](../server/demo-assets/)), and always uses the mock, for the scripted tour. To read aloud and run the development checks, install the packages once:
 
 ```bash
 npm install
