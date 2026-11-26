@@ -90,7 +90,8 @@ export class ArchivePasses {
   /** The turns that must stay hot: running, or with a job kept running after a Stop. Read at each check. O(sessions’ jobs). */
   running() {
     const running = new Set(this.live.all().map((t) => t.id));
-    for (const se of Object.values(this.store.state.sessions)) for (const j of se.jobs ?? []) if (j.kept && j.turnId) running.add(j.turnId);
+    // Pending: a job kept behind a held commit keeps its turn hot too (#623).
+    for (const se of Object.values(this.store.pending.sessions())) for (const j of se.jobs ?? []) if (j.kept && j.turnId) running.add(j.turnId);
     return running;
   }
 

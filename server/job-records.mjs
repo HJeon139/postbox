@@ -16,16 +16,17 @@ const keepUnsure = (n) => `Postbox couldn’t tell which of ${n} processes is th
 
 /** A turn’s background jobs still running under its CLI (not those Postbox kept running after an earlier Stop). */
 export function runningJobs(rt, sessionId, turnId) {
-  return (rt.s.sessions[sessionId]?.jobs ?? []).filter((j) => j.turnId === turnId && j.state === 'running' && !j.kept);
+  // Pending: a job recorded behind a held commit is one Stop keeps or tells of (#623).
+  return (rt.store.pending.session(sessionId)?.jobs ?? []).filter((j) => j.turnId === turnId && j.state === 'running' && !j.kept);
 }
 
 /** What the adapter reports about a background job (ctx.job), bounded. */
 export function recordJob(rt, turn, j) {
-  const se = rt.s.sessions[turn.sessionId];
+  // Pending: a job recorded a moment ago, behind a held commit, is the one this report updates, not a new one (#623).
+  const se = rt.store.pending.session(turn.sessionId);
   if (!se || !j || typeof j.id !== 'string' || !j.id) return;
   const id = j.id.slice(0, 60);
-  const jobs = se.jobs ?? [];
-  const old = jobs.find((x) => x.id === id);
+  const old = (se.jobs ?? []).find((x) => x.id === id);
   if (!old) {
     if (j.state !== 'running') return;
     const job = {
@@ -43,15 +44,17 @@ export function recordJob(rt, turn, j) {
       state: 'running',
     };
     // At the bound, the oldest job Postbox didn’t keep goes first: a kept one has no other record.
-    const all = [...jobs, job];
-    const drop = all.length > MAX_JOBS ? all.find((x) => !x.kept) : null;
-    rt.sessions.update(se.id, { jobs: drop ? all.filter((x) => x !== drop) : all });
+    rt.sessions.update(se.id, (s) => {
+      const all = [...(s.jobs ?? []), job];
+      const drop = all.length > MAX_JOBS ? all.find((x) => !x.kept) : null;
+      return { jobs: drop ? all.filter((x) => x !== drop) : all };
+    });
     return;
   }
   const groups = j.kept === true ? keptGroupsOf(j) : [];
   if (groups.length) {
     turn.keptAny = true;
-    rt.sessions.update(se.id, { jobs: jobs.map((x) => (x.id === id ? { ...x, kept: true, pgid: groups[0].pgid, groups } : x)) });
+    rt.sessions.update(se.id, (s) => ({ jobs: (s.jobs ?? []).map((x) => (x.id === id ? { ...x, kept: true, pgid: groups[0].pgid, groups } : x)) }));
     // Postbox couldn’t tell which of the turn’s processes was the job, so it kept them all (#164): say so.
     const unsure = groups.length > 1 ? keepUnsure(groups.length) : null;
     if (unsure) setJobStep(rt, old, { detail: unsure });
@@ -137,11 +140,12 @@ export function setJobStep(rt, job, patch) {
 
 /** Jobs nothing reported the end of went with their CLI (SIGKILL, or a crash), unless Postbox kept them running. */
 export function settleJobs(rt, turn) {
-  for (const j of [...(rt.s.sessions[turn.sessionId]?.jobs ?? [])])
+  // Pending: a job recorded behind a held commit went with its CLI too, and one kept there still counts (#623).
+  for (const j of [...(rt.store.pending.session(turn.sessionId)?.jobs ?? [])])
     if (j.turnId === turn.id && j.state === 'running' && !j.kept) endJob(rt, turn.sessionId, j.id, 'stopped', turn.keepJobs.has(j.id) ? KEEP_LOST : null);
   // Keep running kept none of them after all (KEEP_LOST): its reply doesn’t say they kept running (#249). One that was
   // kept counts though it’s been stopped since, from its row.
-  if (turn.stopReason !== 'kept-jobs' || turn.keptAny || rt.s.sessions[turn.sessionId]?.jobs?.some((j) => j.turnId === turn.id && j.kept)) return;
+  if (turn.stopReason !== 'kept-jobs' || turn.keptAny || rt.store.pending.session(turn.sessionId)?.jobs?.some((j) => j.turnId === turn.id && j.kept)) return;
   turn.stopReason = 'stop';
   for (const it of rt.store.pending.items(turn.threadId))
     if (it.turnId === turn.id && it.stopReason === 'kept-jobs') rt.threads.patchItem(turn.threadId, it.id, { stopReason: 'stop' });

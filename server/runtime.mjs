@@ -209,6 +209,7 @@ export class Runtime {
       running: this.running,
       checks: this.checks,
       delivery: this.delivery,
+      turns: this.turnService,
       // What an app sends its agent is an entry (server/app-entries.mjs).
       send: (sessionId, message, opts) => sendAppMessage(this, sessionId, message, opts),
       narrator: this.narrator,

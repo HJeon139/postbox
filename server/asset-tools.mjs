@@ -78,7 +78,8 @@ const BY_NAME = new Intl.Collator('en', { sensitivity: 'base' });
  */
 export function assetTools(assets, sessionId, turn, { onHost = false } = {}) {
   const se = () => assets.sessions.get(sessionId);
-  const room = () => roomOf(assets.store.state.threads, turn?.threadId ?? se().threadId);
+  // The room write_asset files into, as the threads are written: a topic opened behind a held commit counts (#623).
+  const room = () => roomOf(assets.store.pending.threads(), turn?.threadId ?? se().threadId);
   const publish = (/** @type {any} */ req) => publishAsset(assets, { ...req, room: room(), author: se().handle });
   return {
     list_assets: (/** @type {any} */ args = {}) => listAssets(assets.store.state, room(), args),

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
+import { member, members } from './room-form.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -59,10 +60,9 @@ const row = (page, handle) =>
 /** The text a person sees in an element (what’s rendered, not what’s hidden), as one line. */
 const seen = async (locator) => (await locator.allInnerTexts()).join(' ').replace(/\s+/g, ' ').trim();
 const seesText = (locator, want, message) => expect.poll(() => seen(locator), { message }).toEqual(want);
-const menu = (page) => page.locator('.menu');
-const openMenu = async (page) => {
+const openMembers = async (page) => {
   await page.locator('header.topbar #conversation-actions').click();
-  await expect(menu(page)).toBeVisible();
+  await expect(members(page)).toBeVisible();
 };
 
 /** Runs fn with the room under a long title, so a narrow window is short of room: a short title fits at 375 px. */
@@ -100,18 +100,20 @@ test('#60 a new last model reaches the row without a reload', async ({ page }) =
   }
 });
 
-test('#60 the conversation’s menu says it with full model ids', async ({ page }) => {
-  // The conversation’s ⋯ menu lists every agent with its backend, model, effort and state.
+test('#60 the room’s Members list says it with full model ids', async ({ page }) => {
+  // The room’s form lists every agent with its backend, model, effort and state.
   await open(page, `#/t/${room.id}`);
-  await openMenu(page);
-  const said = await seen(menu(page));
-  for (const line of [
-    'librarian mock Mock agent · scripted replies, not a model · idle',
-    'indexer Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle',
-    'researcher Agent SDK · claude-opus-5-5 · high effort · idle',
-    'critic mock Mock agent · scripted replies, not a model · idle',
-  ])
-    expect(said, `the menu says “${line}”`).toContain(line);
+  await openMembers(page);
+  for (const [handle, mark, facts] of [
+    ['librarian', '@librarian mock agent', 'Mock agent · scripted replies, not a model · idle'],
+    ['indexer', '@indexer agent', 'Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle'],
+    ['researcher', '@researcher agent', 'Agent SDK · claude-opus-5-5 · high effort · idle'],
+    ['critic', '@critic mock agent', 'Mock agent · scripted replies, not a model · idle'],
+  ]) {
+    const said = await seen(member(page, handle));
+    expect.soft(said.startsWith(mark), `${handle}’s row starts “${mark}”: ${said}`).toBe(true);
+    expect.soft(said.endsWith(facts), `${handle}’s row ends “${facts}”: ${said}`).toBe(true);
+  }
 });
 
 // ── #12: mock agents and demo mode, marked everywhere ───────────────────────────────────
@@ -151,17 +153,14 @@ test('#12 the marker follows the persona: moved to Claude Code, the agent row an
   await markedMock(row(page, 'librarian'), 'the agent row says “mock” again');
 });
 
-test('#12 the menus and the Personas list mark mock agents', async ({ page }) => {
+test('#12 the room’s Members list and the Personas list mark mock agents', async ({ page }) => {
   await open(page, `#/t/${room.id}`);
-  await openMenu(page);
-  const marked = await menu(page)
-    .locator('button.mi')
+  await openMembers(page);
+  const marked = await members(page)
+    .getByRole('option')
     .filter({ has: page.locator('.mock-tag') })
-    .evaluateAll((bs) => bs.map((b) => b.querySelector('.grow')?.firstChild?.textContent));
-  expect(marked).toEqual(['librarian', 'critic']);
-  await page.keyboard.press('Escape');
-  await expect(menu(page)).toHaveCount(0);
-  await page.locator('header.topbar').getByRole('button', { name: 'Settings', exact: true }).click();
+    .evaluateAll((lis) => lis.map((li) => li.querySelector('b')?.textContent));
+  expect(marked).toEqual(['@librarian', '@critic']);
   await page.getByRole('tab', { name: 'Personas' }).click();
   await expect(page.locator('.list-rows li b').first()).toBeVisible();
   const rows = await page.locator('.list-rows li').evaluateAll((lis) => lis.map((li) => [li.querySelector('b')?.textContent, !!li.querySelector('.mock-tag')]));
@@ -306,16 +305,16 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
     test.describe(`${width} px, ${theme}`, () => {
       test.use(width < 768 ? { viewport: { width, height: 812 }, ...PHONE, colorScheme: theme } : { viewport: { width, height: 900 }, colorScheme: theme });
 
-      test(`#72 a room with four agents at ${width} px (${theme}): no overflow, and the facts stay in the conversation’s menu`, async ({ page }) => {
+      test(`#72 a room with four agents at ${width} px (${theme}): no overflow, and the facts stay in the room’s Members list`, async ({ page }) => {
         await open(page, `#/t/${room.id}`);
         const m = await fitted(page, `${width} px, ${theme}`);
         expect(m.overflow, 'the top bar fits').toBe(0);
         expect(m.rings, 'the top bar has no agent rings').toBe(0);
         if (width === 1280) expect(m.drop, 'the top bar dropped nothing at 1280 px').toBe('');
-        // What it runs with is in the conversation’s menu, as text on screen.
-        await openMenu(page);
-        const line = menu(page).locator('button.mi', { hasText: 'indexer' });
-        expect(await seen(line)).toMatch(/^indexer Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle/);
+        // What it runs with is in the room’s Members list, as text on screen.
+        await openMembers(page);
+        const line = member(page, 'indexer');
+        expect(await seen(line)).toMatch(/^@indexer agent .*Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle$/);
         await expect(line).toBeInViewport({ ratio: 1 });
       });
     });

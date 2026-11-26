@@ -28,6 +28,7 @@ import { EVENTS } from '../shared/state.mjs';
 import { trajectories } from './atif.mjs';
 import { WORK_KINDS } from './atif-calls.mjs';
 import { lines } from './uat/history.mjs';
+import { readStreams } from './uat/run-files.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** Postbox’s version, as each trajectory’s agent.version. */
@@ -113,7 +114,7 @@ export const SNAPSHOT_LOSES = Object.freeze([
 
 /**
  * The events and live frames of a recording, and a note on what they leave out.
- * @param {string} path @returns {{ events: any[], live: any[], prompts: any[], notes: string|null, gaps?: { after: number, at: number }[], partial?: { reconstructed_before_event: number, lost: readonly string[] } }}
+ * @param {string} path @returns {{ events: any[], live: any[], prompts: any[], notes: string|null, gaps?: { after: number, at: number }[], streams?: { handle: string, started?: number, events: any[] }[], partial?: { reconstructed_before_event: number, lost: readonly string[] } }}
  */
 export function readRecording(path) {
   if (!statSync(path).isDirectory()) {
@@ -123,6 +124,8 @@ export function readRecording(path) {
       live: linesIn(join(beside, 'live.jsonl')),
       prompts: promptsIn([beside, join(beside, 'data')]),
       blob: blobsIn([beside, join(beside, 'data')]),
+      // A run’s events file has its streams beside it, as its folder does (#1758).
+      streams: readStreams(join(beside, 'streams')),
       notes: null,
     };
   }
@@ -146,7 +149,7 @@ export function readRecording(path) {
 
 /**
  * The run’s trajectories, written to a folder: one file per agent session.
- * @param {string} out @param {{ events: any[], live?: any[], prompts?: any[], notes?: string|null, gaps?: { after: number, at: number }[] }} rec @param {{ sessionId?: string, handle?: string }} [only]
+ * @param {string} out @param {{ events: any[], live?: any[], prompts?: any[], notes?: string|null, gaps?: { after: number, at: number }[], streams?: { handle: string, started?: number, events: any[] }[] }} rec @param {{ sessionId?: string, handle?: string }} [only]
  * @returns {string[]} the files written
  */
 export function writeTrajectories(out, rec, only = {}) {
@@ -165,7 +168,14 @@ function pick(rec, { sessionId, handle }) {
   const lost = gapNote(rec.gaps);
   const notes = [rec.notes, lost].filter(Boolean).join(' ');
   const partial = { ...rec.partial, ...(rec.gaps?.length ? { stream_gaps: rec.gaps } : {}) };
-  return trajectories(rec.events, { version: POSTBOX_VERSION, live: rec.live ?? [], prompts: rec.prompts ?? [], blob: rec.blob, sessionId })
+  return trajectories(rec.events, {
+    version: POSTBOX_VERSION,
+    live: rec.live ?? [],
+    prompts: rec.prompts ?? [],
+    blob: rec.blob,
+    streams: rec.streams ?? [],
+    sessionId,
+  })
     .filter((t) => !handle || t.handle === handle)
     .map((t) =>
       notes
@@ -203,7 +213,10 @@ function gapNote(gaps) {
   return `Partial: the recording of /api/stream ${said.join('; and it ')}.`;
 }
 
-/** A UAT run’s folder (tools/uat/history.mjs, writeHistory): its events, its live frames and where its stream lost events. @param {string} dir */
+/**
+ * A UAT run’s folder (tools/uat/history.mjs, writeHistory): its events, its live frames, where its stream lost events,
+ * and its Claude Code turns’ recorded streams (streams/, tools/atif-streams.mjs). @param {string} dir
+ */
 function runRecording(dir) {
   const gaps = existsSync(join(dir, 'stream-gaps.json')) ? JSON.parse(readFileSync(join(dir, 'stream-gaps.json'), 'utf8')) : [];
   return {
@@ -212,6 +225,7 @@ function runRecording(dir) {
     prompts: promptsIn([dir, join(dir, 'data')]),
     blob: blobsIn([dir, join(dir, 'data')]),
     gaps,
+    streams: readStreams(join(dir, 'streams')),
   };
 }
 

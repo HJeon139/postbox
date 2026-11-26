@@ -106,6 +106,19 @@ function waitsBehind(rt, sessionId, message, { summarizeTo, threadId }) {
 }
 
 /**
+ * Takes out of the live turn’s queue the messages `carries` picks, which no longer wait for it: update_block’s refusal
+ * gave the agent the answer one held (#1810). Beside waitsBehind, which fills it: only Turns writes a turn’s queue
+ * (designs/architecture/services.md, “Running”). Returns what it took.
+ * @param {any} rt @param {string} sessionId @param {(message: any) => boolean} carries
+ */
+export function takeQueued(rt, sessionId, carries) {
+  const pending = rt.running.turnOf(sessionId)?.pending ?? [];
+  const taken = pending.filter((/** @type {any} */ p) => carries(p.message));
+  if (taken.length) pending.splice(0, pending.length, ...pending.filter((/** @type {any} */ p) => !taken.includes(p)));
+  return taken;
+}
+
+/**
  * The message as the turn reads it: a pointer for a mention it already read, Postbox’s waiting notices, a note that
  * its tools didn’t load, the lint it owes, and its thread’s context.
  * @param {any} rt @param {any} se @param {any} message @param {string} where @param {boolean} slash
