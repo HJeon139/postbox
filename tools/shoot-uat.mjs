@@ -52,7 +52,7 @@ const DURING = [
 const AFTER = [
   ['top-bar', 'Index planning', q('header.topbar')],
   ['postbox-menu', 'Index planning', q('.menu'), 'postbox-menu'],
-  ['conversation-menu', 'Index planning', q('.menu'), 'conversation-menu'],
+  ['conversation-menu', 'Index planning', q('.dialog'), 'conversation-menu'],
   ['rail', 'Index planning', q('nav.rail')],
   ['rail-row', 'Index planning', q('nav.rail a.row[aria-current]')],
   ['agents-section', 'Index planning', q('nav.rail .agents-sec')],
@@ -128,7 +128,7 @@ const PREPARE = {
   // The scene may already have the menu open, and a second click on + closes it (#29).
   plus: `document.querySelector('.menu') || document.querySelector('[aria-label="Add a file, an agent or a command"]').click()`,
   'postbox-menu': `document.querySelector('button.brand').click()`,
-  'conversation-menu': `document.querySelector('header.topbar [aria-label^="Actions for"]').click()`,
+  'conversation-menu': `document.getElementById('conversation-actions').click()`,
   mention: `(() => { const t = document.getElementById('composer-input'); t.focus(); t.value = '@'; t.setSelectionRange(1, 1); t.dispatchEvent(new Event('input', { bubbles: true })); })()`,
   'open-activity': `document.querySelector('.transcript details.activity')?.setAttribute('open', '')`,
   'open-activity-last': `(() => { const d = [...document.querySelectorAll('.transcript details.activity')].at(-1); d?.setAttribute('open', ''); d?.querySelector('li.thought details')?.setAttribute('open', ''); })()`,
@@ -136,8 +136,8 @@ const PREPARE = {
   'app-versions': `document.querySelector('.appframe [aria-haspopup="menu"]')?.click()`,
   'new-agent': `(() => { document.querySelector('[aria-label="Add a file, an agent or a command"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From a boilerplate')).click(); })()`,
   'new-room': `document.querySelector('[aria-label="New room"]').click()`,
-  rename: `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Manage room')).click(); })()`,
-  'delete-conversation': `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Manage room')).click(); document.querySelector('.dialog .d-foot button.danger').click(); })()`,
+  rename: `document.getElementById('conversation-actions').click()`,
+  'delete-conversation': `(() => { document.getElementById('conversation-actions').click(); document.querySelector('.dialog .d-foot button.danger').click(); })()`,
   'delete-session': `(() => { const c = document.querySelector('#composer-input'); c.focus(); c.value = '/delete'; c.dispatchEvent(new Event('input', { bubbles: true })); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`,
   palette: `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))`,
   // Settings opens on Profile (#558), so the Appearance shot goes to its tab.

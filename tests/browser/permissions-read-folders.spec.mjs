@@ -45,9 +45,10 @@ test('#338 a folder made readable from a read card is listed as read only, and R
   arrange.setSession(app.rt, se.id, { readDirs: [notes], addDirs: [notes] });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  await page.locator('header.topbar button[aria-label^="Actions for"]').click();
-  await page.locator('.menu button.mi', { hasText: 'Permissions…' }).click();
-  const dialog = page.locator('.dialog');
+  // The room’s form in the main menu holds it (#1735): the top bar’s room button, then More › Permissions….
+  await page.locator('header.topbar #conversation-actions').click();
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Permissions…', exact: true }).click();
+  const dialog = page.locator('.dialog').filter({ has: page.locator('.perm-panel') });
   const rows = dialog.locator('.list-rows li', { hasText: notes });
   await expect(rows.filter({ hasText: 'Read only, in this conversation' })).toHaveCount(1);
   await expect(rows.filter({ hasText: 'From this conversation' })).toHaveCount(1);
