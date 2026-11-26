@@ -3,6 +3,7 @@
 
 import { ATTACHMENTS_DIR, REMOTE_DIR, REMOTE_LIMITS, TURN_FILES } from './remote-protocol-constants.mjs';
 import { checkHostPath } from './remote-settings.mjs';
+import { cutText } from './text-parts.mjs';
 
 /** @template T @typedef {{ ok: true, msg: T } | { ok: false, error: string }} Result */
 
@@ -22,7 +23,7 @@ export const RESERVED = new Set([...Object.values(TURN_FILES), ATTACHMENTS_DIR])
 export const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 export const clip = (v, n = 60) => {
   const s = typeof v === 'string' ? v : (JSON.stringify(v) ?? String(v));
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
+  return s.length > n ? `${cutText(s, n - 1)}…` : s;
 };
 
 /** @template T @param {string} what @param {unknown} v @param {() => string} check @returns {Result<T>} */

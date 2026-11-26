@@ -4,6 +4,7 @@
 // Moved from server/adapters/claude-stream.mjs, which built these for Claude Code alone.
 
 import { glimpseOf } from '../shared/text.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { stepDiff } from './step-diff.mjs';
 import { stepInput, stepOutput, stepTool } from './step-text.mjs';
 import { postboxTool } from './tool-gate.mjs';
@@ -18,7 +19,7 @@ export const clip = (/** @type {unknown} */ s, /** @type {number} */ n) => {
   const t = String(s ?? '')
     .replace(/\s+/g, ' ')
     .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+  return t.length > n ? `${cutText(t, n - 1)}…` : t;
 };
 /** The first sentence of a message, such as a refusal’s reason. */
 export const firstSentence = (/** @type {unknown} */ s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);

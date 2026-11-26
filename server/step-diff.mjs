@@ -4,6 +4,7 @@
 // content, which adds every line; or from a unified diff, for a harness that says its change that way (Codex).
 
 import { STEP_TEXT } from '../shared/limits.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 
 // The most lines a step’s diff shows, and of each line; the whole stays within STEP_TEXT.output.
 const LINES = 8;
@@ -54,7 +55,7 @@ export function stepDiff(name, input, patch) {
     deleted += c.removed.length;
     added += c.added.length;
     for (const [mark, l] of [...c.removed.map((l) => ['-', l]), ...c.added.map((l) => ['+', l])]) {
-      const line = `${mark}${l.length > WIDTH ? `${l.slice(0, WIDTH - 1)}…` : l}`;
+      const line = `${mark}${l.length > WIDTH ? `${cutText(l, WIDTH - 1)}…` : l}`;
       // Whole lines, as many as fit the step’s bound.
       if (shown.length < LINES && [...shown, line].join('\n').length <= STEP_TEXT.output) shown.push(line);
     }

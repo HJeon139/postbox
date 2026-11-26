@@ -3,6 +3,8 @@
 
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
+import { cutText } from '../shared/text-parts.mjs';
+
 export const QUIET =
   /^(?:mcp__postbox__(?:show_block|update_block|review_block|show_app|update_app|retire_app|define_term|propose_agent|schedule_wake|cancel_wake|wake_agent|open_topic|bring_to_conversation|permission_prompt|read_conversation|read_message|react)|ToolSearch|SubagentHandback)$/;
 /** Whether a tool call shows as what it makes rather than as a step (the Kiro CLI adapter shares this). */
@@ -11,7 +13,7 @@ const clip = (s, n) => {
   const t = String(s ?? '')
     .replace(/\s+/g, ' ')
     .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+  return t.length > n ? `${cutText(t, n - 1)}…` : t;
 };
 const base = (p) => String(p ?? '').replace(/^.*\//, '');
 const GENERIC = {

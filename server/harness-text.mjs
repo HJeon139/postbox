@@ -5,6 +5,7 @@
 
 import { STEP_TEXT } from '../shared/limits.mjs';
 import { appendGlimpseSource, glimpseOf } from '../shared/text.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { byOf, firstSentence } from './harness-tools.mjs';
 
 // The least time between two showings of a thought still being written, in milliseconds.
@@ -134,7 +135,7 @@ export class HarnessText {
     const t = String(text ?? '').trim();
     if (!t) return id;
     const step = id ?? `thought-${++this.thoughts}`;
-    this.ctx.activity({ id: step, label: firstSentence(t, 120), state, kind: 'thought', detail: t.slice(0, STEP_TEXT.thought), ...byOf(by) });
+    this.ctx.activity({ id: step, label: firstSentence(t, 120), state, kind: 'thought', detail: cutText(t, STEP_TEXT.thought), ...byOf(by) });
     return step;
   }
 
@@ -178,7 +179,7 @@ export class HarnessText {
       label: firstSentence(t, 200),
       state: 'done',
       kind: 'said',
-      detail: t.slice(0, STEP_TEXT.thought),
+      detail: cutText(t, STEP_TEXT.thought),
       ...byOf(by),
     });
   }
