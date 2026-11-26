@@ -110,10 +110,17 @@ test('a finished turn’s steps fold into its work record at the top of the post
   await expect(post.locator('.work-list-turn .wl-row'), 'nor its edit again under it: the record lists its calls').toHaveCount(0);
 });
 
-test('detail fades within each agent’s share of the screen: four agents show a few lines each, eight a line each', async ({ page }) => {
-  const four = ['ana', 'ben', 'cal', 'dee'];
-  const eight = ['eve', 'fay', 'gus', 'hal', 'ivy', 'jon', 'kim', 'lou'];
-  for (const who of [...four, ...eight])
+// Detail fades within each agent’s share of the screen. A room of four and a room of eight are two tests, each with
+// its own budget (#1700): as one test they ran close to its 30 s under a loaded full run (15–44 s against 3 s alone).
+// With the page’s CPU slowed 20 times and the server’s event loop busy 90% of the time, the one test took 19 s, and
+// apart the rooms take 9 s and 13 s, so each has more than twice its time to spare.
+
+/**
+ * Agents that each make nine calls and then wait, in a room of their own that the page opens, until each is waiting.
+ * @param {import('@playwright/test').Page} page @param {string[]} handles
+ */
+async function busyRoom(page, handles) {
+  for (const who of handles)
     scripts.set(who, async ({ emit }) => {
       for (let i = 1; i <= 9; i++) {
         emit({ kind: 'tool_call', id: `${who}-${i}`, name: 'Bash', input: { command: `make step-${i}` }, final: true });
@@ -121,42 +128,46 @@ test('detail fades within each agent’s share of the screen: four agents show a
       }
       await hold(who, 1);
     });
-  const show = async (/** @type {string[]} */ handles) => {
-    const t = room(`${handles.length} agents`, handles);
-    // A room the page hasn’t heard of yet isn’t one it can open: with the stream late, it waits for it first.
-    if (page.url().startsWith(scripted.app.origin)) await synced(page, scripted.app);
-    await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
-    await expect(page.locator('.transcript'), 'the new room is open').toHaveAttribute('data-thread', t.id);
-    await synced(page, scripted.app);
-    scripted.app.rt.sendMessage(t.id, { text: `${handles.map((w) => `@${w}`).join(' ')} build` });
-    await expect.poll(() => handles.map((w) => `${w}:${at(w)}`).join(' ')).toBe(handles.map((w) => `${w}:1`).join(' '));
-    await synced(page, scripted.app);
-    return t;
-  };
-  await test.step('four agents: the newest step in full, a few lines, the rest as earlier steps', async () => {
-    await show(four);
-    const blocks = page.locator('.live-steps');
-    await expect(blocks).toHaveCount(4);
-    for (const b of await blocks.all()) {
-      await expect(b.locator('li.step-full')).toHaveCount(1);
-      await expect(b.locator('details.earlier > summary')).toHaveText(/\d+ earlier steps/);
-      expect((await b.boundingBox())?.height ?? 0, 'within its share of 760 px').toBeLessThanOrEqual(200);
-    }
-    for (const w of four) go(w);
-    await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
-  });
-  await test.step('eight agents: one line each, what it’s doing and its step count', async () => {
-    await show(eight);
-    const blocks = page.locator('.live-steps');
-    await expect(blocks).toHaveCount(8);
-    for (const b of await blocks.all()) {
-      await expect(b).toHaveClass(/crowded/);
-      await expect(b).toContainText('9 steps');
-      await expect(b.locator('li.step-full')).toHaveCount(0);
-    }
-    for (const w of eight) go(w);
-    await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
-  });
+  const t = room(`${handles.length} agents`, handles);
+  // A room the page hasn’t heard of yet isn’t one it can open: with the stream late, it waits for it first.
+  if (page.url().startsWith(scripted.app.origin)) await synced(page, scripted.app);
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  await expect(page.locator('.transcript'), 'the new room is open').toHaveAttribute('data-thread', t.id);
+  await synced(page, scripted.app);
+  scripted.app.rt.sendMessage(t.id, { text: `${handles.map((w) => `@${w}`).join(' ')} build` });
+  await expect.poll(() => handles.map((w) => `${w}:${at(w)}`).join(' ')).toBe(handles.map((w) => `${w}:1`).join(' '));
+  await synced(page, scripted.app);
+  return t;
+}
+
+test('detail fades within each agent’s share of the screen: four agents show the newest step in full, a few lines, the rest as earlier steps', async ({
+  page,
+}) => {
+  const four = ['ana', 'ben', 'cal', 'dee'];
+  await busyRoom(page, four);
+  const blocks = page.locator('.live-steps');
+  await expect(blocks).toHaveCount(4);
+  for (const b of await blocks.all()) {
+    await expect(b.locator('li.step-full')).toHaveCount(1);
+    await expect(b.locator('details.earlier > summary')).toHaveText(/\d+ earlier steps/);
+    expect((await b.boundingBox())?.height ?? 0, 'within its share of 760 px').toBeLessThanOrEqual(200);
+  }
+  for (const w of four) go(w);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
+});
+
+test('detail fades within each agent’s share of the screen: eight agents show one line each, what it’s doing and its step count', async ({ page }) => {
+  const eight = ['eve', 'fay', 'gus', 'hal', 'ivy', 'jon', 'kim', 'lou'];
+  await busyRoom(page, eight);
+  const blocks = page.locator('.live-steps');
+  await expect(blocks).toHaveCount(8);
+  for (const b of await blocks.all()) {
+    await expect(b).toHaveClass(/crowded/);
+    await expect(b).toContainText('9 steps');
+    await expect(b.locator('li.step-full')).toHaveCount(0);
+  }
+  for (const w of eight) go(w);
+  await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
 });
 
 test('a running turn’s thoughts show whole, paragraphs and all, between its steps', async ({ page }) => {
