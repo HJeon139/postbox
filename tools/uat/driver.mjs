@@ -13,6 +13,7 @@ import { pointer } from './driver-pointer.mjs';
 import { saveProfile } from './driver-profile.mjs';
 import { newProject } from './driver-projects.mjs';
 import { review } from './driver-review.mjs';
+import { pickOption } from './driver-select.mjs';
 import { keeper, shots } from './driver-shots.mjs';
 import { pressKey } from './keys.mjs';
 import { byText, ITEM, JUMP, THREAD_LINK } from './selectors.mjs';
@@ -131,10 +132,7 @@ export function driver(page, hooks = {}) {
         })()`;
         const tag = await ev(`${control}?.tagName ?? null`);
         if (!tag) throw new Error(`Couldn’t find the field “${field}”.`);
-        if (tag === 'SELECT')
-          await ev(
-            `(() => { const s = ${control}; const o = [...s.options].find((o) => o.textContent.toLowerCase().includes(${js(String(value).toLowerCase())})); if (o) { s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); s.dispatchEvent(new Event('input', { bubbles: true })); } })()`,
-          );
+        if (tag === 'SELECT') await pickOption(ev, control, value);
         else await typeInto(control, String(value), `the field “${field}”`);
       }
       for (const option of choose) await clickAt(byText(ITEM(key), 'button.chip, [role=radio], [role=checkbox], label', option), `the option “${option}”`);
