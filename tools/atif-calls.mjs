@@ -82,13 +82,13 @@ const shown = (s) => s.output ?? s.detail;
  * A call's output as its result, from the store's blob its ledger entry names (`output.sha256`), or a note of its size
  * when it's too large to read; null when the entry names none or the blob doesn't read back. It wins over what a step
  * showed, which is cut to its last 400 characters (#1757). The blob is the command's stdout and stderr joined, its
- * exit code apart (`exit`); one the ledger kept only the end of says so. A background command's is none: the ledger
- * replaced its output with the job's when the job ended, which the agent saw later, not at this call.
+ * exit code apart (`exit`); one the ledger kept only the end of says so. A background command's is the output its
+ * call ended with (`callOutput`, tools/atif.mjs): when its job ends the ledger may replace its output with the job's,
+ * which the agent saw later, not at this call.
  * @param {any} w  the call's ledger entry @param {(sha256: string) => string | null} blob
  */
 function storedResult(w, blob) {
-  const out = w?.output;
-  if (w?.endedInBackground) return null;
+  const out = w?.endedInBackground ? w.callOutput : w?.output;
   if (typeof out?.size === 'number' && out.size > RESULT_READ_BYTES) return `[output too large to read: ${out.size.toLocaleString('en-US')} bytes]`;
   const text = typeof out?.sha256 === 'string' ? blob(out.sha256) : null;
   if (typeof text !== 'string') return null;
