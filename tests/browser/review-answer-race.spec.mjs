@@ -131,6 +131,32 @@ test('#518 when the page never drew the answered block, what it sent leaves the 
   expect(r.now().answer.values).toEqual({ verdict: 'approve', comments: [expect.objectContaining({ line: 5, text: 'Then by author. And by date.' })] });
 });
 
+test('#518 a dismissal elsewhere of revision 2 takes what revision 1’s answer sent out of the draft too', async ({ page }) => {
+  const r = await room(page, 'Dismissed elsewhere');
+  const elsewhere = app.rt.createThread({ projectId: r.projectId, title: 'Elsewhere', personaIds: [arrange.persona(app.rt, 'researcher').id] });
+  const { send, release } = await answeredThenRevised(page, r, { untilSent: true });
+  await page.goto(`${app.origin}/#/t/${elsewhere.id}`);
+  await synced(page, app);
+  send();
+  await expect.poll(() => r.now().answer?.read).toBe(true);
+  // Revision 2 is never drawn here: another page dismisses it, and the agent revises again.
+  revise(r);
+  app.rt.act(r.t.id, r.item.id, 'dismiss', {}, 2);
+  await expect.poll(() => r.now().answer?.read, { message: 'the agent read the dismissal' }).toBe(true);
+  revise(r);
+  await page.goto(`${app.origin}/#/t/${r.t.id}`);
+  await synced(page, app);
+  await expect(r.block.locator('.rv-receipt'), 'revision 3 is drawn').toBeVisible();
+  const drafted = r.block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
+  await expect(drafted.filter({ hasText: 'Index the titles too.' }), 'what revision 1 sent isn’t a draft').toHaveCount(0);
+  release();
+  await page.waitForResponse(`**/api/threads/${r.t.id}/items/${r.item.id}/act`);
+  await comment(page, r.block, 7, 'Rank by date.');
+  await submit(r.block).click();
+  await expect.poll(() => r.now().answer?.revision).toBe(3);
+  expect(r.now().answer.values.comments).toEqual([expect.objectContaining({ line: 7, text: 'Rank by date.' })]);
+});
+
 test('#518 an answer that fails leaves its comments as drafts, through a redraw while it was on its way and the next revision', async ({ page }) => {
   const r = await room(page, 'Failed');
   allowPageError(page, /status of 422/);

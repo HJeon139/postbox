@@ -122,13 +122,14 @@ export function unmarkSent(d) {
 /**
  * A newer revision drawn after an answer that landed (its `priorAnswer`, which the page may never have drawn answered:
  * a page elsewhere, a resync): the comments that answer sent are the block’s threads now, so they leave the draft here,
- * where the block is drawn, and the person sees the draft they send (#518). Only an answer that landed takes them: one
- * the server refused as stale left them the person’s. What they started on the newer revision stays, and so does the
- * verdict on screen. An edit open is saved first, since it’s kept by its place in the comments.
+ * where the block is drawn, and the person sees the draft they send (#518). Only an answer that landed takes them, any
+ * at or after the revision they were sent for, a dismissal included: one the server refused as stale left them the
+ * person’s. What they started on the newer revision stays, and so does the verdict on screen. An edit open is saved
+ * first, since it’s kept by its place in the comments.
  * @param {any} d @param {{ action: string, revision: number } | undefined} landed
  */
 function dropSent(d, landed) {
-  if (landed?.action !== 'submit') return;
+  if (!landed) return;
   const taken = (/** @type {any} */ c) => c[SENT] !== undefined && c[SENT] <= landed.revision;
   if (!d.comments.some(taken)) return;
   saveEdit(d);
