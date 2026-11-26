@@ -41,6 +41,8 @@ export function canonical(r, current = null) {
   // An address to a message opens its thread beside the conversation, never one remembered, and the Work left open
   // there, as messagePane says (#168).
   if (r.item) {
+    // One that comes in with Work, made in a wider window, leaves it out where Work would cover the message (#197).
+    if (r.work && !besideFits()) return paneHref(r.threadId, { side: r.sideId, full: r.full === 'thread' ? r.full : null, item: r.item });
     if (r.work || !messagePane(current ?? {}, r.threadId, r.sideId ?? null).work) return null;
     return paneHref(r.threadId, { ...r, side: r.sideId, work: true, item: r.item });
   }

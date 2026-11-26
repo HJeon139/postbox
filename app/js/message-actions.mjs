@@ -68,8 +68,8 @@ function sendAction(it, ctx) {
 }
 
 /**
- * Copy link (#168): the message’s address, to keep, or to paste in a message for an agent. Opened, a reload, Back or a
- * new tab included, it lands on the message. @param {any} it @param {any} ctx
+ * Copy link (#168): the message’s address, to keep, reload or share. Opened, a reload, Back or a new tab included, it
+ * lands on the message. @param {any} it @param {any} ctx
  */
 function copyAction(it, ctx) {
   let reset = 0;

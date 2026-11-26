@@ -216,3 +216,13 @@ test('#168 in a window too narrow for Work beside the conversation, going to an 
   }, ask.id);
   expect(onTop, 'nothing covers it').toBe(true);
 });
+
+// The same for an address that comes in with Work in it, as one ⌃J made in a wider window, opened or reloaded narrow.
+test('#168 a message’s address with Work in it, opened in a window too narrow for Work, shows the message', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  const { t, items } = longRoom(app, 'Address, narrow with Work');
+  await page.goto(`${app.origin}/#/t/${t.id}?work&m=${items[5].id}`);
+  await synced(page, app);
+  await expect(page, 'the message’s address, without Work').toHaveURL(new RegExp(`#/t/${t.id}\\?m=${items[5].id}$`));
+  await expect.poll(() => landed(page, items[5].id), { message: 'on the message' }).toBe('landed');
+});
