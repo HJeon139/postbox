@@ -83,6 +83,9 @@ test('#168 going to the same ask again after opening Work goes to it again', asy
   await expect.poll(() => landed(page, ask.id), { message: 'on the ask' }).toBe('landed');
   await page.locator('#work-button').click();
   await expect(page).toHaveURL(/\?work$/);
+  await expect(page.locator('#work-button')).toHaveAttribute('aria-pressed', 'true');
+  // End scrolls the conversation only when focus isn’t in Work, which may take it as it opens.
+  await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
   await page.keyboard.press('End');
   await expect.poll(() => landed(page, ask.id), { message: 'read on past it' }).toBe('not in view');
   await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
