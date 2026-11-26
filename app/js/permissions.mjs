@@ -1,5 +1,5 @@
 // The permissions panel (#66): what one agent may do in one conversation, and why, without a terminal. Reached from
-// the conversation’s ⋯ › Permissions…, the persona editor, and /permissions in the composer. It shows:
+// the room’s form in the main menu (Permissions…), the persona editor, and /permissions in the composer. It shows:
 // - the mode, which is the persona’s, for every conversation;
 // - the rules, in Claude Code’s order (deny, ask, allow), each with where it comes from: your user settings, the
 //   project’s shared settings, this folder’s local settings, this conversation, or the persona’s Tools;

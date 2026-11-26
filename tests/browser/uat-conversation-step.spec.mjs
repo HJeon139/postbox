@@ -1,5 +1,5 @@
 // The UAT runner’s conversation action against the real page (tools/uat/conversation-step.mjs, #1735): its delete
-// goes through the conversation’s menu, the room’s form in the main menu and the confirm, for a conversation with one
+// goes through the room’s Manage button, its form in the main menu and the confirm, for a conversation with one
 // agent and for a room, and its open still switches conversations afterwards. The runner’s own code, through a
 // stand-in for its page.
 
@@ -26,7 +26,7 @@ for (const [what, handles, kind] of /** @type {const} */ ([
   ['a conversation with one agent', ['librarian'], 'thread'],
   ['a room', ['librarian', 'critic'], 'room'],
 ]))
-  test(`the runner deletes ${what} through its menu, and then opens another`, async ({ page, browserName }) => {
+  test(`the runner deletes ${what} through its Manage button, and then opens another`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
     const { rt } = app;
     const projectId = Object.values(rt.store.state.projects)[0].id;

@@ -48,21 +48,23 @@ failOnPageErrors(test);
 test('#120 the panel for an agent on a host says its Claude Code reads the host’s settings, not the ones listed here', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  await page.locator('header.topbar button[aria-label^="Actions for"]').click();
-  await page.locator('.menu button.mi', { hasText: 'Permissions…' }).click();
-  const dialog = page.locator('.dialog');
+  // The room’s form in the main menu holds it (#1735): the top bar’s room button, then More › Permissions….
+  await page.locator('header.topbar #conversation-actions').click();
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Permissions…', exact: true }).click();
+  const dialog = page.locator('.dialog').filter({ has: page.locator('.perm-panel') });
   await expect(dialog.locator('.perm-panel')).toBeVisible();
   await expect(dialog).toContainText('coder runs on build.example.com, where Claude Code reads the agent folder’s settings files there');
   await expect(dialog).toContainText('not the ones listed here from this computer');
 });
 
-/** The coder’s permissions panel, opened from the conversation’s menu. */
+/** The coder’s permissions panel, opened from the room’s form in the main menu. */
 async function openPanel(page) {
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  await page.locator('header.topbar button[aria-label^="Actions for"]').click();
-  await page.locator('.menu button.mi', { hasText: 'Permissions…' }).click();
-  const dialog = page.locator('.dialog');
+  // The room’s form in the main menu holds it (#1735): the top bar’s room button, then More › Permissions….
+  await page.locator('header.topbar #conversation-actions').click();
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Permissions…', exact: true }).click();
+  const dialog = page.locator('.dialog').filter({ has: page.locator('.perm-panel') });
   await expect(dialog.locator('.perm-panel')).toBeVisible();
   return dialog;
 }
