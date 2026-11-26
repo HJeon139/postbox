@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { agentWorktree } from '../../server/adapters/agent-worktree.mjs';
 import { commitTurn } from '../../server/adapters/agent-worktree-commit.mjs';
+import { runGit } from '../../server/ledger-git.mjs';
 import { git, home, project } from './agent-worktree-fixture.mjs';
 
 const agent = { id: 'pe_a', handle: 'gem' };
@@ -130,8 +131,10 @@ test('#1709 a repository nested in the worktree isn’t committed, and runs noth
   git(sub, ['commit', '-qm', 'one']);
   assert.equal(await w.commit(), false, 'a repository of its own isn’t committed');
   assert.match(w.logs.at(-1) ?? '', /holds a repository of its own/);
-  // As if one had reached the index anyway: its config names a program for its files, and one of them changes.
-  git(w.dir, ['add', 'sub']);
+  // As if one had reached the index anyway, with a .gitmodules asking that it be read whatever git's config says: its
+  // config names a program for its files, and one of them changes.
+  writeFileSync(join(w.dir, '.gitmodules'), '[submodule "sub"]\n\tpath = sub\n\turl = ./sub\n\tignore = none\n');
+  git(w.dir, ['add', 'sub', '.gitmodules']);
   git(w.dir, ['commit', '-qm', 'nested']);
   const marker = join(home, 'nested', 'ran');
   writeFileSync(join(sub, '.git', 'config'), `${readFileSync(join(sub, '.git', 'config'), 'utf8')}[filter "x"]\n\tclean = "touch ${marker}; cat"\n`);
@@ -140,6 +143,24 @@ test('#1709 a repository nested in the worktree isn’t committed, and runs noth
   writeFileSync(join(w.dir, 'agent.txt'), 'more of the agent’s work\n');
   assert.equal(await w.commit(), false);
   assert.equal(existsSync(marker), false, 'the nested repository’s filter didn’t run');
+  // The work ledger reads the same worktree’s status.
+  await runGit(w.dir, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+  await runGit(w.dir, ['diff', 'HEAD']);
+  assert.equal(existsSync(marker), false, 'the ledger’s reads didn’t run it either');
+});
+
+test('#1709 a nested repository whose name git quotes in its status isn’t committed either', async () => {
+  const w = await wrote('quoted');
+  const sub = join(w.dir, 's\u00fc');
+  await mkdir(sub, { recursive: true });
+  git(sub, ['init', '-q']);
+  writeFileSync(join(sub, 'f'), 'one\n');
+  git(sub, ['add', 'f']);
+  git(sub, ['commit', '-qm', 'one']);
+  writeFileSync(join(w.dir, '.gitmodules'), '[submodule "s"]\n\tpath = s\u00fc\n\turl = ./s\n\tignore = none\n');
+  assert.equal(await w.commit(), false);
+  assert.match(w.logs.at(-1) ?? '', /holds a repository of its own/);
+  assert.doesNotMatch(git(w.dir, ['ls-tree', '-r', 'HEAD']), /^160000 /m, 'no nested repository on the agent’s branch');
 });
 
 test('#1709 a repository that writes relative worktree paths still has the turn’s work committed', async () => {

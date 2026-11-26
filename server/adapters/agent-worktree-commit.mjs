@@ -44,19 +44,22 @@ export async function commitTurn(cwd, persona, project, workRoot, { git = defaul
   if ((await g(['config', '--get', 'core.worktree'])).code === 0) return refuse('its worktree’s record names another folder to work in');
   const head = await g(['symbolic-ref', '-q', 'HEAD']);
   if (head.stdout.trim() !== `refs/heads/${branchFor(persona, project)}`) return refuse('it isn’t on its own branch');
+  // A repository nested in it: reading or adding it starts git inside that repository, whose own config the agent
+  // wrote. One the index already holds is a gitlink, refused before the status could read it, as it would whatever
+  // git’s config says when the agent’s .gitmodules asks it to.
+  const tracked = await g(['ls-files', '--stage']);
+  if (tracked.code !== 0 || /^160000 /m.test(tracked.stdout)) return refuse('it holds a repository of its own');
   // Every untracked file, whatever status.showUntrackedFiles says, or a turn that only made files commits nothing.
-  const changed = await g(['status', '--porcelain', '--untracked-files=all']);
-  if (changed.code !== 0 || !changed.stdout.trim()) return false;
+  // Unquoted (-z), so a new nested repository shows as a folder whatever its name.
+  const changed = await g(['status', '--porcelain', '-z', '--untracked-files=all']);
+  const entries = changed.stdout.split('\0').filter(Boolean);
+  if (changed.code !== 0 || entries.length === 0) return false;
   // A conflict, or a merge, rebase or cherry-pick the agent left half done, would be committed as resolved, markers
   // and all. A conflict shows in the status itself, whatever left it (a stash pop leaves no file to see it by).
-  const conflicted = changed.stdout.split('\n').some((l) => /^(?:DD|AU|UD|UA|DU|AA|UU) /.test(l));
+  const conflicted = entries.some((l) => /^(?:DD|AU|UD|UA|DU|AA|UU) /.test(l));
   const midway = (await inProgress(g, place.admin)) ?? (conflicted ? 'conflict' : null);
   if (midway) return refuse(`a ${midway} is in progress there`);
-  // A repository nested in it: adding it starts git inside that repository, whose own config the agent wrote. A new
-  // one shows in the status as a folder; one the index already holds, as a gitlink.
-  const nestedNew = changed.stdout.split('\n').some((l) => l.startsWith('?? ') && l.endsWith('/'));
-  const tracked = await g(['ls-files', '--stage']);
-  if (nestedNew || tracked.code !== 0 || /^160000 /m.test(tracked.stdout)) return refuse('it holds a repository of its own');
+  if (entries.some((l) => l.startsWith('?? ') && l.endsWith('/'))) return refuse('it holds a repository of its own');
   const added = await g(['add', '-A']);
   // Unsigned: signing would run gpg.program, a program from the repository’s or the person’s config, and could wait
   // on a passphrase. And no automatic maintenance, whose gc can prune the repository’s worktrees, the person’s own.

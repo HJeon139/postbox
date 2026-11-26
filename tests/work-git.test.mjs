@@ -98,7 +98,8 @@ test('every git read sets off the commands a repository’s config can name, its
       'filter.a.b.process': '',
       'filter.a.b.required': 'false',
     });
-  assert.deepEqual(status.args, ['status', '--porcelain=v1', '-z']);
+  // The flag, not only the config, so a .gitmodules in the folder can’t ask for a nested repository’s state.
+  assert.deepEqual(status.args, ['status', '--ignore-submodules=all', '--porcelain=v1', '-z']);
   assert.deepEqual(show.args, ['show', '--no-ext-diff', '--no-textconv', '--numstat', 'abc1234']);
   // The filters are asked for with the commands already off.
   assert.equal(config(calls[0].env)['core.fsmonitor'], 'false');

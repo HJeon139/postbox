@@ -29,6 +29,11 @@ const NO_COMMANDS = [
 ];
 /** The subcommands that can run a diff driver or a textconv, which these flags turn off. */
 const DIFFS = new Set(['show', 'log', 'diff']);
+/**
+ * The subcommands that read a nested repository’s state by starting git inside it. The flag, unlike the config above,
+ * wins over a `submodule.<name>.ignore` in the folder’s own .gitmodules.
+ */
+const SUBMODULE_READS = new Set(['status', 'diff']);
 
 /** One git process, as execFile runs it; tests pass a fake. */
 function gitOnce(exec, cwd, args, env, timeoutMs) {
@@ -72,7 +77,8 @@ export async function runGit(cwd, args, { timeoutMs = 10000, exec = execFile } =
     .flatMap((f) => ['clean', 'smudge', 'process'].map((k) => [`filter.${f}.${k}`, '']))
     .concat([...filters].map((f) => [`filter.${f}.required`, 'false']));
   const [sub, ...rest] = args;
-  const argv = DIFFS.has(sub) ? [sub, '--no-ext-diff', '--no-textconv', ...rest] : args;
+  const flags = [...(DIFFS.has(sub) ? ['--no-ext-diff', '--no-textconv'] : []), ...(SUBMODULE_READS.has(sub) ? ['--ignore-submodules=all'] : [])];
+  const argv = flags.length ? [sub, ...flags, ...rest] : args;
   return gitOnce(exec, cwd, argv, withConfig([...NO_COMMANDS, ...off]), timeoutMs);
 }
 
