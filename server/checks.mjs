@@ -92,10 +92,10 @@ export function formatLint(message, { folded = false } = {}) {
   const shape = of('reply').filter((p) => SHOULD_BE_BLOCK.has(p.code));
   if (shape.length) parts.push(`Your reply should have been a block:\n${lines(shape)}`);
   const maybeAgents = shape.some((p) => MAYBE_AGENTS.has(p.code));
-  if (shape.length && !maybeAgents) todo.push('Show that block now with show_block, built from what you wrote.');
+  if (shape.some((p) => !MAYBE_AGENTS.has(p.code))) todo.push('Show that block now with show_block, built from what you wrote.');
   if (maybeAgents)
     todo.push(
-      'If they’re for the person, show that block now with show_block, built from what you wrote. If they’re for another agent, show no block: only the person answers one. Reply once instead, @-mentioning that agent, with the same words.',
+      'For the questions or options: if they’re for the person, show their block now with show_block, built from what you wrote. If they’re for another agent, show no block for them, as only the person answers one: put the same words in your reply instead, @-mentioning that agent, in one reply.',
     );
   const apps = groups('app');
   for (const ps of apps) parts.push(`Your app “${ps[0].scope.title ?? ps[0].scope.id}” (id ${ps[0].scope.id}) is shown, with these warnings:\n${lines(ps)}`);

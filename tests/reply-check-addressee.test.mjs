@@ -41,8 +41,11 @@ test('#1721 the lint turn for questions says the form is for the person, and an 
   assert.equal(p.code, 'questions-in-prose');
   assert.match(p.message, /If they’re for the person, ask them in a form block/);
   const text = formatLint(lintMessage([p]));
-  assert.match(text, /If they’re for the person, show that block now with show_block/);
-  assert.match(text, /If they’re for another agent, show no block: only the person answers one\. Reply once instead, @-mentioning that agent/);
+  assert.match(text, /For the questions or options: if they’re for the person, show their block now with show_block/);
+  assert.match(
+    text,
+    /If they’re for another agent, show no block for them, as only the person answers one: put the same words in your reply instead, @-mentioning that agent, in one reply\./,
+  );
   assert.doesNotMatch(text, /^Show that block now/m, 'no plain order to show the block');
   assert.match(text, /Otherwise no reply is needed/);
 });
@@ -55,4 +58,13 @@ test('#1721 options are treated the same; a long draft still just asks for its r
   const text = formatLint(lintMessage(blockProblems(draft)));
   assert.match(text, /^Show that block now with show_block/m);
   assert.match(text, /^No reply is needed/m);
+});
+
+test('#1721 a table flagged with the questions is still asked for plainly', () => {
+  const table = ['| A | B |', '| - | - |', ...Array.from({ length: 10 }, (_, i) => `| ${i} | ${i * 2} |`)].join('\n');
+  const problems = blockProblems(`${table}\n\n${review('critic')}`);
+  assert.deepEqual(problems.map((p) => p.code).sort(), ['questions-in-prose', 'table-in-markdown']);
+  const text = formatLint(lintMessage(problems));
+  assert.match(text, /^Show that block now with show_block/m, 'the table’s block, whoever the questions are for');
+  assert.match(text, /For the questions or options:/);
 });
