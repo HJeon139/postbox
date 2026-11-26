@@ -21,7 +21,7 @@ import { newId } from './store.mjs';
  * version back at 1000 × 680, as the critique’s floor does (#997): agents shipped the labels this flagged when it was a
  * warning. At 375 px it stays a warning: an SVG scaled to fit a narrow pane draws its labels small.
  */
-const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small-375', 'dashes-too-fine', 'only-error']);
+const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small-375', 'dashes-too-fine', 'only-error', 'text-over-marks']);
 
 /**
  * What a version should leave the reader with, as the agent said it (#995), or '' when it said nothing: a missing or
