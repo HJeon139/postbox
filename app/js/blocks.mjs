@@ -8,6 +8,7 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { own } from '/shared/state-assets.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
 import { asDrawn, closing } from './block-close.mjs';
+import { draft, drafts } from './block-drafts.mjs';
 import { fitChoiceOptions } from './choice-layout.mjs';
 import { codeBox, copyControls, showFilename } from './code-block.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
@@ -18,12 +19,6 @@ import { forgetReviewDraft } from './review-draft-store.mjs';
 import { fmtCell } from './table-cells.mjs';
 import { scrollFrame } from './table-scroll.mjs';
 import { sortedRows } from './table-sort.mjs';
-
-const drafts = new Map(); // item id → local, unsent input
-const draft = (id, init) => {
-  if (!drafts.has(id)) drafts.set(id, init());
-  return drafts.get(id);
-};
 
 // What the person is answering (#123): the revision of each open choice, form, confirm or review the page last drew.
 // The answer says which revision it’s for, so one the agent replaced before the page drew it is refused instead of
