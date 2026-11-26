@@ -64,8 +64,11 @@ test('claudeOnce has no answer when the CLI’s result is an error, isn’t JSON
   );
 });
 
-test('claudeOnce stops a CLI that doesn’t answer in time, and has no answer', async () => {
+test('claudeOnce stops a CLI that doesn’t answer in time, and has no answer', async (t) => {
   const cli = fakeClaude(null);
+  // The call’s own timer doesn’t hold the process open (unref), and a fake CLI holds nothing: this does, until it fires.
+  const held = setInterval(() => {}, 1000);
+  t.after(() => clearInterval(held));
   const answer = await claudeOnce('claude', 'p', { model: 'haiku', timeoutMs: 5, spawnImpl: cli.spawnImpl });
   assert.equal(answer, null);
   assert.deepEqual(cli.seen[0].child.killed, ['SIGTERM']);
