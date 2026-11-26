@@ -1,5 +1,5 @@
 // The environment Antigravity’s PreToolUse hook reads (agy-hook.mjs), for each turn of the Antigravity adapter
-// (antigravity-cli.mjs). Moved out of antigravity-cli.mjs.
+// (antigravity-cli.mjs).
 
 import { setupOf } from './setup.mjs';
 

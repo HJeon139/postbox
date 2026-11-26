@@ -6,7 +6,7 @@
 // `postbox/<project id>-<handle>-<persona id>`, started from the project’s current commit, in Postbox’s data folder:
 //
 //   <data>/worktrees/<project id>/<persona id>-<repo>/     the worktree, kept across turns and restarts; <repo> is
-//                                                           a hash of the repository's folder
+//                                                           a hash of the repository’s folder
 //
 // If the project’s folder is below the repository’s top, the agent works in the same folder within its worktree. Its
 // changes land on its branch, not in the project’s folder, until they’re merged. Files the repository doesn’t track,
@@ -127,7 +127,7 @@ async function worktree(git, repo, dir, branch) {
   // as the person’s own on a drive that isn’t mounted (#766). Git keeps a record someone locked.
   if (!(await exists(dir))) await git(repo, ['worktree', 'remove', '--force', dir]);
   const has = (await git(repo, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0;
-  // Submodules aren't fetched: that could reach the network with the repository's own ssh command.
+  // Submodules aren’t fetched: that could reach the network with the repository’s own ssh command.
   const add = ['-c', 'submodule.recurse=false', 'worktree', 'add'];
   const added = await git(repo, has ? [...add, dir, branch] : [...add, '-b', branch, dir]);
   if (added.code === 0) return { dir };

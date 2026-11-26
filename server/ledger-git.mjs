@@ -1,6 +1,7 @@
-// The work ledger’s git reading (#132): commits with their files, and where each file and commit stands now. Every git
-// command runs read-only, without git’s optional locks, so an agent’s own git never waits on Postbox. Moved from
-// server/ledger.mjs, whose Ledger keeps a method that delegates to each function here.
+// The work ledger’s git reading (#132): commits with their files, and where each file and commit stands now. Its git
+// commands run read-only, without git’s optional locks, so an agent’s own git never waits on Postbox; runGit, its
+// runner, also makes Antigravity agents’ worktrees (agent-worktree.mjs, #1709). Moved from server/ledger.mjs, whose
+// Ledger keeps a method that delegates to each function here.
 
 import { execFile } from 'node:child_process';
 import { dirname, relative, resolve, sep } from 'node:path';
