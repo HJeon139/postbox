@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.51.3 (2026-11-26)
+
+### Fixes
+
+- **adapters:** a command to an agent with no registered backend is posted, as before
+- **adapters:** refuse /compact for a Codex agent with nothing to compact
+- **ui:** a compaction with no counts shows none, not NaN
+- **adapters:** /compact on a Codex agent runs Codex's compaction, not a prompt
+- **adapters:** list the checkout's rules by path, and match a linked data folder
+- **adapters:** keep the checkout's CLAUDE.md files too, and pin none on a host
+- **adapters:** keep the checkout's AGENTS.md from claude agents in its data folder
+
 ## 4.51.2 (2026-11-26)
 
 ### Fixes
