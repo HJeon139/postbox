@@ -63,6 +63,12 @@ const APPS = {
   // A label on a backing over the line: the backing keeps the line from showing through it.
   backed: `<svg id="backed" width="420" height="240" role="img" aria-label="Fit">${dots}${fit}<rect x="192" y="127" width="34" height="17" fill="var(--bg)"/><text x="196" y="140" ${T}>5:56</text></svg>`,
   // An axis as d3 draws one: its domain path, tick lines, and tick labels beside them, and its title on the line.
+  // A dot reaching into the top of a label’s box, above its letters: it grazes the label without hiding it.
+  grazed: `<svg id="grazed" width="420" height="240" role="img" aria-label="Runs">${dots}<text x="150" y="166.5" ${T}>Morning</text></svg>`,
+  // A diagram’s node, a hexagon whose slanted sides cut into the corners of the name it holds.
+  named: `<svg id="named" width="200" height="120" role="img" aria-label="Steps"><path d="M40 60 L60 30 H140 L160 60 L140 90 H60 Z" fill="none" stroke="var(--s1)" stroke-width="4"/><text x="100" y="64" text-anchor="middle" textLength="116" lengthAdjust="spacingAndGlyphs" ${T}>Committee review</text></svg>`,
+  // A region larger than a node, its edge a line, with a label inside it on that edge.
+  region: `<svg id="region" width="420" height="240" role="img" aria-label="Costs"><path d="M20 220 L400 220 L400 20 Z" fill="none" stroke="var(--s2)" stroke-width="2"/><text x="200" y="125" ${T}>Forbidden</text></svg>`,
   axes: `<svg id="axes" width="420" height="80" role="img" aria-label="Hours"><g class="axis" transform="translate(20,20)"><path class="domain" d="M0 6 V0 H360 V6" stroke="var(--text)" fill="none"/>${[
     0, 90, 180, 270, 360,
   ]
@@ -119,7 +125,11 @@ test('#952 a label on the visible part of a clipped line, on a ring scatter’s 
   expect(overMarks('boxClip')[0], says('boxClip')).toMatch(/“Break-even” \(on a line\)/);
 });
 
-for (const id of ['clear', 'counts', 'nodes', 'faint', 'clipped', 'grid', 'halo', 'backed', 'axes'])
+test('#952 a label inside a region larger than a node, on its edge, is on a line: only a node’s name is its own', () => {
+  expect(overMarks('region')[0], says('region')).toMatch(/“Forbidden” \(on a line\)/);
+});
+
+for (const id of ['clear', 'counts', 'nodes', 'faint', 'clipped', 'grid', 'halo', 'backed', 'axes', 'grazed', 'named'])
   test(`#952 ${id}: text that doesn’t hide a mark passes`, () => {
     expect(overMarks(id), says(id)).toEqual([]);
   });

@@ -10,12 +10,18 @@
   // Points under a label are tested on this grid, in px, inside an edge this wide: a label grazing a mark passes.
   const STEP = 1;
   const EDGE = 1;
-  // A label sits on a mark when this many of its points hit it.
+  // A label sits on a mark when this many of its points hit it. Only the middle of its box is tested: the band of this
+  // share of its height above and below holds ascenders, descenders and line spacing, so a mark there grazes the label
+  // without hiding it, or being hidden.
   const HITS = 2;
+  const CORE = 0.25;
   // A filled path smaller than this is a symbol, a dot drawn as a path; a larger one is an area, which labels sit in.
   const SYMBOL = 30;
   // A dot or ring is a data mark up to this radius, in px; a larger circle is a diagram’s node, which holds its name.
   const DOT = 12;
+  // A closed outline up to this size in px is a node, a box or a hex, and a label inside it is its name; a larger one is
+  // a region, whose edge a label inside can still sit on.
+  const NODE = 160;
   // A line is a data series from this many points on. A straight line of two points is a fit line or a reference in a
   // chart (three or more dots or rings), and a diagram’s edge or a leader line anywhere else; one that’s level or upright, a
   // gridline, is never a mark.
@@ -93,7 +99,8 @@
     const stroke = solid(cs.stroke, +cs.strokeOpacity * opacity) && width > 0 && width <= WIDE && long;
     if (!fill && !stroke) return null;
     const kind = fill ? 'a dot' : round ? 'a ring' : 'a line';
-    return { el, r, fill, stroke, kind, round, straight, pad: width / 2, clip: clipOf(el, svg) };
+    const node = el.tagName === 'path' && /z\s*$/i.test(el.getAttribute('d') ?? '') && r.width <= NODE && r.height <= NODE;
+    return { el, r, fill, stroke, kind, round, node, straight, pad: width / 2, clip: clipOf(el, svg) };
   }
 
   /**
@@ -165,7 +172,8 @@
     if (!ctm) return 0;
     const inv = ctm.inverse();
     let n = 0;
-    for (let y = label.r.top + EDGE; y <= label.r.bottom - EDGE; y += STEP)
+    const inset = Math.max(EDGE, label.r.height * CORE);
+    for (let y = label.r.top + inset; y <= label.r.bottom - inset; y += STEP)
       for (let x = label.r.left + EDGE; x <= label.r.right - EDGE; x += STEP) {
         if (mark.clip && (x < mark.clip.left || x > mark.clip.right || y < mark.clip.top || y > mark.clip.bottom)) continue;
         const p = new DOMPoint(x, y).matrixTransform(inv);
@@ -186,9 +194,10 @@
       const all = marks(svg);
       const on = [];
       for (const l of labels(svg, backings(svg))) {
-        // A label inside its own dot or ring, such as a count, is that mark’s label, not one drawn over it. A line’s box
-        // holds labels that aren’t its own.
-        const under = all.find((m) => meets(l.r, m.r, m.pad) && !(m.round && within(l.r, m.r)) && hits(l, m) >= HITS);
+        // A label inside its own dot, ring or node, such as a count or a name, is that mark’s label, not one drawn over
+        // it. A line’s box holds labels that aren’t its own.
+        const own = (m) => (m.round || m.node) && within(l.r, m.r);
+        const under = all.find((m) => meets(l.r, m.r, m.pad) && !own(m) && hits(l, m) >= HITS);
         if (under) on.push({ ...l, kind: under.kind });
       }
       if (!on.length) continue;
