@@ -27,7 +27,7 @@ They cover:
 - the block validator, the Markdown renderer and the event builder
 - mentions, finished-sentence announcements, URL checks and BM25 search
 - the store: the event log, crash recovery, snapshots and blobs
-- the runtime: queueing, Stop, failures and Retry, needs-you, the wake limit, side threads, topic threads, delete, app permissions, the check-and-fix loop, permission cards and MCP
+- the runtime: queueing, Stop, failures and Retry, needs-you, the wake chain’s cap, side threads, topic threads, delete, app permissions, the check-and-fix loop, permission cards and MCP
 - every real adapter, replaying streams recorded from real turns ([`tests/fixtures/claude-code/`](../tests/fixtures/claude-code/), [`codex-app-server/`](../tests/fixtures/codex-app-server/), [`kiro-cli/`](../tests/fixtures/kiro-cli/) and [`antigravity-cli/`](../tests/fixtures/antigravity-cli/))
 - the work ledger: line counts against git’s, recorded turns that edit, commit, push and run background commands, where git says each change stands, and Restore
 - the diagram linter, against text sizes measured in Chrome
