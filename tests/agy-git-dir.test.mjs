@@ -16,6 +16,7 @@ function layout() {
   const repo = join(root, 'repo');
   const admin = join(repo, '.git', 'worktrees', 'agent');
   mkdirSync(admin, { recursive: true });
+  writeFileSync(join(admin, 'commondir'), '../..\n');
   const wt = join(root, 'worktrees', 'pr_x', 'pe_a');
   mkdirSync(join(wt, 'src'), { recursive: true });
   writeFileSync(join(wt, '.git'), `gitdir: ${admin}\n`);
@@ -46,6 +47,12 @@ test('#1709 a .git file the agent could have written the target of still asks', 
   // At the main repository’s worktree folder, but the agent may also edit that repository.
   writeFileSync(join(wt, '.git'), `gitdir: ${join(repo, '.git', 'worktrees', 'agent')}\n`);
   assert.equal(git(wt, [wt, repo]), 'ask');
+  // At a real worktree folder whose commondir names a repository the agent may edit.
+  const theirs = join(wt, 'own-repo', '.git');
+  mkdirSync(theirs, { recursive: true });
+  writeFileSync(join(repo, '.git', 'worktrees', 'agent', 'commondir'), `${theirs}\n`);
+  writeFileSync(join(wt, '.git'), `gitdir: ${join(repo, '.git', 'worktrees', 'agent')}\n`);
+  assert.equal(git(wt), 'ask');
   // No gitdir line at all.
   writeFileSync(join(wt, '.git'), 'not a pointer\n');
   assert.equal(git(wt), 'ask');

@@ -217,3 +217,48 @@ test('#1709 a worktree add fetches no submodules, and has time for a large check
   assert.deepEqual(gitTimeoutFor(add ?? []), { timeoutMs: 5 * 60_000 });
   assert.deepEqual(gitTimeoutFor(['rev-parse', 'HEAD']), {});
 });
+
+test('#1709 a folder already at the worktree’s place, not a worktree, is left as it is: it may hold an agent’s work', async (t) => {
+  const r = rig(t);
+  // As when the agent removed its worktree’s .git: the folder stays, with its uncommitted work.
+  mkdirSync(r.wtOf(A), { recursive: true });
+  writeFileSync(join(r.wtOf(A), 'work.txt'), 'not committed\n');
+  const { git } = fakeGit({ top: r.project.folder });
+  const refuse = async (/** @type {string} */ cwd, /** @type {string[]} */ given) => {
+    const args = given[0] === '-c' ? given.slice(2) : given;
+    if (args[0] === 'worktree' && args[1] === 'add') return { code: 128, stdout: '', stderr: `fatal: '${r.wtOf(A)}' already exists\n` };
+    return git(cwd, given);
+  };
+  /** @type {string[]} */
+  const logs = [];
+  assert.equal(await agentWorktree(A, r.project, r.workRoot, { git: refuse, log: (l) => logs.push(l) }), r.project.folder);
+  assert.equal(existsSync(join(r.wtOf(A), 'work.txt')), true, 'the work is kept');
+  assert.match(logs[0], /already exists/);
+});
+
+test('#1709 an add git stopped after making the worktree’s .git is removed through git, so the next turn makes it whole', async (t) => {
+  const r = rig(t);
+  /** @type {string[][]} */
+  const calls = [];
+  const { git } = fakeGit({ top: r.project.folder });
+  const stopped = async (/** @type {string} */ cwd, /** @type {string[]} */ given) => {
+    const args = given[0] === '-c' ? given.slice(2) : given;
+    calls.push(args);
+    if (args[0] === 'worktree' && args[1] === 'add') {
+      // As git does: the .git first, then part of the checkout, then killed at its timeout.
+      const dir = args[2] === '-b' ? args[4] : args[2];
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, '.git'), 'gitdir: /repo/.git/worktrees/x\n');
+      writeFileSync(join(dir, 'half.txt'), 'part\n');
+      return { code: 143, stdout: '', stderr: 'Updating files:  40% (400/1000)\n' };
+    }
+    return git(cwd, given);
+  };
+  assert.equal(await agentWorktree(A, r.project, r.workRoot, { git: stopped, log: () => {} }), r.project.folder);
+  assert.deepEqual(
+    calls.find((c) => c[1] === 'remove'),
+    ['worktree', 'remove', '--force', '--force', r.wtOf(A)],
+  );
+  assert.equal(existsSync(r.wtOf(A)), false, 'nothing half made is left');
+  assert.equal(await r.folderOf(A), r.wtOf(A), 'the next turn gets its worktree');
+});

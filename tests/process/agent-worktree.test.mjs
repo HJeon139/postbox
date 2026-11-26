@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { agentWorktree, branchFor } from '../../server/adapters/agent-worktree.mjs';
+import { decideAgyTool } from '../../server/adapters/agy-hook.mjs';
 import { excludePlugin, PLUGIN_DIR } from '../../server/adapters/agy-plugin.mjs';
 
 const home = await mkdtemp(join(tmpdir(), 'pb-test-worktree-'));
@@ -67,4 +68,26 @@ test('#1709 a repository with no commit yet leaves the agent in the project’s 
   // Git would make an empty worktree there, without the project’s files.
   assert.equal(dir, folder);
   assert.equal(git(folder, ['worktree', 'list', '--porcelain']).match(/^worktree /gm)?.length, 1, 'no worktree made');
+});
+
+test('#1709 a worktree git didn’t finish making, as when Postbox stopped mid-add, is removed and made again', async () => {
+  const { project: p, workRoot } = await project('unfinished');
+  const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
+  // git worktree add marks a worktree it’s still making with a `locked` file in its admin folder.
+  const admin = git(dir, ['rev-parse', '--git-dir']).trim();
+  await writeFile(join(admin, 'locked'), 'initializing\n');
+  await writeFile(join(dir, 'README.md'), '');
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot), dir);
+  assert.equal(git(dir, ['status', '--porcelain']), '', 'made again whole');
+  assert.equal(git(dir, ['show', 'HEAD:README.md']), 'hello\n');
+});
+
+test('#1709 in Auto, routine git runs with no card in an agent’s real worktree, as git lays it out', async () => {
+  const { project: p, workRoot } = await project('auto-git');
+  const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
+  const decide = (/** @type {string[]} */ folders) =>
+    decideAgyTool({ toolCall: { name: 'run_command', args: { CommandLine: 'git status' } } }, { mode: 'auto', folders, cwd: dir, home }).decision;
+  assert.equal(decide([dir]), 'allow');
+  // Given the project’s own folder too, the agent could have written the config git reads there.
+  assert.equal(decide([dir, p.folder]), 'ask');
 });

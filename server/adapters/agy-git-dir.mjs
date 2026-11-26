@@ -1,9 +1,9 @@
 // Where git reads its config from, for Antigravity’s Auto (agy-auto.mjs): routine git runs with no card only where the
 // agent can’t have written that config, since a .git/config can name a program git runs (#423).
 // - A real .git folder in the agent’s folder: git reads it, and an edit there asks (agy-hook.mjs).
-// - A git worktree (#1709): .git is a file naming the main repository’s `.git/worktrees/<name>`, and git reads that
-//   repository’s config. It counts only when that folder is real and outside every folder the agent may edit, so the
-//   agent can’t have written it; a .git file the agent pointed elsewhere asks.
+// - A git worktree (#1709): .git is a file naming the main repository’s `.git/worktrees/<name>`, whose commondir
+//   names the repository’s .git, where git reads the config. It counts only when both are outside every folder the
+//   agent may edit, so the agent can’t have written either; a .git file the agent pointed elsewhere asks.
 // Anything else (no .git, a link, a bare repository made of files the agent wrote) asks.
 
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
@@ -24,8 +24,12 @@ export function ownGitDir(cwd, roots = []) {
     const named = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, 'utf8'))?.[1]?.trim();
     if (!named) return false;
     const admin = realpathSync(resolve(cwd, named));
-    // <repository>/.git/worktrees/<name>, made by git worktree add.
-    if (basename(dirname(admin)) !== 'worktrees' || !lstatSync(dirname(dirname(admin))).isDirectory()) return false;
+    // <repository>/.git/worktrees/<name>, made by git worktree add, whose commondir names the repository’s .git, where
+    // git reads the config. Both must be outside every folder the agent may edit.
+    if (basename(dirname(admin)) !== 'worktrees') return false;
+    const common = readFileSync(join(admin, 'commondir'), 'utf8').trim();
+    if (!common) return false;
+    const repoGit = realpathSync(resolve(admin, common));
     const real = (/** @type {string} */ d) => {
       try {
         return realpathSync(d);
@@ -33,7 +37,7 @@ export function ownGitDir(cwd, roots = []) {
         return resolve(d);
       }
     };
-    return !roots.some((r) => inside(admin, real(r)));
+    return !roots.some((r) => inside(admin, real(r)) || inside(repoGit, real(r)));
   } catch {
     return false; // no .git: git would look elsewhere, so it asks
   }

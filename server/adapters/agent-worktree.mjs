@@ -21,7 +21,7 @@
 // conversations, and every turn in a folder that isn’t in git.
 
 import { createHash } from 'node:crypto';
-import { access, mkdir, rm } from 'node:fs/promises';
+import { access, mkdir, readFile, rm } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { storedFolder } from '../folder-path.mjs';
 import { runGit } from '../ledger-git.mjs';
@@ -91,13 +91,13 @@ export async function agentWorktree(persona, project, workRoot, { git = defaultG
  * @returns {Promise<{ dir: string } | { why: string }>}
  */
 async function worktree(git, repo, dir, branch) {
-  if (
-    await access(join(dir, '.git')).then(
-      () => true,
-      () => false,
-    )
-  )
-    return { dir };
+  const state = await stateOf(dir);
+  if (state === 'finished') return { dir };
+  // One git didn’t finish making (a Postbox stopped mid-add) can hold no agent’s work, since no turn ever ran there: it
+  // goes, through git and then from disk. Any other folder there is left as it is, since it may hold an agent’s work;
+  // git refuses to add over it, and the log says so.
+  if (state === 'unfinished') await removeWorktree(git, repo, dir);
+  const there = state !== 'unfinished' && (await exists(dir));
   await mkdir(dirname(dir), { recursive: true });
   // A worktree whose folder was deleted is still registered, and git refuses to add one there until it’s pruned.
   await git(repo, ['worktree', 'prune']);
@@ -106,18 +106,44 @@ async function worktree(git, repo, dir, branch) {
   const add = ['-c', 'submodule.recurse=false', 'worktree', 'add'];
   const added = await git(repo, has ? [...add, dir, branch] : [...add, '-b', branch, dir]);
   if (added.code === 0) return { dir };
-  // A stopped or refused add can leave its folder half made, which the next add refuses as existing: it goes, unless
-  // it’s a worktree after all. It’s Postbox’s own folder, under the data folder.
-  if (
-    !(await access(join(dir, '.git')).then(
-      () => true,
-      () => false,
-    ))
-  )
-    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  // An add git stopped (its timeout) or refused may have made the folder, even its .git, and checked out part of it.
+  // Only a folder this add made goes, through git and then from disk, so the next turn can make it whole.
+  if (!there) await removeWorktree(git, repo, dir);
   const lines = added.stderr.trim().split('\n');
   // Git prints progress before its reason, which starts `fatal:`.
   return { why: (lines.find((l) => l.startsWith('fatal:')) ?? lines[0])?.slice(0, 200) || `git exited with ${added.code}` };
+}
+
+/** Whether a path is there. @param {string} path */
+const exists = (path) =>
+  access(path).then(
+    () => true,
+    () => false,
+  );
+
+/**
+ * A worktree folder’s state: finished, with its .git naming a folder under the repository’s .git/worktrees and git’s
+ * marker for one still being made (a `locked` file there) gone; unfinished, with that marker still there; else none.
+ * @param {string} dir @returns {Promise<'finished' | 'unfinished' | 'none'>}
+ */
+async function stateOf(dir) {
+  try {
+    const admin = /^gitdir:\s*(.+)$/m.exec(await readFile(join(dir, '.git'), 'utf8'))?.[1]?.trim();
+    if (!admin) return 'none';
+    return (await exists(join(resolve(dir, admin), 'locked'))) ? 'unfinished' : 'finished';
+  } catch {
+    return 'none';
+  }
+}
+
+/**
+ * Removes a worktree Postbox made, through git and then from disk. Git removes a worktree it locked while making it
+ * only when told to force twice.
+ * @param {Git} git @param {string} repo @param {string} dir
+ */
+async function removeWorktree(git, repo, dir) {
+  await git(repo, ['worktree', 'remove', '--force', '--force', dir]);
+  await rm(dir, { recursive: true, force: true }).catch(() => {});
 }
 
 /**
