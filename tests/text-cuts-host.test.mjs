@@ -49,7 +49,7 @@ test('#1686 a host call’s reply, the reply kept for its repeats, and the refus
   await settled(r);
 });
 
-test('#1686 an app version’s summary is cut whole', () => {
+test('#1686 an app’s summary, title and intent, and its check’s problems, are cut whole', () => {
   const store = new Store(null);
   const rt = new Runtime({
     store,
@@ -60,6 +60,13 @@ test('#1686 an app version’s summary is cut whole', () => {
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [rt.createPersona({ handle: 'alpha' }).id] });
   const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
   tools.show_app({ id: 'summed', title: 'S', code: '<p>1</p>' });
-  assert.equal(tools.update_app({ id: 'summed', code: '<p>2</p>', summary: emojisAt([299], 320) }).ok, true);
-  whole(store.state.apps.summed.versions[1].summary, 'the summary');
+  const r = tools.update_app({ id: 'summed', code: '<p>2</p>', summary: emojisAt([299], 320), title: emojisAt([199], 220), intent: emojisAt([299], 320) });
+  assert.equal(r.ok, true, r.message);
+  const app = store.state.apps.summed;
+  whole(app.versions[1].summary, 'the summary');
+  whole(app.title, 'the title');
+  whole(app.versions[1].intent, 'the intent');
+  // The check’s problems, which the agent reads, cut to 300 each.
+  rt.appCheck('summed', { version: 2, problems: [{ code: 'low-contrast', message: emojisAt([299], 320) }] });
+  whole(store.state.apps.summed.check.problems[0]?.message, 'a check problem’s message');
 });

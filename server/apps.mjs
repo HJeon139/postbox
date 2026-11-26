@@ -28,7 +28,7 @@ const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small-375', 'dashes-t
  * What a version should leave the reader with, as the agent said it (#995), or '' when it said nothing: a missing or
  * malformed intent never refuses an app, and a very long one is cut for storage.
  */
-const intentOf = (v) => (typeof v === 'string' ? v.trim().slice(0, INTENT_CHARS) : '');
+const intentOf = (v) => (typeof v === 'string' ? cutText(v.trim(), INTENT_CHARS) : '');
 
 /**
  * The receipt’s note on an intent past its word limit, or ''. It’s flagged, not refused: the app is the work, and the
@@ -72,7 +72,7 @@ function checked(apps, appId, { version, problems = [] }) {
   if (version !== app.current || app.retired || app.check.status !== 'pending') return { ignored: true };
   const clean = (Array.isArray(problems) ? problems : [])
     .slice(0, 20)
-    .map((p) => ({ code: String(p?.code).slice(0, 40), message: String(p?.message).slice(0, 300) }));
+    .map((p) => ({ code: String(p?.code).slice(0, 40), message: cutText(String(p?.message), 300) }));
   // The last version the person was shown, which stands in while its agent fixes a later one (#948).
   if (!clean.length) {
     apps.store.emit('app', { ...app, lastShown: version, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
@@ -275,7 +275,7 @@ export function updateApp(apps, sessionId, turn, threadId, endSegment, { id, cod
   const { retired: _, ...live } = app;
   const next = {
     ...live,
-    title: typeof title === 'string' && title.trim() ? title.slice(0, 200) : app.title,
+    title: typeof title === 'string' && title.trim() ? cutText(title, 200) : app.title,
     versions,
     current: versions.length,
     check: { status: 'pending', attempt: app.check.attempt },
