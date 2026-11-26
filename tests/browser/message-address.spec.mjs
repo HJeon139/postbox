@@ -149,3 +149,48 @@ test('#168 a message’s reactions keep their pictures beside its actions’ dra
   expect(drawn.image, 'its picture, not a drawn icon').toMatch(/reaction-/);
   expect(drawn.width, 'at its own size, not an action icon’s 12 px').not.toBe('12px');
 });
+
+test('#168 in a side thread’s panel, the reactions and each action stay on one line, Copy link wrapping instead', async ({ page }) => {
+  const { t, se, items } = longRoom(app, 'Address, narrow row');
+  const topic = app.rt.startTopic(t.id, items.at(-1).id).threadId;
+  const reply = arrange.post(app.rt, topic, {
+    kind: 'agent',
+    sessionId: se.id,
+    handle: 'researcher',
+    text: 'In the thread, with a reply to send back.',
+    status: 'done',
+  });
+  await page.goto(`${app.origin}/#/t/${t.id}/side/${topic}`);
+  await synced(page, app);
+  const row = page.locator(`.sidepanel [data-key="${reply.id}"] .msg-actions`);
+  await expect(row.getByRole('button', { name: 'Copy link', exact: true })).toBeVisible();
+  const lines = await row.evaluate((r) => {
+    const one = (el) => (el ? Math.round(el.getBoundingClientRect().height) : 0);
+    const react = r.querySelector('.react-row');
+    const send = [...r.children].find((c) => /Send to conversation|Sent to the conversation/.test(c.textContent ?? ''));
+    return {
+      react: one(react),
+      button: one(react?.querySelector('.react-btn')),
+      send: one(send),
+      sendLine: send ? Math.round(parseFloat(getComputedStyle(send).lineHeight) || 0) : 0,
+    };
+  });
+  expect(lines.react, 'the reactions on one line').toBeLessThanOrEqual(lines.button + 2);
+  expect(lines.send, 'Send to conversation on one line').toBeLessThanOrEqual(30);
+});
+
+test('#168 in forced colors, the replies link’s icon takes the link color, and a sent note’s the text color', async ({ page }) => {
+  const { t, se, items } = longRoom(app, 'Address, forced colors, link');
+  const root = items.at(-1);
+  const topic = app.rt.startTopic(t.id, root.id).threadId;
+  const reply = arrange.post(app.rt, topic, { kind: 'agent', sessionId: se.id, handle: 'researcher', text: 'Sent back.', status: 'done' });
+  app.rt.store.emit('item.patch', { threadId: topic, id: reply.id, patch: { sharedAt: Date.now() } });
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.goto(`${app.origin}/#/t/${t.id}/side/${topic}`);
+  await synced(page, app);
+  const colorOf = (loc) => loc.evaluate((el) => ({ glyph: getComputedStyle(el, '::before').backgroundColor, text: getComputedStyle(el).color }));
+  const link = await colorOf(page.locator(`#main [data-key="${root.id}"] .msg-actions a.replies`));
+  expect(link.glyph, 'the link’s icon in the link color').toBe(link.text);
+  const sent = await colorOf(page.locator(`.sidepanel [data-key="${reply.id}"] .msg-actions span[data-glyph]`));
+  expect(sent.glyph, 'the sent note’s icon in the text color').not.toBe('rgba(0, 0, 0, 0)');
+});

@@ -966,10 +966,13 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .thread-root > .btn { align-self: flex-start; }
 
 /* Under a message: Reply in thread, or its replies. */
-.msg-actions { display: flex; align-items: center; gap: 8px; }
+.msg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; row-gap: 4px; }
+/* A row too narrow for every action wraps between them, before any shrinks: the reactions stay on one line, and Copy
+   link, last, goes to a line of its own, as in a side thread's panel (#168). */
 .msg-actions .btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
 /* An action's icon drawn by the action, not by a span of its own: the actions under a message cost no more elements with
-   Copy link than without it (#168), within the page's element budget (#1155). The element's --m names its icon. data-glyph, not data-icon, which the reactions use for their pictures. */
+   Copy link than without it (#168), within the page's element budget (#1155). The element's --m names its icon.
+   It's data-glyph, not data-icon, which the reactions use for their pictures. */
 .msg-actions [data-glyph]::before { content: ''; display: inline-block; width: 12px; height: 12px; flex: none; vertical-align: -1px;
   background: currentColor; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
 /* In forced colors a background is the system's Canvas, which hid the icon: it takes the text's forced color instead. */
