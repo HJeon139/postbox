@@ -6,17 +6,27 @@
 import { spawn } from 'node:child_process';
 import { stopProbe } from './remote/host/probe-stop.mjs';
 
-/** The most of the CLI’s answer that is read: a result line is a few hundred bytes. */
-const MAX_OUT = 200_000;
+/** The most of what the CLI prints that is read: its init, with every command it lists, the reply and the result. */
+const MAX_OUT = 1_000_000;
 
 /**
- * The CLI’s arguments for one answer. `--output-format json` prints the run’s result as one JSON object.
+ * The whole system prompt of the call, in place of Claude Code’s own, which is a coding agent’s: the message says what
+ * to answer. One line rather than none, so the CLI can’t read it as unset.
+ */
+const SYSTEM = 'Answer the message exactly as it asks.';
+
+/**
+ * The CLI’s arguments for one answer. `--output-format json --verbose` prints the run’s messages as one JSON list: its
+ * init, which says what the call was offered, and its result.
  * @param {string} model
  */
 const onceArgs = (model) => [
   '-p',
   '--output-format',
   'json',
+  '--verbose',
+  '--system-prompt',
+  SYSTEM,
   '--model',
   model,
   '--max-turns',

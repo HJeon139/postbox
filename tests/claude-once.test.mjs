@@ -3,16 +3,23 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { existsSync, readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { claudeHere, claudeOnce } from '../server/claude-once.mjs';
+import { allowedQuote } from '../server/write-intent.mjs';
+import { ASKED, CALL } from '../tools/record-claude-once.mjs';
 
-/** A fake claude that prints `out` once its input ends, then closes; with out null it never answers. */
-function fakeClaude(out, seen = []) {
+/**
+ * A fake claude that prints `out` once its input ends, then closes; with out null it answers only when stopped, with
+ * `last`.
+ */
+function fakeClaude(out, seen = [], last = '') {
   const spawnImpl = (/** @type {string} */ bin, /** @type {string[]} */ args, /** @type {any} */ opts) => {
     const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), exitCode: null, signalCode: null, killed: [] });
     child.kill = (/** @type {string} */ signal) => {
       child.killed.push(signal);
+      if (last) child.stdout.write(last);
       setImmediate(() => child.emit('close', null));
       return true;
     };
@@ -40,7 +47,10 @@ test('claudeOnce sends the prompt on the CLI’s input, for one turn with no too
   const [run] = cli.seen;
   assert.equal(run.bin, '/bin/claude');
   assert.equal(run.prompt, 'Summarize this.');
-  assert.equal(run.args.join(' '), '-p --output-format json --model haiku --max-turns 1 --tools= --setting-sources= --no-session-persistence');
+  assert.equal(
+    run.args.join(' '),
+    '-p --output-format json --verbose --system-prompt Answer the message exactly as it asks. --model haiku --max-turns 1 --tools= --setting-sources= --no-session-persistence',
+  );
   assert.ok(!run.args.includes('Summarize this.'), 'the prompt is never an argument, where a leading dash would read as an option');
 });
 
@@ -65,7 +75,8 @@ test('claudeOnce has no answer when the CLI’s result is an error, isn’t JSON
 });
 
 test('claudeOnce stops a CLI that doesn’t answer in time, and has no answer', async (t) => {
-  const cli = fakeClaude(null);
+  // Stopped, it prints a whole answer on its way out: too late to count.
+  const cli = fakeClaude(null, [], JSON.stringify(RESULT));
   // The call’s own timer doesn’t hold the process open (unref), and a fake CLI holds nothing: this does, until it fires.
   const held = setInterval(() => {}, 1000);
   t.after(() => clearInterval(held));
@@ -79,4 +90,27 @@ test('claudeHere is Claude Code’s CLI only when Claude Code runs on this compu
   assert.equal(claudeHere(registry(['claude-code'])), '/bin/claude');
   assert.equal(claudeHere(registry(['claude-code'], false)), null, 'registered for hosts only: no CLI here');
   assert.equal(claudeHere(registry(['mock', 'codex'])), null, 'not registered: POSTBOX_BACKENDS=mock, or the demo');
+});
+
+// What the real CLI printed for Postbox’s two calls, which only the person can record: it runs paid model turns.
+const RECORDING = new URL('./fixtures/claude-code/once.json', import.meta.url);
+const unrecorded = !existsSync(RECORDING) && 'not recorded yet: node tools/record-claude-once.mjs (two real Haiku calls)';
+
+test('claudeOnce reads what the real CLI printed for a summary and for the write check', { skip: unrecorded }, async () => {
+  const { runs } = JSON.parse(readFileSync(RECORDING, 'utf8'));
+  assert.deepEqual(
+    runs.map((r) => r.call),
+    ['summary', 'judge'],
+  );
+  for (const run of runs) {
+    const cli = fakeClaude(JSON.stringify(run.output));
+    const answer = await claudeOnce('claude', 'p', { model: 'haiku', timeoutMs: 1000, spawnImpl: cli.spawnImpl });
+    assert.deepEqual(cli.seen[0].args, run.args, `${run.call}: recorded with the arguments Postbox sends today; record it again if they change`);
+    assert.equal(run.exit, 0, run.call);
+    assert.ok(answer?.text.trim(), `${run.call}: an answer`);
+    assert.equal(typeof answer?.costUsd, 'number', `${run.call}: its cost`);
+    const init = run.output.find((m) => m.subtype === 'init');
+    assert.deepEqual(init?.tools, [], `${run.call}: the call is offered no tool, MCP’s included`);
+    if (run.call === 'judge') assert.ok(allowedQuote(answer.text, [ASKED], CALL), `the judge’s answer reads as allow: ${answer.text}`);
+  }
 });
