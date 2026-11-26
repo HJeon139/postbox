@@ -89,6 +89,16 @@ test('#1758 a stream that shares no call with the session and holds none of its 
   assert.equal(byHandle(rec.events, [...rec.streams, between]).developer.extra.unplaced_calls, callsInStream(between.events).length);
 });
 
+test('#1758 the count of unplaced calls stays on a trajectory when the agent’s first session made none', () => {
+  // The developer joins another room first and never replies there: that session has no trajectory.
+  const first = rec.events.find((e) => e.type === 'session' && e.data.handle === 'developer');
+  const idle = { ...first, seq: 0, data: { ...first.data, id: 'se_idle', threadId: 'th_elsewhere' } };
+  const late = { ...rec.streams.find((s) => s.handle === 'developer'), started: Number.MAX_SAFE_INTEGER };
+  const foreign = { ...late, events: late.events.map((e) => JSON.parse(JSON.stringify(e).replaceAll('toolu_', 'toolu_other_'))) };
+  const t = byHandle([idle, ...rec.events], [...rec.streams, foreign]).developer;
+  assert.equal(t.extra.unplaced_calls, callsInStream(foreign.events).length);
+});
+
 test('#1752 a call the ledger kept no input for takes it from its turn’s stream, and says so', () => {
   const noReads = rec.events.filter((e) => !(e.type === 'work.add' && e.data.entry.kind === 'read'));
   const critic = byHandle(noReads).critic;

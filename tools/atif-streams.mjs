@@ -63,6 +63,9 @@ export function recordedCalls(streams, handle, sessions, sessionId) {
   const seen = new Set();
   let unplaced = 0;
   let seq = 0;
+  // Calls that match no reply are counted once, on the agent’s first session with a reply, which has a trajectory: a
+  // session it joined and never replied in has none to carry the count.
+  const holder = [...sessions].find(([, replies]) => replies.length > 0)?.[0] ?? [...sessions.keys()][0];
   const mine = streams.filter((s) => s.handle === handle).sort((a, b) => (a.started ?? 0) - (b.started ?? 0));
   for (const [i, s] of mine.entries()) {
     const calls = callsInStream(s.events)
@@ -72,7 +75,7 @@ export function recordedCalls(streams, handle, sessions, sessionId) {
     const first = calls.find((c) => owner.has(c.id));
     const place = first ? owner.get(first.id) : placeByTime(sessions, s.started, mine[i + 1]?.started);
     if (!place) {
-      if (sessionId === [...sessions.keys()][0]) unplaced += calls.length;
+      if (sessionId === holder) unplaced += calls.length;
       continue;
     }
     if (place.session !== sessionId) continue;
