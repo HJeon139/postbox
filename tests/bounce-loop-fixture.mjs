@@ -31,12 +31,13 @@ export const playsWith = (run, handle, other, first = null) =>
     .map((t) => ({ text: t.text, react: t.reactedToWaker, step: t.otherToolCalls > 0 }));
 
 /**
- * One agent’s recorded replies to the other’s @-mentions alone, from a turn on: its turns that a direct @-mention woke,
- * not a reply that came back. Two agents that name each other every time wake each other this way only.
+ * One agent’s recorded replies in a stretch of a run, in recorded order: every turn another agent woke, by an
+ * @-mention or by a reply that came back, with its reaction and whether it did work. The stretch’s first turn opens
+ * the exchange in the test, where the person’s message wakes it.
  */
-export const playsMentioned = (run, handle, from) =>
+export const playsWoken = (run, handle, from, to) =>
   RUNS[run].turns
-    .filter((t) => t.handle === handle && t.turn >= from && !t.byBounce && t.wokeBy.every((w) => w !== 'person'))
+    .filter((t) => t.handle === handle && t.turn >= from && t.turn <= to && (t.turn === from || !t.wokeBy.includes('person')))
     .map((t) => ({ text: t.text, react: t.reactedToWaker, step: t.otherToolCalls > 0 }));
 
 /** An adapter that plays each agent’s replies in order, repeating its last once they run out, as the runs did. */

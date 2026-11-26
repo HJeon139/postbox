@@ -7,7 +7,7 @@
 
 import { parseMentions } from '../shared/text.mjs';
 import { copiedLine } from './copied-line.mjs';
-import { endedByReaction } from './reply-back.mjs';
+import { backTo, didWork, endedByReaction } from './reply-back.mjs';
 
 /**
  * The entries a final item’s mentions make: only an agent’s reply from a turn Postbox ran (not one mirrored from a
@@ -35,17 +35,21 @@ export function mentionEntries(rt, { threadId, item }) {
   let said = item.id;
   for (const h of parseMentions(item.text, rt.personas.handles(), copiedLine(rt, se))) {
     if (h.toLowerCase() === se.handle.toLowerCase()) continue;
-    // The turn reacted to what this agent sent it, and did no work: that ended their exchange (#1553), so naming it
+    const took = rt.delivery.takenBy(se.id, turn.id);
+    // The turn reacted to this agent’s reply to it, and did no work: that ended their exchange (#1553), so naming it
     // in the words that follow is no request (#1591). “I reacted ✅ to @critic’s closing message and haven’t replied”
     // woke critic about every four seconds in the paid runs of 26 November 2026. A reaction made after these words
     // settled comes too late to hold the wake.
-    if (endedByReaction(rt, se, rt.delivery.takenBy(se.id, turn.id), h, turn)) continue;
+    if (endedByReaction(rt, se, took, h, turn)) continue;
     // It named an agent, so it doesn’t go back to the one that woke it (reply-back.mjs), whether or not this wakes it.
     turn.named = true;
     // And a reply of its own named one, which open_topic and a review don’t set: the reply-form checks read it (#1695).
     turn.addressed = true;
     if (turn.woken.includes(h)) continue;
-    const opts = { replyIn, fromTurnId: turn.id, itemId: said, prose: true, wake: live, retryId: replayKey(turn, h) };
+    // A reply to that agent, by name: only its messages woke this turn, which did no work so far. Its entry says so,
+    // since a reaction may end an exchange on a reply, and never on a request (reply-back.mjs, endedByReaction).
+    const backByName = backTo(took).includes(h) && !didWork(turn);
+    const opts = { replyIn, fromTurnId: turn.id, itemId: said, prose: true, wake: live, retryId: replayKey(turn, h), backByName };
     const r = rt.agentWake(se.id, h, item.text, opts);
     if (r.itemId) said = r.itemId;
     if (r.ok || r.waiting) turn.mentioned = [...new Set([...(turn.mentioned ?? []), h])];

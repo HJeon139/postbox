@@ -115,12 +115,11 @@ function holdOnCard(rt, card, parent, from, p, wake) {
       ok: false,
       message: `Your message to @${p.handle} wasn’t sent: ${cardName(card)} is waiting for the person, with ${HELD_WAKES} messages already held on it. Send it again once they’ve answered.`,
     };
-  const { text, replyIn = null, fromTurnId = null, itemId = null, bounce = false } = wake;
+  const { text, replyIn = null, fromTurnId = null, itemId = null, bounce = false, backByName = false } = wake;
+  // What kind of reply a held wake is rides with it, so it means the same when it goes (reply-back.mjs).
+  const kind = { ...(bounce ? { bounce } : {}), ...(backByName ? { backByName } : {}) };
   rt.threads.patchItem(parent.id, card.id, {
-    held: [
-      ...held,
-      { fromSessionId: from.id, from: from.handle, to: p.handle, text, replyIn, fromTurnId, itemId, ...(bounce ? { bounce } : {}), at: Date.now() },
-    ],
+    held: [...held, { fromSessionId: from.id, from: from.handle, to: p.handle, text, replyIn, fromTurnId, itemId, ...kind, at: Date.now() }],
   });
   const message = `Postbox is holding your message to @${p.handle}: ${cardName(card)} is waiting for the person. It goes to @${p.handle} when they allow that, so don’t send it again; if they don’t, you’ll be told.`;
   // A bounce may be a reply that went back on its own, not a mention its agent wrote (reply-back.mjs, #1518).
@@ -164,6 +163,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
       fromTurnId: it.fromTurnId ?? null,
       itemId: it.itemId ?? null,
       bounce: it.bounce === true,
+      backByName: it.backByName === true,
     });
   settleHeld(rt, it, allow);
   if (allow) return { ok: true };
@@ -231,6 +231,7 @@ export function retireStale(rt, threadId, target, why, { byPerson = false } = {}
     fromTurnId: card.fromTurnId ?? null,
     itemId: card.itemId ?? null,
     bounce: card.bounce === true,
+    backByName: card.backByName === true,
   };
   for (const w of [own, ...(card.held ?? [])]) sendHeld(rt, card, w, byPerson);
 }
@@ -243,6 +244,7 @@ function sendHeld(rt, card, w, confirmed) {
     fromTurnId: w.fromTurnId,
     itemId: w.itemId,
     bounce: w.bounce === true,
+    backByName: w.backByName === true,
   });
   const se = rt.s.sessions[w.fromSessionId];
   if (!r.ok && !r.waiting && se && !se.retiredFork)

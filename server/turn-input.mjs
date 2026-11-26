@@ -20,6 +20,7 @@ import { backTo } from './reply-back.mjs';
  * @property {boolean} [resend]
  * @property {string[]} [postedSince]  ids of the sender’s newer posts while it waited
  * @property {boolean} [bounce]  a reply that came back on its own (reply-back.mjs)
+ * @property {boolean} [backByName]  a reply in words alone that named this agent, from a turn only it woke (mention-entries.mjs)
  * @property {string[]} [woken]  on an entry the person’s Retry reopened, whom its failed reply already woke (#485)
  */
 
@@ -97,20 +98,24 @@ function place(/** @type {{ id: string, kind?: string, title?: string }} */ thre
 
 /**
  * Where the reply goes as well as posting (#1518): back to the agents whose mentions started the turn, unless it
- * @-mentions an agent. Nothing for any other turn. A turn only replies that came back woke is told how its exchange
- * ends, as reply-back.mjs and mention-entries.mjs end it: a reaction to the reply ends it whatever the turn writes
- * (#1553), and so does its second reply in a row to the same agent that only writes (#1591), which this one would be
- * for the agents in `wroteOnly`. The person’s Retry still owes its reply (empty-reply.mjs), which goes back.
+ * @-mentions an agent. Nothing for any other turn. A turn only replies woke, ones that came back or ones in words
+ * alone that named it, is told how its exchange ends, as reply-back.mjs and mention-entries.mjs end it: a reaction to
+ * each ends it unless the turn does work (#1553, #1591). One that only replies that came back woke is told that its
+ * second reply in a row to the same agent that only writes ends it too (#1591), which this one would be for the
+ * agents in `wroteOnly`. The person’s Retry still owes its reply (empty-reply.mjs), which goes back.
  * @param {Entry[]} entries @param {string[]} wroteOnly  whom the agent’s last replies here, which only wrote, were for
  */
 function replyGoes(entries, wroteOnly) {
   const to = backTo(entries);
   if (!to.length) return '.';
   const goes = ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.`;
-  // A reaction ends an exchange, after a direct @-mention as after a reply that came back, unless the turn does work
-  // (reply-back.mjs, endedByReaction): told to every turn an agent woke, so a closing line needn’t say it and name it.
-  const react = 'If the exchange is done, react to the message: then, unless you do work this turn, nothing you write wakes its sender, even by name.';
   const asked = entries.filter((e) => e.source !== 'notice');
+  // A reaction ends an exchange on a reply, one that came back or one in words alone that named this agent, and never
+  // on a request (reply-back.mjs, endedByReaction). So only a turn that replies alone woke is told: a turn a request
+  // woke mustn’t learn to react and so silence its answer.
+  if (!asked.every((e) => e.bounce === true || e.backByName === true)) return goes;
+  const react =
+    'If the exchange is done, react to each message from its sender: then, unless you do work this turn (more than reading the room and reacting), nothing you write wakes that agent, even by name.';
   // A Retry’s entries carry whom its failed reply woke, as retryMarks (turns.mjs) reads them.
   if (!asked.every((e) => e.bounce === true) || entries.some((e) => Array.isArray(e.woken))) return `${goes} ${react}`;
   const end = `${react} You can also end without writing anything.`;

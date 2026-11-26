@@ -1,5 +1,5 @@
 {
-  "source": "uat-runs/2026-11-26T01-42-17-pairwork and uat-runs/2026-11-26T04-01-34-pairwork (the first paid runs after PR #1724, on 5f1fb0f7e), each run’s events.jsonl, extracted 25 November 2026. From each run, the turns from critic’s approval to the person’s next message. One row per finished turn, as in ack-loops-2026-11-23.json: the entries it took (wokeBy, and byBounce when all were replies that came back), its last reply with words cut to 240 characters, the agents that reply @-mentions (parsed from the full text), whether it reacted to a message that woke it, its tool calls other than reactions, and whom the reply went back to.",
+  "source": "uat-runs/2026-11-26T01-42-17-pairwork and uat-runs/2026-11-26T04-01-34-pairwork (the first paid runs after PR #1724, on 5f1fb0f7e), each run’s events.jsonl, extracted 25 November 2026. From each run, the turns of phases 1 and 2 from critic’s approval to the person’s next message: the first run’s turns 12–27 and 29–36, the second’s 8–17 and 19–22. One row per finished turn, as in ack-loops-2026-11-23.json: the entries it took (wokeBy, and byBounce when all were replies that came back), its last reply with words cut to 240 characters, or to its first @-mention of each agent it names when that comes later, the agents that reply @-mentions (parsed from the full text), whether it reacted to a message that woke it, its tool calls other than reactions, and whom the reply went back to.",
   "runs": {
     "pairwork": {
       "agents": {
@@ -182,6 +182,94 @@
           "otherToolCalls": 0,
           "wentBack": [],
           "text": "I reacted ✅ to @critic's closing message. The exchange is closed and nothing is left for me to do."
+        },
+        {
+          "turn": 29,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": false,
+          "otherToolCalls": 3,
+          "wentBack": [],
+          "text": "@developer: Approved. I re-read both files and re-ran the checks. `python3 -m unittest -v test_slugify` runs 10 tests, all OK. `python3 -m doctest slugify.py` passes. `\"\"`, `\"日本語\"`, and `\"!!!\"` all return `\"untitled\"`, and `\"Hello World\"` s"
+        },
+        {
+          "turn": 30,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "Done. @critic and I agree on the final version of `slugify.py` and `test_slugify.py`, in the workspace root.\n\n**Behavior:** `slugify(title)` lowercases the title, maps `ß` and `ẞ` to `ss`, strips accents, and joins runs of non-letter/digit "
+        },
+        {
+          "turn": 31,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The review is closed, and I reacted ✅ to @developer's summary. One correction to its note: the long code line is now line 21 of `slugify.py`, not line 19, after the `untitled` edit. The docstring's first summary line (line 10) is also over "
+        },
+        {
+          "turn": 32,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "I reacted ✅ to @critic's closing note. No reply is needed. The work is finished and agreed with @critic."
+        },
+        {
+          "turn": 33,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The exchange is closed. I reacted ✅ to @developer's last message, and nothing more is needed from me."
+        },
+        {
+          "turn": 34,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "I reacted ✅ to @critic's closing message. The exchange is closed and nothing more is needed from me."
+        },
+        {
+          "turn": 35,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": [],
+          "reactedToWaker": false,
+          "otherToolCalls": 0,
+          "wentBack": ["developer"],
+          "text": "The exchange is closed. Nothing more is needed from me, and I'm not posting in the room."
+        },
+        {
+          "turn": 36,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": true,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "I reacted ✅ to @critic's closing message. The exchange is closed and nothing more is needed from me."
         }
       ]
     },
@@ -300,6 +388,50 @@
           "otherToolCalls": 0,
           "wentBack": [],
           "text": "I've reacted ✅ to @critic's message. The review stays closed, and nothing is pending on my side."
+        },
+        {
+          "turn": 19,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": false,
+          "otherToolCalls": 3,
+          "wentBack": [],
+          "text": "The empty-title rule is correct, and I agree it's done.\n\nI re-read both files and ran the checks:\n- `python3 -m unittest -v test_slugify`: 11 tests, all OK.\n- `python3 -m doctest slugify.py`: passes.\n- `\"\"`, `\"   \"` and `\"\\t\\n\"` return `\"untitled\"`. `\"!!!\"` and `\"日本語\"` still return `\"\"`, as you specified. `\"  Hi  \"` returns `\"hi\"`.\n\nOne thing I checked: `title.strip()` treats any Unicode whitespace as blank, so a no-break space alone also gives `\"untitled\"`. That's the expected behavior.\n\nStill open, and not blockers: letters outside the transliteration map are dropped, and a non-string argument raises `AttributeError`.\n\nFor the person: `slugify.py` and `test_slugify.py` are done and agreed between @developer"
+        },
+        {
+          "turn": 20,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "Done. @critic and I agree on the change, so `slugify.py` and `test_slugify.py` are ready.\n\n- **New rule:** an empty or whitespace-only title returns `\"untitled\"`. Everything else behaves as before: `\"!!!\"` and `\"日本語\"` still return `\"\"`.\n- *"
+        },
+        {
+          "turn": 21,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": [],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": ["developer"],
+          "text": "I reacted ✅ to your message rather than replying. We agree the change is done, so the exchange is closed."
+        },
+        {
+          "turn": 22,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": true,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The exchange with @critic is closed, and I've reacted ✅ to their message. Nothing is pending on my side."
         }
       ]
     }
