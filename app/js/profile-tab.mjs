@@ -1,7 +1,7 @@
 // Settings › Profile (#558): who you say you are, so agents know how to address you and which names elsewhere are
 // yours. Everything on it is optional and yours to write. It shows exactly what agents are told, as it is saved.
 
-import { HANDLE, PROFILE } from '/shared/limits.mjs';
+import { HANDLE, HANDLE_LETTERS, PROFILE } from '/shared/limits.mjs';
 import { ALIAS_KINDS, aboutThePerson } from '/shared/profile.mjs';
 import { api, client } from './client.mjs';
 import { h } from './dom.mjs';
@@ -106,7 +106,7 @@ export function people() {
  * @param {any} person
  */
 function handleHelp(person) {
-  const what = 'What follows @ when you are mentioned: 2–24 letters, digits, - or _, starting with a letter.';
+  const what = `What follows @ when you are mentioned: ${HANDLE_LETTERS}, starting with a letter.`;
   if (person.profile?.handle) return `${what} You are @${person.profile.handle}.`;
   if (HANDLE.test(person.username ?? '')) return `${what} Left empty, you are @${person.username}, your account’s login.`;
   return `${what} Your account’s login, “${person.username}”, can’t be written as a mention, so choose one to be mentioned.`;
@@ -153,7 +153,7 @@ export function profile(paint, setFoot) {
   setFoot(h('span.grow'), h('button.btn.send', { type: 'button', id: 'pf-save', onclick: save }, 'Save profile'));
   return [
     field('pf-name', 'Name', kept ? (saved.name ?? '') : person.name, `How agents address you.${unsaved}`, { max: PROFILE.name }),
-    field('pf-handle', 'Handle', saved.handle ?? '', handleHelp(person), { max: 25 }),
+    field('pf-handle', 'Handle', saved.handle ?? '', handleHelp(person), { max: PROFILE.handle + 1 }),
     field(
       'pf-aliases',
       'Also written as',

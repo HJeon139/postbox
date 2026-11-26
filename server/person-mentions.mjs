@@ -1,8 +1,9 @@
-// A mention of a person is a “needs you” for them (#1742): the last reply of an agent’s turn that names a person by
-// handle (the one they saved, else their login), or says @you to the person it answers, is marked with whom it asks (`asks` on the item), and the agent’s
-// need follows from that mark as it does from a card (server/card-needs.mjs). The person reading it there, having the
-// room open as it lands, or writing there, marks it read (`asksSeen`), and the need falls to whatever else waits. An
-// ask that names people is read only by one of them; one that names no one, by whoever reads.
+// A mention of a person is a “needs you” for them (#1742): the last reply of an agent’s turn that names a person, by
+// the handle they saved or by their login, or says @you to the person it answers, is marked with whom it asks (`asks`
+// on the item), and the agent’s need follows from that mark as it does from a card (server/card-needs.mjs). The person
+// reading it there, having the room open as it lands, or writing there, marks it read (`asksSeen`), and the need falls
+// to whatever else waits. An ask that names people is read only by one of them; one that names no one, by whoever
+// reads.
 //
 // The session keeps its newest unread asks (`asked`, ASKS.kept of them), so a view reads them without reading a room’s
 // items: a page says what it has open every ten seconds, and a room can hold a million items. An ask older than those
@@ -13,7 +14,7 @@
 // Runtime first, as waiting code does.
 
 import { ASKS } from '../shared/limits.mjs';
-import { mentionOf } from '../shared/profile.mjs';
+import { peopleByName } from '../shared/profile.mjs';
 import { parseMentions } from '../shared/text.mjs';
 import { releaseNeed } from './card-needs.mjs';
 import { copiedLine } from './copied-line.mjs';
@@ -22,21 +23,16 @@ import { copiedLine } from './copied-line.mjs';
 const YOU = 'you';
 
 /**
- * The people a reply asks, by id: null when it asks no person. Those it names by what they are mentioned by (shared/profile.mjs, mentionOf), and for @you the people
- * whose messages the turn took, by the sender each message carries. An empty list is @you to a person Postbox can’t
- * name (a message with no sender): whoever reads. A login that is also an agent’s handle is the agent’s (a saved handle can’t be one), and so is
- * @you in a reply to another agent, which asks no person.
+ * The people a reply asks, by id: null when it asks no person. Those it names (shared/profile.mjs, peopleByName: a
+ * name two people have asks both, and one an agent has is the agent’s), and for @you the people whose messages the
+ * turn took, by the sender each message carries. An empty list is @you to a person Postbox can’t name (a message with
+ * no sender): whoever reads. @you in a reply to another agent asks no person.
  * @param {any} rt @param {any} se @param {any} turn @param {any} item @returns {string[] | null}
  */
 function peopleAsked(rt, se, turn, item) {
-  const handles = new Set(rt.personas.handles().map((/** @type {string} */ h) => h.toLowerCase()));
-  const byName = new Map();
-  for (const p of Object.values(rt.s.people)) {
-    const name = mentionOf(/** @type {any} */ (p)).toLowerCase();
-    if (name && !handles.has(name)) byName.set(name, /** @type {any} */ (p).id);
-  }
+  const byName = peopleByName(rt.s.people, rt.personas.handles());
   const named = parseMentions(item.text, [...byName.keys(), YOU], copiedLine(rt, se));
-  const ids = named.filter((n) => n !== YOU).map((n) => byName.get(n));
+  const ids = named.filter((n) => n !== YOU).flatMap((n) => byName.get(n) ?? []);
   const fromPerson = rt.delivery.takenBy(se.id, turn.id).filter((/** @type {any} */ e) => e.from === 'you' && e.itemId);
   const you = named.includes(YOU) && fromPerson.length > 0;
   if (!ids.length && !you) return null;

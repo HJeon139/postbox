@@ -108,6 +108,10 @@ export class Personas {
   }) {
     handle = handleOf(handle);
     if (this.byHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
+    // A handle a person chose is theirs (#1742): an agent made with it would take every mention meant for them. A
+    // login is the account’s, not chosen, so an agent may share one, and the name is then the agent’s, as before.
+    if (Object.values(this.store.state.people).some((p) => p.profile?.handle?.toLowerCase() === handle.toLowerCase()))
+      throw httpError(409, `@${handle} is the handle a person here chose. Pick another name.`);
     if (!this.adapters.names().includes(backend)) throw httpError(422, this.placement.notHere(backend));
     permissionMode = checkedMode(permissionMode);
     checkEffort(effort);

@@ -5,7 +5,7 @@
 // computer there is one person because its provider says it answers with one (`sole`), whatever account asks.
 
 import { createHash } from 'node:crypto';
-import { mentionOf, profileOf } from '../shared/profile.mjs';
+import { peopleByName, profileOf } from '../shared/profile.mjs';
 
 /**
  * A person’s id, from the issuer and subject that are them: the same for the same person on every request, with or
@@ -50,8 +50,8 @@ export class People {
   /**
    * A person did something that is kept as theirs (sent a message, #1742): they are someone this Postbox knows from
    * then on, so a turn can name them among several and the page can show whose message it is. Kept once, with nothing
-   * saved (`unsaved`), so their profile still starts from the provider’s name and agents are told nothing of them, except their user name
-   * as the sender of a message once there is more than one person.
+   * saved (`unsaved`), so their profile still starts from the provider’s name and agents are told nothing of them,
+   * except what they are mentioned by, as the sender of a message once there is more than one person.
    * @param {any} person  as `of` answers
    */
   seen(person) {
@@ -63,19 +63,21 @@ export class People {
   }
 
   /**
-   * A handle is one actor’s: refused when an agent has it, where a mention would wake the agent and never reach the
-   * person, or when it is how another person here is mentioned. Compared in any case, as a mention is read.
+   * A handle is refused when an agent that isn’t retired has it, where a mention would wake the agent and never reach
+   * the person, or when it is a name of another person this Postbox knows, their handle or their login
+   * (shared/profile.mjs, peopleByName). Compared in any case, as a mention is read. A person it doesn’t know yet can
+   * still arrive with that login: a mention of the name then asks both.
    * @param {any} person  as it would be saved
    */
   refuseTaken(person) {
     const handle = person.profile.handle;
     if (!handle) return;
-    const is = (/** @type {string} */ name) => name.toLowerCase() === handle.toLowerCase();
+    const { personas, people } = this.store.state;
     const refuse = (/** @type {string} */ why) => Object.assign(new Error(why), { status: 422, userMessage: why });
-    if (Object.values(this.store.state.personas).some((p) => is(p.handle))) throw refuse(`@${handle} is an agent’s name here. Pick another handle.`);
-    // Their login too, though a handle of theirs has taken its place: a name that was someone’s isn’t handed on.
-    if (Object.values(this.store.state.people).some((p) => p.id !== person.id && (is(mentionOf(p)) || is(p.username ?? ''))))
-      throw refuse(`@${handle} is how someone else here is mentioned. Pick another handle.`);
+    if (Object.values(personas).some((p) => !p.retired && p.handle.toLowerCase() === handle.toLowerCase()))
+      throw refuse(`@${handle} is an agent’s name here. Pick another handle.`);
+    const others = Object.fromEntries(Object.entries(people).filter(([id]) => id !== person.id));
+    if (peopleByName(others).has(handle.toLowerCase())) throw refuse(`@${handle} is how someone else here is mentioned. Pick another handle.`);
   }
 
   /**

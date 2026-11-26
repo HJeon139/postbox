@@ -3,6 +3,7 @@
 // both take, and it is kept in Postbox. The person is the specs’ fixture (FIXTURE_PERSON), never a real account.
 
 import { expect, test } from '@playwright/test';
+import { FIXTURE_PERSON } from '../../tools/fixture-person.mjs';
 import { audit } from './hosts.mjs';
 import { allowPageError, failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
@@ -135,4 +136,16 @@ test('a handle you choose is what you are mentioned by: the tab says which it is
   await dialog.getByRole('tab', { name: 'People' }).click();
   await expect(dialog.getByRole('listbox', { name: 'People' }).getByRole('option').first()).toContainText('@Robby');
   await audit(page, 'People with a handle saved');
+});
+
+test('an account whose login can’t be written as a mention is told so, and to choose a handle', async ({ page }) => {
+  // The fixture person under a login with a dot, as a sign-in provider gives one: no mention reads past the dot.
+  app = await startPostbox('profile-dotted', { server: { account: { ...FIXTURE_PERSON, username: 'robin.example' } } });
+  started.push(app);
+  const dialog = await profileTab(page);
+  const help = dialog.locator('#pf-handle-help');
+  await expect(help).toContainText('Your account’s login, “robin.example”, can’t be written as a mention, so choose one to be mentioned.');
+  await dialog.getByLabel('Handle', { exact: true }).fill('robin');
+  await dialog.getByRole('button', { name: 'Save profile' }).click();
+  await expect(help).toContainText('You are @robin.');
 });

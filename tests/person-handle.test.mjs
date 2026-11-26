@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { People } from '../server/people.mjs';
-import { aboutPeople, mentionOf, profileOf, senderName } from '../shared/profile.mjs';
+import { aboutPeople, mentionOf, namesOf, peopleByName, profileOf, senderName } from '../shared/profile.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 const ROBIN = { provider: 'oidc', issuer: 'https://idp.example', subject: 'u-1', username: 'robin.example', name: 'Robin Example' };
@@ -21,6 +21,8 @@ test('a handle is kept as a mention reads it: without its @, shaped as an agent�
       bad,
     );
   assert.throws(() => profileOf({ handle: 'You' }), /@you already means whoever a reply answers/);
+  // Only text is a handle: a list or a flag isn’t read as its words.
+  for (const bad of [['ab'], true, 42]) assert.throws(() => profileOf({ handle: bad }), /A handle is text/);
 });
 
 test('what a person is mentioned by: the handle they saved, else their login', () => {
@@ -50,9 +52,43 @@ test('a saved handle is how a reply reaches its person, where a login with a dot
   assert.deepEqual(await reply('A question for @robin.example and @robin.'), [null, null]);
   people.saveProfile(robin, { handle: 'robin' });
   assert.deepEqual(await reply('A question for @Robin.'), ['mention', [robin.id]]);
-  // Their login no longer reaches them once they have chosen: one name for one person.
+  // Their login stays theirs once they have chosen: an agent that learned it earlier in the room still reaches them.
+  // Robin has the room open as each lands, so a reply that asks Sam isn’t read at once by Sam’s own view.
   people.saveProfile(sam, { handle: 'sammy' });
-  assert.deepEqual(await reply('A question for @sam.'), [null, null]);
+  const asksSam = async (/** @type {string} */ text) => {
+    f.adapter.next.push(async (/** @type {any} */ c) => c.text(text));
+    f.rt.view(f.t.id, robin.id);
+    f.rt.sendMessage(f.t.id, { text: '@alpha go' }, { id: robin.id });
+    await settle(f.rt);
+    const se = f.store.state.sessions[f.alpha.id];
+    const got = [se.needs?.kind ?? null, se.needsFor ?? null];
+    f.rt.view(f.t.id, sam.id);
+    return got;
+  };
+  assert.deepEqual(await asksSam('A question for @sam.'), ['mention', [sam.id]]);
+  assert.deepEqual(await asksSam('A question for @Sammy.'), ['mention', [sam.id]]);
+});
+
+test('a name two people have asks both: one who arrives with a login another chose as a handle loses no ask, and neither does the other', async () => {
+  const f = setup();
+  const people = new People({ store: f.rt.store });
+  // Sam has signed in and not yet written, so Postbox doesn’t know them: Robin’s handle is accepted.
+  const robin = people.saveProfile(people.of(ROBIN), { handle: 'sam' });
+  const sam = people.seen(people.of(SAM));
+  assert.deepEqual([namesOf(robin), namesOf(sam)], [['sam', 'robin.example'], ['sam']]);
+  assert.deepEqual(peopleByName(f.store.state.people).get('sam'), [robin.id, sam.id]);
+  f.adapter.next.push(async (/** @type {any} */ c) => c.text('A question for @sam.'));
+  f.rt.sendMessage(f.t.id, { text: '@alpha go' });
+  await settle(f.rt);
+  const se = () => f.store.state.sessions[f.alpha.id];
+  assert.deepEqual([se().needs?.kind, se().needsFor], ['mention', [robin.id, sam.id]]);
+  // Each reads it for themselves, and it waits for the other.
+  f.rt.view(f.t.id, sam.id);
+  assert.deepEqual([se().needs?.kind, se().needsFor], ['mention', [robin.id]]);
+  f.rt.view(f.t.id, robin.id);
+  assert.equal(se().needs ?? null, null);
+  // A name an agent has is the agent’s, whoever else has it.
+  assert.equal(peopleByName(f.store.state.people, ['Sam']).has('sam'), false);
 });
 
 test('a handle that is an agent’s, or another person’s handle or login, is refused, and the profile kept is the one before', () => {
@@ -70,9 +106,25 @@ test('a handle that is an agent’s, or another person’s handle or login, is r
   refused('SAMMY', /@SAMMY is how someone else here is mentioned/);
   refused('sam', /@sam is how someone else here is mentioned/);
   assert.deepEqual(people.known(ROBIN).profile, {});
+  // A retired agent’s name is free, to a person as to a new agent.
+  f.store.emit('persona', { ...f.b, id: 'pe_retired', handle: 'oldbot', retired: true });
+  assert.equal(people.saveProfile(robin, { handle: 'oldbot' }).profile.handle, 'oldbot');
   // Their own, saved again, is theirs.
   people.saveProfile(robin, { handle: 'robin' });
   assert.deepEqual(people.saveProfile(robin, { handle: 'Robin', name: 'Robin' }).profile, { handle: 'Robin', name: 'Robin' });
+});
+
+test('an agent can’t be made with a handle a person chose, and may share a login, which is then the agent’s', () => {
+  const f = setup();
+  const people = new People({ store: f.rt.store });
+  people.saveProfile(people.of(ROBIN), { handle: 'robby' });
+  people.seen(people.of(SAM));
+  assert.throws(
+    () => f.rt.createPersona({ handle: 'Robby' }),
+    (/** @type {any} */ e) => e.status === 409 && e.message === '@Robby is the handle a person here chose. Pick another name.',
+  );
+  assert.equal(f.rt.createPersona({ handle: 'sam' }).handle, 'sam');
+  assert.equal(peopleByName(f.store.state.people, f.rt.personas.handles()).has('sam'), false);
 });
 
 test('agents are told nothing new: a handle is in no turn’s note about the person', () => {

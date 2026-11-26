@@ -3,7 +3,7 @@
 // written by the person. It is kept on their record (state.people, server/people.mjs) and given to agents in each
 // turn, in the part that changes during a room (server/turn-input.mjs), so an edit reaches a session that’s already running.
 
-import { HANDLE, PERSON, PROFILE } from './limits.mjs';
+import { HANDLE, HANDLE_LETTERS, PERSON, PROFILE } from './limits.mjs';
 
 /** What an alias is, so an agent reading a commit or a pull request knows which name to match. */
 export const ALIAS_KINDS = ['nickname', 'github', 'git', 'email', 'other'];
@@ -26,9 +26,12 @@ const line = (/** @type {unknown} */ v, /** @type {number} */ max) =>
  * since one rule reads both. Empty is none: they are mentioned by their account’s login, as before.
  */
 function handleOf(/** @type {unknown} */ sent) {
-  const name = line(sent, 40).replace(/^@/, '').trim();
+  if (typeof (sent ?? '') !== 'string') throw refuse('A handle is text, such as “robin”.');
+  const name = line(sent, PROFILE.handle + 16)
+    .replace(/^@/, '')
+    .trim();
   if (!name) return '';
-  if (!HANDLE.test(name)) throw refuse('A handle is 2–24 letters, digits, - or _, and starts with a letter, such as “robin”.');
+  if (!HANDLE.test(name)) throw refuse(`A handle is ${HANDLE_LETTERS}, and starts with a letter, such as “robin”.`);
   if (name.toLowerCase() === PERSON) throw refuse(`@${PERSON} already means whoever a reply answers. Pick another handle.`);
   return name;
 }
@@ -116,17 +119,41 @@ export function aboutPeople(people) {
 }
 
 /**
- * What follows @ when someone mentions a person (#1742): the handle they saved, else their account’s login. One name
- * for one person: with a handle saved, the login no longer reaches them.
+ * What follows @ when someone mentions a person (#1742), as the page shows it and a sender is named by it: the handle
+ * they saved, else their account’s login.
  * @param {{ username?: string, profile?: { handle?: string } } | null | undefined} person
  */
 export const mentionOf = (person) => person?.profile?.handle || person?.username || '';
 
 /**
+ * Every name a mention reaches a person by, as a mention is read (in lowercase): the handle they saved, and their
+ * account’s login. The login stays theirs once they choose a handle, so an agent that learned it earlier in a room
+ * still reaches them, and no one else can take it.
+ * @param {{ username?: string, profile?: { handle?: string } } | null | undefined} person
+ */
+export const namesOf = (person) => [...new Set([person?.profile?.handle, person?.username].filter(Boolean).map((n) => String(n).toLowerCase()))];
+
+/**
+ * Whom each name reaches, by id (#1742): the one answer to whose a name is, read by a mention, by a handle a person
+ * saves and by a new agent’s name. A name an agent has is the agent’s. A name two people have reaches both: a person
+ * is kept only from their first message or save, so one can arrive with a login another already chose as a handle,
+ * and neither loses an ask written to it.
+ * @param {Record<string, any> | undefined} people @param {string[]} [agentHandles]  of the agents not retired
+ * @returns {Map<string, string[]>}
+ */
+export function peopleByName(people, agentHandles = []) {
+  const agents = new Set(agentHandles.map((h) => h.toLowerCase()));
+  /** @type {Map<string, string[]>} */
+  const byName = new Map();
+  for (const p of Object.values(people ?? {})) for (const name of namesOf(p)) if (!agents.has(name)) byName.set(name, [...(byName.get(name) ?? []), p.id]);
+  return byName;
+}
+
+/**
  * Who a person’s message is from, as an agent reads it (#1742). “The person” while this Postbox knows one person, as
  * agents have always read it, and for a message whose sender it doesn’t know (one typed in a terminal, or from before
- * senders were kept). With more than one, the name they saved, else what they are mentioned by, after the same two words, so no
- * name reads as an agent’s handle or as Postbox. On one line: a turn is read line by line.
+ * senders were kept). With more than one, the name they saved, else what they are mentioned by, after the same two
+ * words, so no name reads as an agent’s handle or as Postbox. On one line: a turn is read line by line.
  * @param {Record<string, { username?: string, profile?: { name?: string, handle?: string } }> | undefined} people @param {string | undefined} personId
  */
 export function senderName(people, personId) {
