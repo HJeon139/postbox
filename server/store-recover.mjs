@@ -8,6 +8,7 @@
 import { join } from 'node:path';
 import { STORE_WAITS } from '../shared/limits.mjs';
 import { emptyState, ownState } from '../shared/state.mjs';
+import { checkFormat, recordFormat } from './store-format.mjs';
 import { HeldLog } from './store-held.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
 import { replay } from './store-replay.mjs';
@@ -121,6 +122,9 @@ export async function load(store, { fresh = false } = {}) {
     store.epoch = store.newEpoch();
     return store;
   }
+  // A folder a newer Postbox wrote is refused before anything in it changes, the lock included (#683). A fresh start
+  // empties it anyway.
+  if (!fresh) await checkFormat(store.io, (n) => store.at(n));
   await store.io.mkdir(store.dir, { recursive: true });
   store.lock = await lockStore(store.io, store.dir);
   try {
@@ -135,6 +139,7 @@ export async function load(store, { fresh = false } = {}) {
     // 1,000,000 items, and nothing else removes it. With the lock held, no other store is writing one here.
     for (const n of await store.io.readdir(store.dir)) if (/^snapshot\.json\.\d+\.tmp$/.test(n)) await store.io.rm(store.at(n), { force: true });
     install(store, await recover(store));
+    await recordFormat(store.io, (n) => store.at(n));
     // The folder’s entries are made durable once per start: a segment rotated by an earlier run that only ever held
     // emits may never have had its entry synced (the integrator’s review of 1a). A filesystem that can’t sync a
     // folder is tolerated; any other error refuses the start.
