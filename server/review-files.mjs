@@ -111,7 +111,7 @@ export async function blockFiles(assets, sessionId, name, args, read = fromFolde
  * blob behind. The tool says an item took them by setting given.held where it writes them onto the item
  * (server/block-show.mjs, server/blocks.mjs); its reply’s ok decides nothing.
  * @param {{ args: any, files?: any[], settle?: (keep: boolean) => Promise<void> }} app  what blockFiles gave, or an
- *   app’s files (no settle)
+ *   app’s data files, staged the same way (stageFiles, #1702)
  * @param {(given: { files?: any[], held?: boolean }) => any} call  the tool, given the files
  */
 export async function keptIfShown(app, call) {

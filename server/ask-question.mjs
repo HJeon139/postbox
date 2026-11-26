@@ -20,6 +20,7 @@
 
 import { validateBlock } from '../shared/catalog.mjs';
 import { HOST_LIMIT, nobodyAnsweredWithin, STILL_OPEN } from '../shared/question-words.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { offerNeed } from './card-needs.mjs';
 import { newId } from './ids.mjs';
 import { CARD_WAIT_MS } from './permission-cards.mjs';
@@ -64,7 +65,7 @@ function choiceOf(q) {
     options,
     multiple: q.multiSelect === true,
     other: { label: 'Other' },
-    fallback: `${q.question}\n${labels}`.slice(0, 4000),
+    fallback: cutText(`${q.question}\n${labels}`, 4000),
   };
 }
 

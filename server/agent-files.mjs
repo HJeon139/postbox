@@ -96,9 +96,10 @@ export async function agentFile(assets, sessionId, path, max, what, hooks = {}) 
  * show_app and update_app as an agent calls them over MCP (#54): code may come from codePath, a file in its folder,
  * and files names data files there for the app to read. Postbox reads both itself, under the same limits as an
  * inline call, and stores the data files with the version. Returns the call’s arguments with code filled in, and
- * the files as Postbox stored them; a call can’t name stored files itself.
+ * the files as Postbox stored them, staged until the call settles them (stageFiles); a call can’t name stored files
+ * itself.
  * @param {import('./asset-service.mjs').Assets} assets @param {string} sessionId @param {any} args
- * @returns {Promise<{ args: any, files?: AppFile[] }>}
+ * @returns {Promise<{ args: any, files?: AppFile[], settle?: (keep: boolean) => Promise<void> }>}
  */
 export async function appFiles(assets, sessionId, args) {
   const { codePath, files: wanted, ...rest } = args ?? {};
@@ -114,16 +115,42 @@ export async function appFiles(assets, sessionId, args) {
   if (!Array.isArray(wanted)) throw new AgentFileError('files is a list: [{ name?, path }].');
   if (wanted.length > LIMITS.appFiles) throw new AgentFileError(`An app carries up to ${limitText('appFiles')} data files.`);
   if (!assets.blobs) throw new AgentFileError('This Postbox can’t store files.');
-  /** @type {AppFile[]} */
-  const stored = [];
+  /** @type {{ name: string, buf: Buffer }[]} */
+  const read = [];
   for (const f of wanted) {
     const path = typeof f === 'string' ? f : f?.path;
     const name = String((typeof f === 'object' && f?.name) || basename(String(path ?? '')));
     if (!FILE_NAME.test(name)) throw new AgentFileError(`“${name}” can’t name a file: use letters, digits and - _ . (up to 64).`);
-    if (stored.some((x) => x.name === name)) throw new AgentFileError(`Two files are named “${name}”.`);
+    if (read.some((x) => x.name === name)) throw new AgentFileError(`Two files are named “${name}”.`);
     const buf = await assets.agentFile(sessionId, path, LIMITS.appFileBytes, `the file “${name}” (up to ${limitText('appFileBytes')})`);
-    const { sha256, size } = await assets.blobs.put(buf);
-    stored.push({ name, sha256, size });
+    read.push({ name, buf });
   }
-  return { args: out, files: stored };
+  return { args: out, ...(await stageFiles(assets.blobs, read)) };
+}
+
+/**
+ * An app’s data files, every one read and checked, put in the blob store staged (#1702), as a review’s images are
+ * (#780): the call’s keptIfShown keeps them once a version holds them (given.held) and removes them otherwise, so a
+ * call refused at a later file, or by the tool, leaves no blob that nothing names. Here and from a host
+ * (server/remote/turns-tools.mjs).
+ * @param {import('./blobs.mjs').Blobs} blobs @param {{ name: string, buf: Buffer }[]} read
+ * @returns {Promise<{ files: AppFile[], settle: (keep: boolean) => Promise<void> }>}
+ */
+export async function stageFiles(blobs, read) {
+  /** @type {AppFile[]} */
+  const files = [];
+  /** @type {{ sha256: string, fresh: boolean }[]} */
+  const puts = [];
+  try {
+    for (const { name, buf } of read) {
+      const { sha256, size, fresh } = await blobs.put(buf, { staged: true });
+      puts.push({ sha256, fresh });
+      files.push({ name, sha256, size });
+    }
+  } catch (e) {
+    // A put that failed settled its own hold (Blobs.put); the ones before it are released here.
+    await blobs.settle(puts, false);
+    throw e;
+  }
+  return { files, settle: (keep) => blobs.settle(puts, keep) };
 }

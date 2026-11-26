@@ -148,7 +148,7 @@ const mentionAsks = (f, rt = f.rt) => rt.agentWake(f.beta.id, 'gamma', 'Back aga
 function toldDeleted(r, handle = 'gamma') {
   assert.equal(r.waiting, undefined, 'no card asks the person');
   assert.equal(r.ok, false);
-  assert.match(r.message, new RegExp(`@${handle} was deleted from this conversation`));
+  assert.match(r.message, new RegExp(`@${handle} isn’t in this conversation any more`));
 }
 const wakeGamma = (f, rt = f.rt) => rt.agentWake(f.beta.id, 'gamma', 'Back again?', { itemId: 'it_w', prose: true });
 

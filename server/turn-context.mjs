@@ -3,6 +3,7 @@
 // server/runtime.mjs (#1236), where it was turnContext; turn-run.mjs's runTurn calls it.
 
 import { glimpseOf } from '../shared/text.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
 import { liveFields, liveStep, liveUpdate } from './live-buffer.mjs';
 import { liveText } from './live-text.mjs';
@@ -171,7 +172,7 @@ function replyWords(rt, se0, turn, live) {
         n,
         kept,
         total,
-        summary: String(summary ?? '').slice(0, 20000),
+        summary: cutText(String(summary ?? ''), 20000),
       });
       rt.sessions.update(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
     },
@@ -267,18 +268,18 @@ function reportCallbacks(rt, turn, live) {
         // Each with what it was asked, its step now, its latest narration and the subagent that started it (#73).
         allowed.subagents = patch.subagents.slice(0, 12).map((x) => ({
           ...(typeof x.id === 'string' && x.id ? { id: x.id.slice(0, 100) } : {}),
-          name: String(x.name).slice(0, 40),
+          name: cutText(String(x.name), 40),
           state: x.state,
           ctx: Number.isFinite(x.ctx) ? Math.max(0, Math.min(100, x.ctx)) : null, // null: unknown (#189)
-          doing: x.doing ? String(x.doing).slice(0, 120) : '',
+          doing: x.doing ? cutText(String(x.doing), 120) : '',
           ...(x.thinking === true ? { thinking: true } : {}),
-          ...(x.asked ? { asked: String(x.asked).slice(0, 120) } : {}),
-          ...(x.said ? { said: String(x.said).slice(0, 200) } : {}),
+          ...(x.asked ? { asked: cutText(String(x.asked), 120) } : {}),
+          ...(x.said ? { said: cutText(String(x.said), 200) } : {}),
           ...(x.since === true ? { since: true } : {}),
           ...(typeof x.parent === 'string' && x.parent ? { parent: x.parent.slice(0, 100) } : {}),
           ...(x.bg === true ? { bg: true } : {}),
         }));
-      if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
+      if (typeof patch.currentStep === 'string') allowed.currentStep = cutText(patch.currentStep, 200);
       // A line of what it’s thinking or writing right now; cleared when the turn ends.
       if (typeof patch.glimpse === 'string') allowed.glimpse = glimpseOf(patch.glimpse);
       liveUpdate(rt, turn, allowed);

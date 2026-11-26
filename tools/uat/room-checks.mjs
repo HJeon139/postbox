@@ -40,6 +40,7 @@ import { PANEL_CHECKS } from './room-checks-panels.mjs';
 import { POINTER_CHECKS } from './room-checks-pointer.mjs';
 import { REPLY_CHECKS } from './room-checks-replies.mjs';
 import { SCREEN_CHECKS } from './room-checks-screen.mjs';
+import { SPRINT_CHECKS } from './room-checks-sprint.mjs';
 import { THREAD_CHECKS } from './room-checks-threads.mjs';
 import { toolCalls } from './room-checks-tools.mjs';
 import { VIEW_CHECKS } from './room-checks-view.mjs';
@@ -72,6 +73,7 @@ export const CHECKS = [
   ...POINTER_CHECKS,
   ...DELIVERY_CHECKS,
   ...IDLE_CHECKS,
+  ...SPRINT_CHECKS,
   ...P0_CHECKS,
   {
     id: 'page-errors',

@@ -103,8 +103,9 @@ export async function sendForgets(
 }
 
 /**
- * Sends each removal on the link and waits for the answers: each `forgotten` drops its removal; a refusal or the
- * link’s close ends the wait, the rest still owed.
+ * Sends each removal on the link and waits for the answers: each `forgotten` drops its removal. A refusal naming its
+ * persona keeps only that one owed and the wait goes on for the rest (#1683); one naming none, or the link’s close,
+ * ends the wait with the rest still owed. Either refusal leaves the next ask to the next connection.
  * @param {Hosts} hosts @param {string} hostId @param {any} l @param {Set<string>} left
  * @param {{ waitMs: number, setTimer: (fn: () => void, ms: number) => any, clearTimer: (t: any) => void }} o
  */
@@ -127,7 +128,17 @@ function answers(hosts, hostId, l, left, { waitMs, setTimer, clearTimer }) {
           `${nameOf(hosts, hostId)} runs a Postbox older than removing a deleted agent’s memory, so ${left.size} deleted agent(s)’ memory stays there until it runs this version: ${msg.message}`,
         );
         finish();
+      } else if (msg.type === 'error' && msg.re === 'forget' && typeof msg.persona === 'string') {
+        // One persona’s removal refused (#1683): it stays owed until the next connection, as any refusal does, and the
+        // others’ answers on this one are still read.
+        if (!left.delete(msg.persona)) return;
+        markDone(l);
+        console.error(
+          `${nameOf(hosts, hostId)} couldn’t remove the memory of a deleted agent (${msg.persona}): ${msg.message} Postbox asks again when it next connects.`,
+        );
+        if (!left.size) finish();
       } else if (msg.type === 'error' && msg.re === 'forget') {
+        // A refusal naming no persona, from a daemon before #1683: nothing says which, so this connection stops here.
         markDone(l);
         console.error(`${nameOf(hosts, hostId)} couldn’t remove a deleted agent’s memory: ${msg.message} Postbox asks again when it next connects.`);
         finish();
