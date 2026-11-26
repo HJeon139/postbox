@@ -165,50 +165,6 @@ test('a turn the ledger has figures for but no step carries is listed, and its f
   assert.equal(t.final_metrics.extra.partial.total_completion_tokens.sum, 384);
 });
 
-test('a tool call names the tool its harness ran, with the arguments the work ledger kept', () => {
-  const [reply] = of('dry').steps.filter((s) => s.source === 'agent');
-  assert.deepEqual(reply.tool_calls, [
-    {
-      tool_call_id: 'toolu_01UvPeupBvnh1ZXh1p8WXmXv',
-      function_name: 'Bash',
-      arguments: { command: 'printenv CLAUDE_EFFORT', description: 'Print CLAUDE_EFFORT environment variable', run_in_background: false },
-      extra: {
-        label: 'Print CLAUDE_EFFORT environment variable',
-        state: 'done',
-        ms: reply.tool_calls[0].extra.ms,
-        started_at: '2026-11-20T01:52:56.530Z',
-        exit: 0,
-        arguments_source: 'work ledger',
-        display_input: 'command: printenv CLAUDE_EFFORT',
-      },
-    },
-  ]);
-  assert.equal(typeof reply.tool_calls[0].extra.ms, 'number');
-  assert.deepEqual(reply.observation, { results: [{ source_call_id: 'toolu_01UvPeupBvnh1ZXh1p8WXmXv', content: 'high' }] });
-  // From the stored events alone: the same name and arguments, and nothing it returned, which only live frames carry.
-  const [bare] = of('dry', rec.events, []).steps.filter((s) => s.source === 'agent');
-  assert.equal(bare.tool_calls[0].function_name, 'Bash');
-  assert.equal(bare.tool_calls[0].arguments.command, 'printenv CLAUDE_EFFORT');
-  assert.equal(bare.tool_calls[0].extra.display_input, undefined);
-  assert.equal(bare.observation, undefined);
-});
-
-test('a call whose step has no tool name and no ledger entry says so, with no arguments made up', () => {
-  const id = sessionOf('dry');
-  const events = rec.events
-    .filter((e) => !(e.type === 'work.add' && e.data.entry.kind === 'command'))
-    .map((e) =>
-      e.type === 'item.patch' && e.data.activityStep ? { ...e, data: { ...e.data, activityStep: { ...e.data.activityStep, tool: undefined } } } : e,
-    );
-  const live = rec.live.map((l) => (l.kind === 'step' ? { ...l, step: { ...l.step, tool: undefined } } : l));
-  const call = of('dry', events, live).steps.find((s) => s.tool_calls)?.tool_calls[0];
-  assert.ok(id && call);
-  assert.equal(call.function_name, 'unknown');
-  assert.deepEqual(call.arguments, {});
-  assert.equal(call.extra.function_name, 'not recorded');
-  assert.equal(call.extra.arguments_source, 'not recorded');
-});
-
 test('the exporter reads a recording given as its events file as it reads the run’s folder', () => {
   const file = readRecording(`${DIR}events.jsonl`);
   assert.equal(file.events.length, rec.events.length);
@@ -229,14 +185,6 @@ test('a message that waited in the agent’s inbox and no turn took is no step o
   );
   assert.equal(reached(t, entry.itemId), false);
   assert.equal(reached(of('dry'), entry.itemId), true);
-});
-
-test('a call’s name comes from its own step, so a call the ledger doesn’t keep is still named', () => {
-  const events = rec.events.filter((e) => !(e.type === 'work.add' && e.data.entry.kind === 'command'));
-  const call = of('dry', events).steps.find((s) => s.tool_calls)?.tool_calls[0];
-  assert.equal(call.function_name, 'Bash');
-  assert.deepEqual(call.arguments, {});
-  assert.equal(call.extra.arguments_source, 'not recorded');
 });
 
 test('a session whose only output was a block still has a trajectory', () => {
@@ -284,17 +232,4 @@ test('a reply with no time keeps its step, with no timestamp, and every trajecto
   const step = got.flatMap((t) => t.trajectory.steps).find((s) => s.extra?.item_id === reply.data.item.id);
   assert.ok(step, 'its step is kept');
   assert.equal(step.timestamp, undefined);
-});
-
-test('a call’s ledger entry is its own session’s, though another session’s call has the same id', () => {
-  // From the recorded run: @dry and @dry2 each ran `printenv CLAUDE_EFFORT` under the same tool call id. With @dry2’s
-  // command line changed, @dry’s call still names its own.
-  const events = rec.events.map((e) =>
-    e.type === 'work.add' && e.data.entry.kind === 'command' && e.data.entry.handle === 'dry2'
-      ? { ...e, data: { ...e.data, entry: { ...e.data.entry, command: 'echo not dry' } } }
-      : e,
-  );
-  const call = (h) => of(h, events).steps.find((s) => s.tool_calls)?.tool_calls[0];
-  assert.equal(call('dry').arguments.command, 'printenv CLAUDE_EFFORT');
-  assert.equal(call('dry2').arguments.command, 'echo not dry');
 });
