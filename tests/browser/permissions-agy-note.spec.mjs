@@ -43,9 +43,10 @@ failOnPageErrors(test);
 test('#416 the panel says an Antigravity agent’s Tools decide in Auto, and its mode decides otherwise', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
-  await page.locator('header.topbar button[aria-label^="Actions for"]').click();
-  await page.locator('.menu button.mi', { hasText: 'Permissions…' }).click();
-  const dialog = page.locator('.dialog');
+  // The room’s form in the main menu holds it (#1735): the top bar’s room button, then More › Permissions….
+  await page.locator('header.topbar #conversation-actions').click();
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Permissions…', exact: true }).click();
+  const dialog = page.locator('.dialog').filter({ has: page.locator('.perm-panel') });
   await expect(dialog).toContainText('In Auto its Tools decide what runs with no card, and in Ask me and Accept edits its mode decides what asks first.');
   await expect(dialog).not.toContainText('Its mode decides what it may do.');
 });
