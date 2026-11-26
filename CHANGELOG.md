@@ -2,6 +2,68 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.1 (2026-11-26)
+
+### Fixes
+
+- **store:** word a refusal with no version, and pin each released format's list
+- **store:** record a data format number, raised only when an older Postbox can't replay
+- **store:** name --data for an older branch, and pin the version compare
+- **store:** refuse only a newer version's folder, and let the record only advise
+- **store:** refuse a data folder a newer Postbox wrote, changing nothing
+
+## 4.52.0 (2026-11-26)
+
+### Features
+
+- **menu:** a room's button opens its form, with no pop-over between
+
+### Fixes
+
+- **menu:** the room form's rows and queue button follow the room
+- **atif:** mark a turn by time only in its step's own session
+- **atif:** with no work ledger turns, place a stream with no step by time as before
+- **atif:** place a stream by its step's turn, and count only turns that called a tool
+- **atif:** say a trajectory without streams has no Claude Code stream, not that none was recorded
+- **atif:** match a recorded stream to its turn, and count the turns with none
+- **atif:** count unplaced calls on a session that has a trajectory, reply or not
+- **atif:** count unplaced calls on a session that has a trajectory
+- **atif:** a background job that printed nothing reads as empty after its note
+- **atif:** place an agent's streams in the right one of its sessions
+- **atif:** take a turn's calls from its recorded stream, with no gap left unmarked
+
+## 4.51.6 (2026-11-26)
+
+### Fixes
+
+- **uat:** of two options with one label, pick the one whose description the tester named
+- **blocks:** word an answer left for the turn's end as main does
+- **blocks:** leave a confirm's answer to start its own turn
+- **blocks:** leave a host turn's answer to come when the turn ends
+- **blocks:** drop the stopped turn's hold from an answer's settle
+- **app:** a press on a running reply's live steps isn't lost to a refill
+- **blocks:** leave a long answer and a correction to come at the turn's end
+- **blocks:** hand an agent the answer to its own block mid-turn, once
+- **store:** read a thread's glossary as written where a turn's check decides on it
+- **uat:** an option named with “ — ” picks the longest whole label it starts with
+- **uat:** the option label fallback matches a whole label, not the first that contains it
+- **uat:** match a choice option by its label when the tester names it with its description
+
+## 4.51.5 (2026-11-26)
+
+### Fixes
+
+- **text:** cut an app's title, intent and check problems whole too
+- **text:** cut an app version's summary whole, and test the host reply cuts
+
+## 4.51.4 (2026-11-26)
+
+### Fixes
+
+- **store:** read sessions as written where the read decides a write
+- **store:** read a held topic's glossary through its conversation, as written
+- **store:** read threads as written where the read decides a write
+
 ## 4.51.3 (2026-11-26)
 
 ### Fixes

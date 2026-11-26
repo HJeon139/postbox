@@ -85,7 +85,12 @@ export async function main(argv, start) {
   process.on('unhandledRejection', (e) =>
     console.error(`Postbox kept running after an error nothing handled. Please report it, with this:\n${e instanceof Error ? e.stack : String(e)}`),
   );
-  const app = await start({ port, dataDir, fresh: values.fresh, demo: values.demo });
+  const app = await start({ port, dataDir, fresh: values.fresh, demo: values.demo }).catch((e) => {
+    // A folder a newer Postbox wrote (#683): what to run is the whole message, with no stack.
+    if (e?.code !== 'NEWER_FORMAT') throw e;
+    console.error(e.message);
+    process.exit(1);
+  });
   if (from === 'clone')
     console.log(
       `This clone’s data/ folder has your conversations, so Postbox keeps using it. Postbox now keeps its data in ${postboxHome()}: to move it there, stop Postbox and run \`npm start -- --move-data\`.`,

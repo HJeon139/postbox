@@ -306,14 +306,5 @@ export function agentQueueButton(session) {
   return button;
 }
 
-/** The phone conversation menu’s route to an agent queue, or null when it has none. */
-export function agentQueueMenuItem(session, anchor) {
-  const count = entriesFor(session.id).length;
-  return count
-    ? {
-        label: `${count} message${count === 1 ? '' : 's'} queued for ${session.handle}`,
-        icon: 'mail',
-        run: () => openQueue(session.id, anchor),
-      }
-    : null;
-}
+/** How many messages wait for an agent, as the room’s form says in its row (app/js/rooms-tab.mjs). @param {string} sessionId */
+export const queuedFor = (sessionId) => entriesFor(sessionId).length;

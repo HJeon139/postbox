@@ -97,9 +97,9 @@ const alreadyThere = (id) =>
  * startTopic answers 404 for it. @param {any} rt @param {any} se @param {string} itemId
  */
 function conversationOf(rt, se, itemId) {
-  const conv = rt.threads.lineage(se.threadId).at(-1);
+  const conv = rt.threads.conversationToWrite(se.threadId);
   if (rt.store.pending.items(conv).some((/** @type {any} */ x) => x.id === itemId)) return conv;
-  const topic = Object.values(rt.s.threads).find(
+  const topic = Object.values(rt.store.pending.threads()).find(
     (/** @type {any} */ t) => t.kind === 'topic' && t.parentId === conv && rt.store.pending.items(t.id).some((/** @type {any} */ x) => x.id === itemId),
   );
   return topic?.id ?? conv;

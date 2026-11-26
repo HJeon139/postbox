@@ -9,16 +9,15 @@
 // A count built from a session's own (`unread: se.unread + 1`) is found too: behind a held commit it lost an increment.
 // Every other write of a session, a put or a removal, and Sessions.update's own patch, is placed by file and function, as
 // the thread writes are (tests/thread-write-guard.test.mjs), so a raw emit or a put built from the published session fails.
-// A write a published read decides is found too: the condition on the write's own line, or on the `if` line just above
-// it, reads a session bound from a published read in that function, or the loop it's in walks published sessions
-// (`for (const se of rt.sessions.in(t))`). Behind a held commit, that read missed what is held: Stop's “stopping”, so a
-// stopped turn's exit didn't set its session idle, and an unread a turn counted, so viewing didn't clear it.
+// A write a published read decides is found by tests/session-decided-guard.test.mjs.
 // The guard reads source text, so a field reached through a call it doesn't see (`settledNeed(rt, se)`) passes, and
-// so does a decision it doesn't see on the write: an early return (`if (!se.x) return;`), a condition further up, or a
-// result passed in; review reads for those.
+// review reads for those. A published read is matched through any `s`, a parameter's too, and a copy
+// made by a spread, `.slice()`, `structuredClone(` or `Object.assign(` is followed; destructuring `sessions` out of the
+// state and reaching it by a string key fail outright (tests/session-read-guard.test.mjs).
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DECL, placed, sites, withProbes } from './server-sources-fixture.mjs';
+import { BIND, GETTER, PUBLISHED_SESSION } from './session-read-forms.mjs';
 
 /** Every write of a session: Sessions.update's patch, the put of a new one, and the removal of one. */
 const SESSION_WRITES = {
@@ -35,35 +34,20 @@ const SESSION_WRITE = /\bsessions\.put\(|\bemit\(\s*['"`]session(?:\.patch)?['"`
  * the pending reads are #623's class (Refs #623).
  */
 const FROM_PUBLISHED = {
-  'diagram-check.mjs': ['rememberDiagrams'], // diagramsLinted
-  'job-records.mjs': ['recordJob', 'recordJob'], // jobs (a job recorded, kept)
   'kept-jobs.mjs': ['stopJob'], // jobs: a job's stopping mark
   'permission-cards.mjs': ['resolveDenial'], // allowOnce: Allow once on a denial card
-  'permissions-panel.mjs': ['changePermissionFolder', 'changePermissionFolder'], // addDirs: a folder removed, or added
+  // rules: a conversation's rule, copied whole from the session (found once the guard read copies given whole, #623);
+  // addDirs: a folder removed, or added
+  'permissions-panel.mjs': ['changePermissionRule', 'changePermissionFolder', 'changePermissionFolder'],
   'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn: a host turn's state
   'thread-catch-up.mjs': ['threadTail', 'threadCatchUp', 'reactionLines'], // seenIn and reactionsTold: catch-up markers per thread
 };
 
-/**
- * The writes whose condition still reads a published session, each a follow-up of the same class: behind a held
- * commit, the read decides on a session that misses what is held.
- */
-const DECIDED_PUBLISHED = {
-  'permission-cards.mjs': ['resolveDenial'], // allowOnce, also built from the published session (FROM_PUBLISHED)
-  'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn, the same
-};
-
-/** A published read of a session: `rt.s.sessions[id]`, `state.sessions`, `rt.session(id)`, `rt.sessions.get(id)`. */
-const PUBLISHED_SESSION = /\.s\.sessions\b|\bstate\.sessions\b|\b(?:rt|this)\.session\(|\bsessions\.get\(/;
 /** A session's name in server code, bound from a published read or passed in as one: se, now, session. */
 const NAMES = ['se', 'now', 'session'];
-/** A getter of a published session, as a turn's handlers read theirs: `const se = () => rt.s.sessions[turn.sessionId]`. */
-const GETTER = /\b(?:const|let)\s+(\w+)\s*=\s*\(\)\s*=>([^;\n]*)/g;
-/** A local bound in a function, with what it's bound from. */
-const BIND = /\b(?:const|let|var)\s+(\w+)\s*=([^;]*)/g;
 
 /** What names a published session: each name (`se`), each getter's call (`se()`), and an index into the published map. @param {string[]} roots */
-const rootOf = (roots) => String.raw`(?:(?:${roots.join('|')})|[\w$.]*\.s\.sessions\[[^\]]*\])`;
+const rootOf = (roots) => String.raw`(?:(?:${roots.join('|')})|[\w$.]*\b(?:s|state)\.sessions\[[^\]]*\])`;
 const MEMBERS = String.raw`(?:\.[\w$]+|\[[^\]]*\])+`;
 /** Not a member of something else (`x.se.unread`), but a spread may come before it. */
 const START = String.raw`(?<![\w$])(?<![^.]\.)`;
@@ -76,7 +60,8 @@ function countOf(roots, copies) {
 
 /**
  * A field of a session spread, or filtered, mapped, sliced or concatenated: `...se.context`, `(se.jobs ?? []).map(`,
- * `...dirs` for a local bound from one; or a count added to or taken from (countOf).
+ * `...dirs` for a local bound from one; copied by `structuredClone(` or `Object.assign(`; or a count added to or
+ * taken from (countOf).
  * A conditional spread (`...(se.x ? {…} : {})`) reads a field, but builds none.
  * @param {string[]} roots  what names a published session here @param {string[]} copies  locals bound from a field of one
  */
@@ -85,8 +70,14 @@ function derivedFrom(roots, copies) {
   const field = `(?:${rootOf(roots)}${MEMBERS}${local})`;
   const spread = String.raw`\.\.\.\(?\s*${field}(?![\w$.[(])(?!\s*\?(?!\?))`;
   const op = String.raw`${START}${field}(?:\s*\?\?\s*\[\]\s*\))?\.(?:filter|map|slice|concat|reduce)\(`;
-  return new RegExp(`${spread}|${op}|${countOf(roots, copies)}`);
+  const clone = String.raw`${COPIER}[^;]*?${START}${field}(?![\w$.[(])`;
+  return new RegExp(`${spread}|${op}|${clone}|${countOf(roots, copies)}`);
 }
+
+/** A call that copies what it's given: `structuredClone(se.jobs)`, `Object.assign({}, se.threadsTold)`. */
+const COPIER = String.raw`\b(?:structuredClone|Object\.assign)\(`;
+/** How a local copies a field: a spread, `.slice()`, or a copier (COPIER). */
+const COPIES = new RegExp(String.raw`\.\.\.|\.slice\(|${COPIER}`);
 
 /** A field of a session, or a local copy of one. @param {string[]} roots @param {string[]} copies */
 const copyOf = (roots, copies) => `(?:${rootOf(roots)}${MEMBERS}${copies.length ? String.raw`|(?:${copies.join('|')})\b` : ''})`;
@@ -107,6 +98,17 @@ function argsAt(text, from) {
     if (depth < 0) break;
   }
   return args;
+}
+
+/**
+ * A local copied from a field of a session, then given whole as a field: `const told = { ...(se.threadsTold ?? {}) }`,
+ * then `{ threadsTold: told }`, and the same by `.slice()`, `structuredClone(` or `Object.assign(` (COPIES). Behind a
+ * held commit, the copy drops what a held write of the field left (#623).
+ * @param {RegExpMatchArray[]} binds @param {string[]} copies @param {string} change
+ */
+function passesCopy(binds, copies, change) {
+  const spread = binds.filter((m) => copies.includes(m[1]) && COPIES.test(m[2])).map((m) => m[1]);
+  return spread.length > 0 && new RegExp(String.raw`[:{,]\s*(?:${spread.join('|')})(?![\w$.([])`).test(change);
 }
 
 /** The calls of Sessions.update: `sessions.update(` anywhere, and `this.update(` in Sessions itself. */
@@ -142,7 +144,8 @@ function builtFromSession(extra = []) {
         // Locals bound from a field, or from a local that was: `const jobs = se.jobs ?? []`, then `const all = [...jobs, job]`.
         const copies = [];
         for (let more = true; more; ) {
-          const of = new RegExp(String.raw`^\s*\[?\s*(?:\.\.\.)?\(?\s*${copyOf(roots, copies)}|\.\.\.\(?\s*${copyOf(roots, copies)}`);
+          const field = copyOf(roots, copies);
+          const of = new RegExp(String.raw`^\s*\[?\s*(?:\.\.\.)?\(?\s*${field}|\.\.\.\(?\s*${field}|${COPIER}[^;]*?${START}${field}`);
           const found = binds.filter((m) => !copies.includes(m[1]) && of.test(m[2])).map((m) => m[1]);
           copies.push(...found);
           more = found.length > 0;
@@ -150,7 +153,7 @@ function builtFromSession(extra = []) {
         // A local that is itself a count built from one: `const n = se().compactions + 1`, then `{ compactions: n }`.
         const counted = binds.filter((m) => copies.includes(m[1]) && new RegExp(countOf(roots, copies)).test(m[2])).map((m) => m[1]);
         const usesCount = counted.length > 0 && new RegExp(String.raw`${START}(?:${counted.join('|')})\b`).test(change);
-        if (derivedFrom(roots, copies).test(change) || usesCount) {
+        if (derivedFrom(roots, copies).test(change) || usesCount || passesCopy(binds, copies, change)) {
           const m = lines[decl].match(DECL);
           (out[path] ??= []).push(m ? (m[1] ?? m[2] ?? m[3]) : '(top)');
         }
@@ -182,6 +185,17 @@ test('the guard finds a session field built from a published read, directly or t
     // Through a getter of the published session, as a turn's handlers read it: a count, and a list built from it.
     'export function zz11(rt, id) {\n  const se = () => rt.s.sessions[id];\n  const n = se().compactions + 1;\n  rt.sessions.update(id, { compactions: n });\n}',
     'export function zz12(rt, id, step) {\n  const se = () => rt.s.sessions[id];\n  const s = se();\n  rt.sessions.update(id, { toolCalls: [step, ...s.toolCalls.filter((c) => c !== step)] });\n}',
+    // A copy of a field, spread from the published session and given whole, as threadLines' threadsTold was: found.
+    "export function zz13(rt, id) {\n  const now = rt.s.sessions[id];\n  const told = { ...(now.threadsTold ?? {}) };\n  told.t1 = 'i1';\n  rt.sessions.update(id, { threadsTold: told });\n}",
+    // The same merged into the pending session the function is given: not found.
+    "export function zz14(rt, id) {\n  const newly = { t1: 'i1' };\n  rt.sessions.update(id, (s) => ({ threadsTold: { ...(s.threadsTold ?? {}), ...newly } }));\n}",
+    // Read through a parameter's s.sessions, and copied by .slice(), structuredClone( or Object.assign(: found.
+    'export function zz15(rt, s, id) {\n  const cur = s.sessions[id];\n  rt.sessions.update(id, { unread: cur.unread + 1 });\n}',
+    'export function zz16(rt, id, j) {\n  const jobs = rt.s.sessions[id].jobs.slice();\n  jobs.push(j);\n  rt.sessions.update(id, { jobs });\n}',
+    'export function zz17(rt, id) {\n  const se = rt.s.sessions[id];\n  rt.sessions.update(id, { jobs: structuredClone(se.jobs) });\n}',
+    "export function zz18(rt, id) {\n  const se = rt.s.sessions[id];\n  const told = Object.assign({}, se.threadsTold);\n  told.t1 = 'i1';\n  rt.sessions.update(id, { threadsTold: told });\n}",
+    // The same copy made of the pending session the function is given: not found.
+    'export function zz19(rt, id) { rt.sessions.update(id, (s) => ({ jobs: structuredClone(s.jobs) })); }',
   ];
   const found = Object.keys(builtFromSession(probes)).filter((k) => k.startsWith('extra-'));
   assert.deepEqual(found, [
@@ -194,64 +208,12 @@ test('the guard finds a session field built from a published read, directly or t
     'extra-9.mjs',
     'extra-10.mjs',
     'extra-11.mjs',
+    'extra-12.mjs',
+    'extra-14.mjs',
+    'extra-15.mjs',
+    'extra-16.mjs',
+    'extra-17.mjs',
   ]);
-});
-
-/** A published read of one session or of a thread's: what a deciding read reads. */
-const PUBLISHED_READ = new RegExp(`${PUBLISHED_SESSION.source}|\\bsessions\\.in\\(`);
-/** A session write: Sessions.update, a put, or a raw session emit. */
-const ANY_WRITE = /\bsessions\.update\(|\bthis\.update\(|\bsessions\.put\(|\bemit\(\s*['"`]session(?:\.patch)?['"`]/;
-
-/** file → the function of each session write whose condition reads a published session. @param {string[]} [extra] */
-function decidedByPublished(extra = []) {
-  /** @type {Record<string, string[]>} */
-  const out = {};
-  for (const [path, text] of withProbes(extra)) {
-    const lines = text.split('\n');
-    const getters = [...text.matchAll(GETTER)].filter((m) => PUBLISHED_READ.test(m[2])).map((m) => String.raw`${m[1]}\(\)`);
-    lines.forEach((line, i) => {
-      const at = line.search(ANY_WRITE);
-      if (at < 0 || /^\s*(\/\/|\*)/.test(line)) return;
-      let decl = i;
-      while (decl > 0 && !DECL.test(lines[decl])) decl--;
-      const body = lines.slice(decl, i + 1).join('\n');
-      // Bound from a published read, or from a getter of one, but not from a pending one (`pending.session(id) ?? …`).
-      const bound = [...body.matchAll(BIND)].filter(
-        (m) => (PUBLISHED_READ.test(m[2]) || getters.some((g) => new RegExp(g).test(m[2]))) && !/\bpending\./.test(m[2]),
-      );
-      const walked = [...body.matchAll(/\bfor\s*\(\s*(?:const|let)\s+(\w+)\s+of\s+([^\n]*)/g)].filter((m) => PUBLISHED_READ.test(m[2]));
-      const names = [...bound, ...walked].map((m) => String.raw`${m[1]}\b`);
-      const root = new RegExp(String.raw`(?<![\w$.])(?:${[...names, ...getters].join('|') || '(?!)'})|\.s\.sessions\[`);
-      const before = line.slice(0, at);
-      const above = /^\s*(?:\}\s*)?(?:else\s+)?if\s*\(.*\)\s*\{?\s*$/.test(lines[i - 1] ?? '') ? lines[i - 1] : '';
-      const cond = `${before.match(/\b(?:if|while)\s*\((.*)$/)?.[1] ?? ''} ${before.match(/^(.*)(?:&&|\?)[^&?]*$/)?.[1] ?? ''} ${above}`;
-      if (root.test(cond)) {
-        const m = lines[decl].match(DECL);
-        (out[path] ??= []).push(m ? (m[1] ?? m[2] ?? m[3]) : '(top)');
-      }
-    });
-  }
-  return out;
-}
-
-test('every session write in server/ that a published session read decides is placed', () => {
-  assert.deepEqual(decidedByPublished(), DECIDED_PUBLISHED, 'read the session that decides the write pending: store.pending.session, or sessions.pendingIn');
-});
-
-test('the guard finds a write a published read decides, on its line, the line above, or the loop it is in, and not a pending one', () => {
-  const probes = [
-    // turnExited's published read, and view's loop over the published sessions, as they were: found.
-    "export function zz1(rt, id) {\n  const se = rt.s.sessions[id];\n  if (se.state === 'stopping')\n    rt.sessions.update(id, { state: 'idle' });\n}",
-    'export function zz2(rt, t) {\n  for (const se of rt.sessions.in(t)) if (se.unread) rt.sessions.update(se.id, { unread: 0 });\n}',
-    'export function zz3(rt, id) { if (rt.s.sessions[id]?.sideTurn) rt.sessions.update(id, { sideTurn: null }); }',
-    "export function zz4(rt, id) {\n  const se = () => rt.s.sessions[id];\n  se().unread && rt.store.emit('session.patch', { id, unread: 0 });\n}",
-    // Read pending, or a published read that doesn't decide the write: not found.
-    "export function zz5(rt, id) {\n  const se = rt.store.pending.session(id) ?? rt.s.sessions[id];\n  if (se.state === 'stopping') rt.sessions.update(id, { state: 'idle' });\n}",
-    'export function zz6(rt, t) {\n  for (const se of rt.sessions.pendingIn(t)) if (se.unread) rt.sessions.update(se.id, { unread: 0 });\n}',
-    'export function zz7(rt, id, on) {\n  const se = rt.s.sessions[id];\n  if (on) rt.sessions.update(id, { currentStep: se.handle });\n}',
-  ];
-  const found = Object.keys(decidedByPublished(probes)).filter((k) => k.startsWith('extra-'));
-  assert.deepEqual(found, ['extra-0.mjs', 'extra-1.mjs', 'extra-2.mjs', 'extra-3.mjs']);
 });
 
 test('every session write in server/ is placed, by file and function, and a raw one is found', () => {

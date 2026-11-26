@@ -20,17 +20,20 @@ export function endChecks(checks, turn, se, took = []) {
   const stalled = stallSteps(checks, turn, se);
   if (turn.kind === 'lint') return quietLint(checks, turn, se);
   // The diagrams reported before this turn: its own, which the estimate may flag now, still get their syntax checked.
-  const before = new Set(checks.store.state.sessions[se.id]?.diagramsLinted ?? []);
+  // Pending: a diagram remembered behind a held commit was reported before (#623).
+  const before = new Set(checks.store.pending.session(se.id)?.diagramsLinted ?? []);
   endLint(checks, turn, [...checkTurn(checks, turn, se, took), ...stalled]);
   syntaxCheck(checks, turn, before).catch((e) => console.error(`Postbox couldn’t check a diagram’s syntax; the page still reports it: ${e.message}`));
 }
 
 /** The server’s checks over a finished turn. */
 export function checkTurn(checks, turn, se, took = []) {
-  const lineage = checks.threads.lineage(turn.threadId);
+  // As written (#623): a topic opened behind a held commit is in the turn’s lineage.
+  const written = (/** @type {string} */ id) => checks.store.pending.thread(id);
+  const lineage = checks.threads.lineage(turn.threadId, written);
   const items = lineage.flatMap((id) => checks.store.pending.items(id));
   const apps = Object.values(checks.store.pending.apps()).filter((a) => lineage.includes(a.threadId));
-  const problems = termProblems(turn.said, checks.threads.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
+  const problems = termProblems(turn.said, checks.threads.glossaryFor(turn.threadId, written), introducedTerms(items, apps), personSaid(items));
   // Diagrams too wide or too busy to read at the conversation’s width.
   const diagrams = lintDiagrams(turn.said);
   if (diagrams.length)

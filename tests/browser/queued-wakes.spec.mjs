@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { memberQueue } from './room-form.mjs';
 
 let app;
 const calls = [];
@@ -169,9 +170,14 @@ test('#427 ten queued messages stay out of the composer and edit in the agent’
     const composer = await page.locator('.composer').boundingBox();
     expect(composer.height, `${width} px composer height`).toBeLessThan(150);
   }
+  // From the room’s form, where the sidebar’s rows are hidden: the queue of the member picked, and back to its button.
   await page.locator('#conversation-actions').click();
-  await page.getByRole('menuitem', { name: `10 messages queued for ${r.worker.handle}` }).click();
+  const inForm = await memberQueue(page, r.worker.handle);
+  await expect(inForm).toHaveAccessibleName(`10 messages queued for ${r.worker.handle}`);
+  await inForm.click();
   await expect(page.locator('.agent-queue-dialog .agent-queue-row')).toHaveCount(10);
+  await page.keyboard.press('Escape');
+  await expect(inForm).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.locator('#conversation-actions')).toBeFocused();
   await page.setViewportSize({ width: 1280, height: 800 });

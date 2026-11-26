@@ -1,5 +1,5 @@
 // The queue view’s rules beyond the bound (#427; the design note design-427-1, V1, V2, V5 and V6): offline rows are
-// capped, each agent’s mail button counts its queue and the conversation’s ⋯ menu lists every queue (the composer’s
+// capped, each agent’s mail button counts its queue and the room’s Members list leads to each queue (the composer’s
 // waiting line went in #1437), Remove buttons have distinct names, and the agent’s dialog is modal, labelled, and gives
 // focus back somewhere that exists.
 import { expect, test } from '@playwright/test';
@@ -73,7 +73,7 @@ test('V1: ten messages written offline show in the composer as exactly two rows 
   await page.context().setOffline(false);
 });
 
-test('V2: each agent’s mail button counts its queue, and the ⋯ menu lists every queue and opens it', async ({ page }) => {
+test('V2: each agent’s mail button counts its queue, and the room’s Members list leads to each queue and opens it', async ({ page }) => {
   const { thread, sessions } = await busyRoom(page, 2);
   app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} one` });
   app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} two` });
@@ -86,13 +86,23 @@ test('V2: each agent’s mail button counts its queue, and the ⋯ menu lists ev
       .getByRole('button', { name: /queued for/ });
   await expect(mail(sessions[0])).toHaveAccessibleName(`2 messages queued for ${sessions[0].handle}`);
   await expect(mail(sessions[1])).toHaveAccessibleName(`1 message queued for ${sessions[1].handle}`);
-  // Where the rows are hidden, as on a phone, the ⋯ menu is the route to each queue.
+  // Where the rows are hidden, as in a narrow window, the room’s form is the route to each queue: the member picked’s.
   await page
     .locator('header.topbar')
-    .getByRole('button', { name: /^Actions for / })
+    .getByRole('button', { name: /^Manage / })
     .click();
-  await expect(page.getByRole('menuitem', { name: `1 message queued for ${sessions[1].handle}` })).toBeVisible();
-  await page.getByRole('menuitem', { name: `2 messages queued for ${sessions[0].handle}` }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  const pick = (se) =>
+    settings
+      .getByRole('listbox', { name: /^Members of / })
+      .getByRole('option')
+      .filter({ hasText: `@${se.handle}` })
+      .click();
+  await pick(sessions[1]);
+  await expect(settings.getByRole('button', { name: `1 message queued for ${sessions[1].handle}`, exact: true })).toBeVisible();
+  await pick(sessions[0]);
+  await expect(settings.getByRole('button', { name: `1 message queued for ${sessions[1].handle}`, exact: true })).toHaveCount(0);
+  await settings.getByRole('button', { name: `2 messages queued for ${sessions[0].handle}`, exact: true }).click();
   await expect(page.getByRole('dialog', { name: `2 queued for ${sessions[0].handle}` })).toBeVisible();
 });
 
