@@ -6,7 +6,7 @@ import { itemOf } from './item-index.mjs';
  * What a session can need you for. Every one makes its ring pulse, so every one counts (#285). A refused call isn't one:
  * the agent works around it, and its card only shows what happened (intent.md, principle 8).
  */
-export const NEEDS_KINDS = ['block', 'failed', 'hop', 'permission', 'toolask', 'viewask'];
+export const NEEDS_KINDS = ['block', 'failed', 'hop', 'mention', 'permission', 'toolask', 'viewask'];
 
 /**
  * Whether a session needs the one looking. `me` is their person id: a need that names people (`needsFor`, #1742) is

@@ -315,6 +315,7 @@ Changes in `intent.md`: most of “Attention and wakes”: the wake card, chain 
 - **An ask goes stale when its subject changes,** such as a new head, and says so instead of taking an answer meant for the old one.
 - **The answer reaches every author** as an inbox entry.
 - **A need rings one person,** the last to write in the room ([#1742](https://github.com/HJeon139/postbox/issues/1742); [architecture/people.md](architecture/people.md)). Built ahead of the rest of this section, on today’s one need for each session.
+- **A reply that names a person asks them** ([#1742](https://github.com/HJeon139/postbox/issues/1742)): a need of its own kind, `mention`, on today’s one need for each session, answered by reading. It is the first ask an agent addresses to one actor.
 - **What remains as needs you:** asks, a failed turn, and the harness’s own question when it asks. Wake, hop, add-agent, app send and permission cards go.
 
 Changes in `intent.md`: the needs-you rows in “Attention and wakes”, and principle 2’s “needs you”.

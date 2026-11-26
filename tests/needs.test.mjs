@@ -37,7 +37,7 @@ const state = {
 const all = Object.values(state.sessions);
 
 test('every kind an agent can need you for counts, a tool request and view_app’s download ask too, and a refused step doesn’t', () => {
-  assert.deepEqual(NEEDS_KINDS, ['block', 'failed', 'hop', 'permission', 'toolask', 'viewask']);
+  assert.deepEqual(NEEDS_KINDS, ['block', 'failed', 'hop', 'mention', 'permission', 'toolask', 'viewask']);
   assert.equal(needsYouNow({ needs: { kind: 'denial' } }), false, 'the agent works around a refusal');
   assert.equal(needsYouNow(state.sessions.c), true);
   assert.equal(needsYouNow(state.sessions.d), true);
