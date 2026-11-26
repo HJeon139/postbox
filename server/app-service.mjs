@@ -9,7 +9,8 @@
 import { retireApp } from './app-retire.mjs';
 import { appCheck, appEvent, appFile, appOf, appQuery, appState, registerApp, showApp, updateApp } from './apps.mjs';
 import { showBlock } from './block-show.mjs';
-import { answerDelivered, unreadAnswer, updateBlock } from './block-update.mjs';
+import { unreadAnswer } from './block-unread.mjs';
+import { answerDelivered, updateBlock } from './block-update.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { personAnswer } from './review-person.mjs';
 
