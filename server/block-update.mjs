@@ -39,9 +39,10 @@ function priorAnswerOf(existing) {
 }
 
 /**
- * update_block’s refusal over an answer the agent hasn’t read: the answer stays on screen, and the reply says what
- * it was. If its event is no longer waiting for the agent (a stopped or failed turn, or a restart, dropped it), the
- * reply carries the whole answer and counts as reading it, so the block isn’t stuck.
+ * update_block’s refusal over an answer the agent hasn’t read: the answer stays on screen, and the reply carries the
+ * whole answer and counts as reading it, so the agent can update once it has. If the answer still waits for the agent
+ * (behind its turn, or in its inbox), it’s settled there, so it reaches the agent once, in this reply (#1810). If it no
+ * longer waits (a stopped or failed turn, or a restart, dropped it), the reply is all that’s left of it.
  * @param {string} sessionId @param {string} threadId @param {any} it  the answered block item
  * @param {boolean} [outcome]  the update set outcome: it reports on an answer the agent can’t know yet
  */
@@ -57,16 +58,35 @@ export function unreadAnswer(apps, sessionId, threadId, it, outcome = false) {
         ? `${a.values?.verdict}${n ? `, ${n} comment${n === 1 ? '' : 's'}` : ''}`
         : `${a.action} ${clipText(full, 300)}`;
   const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
-  // Waiting behind the turn, or as an answer entry in the agent’s inbox (designs/rooms-at-scale.md, “What an entry is”).
-  const pending = apps.running.turnOf(sessionId)?.pending.some((p) => p.message.blockItemId === it.id);
-  const waiting = pending || apps.delivery.waiting(sessionId).some((e) => e.source === 'answer' && e.itemId === it.id);
-  const then = outcome ? 'then record the outcome' : 'then update';
-  if (waiting) return { ok: false, message: `${said} It reaches you when this turn ends: read it, ${then}.` };
+  const waited = settleWaiting(apps, sessionId, it);
   apps.threads.patchItem(threadId, it.id, { answer: { ...a, read: true } });
-  return {
-    ok: false,
-    message: `${said} It didn’t reach you in a turn, so ${it.block.type !== 'review' && full.length <= 300 ? 'that’s the whole answer' : `here it is in full: ${a.action} ${clipText(full, CATCH_UP_CHARS)}`}. Read it, ${then}.`,
-  };
+  const why = waited ? 'It was waiting for this turn to end, and comes here instead' : 'It didn’t reach you in a turn';
+  const whole =
+    it.block.type !== 'review' && full.length <= 300 ? 'that’s the whole answer' : `here it is in full: ${a.action} ${clipText(full, CATCH_UP_CHARS)}`;
+  return { ok: false, message: `${said} ${why}, so ${whole}. Read it, ${outcome ? 'then record the outcome' : 'then update'}.` };
+}
+
+/**
+ * Settles what still carries an unread answer to the agent, once update_block’s refusal has given it whole (#1810), so
+ * no later turn gives it again: its waiting entry in the agent’s inbox (designs/rooms-at-scale.md, “What an entry
+ * is”), and a message holding its event behind the live turn, or a stopped one still exiting, with the entry taken for
+ * it. Both are delivered, as a turn’s end delivers what it took. Returns whether anything waited.
+ * @param {string} sessionId @param {any} it  the answered block item
+ */
+function settleWaiting(apps, sessionId, it) {
+  const entries = apps.delivery.waiting(sessionId).filter((e) => e.source === 'answer' && e.itemId === it.id);
+  let held = false;
+  for (const list of [apps.running.turnOf(sessionId)?.pending, apps.running.exitOf(sessionId)?.held]) {
+    const carrying = (list ?? []).filter((p) => p.message.blockItemId === it.id);
+    if (!carrying.length) continue;
+    held = true;
+    list.splice(0, list.length, ...list.filter((p) => !carrying.includes(p)));
+    // The entry a turn took for it, whose turn now never starts: left taken, a restart would give it again.
+    for (const p of carrying.filter((x) => typeof x.message.turnId === 'string'))
+      entries.push(...apps.delivery.takenBy(sessionId, p.message.turnId).filter((e) => e.itemId === it.id));
+  }
+  if (entries.length) apps.delivery.deliveredNow(entries);
+  return held || entries.length > 0;
 }
 
 /**

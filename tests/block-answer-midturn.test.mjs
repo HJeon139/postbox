@@ -1,0 +1,131 @@
+// An agent’s update over its own block’s answer that came while its turn ran (#1810): the refusal gives the answer in
+// full and settles what still carried it, so the agent reads it once, updates in the same turn, and no later turn
+// gives it again. server/block-update.mjs, unreadAnswer.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { startFromEntries } from '../server/turns.mjs';
+import { sessionsIn } from './arrange.mjs';
+import { review, settle, setup, turn } from './blocks-fixture.mjs';
+
+const COMMENTS = [
+  { line: 1, text: 'Name the owner.' },
+  { line: 1, text: 'Say when it ships.' },
+];
+
+/** Every message a turn was given that carries the block’s answer, as an event or inside a batch. */
+const answersGiven = (adapter, itemId) =>
+  adapter.calls.flatMap((c) => c.message.messages ?? [c.message]).filter((m) => m.kind === 'event' && m.blockItemId === itemId);
+
+/**
+ * The block shown, then a turn that waits until the test lets it go, and then calls `step` with its tools. The person
+ * answers while it waits, and `during` runs once they have, before the turn goes on.
+ */
+async function answeredMidTurn({ during = () => {} } = {}) {
+  const s = setup();
+  const { rt, store, t, adapter } = s;
+  await turn(rt, adapter, t, (tools) => tools.show_block({ block: review }));
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  const se = sessionsIn(rt, t.id)[0];
+  let go = () => {};
+  let started = () => {};
+  const running = new Promise((r) => {
+    started = r;
+  });
+  const replies = [];
+  adapter.next.push(async (c) => {
+    await new Promise((r) => {
+      go = r;
+      started();
+    });
+    replies.push(c.tools.update_block({ block: { ...review, content: '# Draft 2' } }));
+    replies.push(c.tools.update_block({ block: { ...review, content: '# Draft 2' } }));
+  });
+  rt.sendMessage(t.id, { text: 'keep working' });
+  await running;
+  rt.act(t.id, item.id, 'submit', { verdict: 'request_changes', comments: COMMENTS }, 1);
+  during({ ...s, item, se });
+  const calls = adapter.calls.length;
+  go();
+  await settle(rt);
+  return { ...s, item, se, replies, calls };
+}
+
+/** The refusal gives the whole answer, and the update after it in the same turn applies. */
+function assertGivenOnce({ store, t, item, replies }) {
+  assert.equal(replies[0].ok, false);
+  assert.match(
+    replies[0].message,
+    /^The update wasn’t applied\. The person answered revision 1 of issue-agents-rail at \d\d:\d\d: request_changes, 2 comments\./,
+  );
+  assert.match(replies[0].message, /It was waiting for this turn to end, and comes here instead, so here it is in full: submit \{"verdict":"request_changes"/);
+  for (const c of COMMENTS) assert.ok(replies[0].message.includes(c.text), `the refusal carries “${c.text}”`);
+  assert.match(replies[0].message, /Read it, then update\.$/);
+  assert.equal(replies[1].ok, true, replies[1].message);
+  assert.equal(store.item(t.id, item.id).revision, 2);
+}
+
+test('#1810 an answer waiting in the agent’s inbox comes whole in the refusal, an update in the same turn applies, and no turn gives it again', async () => {
+  const s = await answeredMidTurn({
+    during: ({ rt, se, item }) => {
+      // The person’s answer waits as an entry in the agent’s inbox while it works.
+      assert.equal(rt.delivery.waiting(se.id).filter((e) => e.source === 'answer' && e.itemId === item.id).length, 1);
+    },
+  });
+  assertGivenOnce(s);
+  const { rt, t, adapter, item, se, calls } = s;
+  // No turn followed for the answer, and its entry was delivered by the refusal.
+  assert.equal(adapter.calls.length, calls);
+  assert.deepEqual(
+    rt.delivery
+      .inbox(se.id)
+      .filter((e) => e.itemId === item.id)
+      .map((e) => e.state),
+    ['delivered'],
+  );
+  await turn(rt, adapter, t, () => {}, 'and now?');
+  assert.deepEqual(answersGiven(adapter, item.id), []);
+});
+
+test('#1810 an answer held behind the running turn comes whole in the refusal, leaves the turn’s queue, and no turn gives it again', async () => {
+  const s = await answeredMidTurn({
+    during: ({ rt, se, item }) => {
+      // The inbox’s wake raced the turn: its entry was taken for a turn that waits behind this one.
+      startFromEntries(rt, se.id);
+      assert.equal(rt.running.turnOf(se.id).pending.filter((p) => p.message.blockItemId === item.id).length, 1);
+    },
+  });
+  assertGivenOnce(s);
+  const { rt, t, adapter, item, se, calls } = s;
+  assert.equal(adapter.calls.length, calls);
+  // The entry the waiting turn took is delivered, not left taken, which a restart would reopen and give again.
+  assert.deepEqual(
+    rt.delivery
+      .inbox(se.id)
+      .filter((e) => e.itemId === item.id)
+      .map((e) => e.state),
+    ['delivered'],
+  );
+  rt.delivery.start();
+  await settle(rt);
+  await turn(rt, adapter, t, () => {}, 'and now?');
+  assert.deepEqual(answersGiven(adapter, item.id), []);
+});
+
+test('#1810 an unread answer that no longer waits still comes whole in the refusal, which counts as reading it', async () => {
+  const { rt, store, t, adapter } = setup();
+  await turn(rt, adapter, t, (tools) => tools.show_block({ block: review }));
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  // As a stopped turn or a restart leaves it: answered and unread, with nothing carrying it.
+  const answer = { action: 'submit', values: { verdict: 'approve', comments: [] }, voice: 'Approved', at: Date.now(), revision: 1, read: false };
+  rt.threads.patchItem(t.id, item.id, { answered: true, answer });
+  const replies = await turn(rt, adapter, t, (tools) => [
+    tools.update_block({ block: { ...review, content: '# Draft 2' } }),
+    tools.update_block({ block: { ...review, content: '# Draft 2' } }),
+  ]);
+  assert.equal(replies[0].ok, false);
+  assert.match(
+    replies[0].message,
+    /It didn’t reach you in a turn, so here it is in full: submit \{"verdict":"approve","comments":\[\]\}\. Read it, then update\.$/,
+  );
+  assert.equal(replies[1].ok, true, replies[1].message);
+});
