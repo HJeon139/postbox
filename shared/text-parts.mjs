@@ -24,6 +24,17 @@ export function partEnd(text, end) {
 export const cutText = (text, n) => (text.length > n ? text.slice(0, partEnd(text, n)) : text);
 
 /**
+ * The last n characters of text, never starting inside a surrogate pair: one fewer where they would (#1686). The whole
+ * text when it fits. n is a whole number of 1 or more.
+ * @param {string} text @param {number} n
+ */
+export function tailText(text, n) {
+  if (text.length <= n) return text;
+  const from = text.length - n;
+  return text.slice(/[\uDC00-\uDFFF]/.test(text[from]) ? from + 1 : from);
+}
+
+/**
  * A Markdown fence for text: longer than any run of backticks in it, so the text can't close it.
  * @param {string} text
  */
