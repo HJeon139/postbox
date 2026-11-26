@@ -106,9 +106,23 @@ test('#1709 a locked worktree whose folder someone moved keeps its lock, and git
   const moved = join(home, 'moved', 'elsewhere');
   await rename(dir, moved);
   // Git refuses to add over a locked worktree whose folder is gone, so the agent works in the project’s folder.
-  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot), p.folder);
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: () => {} }), p.folder);
   assert.match(git(p.folder, ['worktree', 'list', '--porcelain']), /^locked on a removable drive$/m, 'the lock stays');
   assert.equal(git(moved, ['status', '--porcelain']), '?? draft.md\n', 'git still works in the moved folder');
+});
+
+test('#1709 git’s record of a worktree still being made, its folder since deleted, is cleared so the next turn makes it', async () => {
+  const { project: p, workRoot } = await project('stopped-hard');
+  const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
+  // As after a hard stop mid-add (git’s marker, read from git 2.52 mid-add) and the half-made folder deleted by hand.
+  const admin = git(dir, ['rev-parse', '--git-dir']).trim();
+  await writeFile(join(admin, 'locked'), 'initializing\n');
+  await rm(dir, { recursive: true, force: true });
+  const quiet = { log: () => {} };
+  // Git refuses the add over its own record; the record goes, and the next turn makes the worktree.
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, quiet), p.folder);
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, quiet), dir);
+  assert.equal(git(dir, ['show', 'HEAD:README.md']), 'hello\n');
 });
 
 test('#1709 in Auto, routine git runs with no card in an agent’s real worktree, as git lays it out', async () => {

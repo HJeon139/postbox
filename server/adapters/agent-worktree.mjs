@@ -21,8 +21,8 @@
 // conversations, and every turn in a folder that isn’t in git.
 
 import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, rm } from 'node:fs/promises';
-import { dirname, join, resolve, sep } from 'node:path';
+import { access, mkdir, readFile, realpath, rm } from 'node:fs/promises';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { storedFolder } from '../folder-path.mjs';
 import { runGit } from '../ledger-git.mjs';
 import { gitPointer } from './agy-git-dir.mjs';
@@ -109,12 +109,29 @@ async function worktree(git, repo, dir, branch) {
   if (added.code === 0) return { dir };
   // An add git stopped (its timeout) or refused may have made the folder, even its .git, and checked out part of it.
   // Only a folder this add made goes, through git and then from disk, so the next turn can make it whole. With no
-  // folder there, nothing was made: git refused, perhaps for a locked worktree whose folder someone moved, and
-  // removing would drop that lock and git’s record of the moved folder.
-  if (!there && (await exists(dir))) await removeWorktree(git, repo, dir);
+  // folder there, git’s record of one still being made goes too (a hard stop mid-add, its folder deleted after), since
+  // prune keeps it; a record someone locked stays, as for a locked worktree whose folder they moved.
+  if (!there && ((await exists(dir)) || (await gitsOwnLock(git, repo, dir)))) await removeWorktree(git, repo, dir);
   const lines = added.stderr.trim().split('\n');
   // Git prints progress before its reason, which starts `fatal:`.
   return { why: (lines.find((l) => l.startsWith('fatal:')) ?? lines[0])?.slice(0, 200) || `git exited with ${added.code}` };
+}
+
+/**
+ * Whether git’s record of the worktree at dir holds git’s own marker for one it’s still making (stateOf), read from
+ * `worktree list`, which names each by its real path.
+ * @param {Git} git @param {string} repo @param {string} dir
+ */
+async function gitsOwnLock(git, repo, dir) {
+  const real = await realpath(dirname(dir)).then(
+    (parent) => join(parent, basename(dir)),
+    () => dir,
+  );
+  const listed = (await git(repo, ['worktree', 'list', '--porcelain'])).stdout ?? '';
+  return listed.split('\n\n').some((entry) => {
+    const lines = entry.split('\n');
+    return (lines[0] === `worktree ${real}` || lines[0] === `worktree ${dir}`) && lines.includes('locked initializing');
+  });
 }
 
 /** Whether a path is there. @param {string} path */
