@@ -24,6 +24,8 @@ const NO_COMMANDS = [
   ['core.hooksPath', '/dev/null'],
   ['diff.external', ''],
   ['log.showSignature', 'false'],
+  // No git started inside a repository nested in the folder, whose own config the folder’s writer controls.
+  ['diff.ignoreSubmodules', 'all'],
 ];
 /** The subcommands that can run a diff driver or a textconv, which these flags turn off. */
 const DIFFS = new Set(['show', 'log', 'diff']);

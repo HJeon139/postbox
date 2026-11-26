@@ -3,7 +3,7 @@
 // anything in the agent’s folders, which the agent can write. Against real git, in the shared temp home.
 
 import assert from 'node:assert/strict';
-import { readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -118,3 +118,34 @@ function halfDone(dir, op) {
   writeFileSync(join(dir, 'README.md'), 'resolved\n');
   git(dir, ['add', 'README.md']);
 }
+
+test('#1709 a repository nested in the worktree isn’t committed, and runs nothing its own config names', async () => {
+  const w = await wrote('nested');
+  // Turn one: a repository of its own in a subfolder, committed at the turn’s end as a nested repository.
+  const sub = join(w.dir, 'sub');
+  await mkdir(sub, { recursive: true });
+  git(sub, ['init', '-q']);
+  writeFileSync(join(sub, 'f'), 'one\n');
+  git(sub, ['add', 'f']);
+  git(sub, ['commit', '-qm', 'one']);
+  assert.equal(await w.commit(), false, 'a repository of its own isn’t committed');
+  assert.match(w.logs.at(-1) ?? '', /holds a repository of its own/);
+  // As if one had reached the index anyway: its config names a program for its files, and one of them changes.
+  git(w.dir, ['add', 'sub']);
+  git(w.dir, ['commit', '-qm', 'nested']);
+  const marker = join(home, 'nested', 'ran');
+  writeFileSync(join(sub, '.git', 'config'), `${readFileSync(join(sub, '.git', 'config'), 'utf8')}[filter "x"]\n\tclean = "touch ${marker}; cat"\n`);
+  writeFileSync(join(sub, '.gitattributes'), 'f filter=x\n');
+  writeFileSync(join(sub, 'f'), 'two\n');
+  writeFileSync(join(w.dir, 'agent.txt'), 'more of the agent’s work\n');
+  assert.equal(await w.commit(), false);
+  assert.equal(existsSync(marker), false, 'the nested repository’s filter didn’t run');
+});
+
+test('#1709 a repository that writes relative worktree paths still has the turn’s work committed', async () => {
+  const { project: p, workRoot } = await project('relative');
+  git(p.folder, ['config', 'worktree.useRelativePaths', 'true']);
+  const dir = await agentWorktree(agent, p, workRoot);
+  await writeFile(join(dir, 'agent.txt'), 'the agent’s work\n');
+  assert.equal(await commitTurn(dir, agent, p, workRoot, { log: () => {} }), true);
+});

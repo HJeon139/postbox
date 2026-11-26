@@ -52,6 +52,11 @@ export async function commitTurn(cwd, persona, project, workRoot, { git = defaul
   const conflicted = changed.stdout.split('\n').some((l) => /^(?:DD|AU|UD|UA|DU|AA|UU) /.test(l));
   const midway = (await inProgress(g, place.admin)) ?? (conflicted ? 'conflict' : null);
   if (midway) return refuse(`a ${midway} is in progress there`);
+  // A repository nested in it: adding it starts git inside that repository, whose own config the agent wrote. A new
+  // one shows in the status as a folder; one the index already holds, as a gitlink.
+  const nestedNew = changed.stdout.split('\n').some((l) => l.startsWith('?? ') && l.endsWith('/'));
+  const tracked = await g(['ls-files', '--stage']);
+  if (nestedNew || tracked.code !== 0 || /^160000 /m.test(tracked.stdout)) return refuse('it holds a repository of its own');
   const added = await g(['add', '-A']);
   // Unsigned: signing would run gpg.program, a program from the repository’s or the person’s config, and could wait
   // on a passphrase. And no automatic maintenance, whose gc can prune the repository’s worktrees, the person’s own.
@@ -79,7 +84,8 @@ async function recordOf(git, cwd, folder, workRoot) {
   const records = join(common.stdout.trim(), 'worktrees');
   for (const name of await readdir(records).catch(() => [])) {
     const gitdir = await readFile(join(records, name, 'gitdir'), 'utf8').catch(() => '');
-    if (resolve(gitdir.trim()) === join(top, '.git')) return { top, admin: join(records, name) };
+    // Relative to the record, when git writes relative paths (worktree.useRelativePaths).
+    if (gitdir.trim() && resolve(join(records, name), gitdir.trim()) === join(top, '.git')) return { top, admin: join(records, name) };
   }
   return null;
 }

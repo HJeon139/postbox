@@ -88,6 +88,7 @@ test('every git read sets off the commands a repository’s config can name, its
       'core.hooksPath': '/dev/null',
       'diff.external': '',
       'log.showSignature': 'false',
+      'diff.ignoreSubmodules': 'all',
       'filter.lfs.clean': '',
       'filter.lfs.smudge': '',
       'filter.lfs.process': '',
