@@ -2,6 +2,7 @@
 // #153). Memory’s describeItem and topicRootLine call these, with Memory first (designs/architecture/services.md, “Memory”).
 
 import { READING } from '../shared/limits.mjs';
+import { senderName } from '../shared/profile.mjs';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { authorName, commentAt, PERSON } from '../shared/review-comments.mjs';
 import { cutText } from '../shared/text-parts.mjs';
@@ -88,8 +89,11 @@ const commenter = (author) => (author === PERSON ? 'The person' : authorName(aut
  */
 const toWhom = (i) => (i.to?.length ? ` to ${i.to.map((/** @type {string} */ h) => `@${h}`).join(', ')}` : '');
 
-/** The person’s message as a line: “The person, to @alpha: …”, or “The person: …” for one with no recipients kept. */
-const personSaid = (i) => (i.to?.length ? `The person,${toWhom(i)}` : 'The person');
+/**
+ * The person’s message as a line: “The person, to @alpha: …”, or “The person: …” for one with no recipients kept. With
+ * more than one person, the sender is named (#1742, shared/profile.mjs’s senderName).
+ */
+const personSaid = (memory, i) => `${senderName(memory.store.state.people, i.personId)}${i.to?.length ? `,${toWhom(i)}` : ''}`;
 
 /** A bulleted list, one line per entry. */
 const lines = (list) => list.map((x) => `- ${x}`).join('\n');
@@ -222,9 +226,9 @@ export function topicRootLine(memory, se, t) {
  * @param {any} memory @param {any} i @param {(s: string) => string} text  clips to the line’s length @param {any} reader
  */
 function personLine(memory, i, text, reader) {
-  if (i.removed) return `${personSaid(i)}: (a message removed before any agent read it)`;
-  if (reader && i.removedFor?.includes(reader.id)) return `${personSaid(i)}: (a message the person removed for you before you read it)`;
-  return `${personSaid(i)}: ${text(i.text)}${attachedText(memory, i.attachments, reader)}`;
+  if (i.removed) return `${personSaid(memory, i)}: (a message removed before any agent read it)`;
+  if (reader && i.removedFor?.includes(reader.id)) return `${personSaid(memory, i)}: (a message the person removed for you before you read it)`;
+  return `${personSaid(memory, i)}: ${text(i.text)}${attachedText(memory, i.attachments, reader)}`;
 }
 
 /**

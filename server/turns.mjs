@@ -4,7 +4,7 @@
 // Functions take the Runtime first, as waiting code does until Turns is a service.
 
 import { SENDING, TURN_INPUT } from '../shared/limits.mjs';
-import { aboutPeople } from '../shared/profile.mjs';
+import { aboutPeople, senderName } from '../shared/profile.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
 import { lostEvent } from './app-entries.mjs';
 import { newerElsewhere } from './newer-waiting.mjs';
@@ -89,8 +89,11 @@ export function inputOf(rt, se, { entries, as }, where) {
   const notes = [...newerElsewhere(rt, se.id, threadId, entries), ...room.notes];
   // The profiles people have saved, as they are now (#558), so an edit reaches a session that’s already running.
   const about = aboutPeople(Object.values(rt.s.people));
-  const text = turnInput({ entries, thread, read, tail, notes, root, waitingElsewhere: elsewhere, wroteOnly: wroteOnlyTo(rt, se, where), about });
-  const attachments = entries.flatMap((e) => (e.itemId ? (rt.store.pending.item(e.threadId, e.itemId)?.attachments ?? []) : []));
+  // An entry’s item as written: who sent it, named when there is more than one person (#1742), and its files.
+  const itemOf = (/** @type {any} */ e) => (e.itemId ? rt.store.pending.item(e.threadId, e.itemId) : null);
+  const person = (/** @type {any} */ e) => senderName(rt.s.people, itemOf(e)?.personId);
+  const text = turnInput({ entries, thread, read, person, tail, notes, root, waitingElsewhere: elsewhere, wroteOnly: wroteOnlyTo(rt, se, where), about });
+  const attachments = entries.flatMap((e) => itemOf(e)?.attachments ?? []);
   // The threads the person’s messages link to, each with how to read it (threadRefs, #121), ride with it.
   const links = entries.flatMap((e) => (e.source === 'person' && e.itemId ? threadRefs(rt, e.threadId, read(e.itemId) ?? '') : []));
   // Its plain parts stay on what was asked (`turn.asked`), where what reads them looks; the agent is given the text.

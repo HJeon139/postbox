@@ -359,8 +359,8 @@ export class Runtime {
   // ── Messages from you: server/send-message.mjs and message-queue.mjs ──────────────
 
   /** You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies. */
-  sendMessage(threadId, message) {
-    return sendMessage(this, threadId, message);
+  sendMessage(threadId, message, sender) {
+    return sendMessage(this, threadId, message, sender);
   }
 
   // A message waiting in an agent’s queue is an entry in its inbox (server/entry-queue.mjs).

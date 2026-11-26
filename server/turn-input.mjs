@@ -33,9 +33,12 @@ const SOURCE_NOTE = {
   event: ', from an app',
 };
 
-/** Who an entry is from: the person, an agent by its handle, or Postbox for what no one wrote. */
-function sender(/** @type {Entry} */ e) {
-  if (e.from === 'you') return 'The person';
+/**
+ * Who an entry is from: the person, an agent by its handle, or Postbox for what no one wrote. `person` names the
+ * person among several (#1742); with none given it is “The person”.
+ */
+function sender(/** @type {Entry} */ e, /** @type {(e: Entry) => string} */ person) {
+  if (e.from === 'you') return person(e);
   return e.from ? `@${e.from}` : 'Postbox';
 }
 
@@ -62,12 +65,13 @@ function entryText(e, read) {
  * One entry as the turn gives it: its id, who it is from, what it is and when, then its text. What Delivery counts
  * against the budget for all entries in a turn is this line’s length.
  * @param {Entry} e @param {(itemId: string) => string | null} read
+ * @param {(e: Entry) => string} [person]  who a person’s entry is from, as shared/profile.mjs’s senderName says it
  */
-export function entryLine(e, read) {
+export function entryLine(e, read, person = () => 'The person') {
   const again = e.resend ? ', sent again in case it didn’t reach you' : '';
   // Without the sender’s handle: a second line that named it would wake it when an agent copies the entry.
   const since = e.postedSince?.length ? `\n(The same sender posted since: ${e.postedSince.map((id) => `[${id}]`).join(', ')})` : '';
-  return `[${e.itemId ?? e.id}] ${sender(e)}${SOURCE_NOTE[e.source] ?? ''}, ${when(e.at)}${again}: ${entryText(e, read)}${since}`;
+  return `[${e.itemId ?? e.id}] ${sender(e, person)}${SOURCE_NOTE[e.source] ?? ''}, ${when(e.at)}${again}: ${entryText(e, read)}${since}`;
 }
 
 /**
@@ -120,14 +124,14 @@ function replyGoes(entries, wroteOnly) {
 }
 
 /** The first part: the entries, with where the reply posts and goes, and what waits elsewhere. */
-function entriesPart({ entries, thread, read, waitingElsewhere, wroteOnly }) {
+function entriesPart({ entries, thread, read, person, waitingElsewhere, wroteOnly }) {
   const n = entries.length;
   const one = waitingElsewhere === 1;
   const more = waitingElsewhere
     ? ` ${count(waitingElsewhere)} more ${one ? 'waits in another thread, and starts' : 'wait in other threads, and start'} your next turn.`
     : '';
   const head = `[Postbox] ${count(n)} ${n === 1 ? 'message' : 'messages'} for you ${place(thread)}. Your reply posts there${replyGoes(entries, wroteOnly)}${more}`;
-  return [head, ...entries.map((/** @type {Entry} */ e) => entryLine(e, read))].join('\n\n');
+  return [head, ...entries.map((/** @type {Entry} */ e) => entryLine(e, read, person))].join('\n\n');
 }
 
 /**
@@ -162,14 +166,33 @@ function tailPart({ tail, notes, thread }) {
  * @param {number} [input.waitingElsewhere]  entries waiting in other threads
  * @param {string[]} [input.stopped]  ids of entries the person’s Stop kept from starting a turn
  * @param {string[]} [input.wroteOnly]  whom the agent’s last replies in the thread, which only wrote, were for (reply-back.mjs)
+ * @param {(e: Entry) => string} [input.person]  who a person’s entry is from; “The person” with none given
  * @param {string | null} [input.about]  who the people say they are, as shared/profile.mjs’s aboutPeople words it; none while no one has saved a profile
  */
-export function turnInput({ entries, thread, read, tail = [], notes = [], root = null, waitingElsewhere = 0, stopped = [], wroteOnly = [], about = null }) {
+export function turnInput({
+  entries,
+  thread,
+  read,
+  person,
+  tail = [],
+  notes = [],
+  root = null,
+  waitingElsewhere = 0,
+  stopped = [],
+  wroteOnly = [],
+  about = null,
+}) {
   const halted = stopped.length
     ? `[Postbox] The person stopped you before a turn started from ${stopped.map((id) => `[${id}]`).join(', ')}. read_message reads one.`
     : null;
   // Who the person says they are (#558), after what the turn is for and apart from the room’s tail, which is cut to its newest.
-  return [root && `[Postbox] ${root}`, entriesPart({ entries, thread, read, waitingElsewhere, wroteOnly }), halted, about, tailPart({ tail, notes, thread })]
+  return [
+    root && `[Postbox] ${root}`,
+    entriesPart({ entries, thread, read, person, waitingElsewhere, wroteOnly }),
+    halted,
+    about,
+    tailPart({ tail, notes, thread }),
+  ]
     .filter(Boolean)
     .join('\n\n');
 }

@@ -101,3 +101,18 @@ export function aboutPeople(people) {
   if (told.length === 1) return `${ABOUT_THE_PERSON}\n${told[0].join('\n')}`;
   return `${ABOUT_THE_PEOPLE}\n${told.map((lines) => lines.join('\n')).join('\n\n')}`;
 }
+
+/**
+ * Who a person’s message is from, as an agent reads it (#1742). “The person” while this Postbox knows one person, as
+ * agents have always read it, and for a message whose sender it doesn’t know (one typed in a terminal, or from before
+ * senders were kept). With more than one, the name they saved, else their user name, after the same two words, so no
+ * name reads as an agent’s handle or as Postbox. On one line: a turn is read line by line.
+ * @param {Record<string, { username?: string, profile?: { name?: string } }> | undefined} people @param {string | undefined} personId
+ */
+export function senderName(people, personId) {
+  const known = people ?? {};
+  const sender = personId ? known[personId] : undefined;
+  if (!sender || Object.keys(known).length < 2) return 'The person';
+  const name = line(sender.profile?.name || sender.username, PROFILE.name);
+  return name ? `The person ${name}` : 'The person';
+}

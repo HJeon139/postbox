@@ -2,6 +2,7 @@
 // summary of about 20 tokens that the thread’s line carries. What the agents read of a thread, with that line, is in
 // thread-catch-up.mjs.
 
+import { senderName } from '../shared/profile.mjs';
 import { clipText } from './helpers.mjs';
 import { SUMMARY_MODEL } from './summary-model.mjs';
 
@@ -100,7 +101,7 @@ export async function summarizeThread(summaries, threadId, summarize) {
   // The thread is data between markers, never instructions: a marker in it is broken up.
   const text = said
     .slice(-12)
-    .map((i) => `${i.kind === 'user' ? 'The person' : `@${i.handle}`}: ${clipText(i.text, 600)}`)
+    .map((i) => `${i.kind === 'user' ? senderName(summaries.store.state.people, i.personId) : `@${i.handle}`}: ${clipText(i.text, 600)}`)
     .join('\n\n')
     .replace(/<\s*(\/?)\s*thread/gi, '<$1_thread');
   /** @type {{ text: string, costUsd?: number|null } | null} */

@@ -5,6 +5,7 @@ import { PROFILE } from '/shared/limits.mjs';
 import { ALIAS_KINDS, aboutThePerson } from '/shared/profile.mjs';
 import { api, client } from './client.mjs';
 import { h } from './dom.mjs';
+import { otherPerson } from './speaker-line.mjs';
 import { toast } from './ui.mjs';
 
 /** A field of the tab: it stops at its bound as you type (`max`, from PROFILE), so a save never cuts what you see. */
@@ -59,6 +60,15 @@ export const me = () => client.state.people?.[client.config?.me?.id] ?? client.c
 /** What they’re called here: the name they saved, else the one their sign-in or their computer’s account gave. */
 export const called = (/** @type {any} */ person) => person?.profile?.name ?? person?.name ?? '';
 
+/**
+ * Whose message it is, over a person’s message (#1742): “You” for the one looking and for a message that names no
+ * sender, else what the person who sent it is called. @param {any} it
+ */
+export const saidBy = (it) => {
+  const other = otherPerson(it);
+  return other ? called(client.state.people[other]) : 'You';
+};
+
 /** The letters of the top bar’s button: the initials of what the one looking is called. */
 const initials = () =>
   called(me())
@@ -100,7 +110,8 @@ export function profile(paint, setFoot) {
   const saved = person.profile ?? {};
   // Until they first save, the Name field holds the one their account gave, which is theirs to change or clear. Once
   // they have saved, it holds what they saved: a name they emptied stays empty, and doesn’t come back on the next save.
-  const kept = Boolean(client.state.people?.[person.id]);
+  // A record kept because they sent a message (`unsaved`, server/people.mjs) isn’t a save.
+  const kept = Boolean(client.state.people?.[person.id]) && !person.unsaved;
   const unsaved = kept ? '' : ` It starts as “${person.name}”, from your computer’s account, and agents aren’t told it until you save.`;
   const value = (/** @type {string} */ id) => /** @type {HTMLInputElement} */ (document.getElementById(id)).value;
   const save = () =>

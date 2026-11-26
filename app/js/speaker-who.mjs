@@ -1,9 +1,11 @@
-// A message’s speaker line: the agent’s ring, its handle and the time, or “You” for the person’s own. Moved out of
+// A message’s speaker line: the agent’s ring, its handle and the time, or “You” for the person’s own, and another
+// person’s name for theirs (#1742). Moved out of
 // app/js/thread.mjs, which draws the transcript and calls it for each message that names its speaker.
 
 import { mockMarker } from './agent-facts.mjs';
 import { client } from './client.mjs';
 import { dayOf, h, timeOf } from './dom.mjs';
+import { saidBy } from './profile-tab.mjs';
 import { replyLine } from './reply-rings.mjs';
 import { namesSpeaker } from './speaker-line.mjs';
 
@@ -22,7 +24,7 @@ export const who = (it, { you = false, threadId = '' } = {}) => {
   const ts = h('span.ts', { title: `${dayOf(it.at)} ${timeOf(it.at)}` }, timeOf(it.at));
   // A turn typed into Claude Code in a terminal, mirrored here, says so.
   const via = it.via === 'terminal' ? h('span.via', 'from terminal') : null;
-  if (you) return h('div.who', ts, h('b', 'You'), via);
+  if (you) return h('div.who', ts, h('b', saidBy(it)), via);
   const { ring, word } = se ? replyLine(it, se, threadId) : { ring: h('pb-ring', { name: it.handle, state: 'idle', ctx: '0', size: 'xs' }), word: null };
   const woke = it.woke ? h('span.woke', wokeText(it.woke)) : null;
   return h('div.who', ring, h('b', it.handle), mockMarker(se), word, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
