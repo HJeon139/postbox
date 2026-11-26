@@ -20,7 +20,7 @@ const answersGiven = (adapter, itemId) =>
  * The block shown, then a turn that waits until the test lets it go, and then calls `step` with its tools. The person
  * answers while it waits, and `during` runs once they have, before the turn goes on.
  */
-async function answeredMidTurn({ during = () => {} } = {}) {
+async function answeredMidTurn({ during = () => {}, comments = COMMENTS } = {}) {
   const s = setup();
   const { rt, store, t, adapter } = s;
   await turn(rt, adapter, t, (tools) => tools.show_block({ block: review }));
@@ -42,7 +42,7 @@ async function answeredMidTurn({ during = () => {} } = {}) {
   });
   rt.sendMessage(t.id, { text: 'keep working' });
   await running;
-  rt.act(t.id, item.id, 'submit', { verdict: 'request_changes', comments: COMMENTS }, 1);
+  rt.act(t.id, item.id, 'submit', { verdict: 'request_changes', comments }, 1);
   during({ ...s, item, se });
   const calls = adapter.calls.length;
   go();
@@ -128,4 +128,41 @@ test('#1810 an unread answer that no longer waits still comes whole in the refus
     /It didn’t reach you in a turn, so here it is in full: submit \{"verdict":"approve","comments":\[\]\}\. Read it, then update\.$/,
   );
   assert.equal(replies[1].ok, true, replies[1].message);
+});
+
+test('#1810 an answer too long to give whole in the refusal isn’t settled: it comes whole at the turn’s end', async () => {
+  // Five comments of 3,500 characters are past the refusal’s cut (CATCH_UP_CHARS): its tail would be lost for good.
+  const long = Array.from({ length: 5 }, (_, i) => ({ line: 1, text: `${i} ${'x'.repeat(3500)}` }));
+  const f = await answeredMidTurn({ comments: long });
+  assert.equal(f.replies[0].ok, false);
+  assert.match(f.replies[0].message, /It reaches you whole when this turn ends: read it, then update\./);
+  assert.equal(answersGiven(f.adapter, f.item.id).length, 1, 'the next turn gets it, whole, once');
+});
+
+test('#1810 a correction the person sent since still comes: only the answer itself is settled', async () => {
+  const f = await answeredMidTurn({
+    during: ({ rt, t, item, se }) => {
+      const event = {
+        blockId: item.block.id,
+        revision: 1,
+        action: 'correct',
+        values: { threadId: 'th_x', replaces: 'Name the owner.', text: 'Name the team.' },
+      };
+      rt.delivery.send({
+        sessionId: se.id,
+        threadId: t.id,
+        source: 'answer',
+        itemId: item.id,
+        from: 'you',
+        message: { kind: 'event', event, blockItemId: item.id },
+      });
+    },
+  });
+  assert.equal(f.replies[0].ok, false);
+  const given = answersGiven(f.adapter, f.item.id);
+  assert.deepEqual(
+    given.map((m) => m.event?.action),
+    ['correct'],
+    'the correction reaches the next turn; the answer, given in the refusal, doesn’t',
+  );
 });
