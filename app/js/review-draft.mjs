@@ -101,3 +101,26 @@ export function followOpen(draft, from, to) {
   if (draft.composing !== null && typeof draft.composing !== 'string') draft.composing = follow(draft.composing, from, to);
   draft.parked = draft.parked.map((p) => (typeof p.key === 'string' ? p : { ...p, key: follow(p.key, from, to) }));
 }
+
+/** The comments an answer sends (#518), marked as it goes. A spread copies the mark, as followLines copies a comment. */
+const SENT = Symbol('sent');
+
+/** Marks what an answer sends: its comments, and its verdict. @param {any} d  the review’s draft, if it has one */
+export function markSent(d) {
+  if (!d || !Array.isArray(d.comments)) return null;
+  for (const c of d.comments) c[SENT] = true;
+  return { d, verdict: d.verdict };
+}
+
+/**
+ * An answer settled after the agent revised the review, and every revision draws from one draft (#518): what the person
+ * started on the newer revision stays, and what this answer sent goes, its comments and its verdict, as a draft the
+ * answer cleared would have them. False when the draft isn’t the one the answer sent.
+ * @param {any} d @param {ReturnType<typeof markSent>} sent
+ */
+export function keepUnsent(d, sent) {
+  if (!sent || d !== sent.d) return false;
+  d.comments = d.comments.filter((/** @type {any} */ c) => !c[SENT]);
+  if (d.verdict === sent.verdict) d.verdict = newReviewDraft('').verdict;
+  return true;
+}

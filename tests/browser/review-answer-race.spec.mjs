@@ -81,3 +81,58 @@ test('#518 a draft started on a newer revision survives the older answer settlin
     .toEqual(['Rank by date.']);
   expect(store.item(t.id, item.id).answer.revision).toBe(2);
 });
+
+test('#518 when the page never drew the answered block, the older answer’s comments and verdict don’t carry into the newer revision', async ({ page }) => {
+  const { rt, store } = app;
+  const projectId = Object.values(store.state.projects)[0].id;
+  const t = rt.createThread({ projectId, title: 'Away', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const elsewhere = rt.createThread({ projectId, title: 'Elsewhere', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
+  tools.show_block({ block: DRAFT });
+  const item = store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'plan');
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const block = page.locator(`#main [data-key="${item.id}"]`);
+  // The answer is held before it reaches Postbox, then sent once the page is elsewhere, so it lands while the block
+  // isn’t drawn; its reply to the page is held until after the agent revises.
+  /** @type {() => void} */
+  let send = () => {};
+  const sendNow = new Promise((r) => {
+    send = () => r(undefined);
+  });
+  /** @type {() => void} */
+  let release = () => {};
+  const released = new Promise((r) => {
+    release = () => r(undefined);
+  });
+  await page.route(`**/api/threads/${t.id}/items/${item.id}/act`, async (route) => {
+    await sendNow;
+    const response = await route.fetch();
+    await released;
+    await route.fulfill({ response });
+  });
+  await block.getByRole('radio', { name: 'Lines' }).click();
+  await block.locator('.g-mark[data-line="3"]').click();
+  await page.keyboard.insertText('Index the titles too.');
+  await block.getByRole('button', { name: 'Add draft comment' }).click();
+  await block.getByRole('radio', { name: 'Approve', exact: true }).click();
+  await block.getByRole('button', { name: 'Submit review', exact: true }).click();
+  // The person goes to another conversation while the answer is on its way, so the page never draws it answered.
+  await page.goto(`${app.origin}/#/t/${elsewhere.id}`);
+  await synced(page, app);
+  send();
+  await expect.poll(() => store.item(t.id, item.id).answer?.read, { message: 'the agent read the approval' }).toBe(true);
+  const said = tools.update_block({ block: { ...DRAFT, content: `${DRAFT.content}\n\nThen rank.` } });
+  expect(said.ok, said.message).toBe(true);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(block.locator('.rv-receipt'), 'revision 2 is drawn').toBeVisible();
+  release();
+  await page.waitForResponse(`**/api/threads/${t.id}/items/${item.id}/act`);
+  await block.getByRole('radio', { name: 'Preview' }).click();
+  await block.getByRole('radio', { name: 'Lines' }).click();
+  // Sent, it stays on the block as the person’s thread; it mustn’t also be a draft, to be sent again.
+  const drafted = block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
+  await expect(drafted.filter({ hasText: 'Index the titles too.' }), 'revision 1’s comment isn’t a draft on revision 2').toHaveCount(0);
+  await expect(block.getByRole('radio', { name: 'Approve', exact: true }), 'nor is its verdict').toHaveAttribute('aria-checked', 'false');
+});

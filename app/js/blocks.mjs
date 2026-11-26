@@ -15,6 +15,7 @@ import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { formField } from './form-field.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
 import { renderReview } from './review.mjs';
+import { keepUnsent, markSent } from './review-draft.mjs';
 import { forgetReviewDraft } from './review-draft-store.mjs';
 import { fmtCell } from './table-cells.mjs';
 import { scrollFrame } from './table-scroll.mjs';
@@ -101,11 +102,14 @@ async function submit(item, ctx, action, values, setError) {
   setError(null);
   const s = seen.get(item.id);
   const asked = s?.revision ?? item.revision ?? 1;
+  const sent = markSent(drafts.get(item.id));
   try {
     await ctx.act(action, values, asked);
-    // The agent revised it while this answer was on its way, and every revision draws from this one draft: what the
-    // person started on the newer one stays (#518). What this answer sent went when its block was drawn answered.
-    if ((seen.get(item.id)?.revision ?? 0) > asked) return;
+    // Revised while this answer was on its way: what the person started on the newer revision stays (#518).
+    if ((seen.get(item.id)?.revision ?? 0) > asked && keepUnsent(drafts.get(item.id), sent)) {
+      forgetReviewDraft(item.id);
+      return;
+    }
     drafts.delete(item.id);
     forgetReviewDraft(item.id);
     seen.delete(item.id);
