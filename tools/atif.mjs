@@ -328,7 +328,7 @@ const withClock = (scope, clock) => ({ notes: clock.note ? `${clock.note} ${scop
 /**
  * Every agent session’s trajectory in the events, or only `sessionId`’s.
  * @param {Event[]} events @param {{ version: string, live?: any[], prompts?: any[], sessionId?: string, blob?: (sha256: string) => string | null }} opts
- *   prompts: prompts.jsonl’s rows; blob: a stored blob's text, for the outputs live frames don't carry
+ *   prompts: prompts.jsonl’s rows; blob: a stored blob's text, for each call's output (tools/atif-calls.mjs)
  * @returns {{ sessionId: string, handle: string|null, trajectory: any }[]}
  */
 export function trajectories(events, { version, live = [], prompts = [], sessionId, blob }) {
