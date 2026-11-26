@@ -33,6 +33,8 @@ test('#1726 a frame mounted under a resting pointer takes it, so typing reaches 
   if (!box) throw new Error('The app’s place has no box.');
   await page.mouse.move(box.x + 40, box.y + 20);
   const iframe = page.locator('iframe.app-iframe[title="Rest app"]');
+  // Read once, not waited for: a frame already there when the pointer stopped would take it from the move itself.
+  expect(await iframe.count(), 'the pointer came to rest before the frame mounted').toBe(0);
   await expect(iframe, 'the frame mounts under the resting pointer').toHaveCount(1, { timeout: 30_000 });
   await expect(iframe, 'and takes the pointer, with no move').toHaveClass(/\blive\b/);
   await iframe.contentFrame().locator('#draft').fill('typed');
