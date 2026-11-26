@@ -291,8 +291,10 @@ export async function commitTurn(cwd, persona, project, workRoot, { git = defaul
   // Every untracked file, whatever status.showUntrackedFiles says, or a turn that only made files commits nothing.
   const changed = await git(cwd, ['status', '--porcelain', '--untracked-files=all']);
   if (changed.code !== 0 || !changed.stdout.trim()) return false;
-  // A merge, rebase or cherry-pick the agent left half done would be committed as resolved, markers and all.
-  const midway = await inProgress(git, cwd);
+  // A conflict, or a merge, rebase or cherry-pick the agent left half done, would be committed as resolved, markers
+  // and all. A conflict shows in the status itself, whatever left it (a stash pop leaves no file to see it by).
+  const conflicted = changed.stdout.split('\n').some((l) => /^(?:DD|AU|UD|UA|DU|AA|UU) /.test(l));
+  const midway = (await inProgress(git, cwd)) ?? (conflicted ? 'conflict' : null);
   if (midway) {
     log(`Postbox didn’t commit @${persona.handle}’s work in ${cwd}: a ${midway} is in progress there, so it stays uncommitted.`);
     return false;
@@ -323,7 +325,14 @@ export async function commitTurn(cwd, persona, project, workRoot, { git = defaul
 }
 
 /** What git leaves half done in a worktree, by the file it keeps while it’s under way. */
-const MIDWAY = { MERGE_HEAD: 'merge', CHERRY_PICK_HEAD: 'cherry-pick', REVERT_HEAD: 'revert', 'rebase-merge': 'rebase', 'rebase-apply': 'rebase' };
+const MIDWAY = {
+  MERGE_HEAD: 'merge',
+  CHERRY_PICK_HEAD: 'cherry-pick',
+  REVERT_HEAD: 'revert',
+  'rebase-merge': 'rebase',
+  'rebase-apply': 'rebase or am',
+  BISECT_START: 'bisect',
+};
 
 /** Which operation is half done in the worktree at cwd, or null. @param {Git} git @param {string} cwd */
 async function inProgress(git, cwd) {

@@ -168,3 +168,21 @@ test('#1709 a turn that only made files is committed, whatever status.showUntrac
   const files = git(dir, ['show', '--name-only', '--format=', 'HEAD']).trim().split('\n');
   assert.deepEqual(files, ['new.md'], 'the new file, and nothing of the plugin');
 });
+
+test('#1709 a conflict that leaves no marker file, as a stash pop does, isn’t committed with its markers', async () => {
+  const { project: p, workRoot } = await project('stash');
+  const dir = await agyOver(p, workRoot, 'stash').folder();
+  writeFileSync(join(dir, 'README.md'), 'stashed\n');
+  git(dir, ['stash', '-q']);
+  writeFileSync(join(dir, 'README.md'), 'committed\n');
+  git(dir, ['commit', '-qam', 'committed']);
+  try {
+    git(dir, ['stash', 'pop', '-q']);
+  } catch {} // the conflict
+  const head = git(dir, ['rev-parse', 'HEAD']);
+  /** @type {string[]} */
+  const logs = [];
+  assert.equal(await commitTurn(dir, { handle: 'gem' }, p, workRoot, { log: (l) => logs.push(l) }), false);
+  assert.equal(git(dir, ['rev-parse', 'HEAD']), head, 'nothing committed');
+  assert.match(logs[0] ?? '', /a conflict is in progress there/);
+});
