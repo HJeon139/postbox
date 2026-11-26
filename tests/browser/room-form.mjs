@@ -14,7 +14,7 @@ export const member = (page, handle) =>
     .filter({ has: page.locator('b', { hasText: new RegExp(`^@${handle}$`) }) });
 
 /**
- * Picks an agent in Members, and answers the bar’s button to its queued messages, which shows while it has any.
+ * Picks an agent in Members, and answers the bar’s button to its queued messages, which is off while it has none.
  * @param {import('@playwright/test').Page} page @param {string} handle
  */
 export async function memberQueue(page, handle) {

@@ -224,7 +224,7 @@ function membersList(/** @type {any} */ t, /** @type {() => void} */ paint, /** 
 
 /**
  * What else acts on the member picked, when it is an agent: Edit, which shows its persona’s form, and its queued
- * messages while it has any. @param {any} se  the pick’s session, or none for a person @param {Record<string, Function>} sheets
+ * messages, off while it has none. @param {any} se  the pick’s session, or none for a person @param {Record<string, Function>} sheets
  */
 function agentActions(se, sheets) {
   if (!se) return [];
