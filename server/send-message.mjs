@@ -16,8 +16,9 @@ import { retireStale } from './wake-cards.mjs';
  * repeat is answered with what the first try posted, and stores nothing (#1138).
  * @param {any} rt @param {string} threadId
  * @param {{ text?: string, attachments?: any[], sendNow?: boolean, clientId?: unknown }} [message]  as the route has it
+ * @param {string} [personId]  who sent it (#1742), as the server knows from who is asking: never read from the message
  */
-export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined } = {}) {
+export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined } = {}, personId = undefined) {
   // As written: a conversation just started behind a held commit isn’t published yet, and its first message is sent (#1292).
   const t = rt.threads.toWrite(threadId);
   // First, before whom it goes to is worked out again: with no @-mention that’s the last speaker, who may have changed
@@ -49,6 +50,7 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
     threadId,
     { text, attachments },
     targets.map(({ se }) => se.handle),
+    personId ? { personId } : {},
   );
   const entries = targets.map(({ se }) =>
     rt.delivery.send({ sessionId: se.id, threadId, source: 'person', itemId: item.id, from: 'you', retryId }, { wake: false }),

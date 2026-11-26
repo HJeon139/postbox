@@ -19,6 +19,14 @@ export function whoIs({ store, account }) {
      * person’s. @param {import('node:http').IncomingMessage} req @param {string} path
      */
     of: async (req, path) => (path === '/mcp' ? null : people.of(await identity.identify(req))),
+    /**
+     * A message of theirs was posted: they are someone this Postbox knows from then on. After the post, so a send that
+     * is refused writes nothing. Answers with what the post answered. @param {any} person @param {any} posted
+     */
+    sent: (person, posted) => {
+      people.seen(person);
+      return posted;
+    },
     /** A person saves their own profile. @param {any} person @param {any} body */
     saveProfile: (person, body) => people.saveProfile(person, body?.profile),
   };
