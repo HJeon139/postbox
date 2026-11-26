@@ -249,14 +249,14 @@ function branchIn(cwd, workRoot) {
 
 /**
  * Where the note says the worktree is: on the branch it’s on now; on a commit, with Postbox’s branch to check out
- * first; or, with no worktree found, on Postbox’s branch. @param {string|null} now @param {string} made
+ * first; or, when git’s files don’t say, on its own branch, which git names. @param {string|null} now @param {string} made
  */
 function on(now, made) {
-  // A branch name has no length limit, and agy’s rules file has little room to spare.
-  if (now && now.length > 100) return 'on a branch of its own (git branch --show-current names it)';
+  // A branch name has no length limit, and agy’s rules file has little room to spare. One git doesn’t say (a reftable
+  // repository keeps only a stub, detached or not) isn’t guessed.
+  if (now === null || now.length > 100) return 'on its own branch, which `git branch --show-current` names';
   if (now) return `on branch ${now}`;
-  if (now === '') return `on a commit, not a branch: check out ${made} before you commit`;
-  return `on branch ${made}`;
+  return `on a commit, not a branch: check out ${made} before you commit`;
 }
 
 /**

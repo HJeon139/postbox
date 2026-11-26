@@ -54,6 +54,11 @@ test('#1709 an agent in its own worktree reads a project file with no card, and 
 test('#1709 an agent in its own worktree is told its worktree, its branch and the project’s folder, and that the person merges', () => {
   const { workRoot, project, wt } = layout();
   const persona = { id: 'pe_a', handle: 'a' };
+  // As git lays a worktree out: its .git names its record, whose HEAD names its branch.
+  const record = join(workRoot, '..', 'told-record');
+  mkdirSync(record, { recursive: true });
+  writeFileSync(join(record, 'HEAD'), `ref: refs/heads/${branchFor(persona, project)}\n`);
+  writeFileSync(join(wt, '.git'), `gitdir: ${record}\n`);
   const note = worktreeNote(wt, persona, project, workRoot);
   assert.ok(note.startsWith('## Where you work'), note);
   for (const part of ['your own git worktree', branchFor(persona, project), project.folder, 'which the person merges', 'name your branch in your reply'])
@@ -77,11 +82,14 @@ test('#1709 the note can’t name a branch it doesn’t know: a reftable stub, o
   const admin = join(workRoot, '..', 'record');
   mkdirSync(admin, { recursive: true });
   writeFileSync(join(wt, '.git'), `gitdir: ${admin}\n`);
-  // A repository in git’s reftable format: the record’s HEAD is a stub (git 2.52), so Postbox’s own name is given.
+  // A repository in git’s reftable format: the record’s HEAD is a stub (git 2.52), detached or not, so no branch is
+  // guessed, Postbox’s own included: the agent is told how to see it.
   writeFileSync(join(admin, 'HEAD'), 'ref: refs/heads/.invalid\n');
-  assert.ok(worktreeNote(wt, persona, project, workRoot).includes(`on branch ${branchFor(persona, project)}`));
+  const stub = worktreeNote(wt, persona, project, workRoot);
+  assert.ok(stub.includes('on its own branch, which `git branch --show-current` names'));
+  assert.ok(!stub.includes(branchFor(persona, project)));
   writeFileSync(join(admin, 'HEAD'), `ref: refs/heads/${'b'.repeat(300)}\n`);
   const note = worktreeNote(wt, persona, project, workRoot);
-  assert.ok(note.includes('on a branch of its own (git branch --show-current names it)'));
+  assert.ok(note.includes('on its own branch, which `git branch --show-current` names'));
   assert.ok(!note.includes('b'.repeat(101)));
 });
