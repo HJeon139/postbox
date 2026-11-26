@@ -970,8 +970,9 @@ html.store-down .sidepanel { padding-bottom: 44px; }
    375 px the last actions go to a line of their own (#168). */
 .msg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; row-gap: 4px; }
 .msg-actions .btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
-/* Copy link, an icon alone: 24 px square and 4 px from the action before it, so a side thread’s panel fits its row on one
-   line, as before it (#168). */
+/* Copy link, an icon alone: 24 px square and 4 px from the action before it, so a side thread’s panel at 1280 px fits its
+   row on one line, as on main, with about 4 px to spare. Where fonts run wider, Copy link wraps to a line of its own, and
+   nothing squeezes (#168). */
 .msg-actions .btn.sm[data-copy-link] { width: 24px; padding: 0; margin-left: -4px; }
 /* An action's icon drawn by the action, not by a span of its own: the actions under a message cost no more elements with
    Copy link than without it (#168), within the page's element budget (#1155). The element's --m names its icon.
