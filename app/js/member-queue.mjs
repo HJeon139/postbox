@@ -33,7 +33,7 @@ function followMemberQueue(/** @type {any} */ session) {
  * @param {any} session
  */
 export function memberQueueButton(session) {
-  const button = h('button.btn.sm', {
+  const button = h('button.btn.sm.member-queue', {
     type: 'button',
     'aria-haspopup': 'dialog',
     onclick: () => button.getAttribute('aria-disabled') === 'true' || openQueue(session.id, button),

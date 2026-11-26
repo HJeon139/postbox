@@ -151,7 +151,8 @@ const put = (/** @type {string} */ key) => (/** @type {any} */ s, /** @type {any
  * Every event type: how the reducer applies it, and whether the page may see it. The reducer, the server’s projection
  * (server/public-state.mjs) and the page’s stream listeners (app/js/client.mjs) all read this one table, so a type the
  * reducer applies has said whether it reaches the browser. Events carry whole objects for upserts, and small patches
- * for items and sessions (session.patch).
+ * for items and sessions (session.patch). A new type, or a change to what a stored event means, raises DATA_FORMAT
+ * (server/store-format.mjs, #683): an older Postbox can’t replay it.
  * @type {Readonly<Record<string, { apply: (s: any, d: any) => void, public: boolean }>>}
  */
 export const EVENTS = Object.freeze({

@@ -21,7 +21,7 @@ An agent’s turns can run on another computer you reach with `ssh`, such as a b
    - With **Node’s path** set, a `node-path` file beside the code that names it.
 
    Nothing runs as root, and nothing outside `~/.postbox-remote` changes on the host. Postbox connects when a turn there needs it. From then on, the host’s card lists the Node and the harnesses its daemon found, each with its version and path, or where it looked.
-3. **Edit → Project folders on this host.** Pick the host in the list and press Edit in the bar under it. Where each project’s agents work there: an absolute path. Left empty, an agent works in `~/postbox-work/<handle>` on the host.
+3. **Edit → Project folders on this host.** Pick the host in the list and press Edit in the row of the list’s heading. Where each project’s agents work there: an absolute path. Left empty, an agent works in `~/postbox-work/<handle>` on the host.
 4. **Runs on.** In a persona’s settings, or the new-agent sheet, pick the host under **Runs on**. Its agents run there from their next turn. Postbox refuses a host whose daemon didn’t find that persona’s CLI, and an agent can’t move while a turn of its runs.
 
 **What you see**

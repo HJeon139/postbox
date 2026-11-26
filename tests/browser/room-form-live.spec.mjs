@@ -106,6 +106,22 @@ test('the queue button and the row count with the queue, and a drained queue lea
   await expect(page.locator('.agent-queue-dialog')).toHaveCount(0);
 });
 
+test('the queue button’s words changing length moves no control beside it', async ({ page }) => {
+  // The bar is at the right end of its heading’s row: “1 message queued” is shorter than “0 messages queued”.
+  const r = await openForm(page);
+  const edit = roomForm(page).getByRole('button', { name: `Edit ${r.handle}`, exact: true });
+  const editX = async () => /** @type {{ x: number }} */ (await edit.boundingBox()).x;
+  const editAt = await editX();
+  holds.add(r.worker.id);
+  app.rt.sendMessage(r.thread.id, { text: `@${r.handle} start` });
+  await running(r);
+  app.rt.sendMessage(r.thread.id, { text: `@${r.handle} Queued question 1` });
+  await expect(r.queue).toHaveAccessibleName(`1 message queued for ${r.handle}`);
+  expect(await editX(), 'Edit is where it was before a message was queued').toBe(editAt);
+  releases.get(r.worker.id)();
+  await idle(r);
+});
+
 test('at 320 px the queue button fits the sheet with the longest handle and ten messages waiting', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   const r = await openForm(page, `a${'b'.repeat(22)}${++count % 10}`);
