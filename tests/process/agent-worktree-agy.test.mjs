@@ -8,7 +8,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { commitTurn } from '../../server/adapters/agent-worktree.mjs';
+import { commitTurn } from '../../server/adapters/agent-worktree-commit.mjs';
 import { PLUGIN_DIR } from '../../server/adapters/agy-plugin.mjs';
 import { AntigravityCliAdapter } from '../../server/adapters/antigravity-cli.mjs';
 import { git, home, project } from './agent-worktree-fixture.mjs';
