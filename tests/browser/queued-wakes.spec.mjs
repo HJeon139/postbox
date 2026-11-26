@@ -173,7 +173,7 @@ test('#427 ten queued messages stay out of the composer and edit in the agent’
   // From the room’s form, where the sidebar’s rows are hidden: the queue of the member picked, and back to its button.
   await page.locator('#conversation-actions').click();
   const inForm = await memberQueue(page, r.worker.handle);
-  await expect(inForm).toHaveText(`10 messages queued for ${r.worker.handle}`);
+  await expect(inForm).toHaveAccessibleName(`10 messages queued for ${r.worker.handle}`);
   await inForm.click();
   await expect(page.locator('.agent-queue-dialog .agent-queue-row')).toHaveCount(10);
   await page.keyboard.press('Escape');

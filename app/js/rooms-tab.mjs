@@ -3,11 +3,13 @@
 
 import { factsText } from '/shared/agent-facts.mjs';
 import { factsOf, mockMarker } from './agent-facts.mjs';
-import { openQueue, queuedFor } from './agent-queue.mjs';
+import { queuedFor } from './agent-queue.mjs';
 import { api, client, sessionsOf } from './client.mjs';
 import { h } from './dom.mjs';
 import { heard } from './go-when-there.mjs';
+import { onChangeWhileAlive } from './held-weakly.mjs';
 import { barAction, barSign, formHead, pickList, sectionHead } from './manage-list.mjs';
+import { memberQueueButton } from './member-queue.mjs';
 import { called, me, people } from './profile-tab.mjs';
 import { stateWordOf } from './ring.mjs';
 import { navigate, openMenu, route, toast } from './ui.mjs';
@@ -99,7 +101,7 @@ function roomForm(
     api(`/api/threads/${t.id}`, { title: title.value }, 'PATCH')
       .then(async () => {
         toast({ title: `Saved ${title.value}` });
-        // Opened on this room from the room itself (its ⋯, /rename), Save goes back there; from the list, to the list.
+        // Opened on this room from the room itself (its Manage button, /rename), Save goes back there; from the list, to the list.
         if (at.direct) return sheets.close();
         // Once the page has heard of the new title, so the list shows it.
         await heard(() => S().threads[t.id]?.title === title.value.trim());
@@ -194,8 +196,7 @@ function membersList(/** @type {any} */ t, /** @type {() => void} */ paint, /** 
         key: se.id,
         name: `@${se.handle}`,
         marks: [mockMarker(se), h('span.small.dim', 'agent')],
-        // What it does, then what it runs with and its state now, as its row in the sidebar says.
-        facts: [S().personas[se.personaId]?.description, `${factsText(factsOf(se))} · ${stateWordOf(se).toLowerCase()}`],
+        facts: [S().personas[se.personaId]?.description, liveFacts(se.id)],
       })),
       ...everyone.map((/** @type {any} */ p) => ({
         key: p.id,
@@ -227,15 +228,42 @@ function membersList(/** @type {any} */ t, /** @type {() => void} */ paint, /** 
  */
 function agentActions(se, sheets) {
   if (!se) return [];
-  const queued = queuedFor(se.id);
   return [
-    barAction('Edit', se.handle, () => sheets.editPersona(se.personaId)),
-    queued
-      ? h(
-          'button.btn.sm',
-          { type: 'button', 'aria-haspopup': 'dialog', onclick: (/** @type {Event} */ e) => openQueue(se.id, /** @type {HTMLElement} */ (e.currentTarget)) },
-          `${queued} message${queued === 1 ? '' : 's'} queued for ${se.handle}`,
-        )
-      : null,
+    barAction('Edit', se.handle, () => {
+      sheets.editPersona(se.personaId);
+      // On the form’s first field, as the Personas list’s own Edit leaves it: a repaint alone leaves focus on a Tools chip.
+      document.getElementById('pe-d')?.focus();
+    }),
+    memberQueueButton(se),
   ];
+}
+
+/** What an agent runs with, its state now, and how many messages wait for it, in words. @param {string} sessionId */
+function factsLine(sessionId) {
+  const se = S().sessions[sessionId];
+  if (!se) return '';
+  const queued = queuedFor(sessionId);
+  return `${factsText(factsOf(se))} · ${stateWordOf(se).toLowerCase()}${queued ? ` · ${queued} queued` : ''}`;
+}
+
+/** What changes an agent’s facts line: what the sidebar’s Agents section repaints on, and an inbox entry coming or going. */
+const FACTS_CHANGE = ['session', 'thread', 'persona', 'load', 'remove', 'host', 'host.status', 'entry.add', 'entry.patch'];
+
+/** A facts line’s listener, made here so it closes over nothing that holds the line (#866). @param {string} sessionId */
+const followFacts = (sessionId) => (/** @type {HTMLElement} */ el, /** @type {any} */ change) => {
+  if (!FACTS_CHANGE.includes(change.type)) return;
+  const now = factsLine(sessionId);
+  if (el.textContent !== now) el.textContent = now;
+};
+
+/**
+ * An agent’s facts in its Members row, kept current while the form is open: the form stays up while a person adds
+ * members or waits, and with the sidebar behind it, or hidden in a narrow window, the row is the one statement of an
+ * agent’s state in view. It says each agent’s queue too, so none takes a pick to find.
+ * @param {string} sessionId
+ */
+function liveFacts(sessionId) {
+  const el = h('span', factsLine(sessionId));
+  onChangeWhileAlive(el, followFacts(sessionId));
+  return el;
 }

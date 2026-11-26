@@ -306,8 +306,5 @@ export function agentQueueButton(session) {
   return button;
 }
 
-/**
- * How many messages wait for an agent, for the room’s form (app/js/rooms-tab.mjs): where the sidebar is hidden, its
- * Members list is the way to an agent’s queue (#427). @param {string} sessionId
- */
+/** How many messages wait for an agent, as the room’s form says in its row (app/js/rooms-tab.mjs). @param {string} sessionId */
 export const queuedFor = (sessionId) => entriesFor(sessionId).length;

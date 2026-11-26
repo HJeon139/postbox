@@ -55,6 +55,8 @@ for (const [width, use] of /** @type {const} */ ([
         await page.locator('header.topbar #conversation-actions').click();
         const sheet = page.getByRole('dialog', { name: 'Settings' });
         await sheet.getByRole('button', { name: `Edit ${handle}`, exact: true }).click();
+        // As from the Personas list’s own Edit: on the form’s first field, never on a Tools chip a Space would flip.
+        await expect(page.locator('#pe-d'), 'focus is on the form’s first field').toBeFocused();
         await expect(sheet.locator('#pe-b-mem')).toHaveText(line);
         // Read with the backend, as its description is.
         await expect(sheet.locator('#pe-b')).toHaveAttribute('aria-describedby', 'pe-b-help pe-b-mem');

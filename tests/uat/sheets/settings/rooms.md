@@ -14,7 +14,7 @@ A room’s title, its members and its limits were each changed somewhere else: a
 - − opens the [delete confirm](../delete-conversation.md) over the menu. Cancel returns to the list, with focus on −. Once the room is deleted, the menu closes.
 - Edit, Enter or a double click shows **the room’s form** in the list’s place, with focus in Title, and “All rooms” to go back with the pick kept.
 - **Title:** Enter or Save saves it. Opened from the list, Save goes back to the list; opened from the room itself, Save closes the menu and focus returns to where you opened it. There is no rename sheet of its own.
-- **Members** lists the room’s agents and the people of this Postbox in one list. An agent’s row says what it does, then what it runs with and its state. With an agent picked, the bar also has Edit, which shows its persona’s form, and, while messages wait for it, a button that says how many and opens its queue. + opens a menu of the agents you have that aren’t in the room, then New agent…; one pick adds an agent, and a toast says who joined. − removes the picked agent from the room, after a confirm that says so: “Remove critic from Planning?”, with what ends (its part here, and its session here: added back, it starts a new one and reads the room again) and what stays (its messages here, any apps it wrote here, the agent itself, its settings and other rooms). Its earlier messages keep its name with no mark, and the room gets a “critic left” line (#1743).
+- **Members** lists the room’s agents and the people of this Postbox in one list. An agent’s row says what it does, then what it runs with and its state. The row follows the room while the form is open, and says how many messages wait for the agent. With an agent picked, the bar also has Edit, which shows its persona’s form, and a button that says how many messages wait and opens its queue; while nothing waits it stays, dimmed, and says why. + opens a menu of the agents you have that aren’t in the room, then New agent…; one pick adds an agent, and a toast says who joined. − removes the picked agent from the room, after a confirm that says so: “Remove critic from Planning?”, with what ends (its part here, and its session here: added back, it starts a new one and reads the room again) and what stays (its messages here, any apps it wrote here, the agent itself, its settings and other rooms). Its earlier messages keep its name with no mark, and the room gets a “critic left” line (#1743).
 - − is off, dimmed and still in the tab order, when the pick is the room’s only agent or a person. The line under the list says why in words: the people of this Postbox are in every room, and a room keeps at least one agent.
 - **More** has [Wake chain limit…](../wake-chain-limit.md) and Permissions…, each opening over the form.
 - Delete… and Save are pinned under the form.
@@ -32,7 +32,7 @@ A room’s title, its members and its limits were each changed somewhere else: a
 ## Accessibility
 
 - The list is a listbox of options, and its bar a toolbar. A control that’s off says so (`aria-disabled`) with its reason as its description, and the reason is on the page too.
-- Escape closes the menu and returns focus to what opened it: ⋯, the Agents heading’s button, or the composer after `/rename`.
+- Escape closes the menu and returns focus to what opened it: the gear after the title, the Agents heading’s button, or the composer after `/rename`.
 
 ## How to check
 

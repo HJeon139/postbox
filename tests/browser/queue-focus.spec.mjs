@@ -116,7 +116,7 @@ test('#1437 the composer has no waiting line: the row’s mail button and the ro
     .getByRole('button', { name: /^Manage / })
     .click();
   const queued = await memberQueue(page, r.se.handle);
-  await expect(queued).toHaveText(`2 messages queued for ${r.se.handle}`);
+  await expect(queued).toHaveAccessibleName(`2 messages queued for ${r.se.handle}`);
   await queued.click();
   await expect(page.getByRole('dialog', { name: new RegExp(`queued for ${r.se.handle}`) })).toBeVisible();
 });

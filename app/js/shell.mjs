@@ -39,7 +39,10 @@ const manageRoomButton = (t) =>
       id: 'conversation-actions',
       'aria-haspopup': 'dialog',
       'aria-label': `Manage ${t.title}`,
-      title: 'Manage room and members: its title, agents, permissions and Delete',
+      title:
+        t.kind === 'room'
+          ? 'Manage room and members: its title, agents, permissions and Delete'
+          : 'Manage conversation: its title, agents, permissions and Delete',
       onclick: () => openSettings('rooms', t.id),
     },
     icon('gear'),
