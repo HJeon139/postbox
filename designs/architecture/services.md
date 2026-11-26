@@ -145,7 +145,7 @@ The list refines the starting point from the data:
 
 - **Owns:** agents’ apps, their state, queries and checks, the tools an app may call on this computer (`host-tool.mjs`), showing and updating blocks, review comments, and which answers an agent has read. `act()`’s dispatch of cards stays with asks.
 - **Interface:** `register`, `showApp`, `updateApp`, `retire`, `appCheck`, `appEvent`, `appState`, `appQuery`, `appFile`, `appOf(item)`, `showBlock`, `updateBlock`, `answerDelivered`, `unreadAnswer`, `reviewBlock`, `personAnswer`. Signals: `app.retired`, `block.withdrawn`.
-- **Depends on:** Store, Bus, Threads, Sessions, Personas, Assets, Running, Checks, Delivery, Turns, and the `send` port. Turns only to take an answer’s message out of a live turn’s queue once `update_block`’s refusal gave it to the agent (`takeQueued`, #1810), since only Turns writes that queue. External: the narrator, and the server’s settings (`config`, for the catalog’s image origins).
+- **Depends on:** Store, Bus, Threads, Sessions, Personas, Assets, Running, Checks, Delivery, and the `send` and `turns` ports. Turns depends on Apps, so Apps reaches it through a port, for one call: `takeQueued` takes an answer’s message out of a live turn’s queue once `update_block`’s refusal gave it to the agent (#1810), since only Turns writes that queue. External: the narrator, and the server’s settings (`config`, for the catalog’s image origins).
 
 ### Memory
 
