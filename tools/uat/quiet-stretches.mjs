@@ -9,21 +9,24 @@
 //   nothing     the work wasn’t done, nobody was asked and nothing was scheduled: nothing would restart it
 //   done        the definition of done had been met
 //   unknown     the run’s records can’t say whether work was waiting
-// “Work is waiting” is the scenario’s own definition of done, as the records show it: from the person’s request that
-// names the command that proves it, until that command first said the work passed (tools/uat/nightly-log.mjs reads
-// both, for tests/uat/e2e/scenarios/idleroom.md). A run whose person never named the command has no such definition,
-// so its stretches are “unknown” there, never “nothing”: an idle room after a finished chat isn’t a finding.
+// “Work is waiting” is the run’s own definition of done, as the records show it (tools/uat/board-log.mjs, workOf): in
+// a sprint room (tests/uat/e2e/scenarios/idleroom.md), from the person’s request that names the sprint board until
+// the board’s record shows the second sprint’s stories all done; in a room with a timed check, from the request that
+// names the check until its own record says it passed (tools/uat/nightly-log.mjs). A run whose person named neither
+// has no such definition, so its stretches are “unknown” there, never “nothing”: an idle room after a finished chat
+// isn’t a finding.
 
 import { ASKING } from '../../shared/catalog.mjs';
-import { nightlyWork } from './nightly-log.mjs';
+import { workOf } from './board-log.mjs';
 import { clip } from './trigger-facts.mjs';
 
 const BUSY = new Set(['think', 'tool', 'gen']);
 
 /**
- * @typedef {{ asked: number|null, queued: { at: number, due: number|null } | null, passed: { at: number } | null }} Work
+ * @typedef {{ asked: number|null, queued: { at: number, due: number|null } | null, passed: { at: number } | null,
+ *   customer?: { from: number, to: number, what: string }[] }} Work
  * when the person asked for the work, when its timed step was queued and due, and when its definition of done was
- * first met, or null for each that never happened
+ * first met, or null for each that never happened; and, in a sprint room, when the room waited on the customer
  */
 
 /** How a block that asks reads in a stretch’s evidence. @param {any} it */
@@ -138,7 +141,7 @@ function waitingIn(s, work) {
  * @param {any} f  @param {Work} [work]  read from the run’s workspace unless given
  * @returns {{ from: number, to: number, ms: number, open: boolean, waiting: 'person'|'scheduled'|'nothing'|'done'|'unknown', work: 'waiting'|'done'|'unknown', what: string[], movedBy: string|null, overdueMs: number|null }[]}
  */
-export function quietStretches(f, work = nightlyWork(f)) {
+export function quietStretches(f, work = workOf(f)) {
   const threads = new Set(f.threads ?? []);
   const here = (/** @type {string} */ id) => !threads.size || threads.has(id);
   const r = {
@@ -154,6 +157,8 @@ export function quietStretches(f, work = nightlyWork(f)) {
   end(r, Math.max(r.last, Number.isFinite(f.until) ? f.until : 0), null);
   const { queued } = work;
   return r.out.map((s) => {
+    // A demo the customer hasn’t answered is an ask to the person, though no session says it needs them.
+    for (const c of work.customer ?? []) if (s.from >= c.from && s.from < c.to) s.person.push(c.what);
     const state = workIn(s, work);
     const waiting = waitingIn(s, state);
     const overdue = waiting === 'nothing' && queued?.due != null && queued.at <= s.to;
