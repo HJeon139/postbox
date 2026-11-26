@@ -77,6 +77,8 @@ test('#1623 at the cap the room shows one line, with no card, no button and noth
 test('#1623 the composer names no count of agent wakes, however long the chain', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${stopped.id}`);
   await synced(page, app);
+  // The hint says whom a draft goes to only while there is one.
+  await page.locator('#composer-input').fill('Carry on');
   const hint = page.locator('.composer .hint');
   await expect(hint).toContainText('Replying to');
   await expect(hint).not.toContainText(/woken each other|limit/);
