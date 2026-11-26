@@ -111,7 +111,9 @@ function jobResult(w, blob) {
   );
 }
 
-/** A stored output as a result, after `note`, or null when it doesn't read back. @param {any} out @param {(sha256: string) => string | null} blob @param {string} note */
+/**
+ * A stored output as a result, after `note`: empty, or the note alone, when the output was empty; null when it doesn't
+ * read back. @param {any} out @param {(sha256: string) => string | null} blob @param {string} note */
 function outputResult(out, blob, note) {
   // Output that was empty: the ledger keeps no blob for it, and an empty result says so (#1752), after its note.
   if (out?.size === 0) return note ? resultContent(note) : '';
@@ -185,8 +187,9 @@ function withUnstepped(tool_calls, results, unstepped, recorded) {
 
 /**
  * The tool calls, their results, the thoughts and the narration of one reply. A call's start time and exit code are its
- * ledger entry's; its output is its tool_result in the turn's recorded stream, else the store's blob the ledger names,
- * else what a live frame showed (storedResult), else a background job's output as the ledger kept it (jobResult).
+ * ledger entry's; its output is its tool_result in the turn's recorded stream, else the store's blob the ledger names
+ * (storedResult), else the step's text, which only a live frame carries, else a background job's output as the ledger
+ * kept it (jobResult).
  * @param {any} it  the reply, with its steps @param {Map<string, any>} ledger  the work ledger’s calls, by tool call id
  * @param {Map<string, any[]>} [questions]  each AskUserQuestion call’s blocks, by its id
  * @param {(sha256: string) => string | null} [blob]  a stored blob's text, or null when it isn't there

@@ -228,6 +228,11 @@ test('#1757 from a snapshot, with no live frames: a command’s stored output is
     asSnapshot((entry) => ({ ...entry, endedInBackground: true, output: { size: 0 } })),
     { live: [], blob: () => null },
   );
-  const [quiet] = silent.observation.results;
-  assert.ok(quiet?.content.startsWith('[the command ran in the background'), JSON.stringify(silent.observation.results));
+  assert.deepEqual(silent.observation?.results, [
+    {
+      source_call_id: command.toolUseId,
+      content:
+        '[the command ran in the background: this is what the work ledger kept once its job ended, which can be the job’s output, not what the call returned]\n',
+    },
+  ]);
 });
