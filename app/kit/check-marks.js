@@ -22,11 +22,11 @@
   const SYMBOL = 30;
   // A dot or ring is a data mark up to this radius, in px; a larger circle is a diagram’s node, which holds its name.
   const DOT = 12;
-  // A closed outline up to this size in px, of up to this many commands, is a node, a box or a hex, and a label inside it
-  // is its name. A larger one is a region, and one of more commands an area chart, one a data point: a label inside
-  // either can still sit on its edge.
+  // A closed outline up to this size in px, of up to this many commands, is a node, such as a box, a rounded box or a
+  // hexagon, and a label inside it is its name. A larger one is a region, and one of more commands is an area chart, a
+  // command for each data point: a label inside either can still sit on its edge.
   const NODE = 160;
-  const SIDES = 8;
+  const SIDES = 12;
   // A line is a data series from this many points on. A straight line of two points is a fit line or a reference in a
   // chart (three or more dots or rings), and a diagram’s edge or a leader line anywhere else; one that’s level or upright, a
   // gridline, is never a mark.
@@ -158,7 +158,8 @@
       if (painted(cs.stroke, +cs.strokeOpacity) && parseFloat(cs.strokeWidth) >= 2) continue;
       if (backings.some((b) => within(r, b))) continue;
       const ctm = el.getScreenCTM();
-      const size = parseFloat(cs.fontSize) * (ctm ? Math.hypot(ctm.a, ctm.b) : 1);
+      // The band runs across the text, so its height scales with the vertical axis.
+      const size = parseFloat(cs.fontSize) * (ctm ? Math.hypot(ctm.c, ctm.d) : 1);
       out.push({ el, t, r, inset: Math.max(EDGE, size * CORE) });
     }
     return out;
