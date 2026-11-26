@@ -41,3 +41,18 @@ test('#136 recorded: an edit of .kiro/settings/mcp.json is refused; an ordinary 
     ],
   );
 });
+
+// #1723, recorded on kiro-cli 3.6.2 (v3, claude-haiku-4.5), with the agent file the branch's kiroAgent writes, Isolated,
+// in a Kiro home and folders of their own under /tmp: in Auto with Shell, the file tools read and write outside the
+// agent's folders, and an edit of the folder's .kiro/settings/mcp.json is still refused. No Postbox server ran, so its
+// tools didn't load; that step is the probe's, not the rule's.
+test('#1723 recorded: in Auto with Shell, files outside the folders are read and written; .kiro stays refused', () => {
+  assert.deepEqual(
+    steps('auto-shell-files').filter(([label, state]) => state !== 'running' && !label.startsWith('Postbox’s tools')),
+    [
+      ['Read readme.txt', 'done'],
+      ['Wrote mcp.json', 'denied'],
+      ['Wrote new.txt', 'done'],
+    ],
+  );
+});
