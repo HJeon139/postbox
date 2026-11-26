@@ -11,6 +11,7 @@
 //   asks, since Postbox’s write ask rules beat the allow rule it sends, so this check is what lets the call run.
 
 import { passesWriteCheck, ruleMatches, splitCommand } from '../shared/permission-match.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { isPublishingTool, POSTBOX_SERVER, setupOf, WRITE_TOOLS } from './adapters/setup.mjs';
 import { hostRulesOf } from './host-rules.mjs';
 import { readRules } from './permission-rules.mjs';
@@ -163,5 +164,5 @@ const DRAFT_FIELDS = ['markdown', 'content', 'body', 'text', 'message', 'descrip
 export function draftOf(tool, input) {
   if (!String(tool ?? '').startsWith('mcp__') || !isWriteCall(tool, input) || !input || typeof input !== 'object') return null;
   const found = DRAFT_FIELDS.filter((f) => typeof input[f] === 'string' && input[f].trim()).sort((a, b) => input[b].length - input[a].length)[0];
-  return found ? { field: found, text: String(input[found]).slice(0, 20000) } : null;
+  return found ? { field: found, text: cutText(String(input[found]), 20000) } : null;
 }

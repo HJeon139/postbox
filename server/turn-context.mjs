@@ -3,6 +3,7 @@
 // server/runtime.mjs (#1236), where it was turnContext; turn-run.mjs's runTurn calls it.
 
 import { glimpseOf } from '../shared/text.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
 import { liveFields, liveStep, liveUpdate } from './live-buffer.mjs';
 import { liveText } from './live-text.mjs';
@@ -171,7 +172,7 @@ function replyWords(rt, se0, turn, live) {
         n,
         kept,
         total,
-        summary: String(summary ?? '').slice(0, 20000),
+        summary: cutText(String(summary ?? ''), 20000),
       });
       rt.sessions.update(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
     },

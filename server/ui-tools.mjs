@@ -3,6 +3,7 @@
 // delegate to the module that owns their block, app, wake or read. Moved out of server/runtime.mjs; Runtime keeps
 // toolsFor, which delegates here.
 
+import { cutText } from '../shared/text-parts.mjs';
 import { readApp } from './app-publish.mjs';
 import { bringToConversation } from './bring.mjs';
 import { notedTools } from './empty-reply.mjs';
@@ -85,14 +86,14 @@ function defineTerm(rt, { turn, se, threadId }, { term, definition, key, source 
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
       .slice(0, 64) || 'term';
-  if (turn) (turn.defined ??= []).push(String(term).slice(0, 80));
+  if (turn) (turn.defined ??= []).push(cutText(String(term), 80));
   rt.store.emit('glossary', {
     threadId: threadId(),
     entry: {
       key: k,
-      term: String(term).slice(0, 80),
-      definition: String(definition).slice(0, 2000),
-      source: source ? String(source).slice(0, 200) : '',
+      term: cutText(String(term), 80),
+      definition: cutText(String(definition), 2000),
+      source: source ? cutText(String(source), 200) : '',
       by: se().handle,
       at: Date.now(),
     },

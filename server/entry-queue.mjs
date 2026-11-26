@@ -5,6 +5,7 @@
 // first, as waiting code does until Turns is a service.
 
 import { parseMentions } from '../shared/text.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { clip, httpError } from './helpers.mjs';
 import { stopForSendNow } from './message-queue.mjs';
 import { refuseWhileHeld } from './run-clock-held.mjs';
@@ -29,7 +30,7 @@ export function editEntry(rt, threadId, entryId, text) {
     const who = rt.store.pending.session(given.sessionId)?.handle;
     throw httpError(409, `${who ? `@${who}` : 'An agent'} already has this message, so it can’t be edited. Send a new one instead.`);
   }
-  const said = String(text ?? '').slice(0, 50000);
+  const said = cutText(String(text ?? ''), 50000);
   if (!said.trim()) throw httpError(400, 'Write the message, or remove it instead.');
   // It goes only to the agents still waiting for it, so an edit can’t name another, one it was removed for included: it
   // wouldn’t reach it.

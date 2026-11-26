@@ -2,6 +2,7 @@
 // Runtime keeps a one-line method for each, so its callers and tests don’t change.
 
 import { isDeepStrictEqual } from 'node:util';
+import { cutText } from '../shared/text-parts.mjs';
 import { adapterOf } from './adapters/adapter.mjs';
 import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
@@ -69,7 +70,7 @@ export function askPerson(
     handle: se.handle,
     turnId: turn.id,
     tool: String(tool ?? '').slice(0, 120),
-    summary: String(summary).slice(0, 200),
+    summary: cutText(String(summary), 200),
     ...writeOf(tool, input, detail, draft),
     // The tool call it’s about, so a refusal of a call you answered here doesn’t get a second card.
     toolUseId: toolUseId ? String(toolUseId) : null,
@@ -257,9 +258,9 @@ export function recordDenial(rt, turn, d) {
     turnId: turn.id,
     toolUseId: key,
     tool: String(d.tool ?? '').slice(0, 120),
-    summary: String(d.label ?? d.tool ?? '').slice(0, 200),
-    detail: detail.slice(0, 4000),
-    reason: String(d.reason ?? '').slice(0, 400),
+    summary: cutText(String(d.label ?? d.tool ?? ''), 200),
+    detail: cutText(detail, 4000),
+    reason: cutText(String(d.reason ?? ''), 400),
     reasonType: d.reasonType ? String(d.reasonType).slice(0, 40) : null,
     who: d.who ? String(d.who).slice(0, 40) : null,
     rules,
