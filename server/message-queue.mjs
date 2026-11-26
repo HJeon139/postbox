@@ -11,7 +11,7 @@ import { clip } from './helpers.mjs';
  */
 export function postUserMessage(rt, threadId, { text, attachments }, to, marks = {}) {
   const item = rt.threads.addItem(threadId, { kind: 'user', text, attachments, to, ...marks });
-  // The last person to write here is whom its agents’ needs ring from now on (#1742, Sessions’ needAt).
+  // The last person to write here is whom its agents’ needs ring from now on (#1742, Sessions’ needFor).
   const by = /** @type {{ personId?: string }} */ (marks).personId;
   rt.threads.patch(rt.threads.conversationToWrite(threadId), { hops: 0, ...(by ? { lastPerson: by } : {}) });
   return { item };

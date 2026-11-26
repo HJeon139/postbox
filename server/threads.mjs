@@ -59,7 +59,7 @@ export class Threads {
       hops: 0,
       queue: [],
       createdAt: Date.now(),
-      // Who made it, until a person writes in it: whom its agents’ needs ring (#1742, Sessions’ needAt).
+      // Who made it, until a person writes in it: whom its agents’ needs ring (#1742, Sessions’ needFor).
       ...(personId ? { lastPerson: personId } : {}),
     });
   }

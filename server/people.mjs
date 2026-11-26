@@ -1,7 +1,8 @@
 // The people this Postbox knows (#558): each principal a provider answers with (server/identity/index.mjs) is one
 // person, with the provider’s name for them as a default they can change. A person holds the profile they save
 // (shared/profile.mjs), which is all agents are told of them, and their record is kept in the event log, as
-// state.people, from the first time they save one or send a message. It doesn’t ask how Postbox is run: on this computer there is one person because one account asks.
+// state.people, from the first time they save one or send a message. It doesn’t ask how Postbox is run: on this
+// computer there is one person because its provider says it answers with one (`sole`), whatever account asks.
 
 import { createHash } from 'node:crypto';
 import { profileOf } from '../shared/profile.mjs';
