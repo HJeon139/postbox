@@ -257,11 +257,11 @@ export class Delivery {
 
   /**
    * The agent was given these entries another way than a turn: update_block’s refusal carried an answer whole (#1810).
-   * Each still waiting, or taken by a turn that never started, is delivered, so no turn gives it again.
+   * Each, waiting or taken by a turn that never started, is delivered, so no turn gives it again.
    * @param {Entry[]} entries
    */
   deliveredNow(entries) {
-    for (const e of entries) if (e.state === 'waiting' || e.state === 'taken') this.patch(e, { state: 'delivered' });
+    for (const e of entries) this.patch(e, { state: 'delivered' });
   }
 
   /**

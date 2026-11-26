@@ -69,8 +69,8 @@ function stillWaits(apps, sessionId, it) {
  */
 function settleWaiting(apps, sessionId, it) {
   const entries = waitingEntries(apps, sessionId, it);
-  // The entry a turn took for it, whose turn now never starts: left taken, a restart would give it again.
-  for (const p of apps.turns.takeQueued(sessionId, carriesAnswer(it)).filter((/** @type {any} */ x) => typeof x.message.turnId === 'string'))
-    entries.push(...apps.delivery.takenBy(sessionId, p.message.turnId).filter((/** @type {any} */ e) => e.itemId === it.id && answer(e.message)));
+  // The entry a turn took for it, whose turn now never starts: left taken, a restart would give it again. A turn that
+  // takes an answer takes it alone (Delivery.take), so all it took is the answer’s.
+  for (const p of apps.turns.takeQueued(sessionId, carriesAnswer(it))) entries.push(...apps.delivery.takenBy(sessionId, p.message.turnId));
   if (entries.length) apps.delivery.deliveredNow(entries);
 }
