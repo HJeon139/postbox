@@ -104,7 +104,7 @@ const TARGET_FIELDS = [
 ];
 
 /** A word of a command without its quotes, cut to fit a card. */
-const unquoted = (w) => w.replace(/^["']|["']$/g, '').slice(0, 120);
+const unquoted = (w) => cutText(w.replace(/^["']|["']$/g, ''), 120);
 
 /**
  * Where one write in a command lands: a push on its remote (--repo when it names one, else the first word after push

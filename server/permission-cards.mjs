@@ -260,7 +260,7 @@ export function recordDenial(rt, turn, d) {
     detail: cutText(detail, 4000),
     reason: cutText(String(d.reason ?? ''), 400),
     reasonType: d.reasonType ? String(d.reasonType).slice(0, 40) : null,
-    who: d.who ? String(d.who).slice(0, 40) : null,
+    who: d.who ? cutText(String(d.who), 40) : null,
     rules,
     ...(turn.remote ? { remote: { hostId: turn.remote.hostId } } : {}),
     status: 'open',
@@ -338,5 +338,5 @@ function writeOf(tool, input, detail, given) {
 function whoAsked(turn, agentId, toolUseId) {
   const ids = { agentId: agentId ? String(agentId) : null, toolUseId: toolUseId ? String(toolUseId) : null };
   const name = turn.subagentName?.(ids) ?? (ids.agentId ? 'a subagent' : null);
-  return name ? String(name).slice(0, 40) : null;
+  return name ? cutText(String(name), 40) : null;
 }

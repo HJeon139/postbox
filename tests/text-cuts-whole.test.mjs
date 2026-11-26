@@ -82,10 +82,14 @@ test('#1686 a review comment whose quote doesn’t match shows the text there cu
 
 test('#1686 a scheduled wake’s note and a defined term are kept whole', async () => {
   const r = room();
-  await r.during(async () => {
-    r.rt.toolsFor(r.se.id, r.rt.turns.get(r.se.id)).schedule_wake({ in_minutes: 5, note: across(200) });
-    r.rt.toolsFor(r.se.id, r.rt.turns.get(r.se.id)).define_term({ term: across(80), definition: across(2000), source: across(200) });
+  const defined = await r.during(async () => {
+    const turn = r.rt.turns.get(r.se.id);
+    r.rt.toolsFor(r.se.id, turn).schedule_wake({ in_minutes: 5, note: across(200) });
+    r.rt.toolsFor(r.se.id, turn).define_term({ term: across(80), definition: across(2000), source: across(200) });
+    return [...(turn.defined ?? [])];
   });
+  // The term the turn keeps for its end-of-turn note (server/lint-delivery.mjs).
+  whole(defined[0], 'the term the turn keeps');
   // Every string the two calls stored that starts with the padding: the note, and the term twice (#1686).
   const kept = stringsIn(r.store.state).filter((x) => x.startsWith('xxxx'));
   assert.ok(kept.length >= 2, `found ${kept.length}`);
@@ -114,12 +118,12 @@ test('#1686 a compaction’s summary, a permission card’s summary, and a refus
     ctx.compaction({ kept: 1, total: 2, summary: across(20000) });
     const turn = r.rt.turns.get(r.se.id);
     void r.rt.requestPermission(r.se.id, { tool: 'Bash', summary: across(200), input: { command: 'ls' } });
-    r.rt.recordDenial(turn, { tool: 'Bash', input: { command: across(4000) }, label: across(200), reason: across(400), toolUseId: 'tu_1' });
+    r.rt.recordDenial(turn, { tool: 'Bash', input: { command: across(4000) }, label: across(200), reason: across(400), who: across(40), toolUseId: 'tu_1' });
   });
   whole(r.items('system').find((i) => i.variant === 'compaction')?.summary, 'the compaction summary');
   whole(r.items('permission')[0]?.summary, 'the permission card’s summary');
   const denial = r.items('denial')[0];
-  for (const k of ['summary', 'detail', 'reason']) whole(denial?.[k], `the refusal’s ${k}`);
+  for (const k of ['summary', 'detail', 'reason', 'who']) whole(denial?.[k], `the refusal’s ${k}`);
 });
 
 test('#1686 a write’s draft text and a question’s fallback are cut whole', () => {
@@ -140,10 +144,20 @@ test('#1686 a write’s draft text and a question’s fallback are cut whole', (
 test('#1686 a permission card’s detail and the person’s reason for not allowing it are cut whole', async () => {
   const r = room();
   await r.during(async () => {
-    void r.rt.requestPermission(r.se.id, { tool: 'Bash', summary: 'Run it', detail: across(4000) });
+    // The subagent that asked, as an adapter names it (ctx.subagentNames).
+    r.rt.turns.get(r.se.id).subagentName = () => across(40);
+    void r.rt.requestPermission(r.se.id, {
+      tool: 'Bash',
+      summary: 'Run it',
+      detail: across(4000),
+      agentId: 'a1',
+      draft: { field: 'content', text: across(20000) },
+    });
   });
   const card = r.items('permission')[0];
   whole(card?.detail, 'the card’s detail');
+  whole(card?.draft?.text, 'the card’s draft, given by a host');
+  whole(card?.who, 'the subagent that asked');
   // Asked again, and answered with a long reason: its voice line quotes the reason cut whole.
   let release = () => {};
   const busy = r.during(() => new Promise((ok) => (release = ok)));
@@ -175,4 +189,5 @@ test('#1686 a proposed agent’s description, a write’s destination, and a sub
   whole(proposal?.proposal?.description, 'the proposal’s description');
   const where = whereOf('mcp__claude_ai_Notion__notion-create-pages', { folder: across(120), content: 'x' });
   whole(where?.target?.name, 'the write’s destination');
+  whole(whereOf('Bash', { command: `git push ${across(120)} main` })?.target?.name, 'a push’s remote');
 });
