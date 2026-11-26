@@ -8,7 +8,8 @@ export const PENDING = {
   // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
   // keptBlock: the block a turn kept, in any of the agent's threads, which decides the need its end writes (#647).
-  'card-needs.mjs': ['keptBlock', 'keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed'],
+  // dismissFailed: whether the reply dismissed is the one the agent waits to try again, which ends that wait (#1713).
+  'card-needs.mjs': ['keptBlock', 'keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'dismissFailed'],
   // The project a session is attached into, maybe deleted behind a held commit (#119); the mirrored reply a terminal
   // line adds to, maybe held behind a commit; and the session attachClaudeSession just made, whose transcript mirror
   // starts following.
@@ -190,6 +191,11 @@ export const PENDING = {
   // The quota marks that decide a mark or its clearing, and the persona that says whose quota it is, each maybe held
   // behind a commit (#442).
   'turn-quota.mjs': ['quotaKey', 'sessionsOn', 'quotaName', 'quotaMoved'],
+  // The count of a provider’s failures in a row, which decides whether a turn tries again or stops; the wait and its
+  // reply forgetWait clears, only if there is one; and whether a wait’s end, or a refused retry, still belongs to the
+  // session’s wait, and whether the reply a refused retry names is still failed (retryRefused): each maybe held behind
+  // a commit (#1713).
+  'turn-transient.mjs': ['forgetWait', 'forgetWait', 'transientRetry', 'armRetry', 'retryRefused', 'retryRefused'],
   // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
   'turn-stop.mjs': ['stop', 'turnExited'],
   'stop-record.mjs': ['recordStopped'], // the stopped turn’s segments still streaming, maybe held behind a commit (#602)

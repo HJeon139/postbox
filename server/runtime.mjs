@@ -67,6 +67,7 @@ import { entryLine } from './turn-input.mjs';
 import { armQuotaResets, quotaMoved } from './turn-quota.mjs';
 import { Turns } from './turn-service.mjs';
 import { dismissStopAsk, requestStop, stop, stopTurns } from './turn-stop.mjs';
+import { armAutoRetries } from './turn-transient.mjs';
 import { toolsFor } from './ui-tools.mjs';
 import { closeOrphanCards, heldFor, liftDecline } from './wake-cards.mjs';
 import { Work } from './work-service.mjs';
@@ -370,6 +371,8 @@ export class Runtime {
     convertQueues(this);
     // A reset an agent out of quota waits for wakes it then, as before the restart (#442).
     armQuotaResets(this);
+    // And a failed turn that waited to go again on its own goes when its wait ends (#1713).
+    armAutoRetries(this);
     // Then the inbox: a turn lost to the restart reopens what it took, and each agent with entries is woken.
     this.delivery.start();
   }
