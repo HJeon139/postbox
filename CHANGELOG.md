@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.48.0 (2026-11-26)
+
+### Features
+
+- **people:** what needs a person rings one person, the last to write in the room
+
+### Fixes
+
+- **shell:** “waits on another person” stands only where the words were “needs you”
+- **shell:** a toast is judged by the need it was raised for
+- **shell:** the top bar's needs button follows a need that becomes yours
+- **people:** on this computer the data folder's person is one person under any account
+
 ## 4.47.0 (2026-11-26)
 
 ### Features
