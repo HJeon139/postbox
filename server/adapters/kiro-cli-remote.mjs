@@ -57,6 +57,15 @@ export function kiroRemoteEnv(persona, home) {
 }
 
 /**
+ * The Kiro home a persona’s turn runs with on a host: Postbox’s own for it when Isolated, else the host’s KIRO_HOME or
+ * ~/.kiro, which the daemon finds. Null when the host’s home isn’t known yet. @param {any} persona @param {string|undefined} home
+ */
+export function remoteKiroHome(persona, home) {
+  if (!home) return null;
+  return kiroRemoteEnv(persona, home).KIRO_HOME ?? `${home === '/' ? '' : home}/.kiro`;
+}
+
+/**
  * The spawn that runs one turn on the host, as host turn `turn` (or reads it from the start, with `attach`).
  * @param {any} ctx  the turn’s, with ctx.remote
  * @param {{ agent: string, cwd: string, turn?: string, attach: boolean,

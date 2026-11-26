@@ -53,7 +53,7 @@ import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { KIRO_TOOL_RULES, kiroAgent, kiroSystemPrompt } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models.mjs';
-import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
+import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn, remoteKiroHome } from './kiro-cli-remote.mjs';
 import { failOverLimit, kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
 import { kiroHomeFor } from './kiro-home.mjs';
 import { kiroMemoryOff } from './kiro-memory.mjs';
@@ -344,7 +344,8 @@ export class KiroCliAdapter {
     let spawnFn = this.spawn;
     let env;
     if (ctx.remote) {
-      const agentText = (shim) => JSON.stringify(kiroAgent({ name: agent, persona, shim, guide, folders }), null, 2);
+      const kiroHome = remoteKiroHome(persona, ctx.remote.welcome?.home);
+      const agentText = (shim) => JSON.stringify(kiroAgent({ name: agent, persona, shim, guide, folders, kiroHome }), null, 2);
       spawnFn = /** @type {any} */ (kiroRemoteSpawn(ctx, { agent, cwd, turn, attach, agentText }));
       env = {};
     } else {
@@ -353,7 +354,10 @@ export class KiroCliAdapter {
       await mkdir(join(home, 'agents'), { recursive: true });
       // The home Postbox owns, which every Isolated persona shares, keeps no memory (#479).
       if (!setupOf(persona).usesHostSetup) await kiroMemoryOff(home);
-      await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders, reads: ctx.readFiles ?? [] }), null, 2));
+      await writeFile(
+        file,
+        JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders, reads: ctx.readFiles ?? [], kiroHome: home }), null, 2),
+      );
       env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
     }
     const mapper = createKiroMapper(ctx, { effort: effortOf(persona) });

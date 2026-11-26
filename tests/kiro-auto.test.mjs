@@ -58,3 +58,42 @@ test('#136 Ask me gets none of it, and Accept edits gets no command, web or MCP 
   for (const c of ['shell', 'web_fetch', 'web_search']) assert.ok(!has(edits, c, 'allow'), c);
   assert.ok(!has(edits, 'mcp', 'allow', ['*/*']));
 });
+
+// #1723, as #1710 for Antigravity: in Auto with Shell, any command runs, so Kiro’s file tools follow the shell’s rule.
+// Kiro can’t ask, so a refused read or edit only sent the agent to the shell. Kiro’s own config stays off-limits to
+// edits: each working folder’s .kiro and the Kiro home the turn runs with, whose settings start MCP servers.
+test('#1723 in Auto with Shell, reads and edits are allowed anywhere, .git included, but not Kiro’s own config', () => {
+  const kiroHome = '/nowhere/kiro-home';
+  const auto = kiroRules({ persona: { permissionMode: 'auto', tools: ['shell'] }, folders, resolve: false, kiroHome });
+  assert.ok(has(auto, 'fs_read', 'allow', ['*']), 'reads anywhere');
+  assert.ok(has(auto, 'fs_write', 'allow', ['*']), 'edits anywhere');
+  assert.ok(
+    has(
+      auto,
+      'fs_write',
+      'deny',
+      folders.map((d) => `${d}/.kiro`),
+    ),
+    'each folder’s .kiro stays denied',
+  );
+  assert.ok(!auto.some((r) => r.effect === 'deny' && r.match.some((m) => m.endsWith('/.git'))), '.git is no longer denied');
+  assert.ok(has(auto, 'fs_write', 'deny', [kiroHome]), 'the Kiro home stays denied');
+});
+
+test('#1723 without Shell, or in Accept edits, the file tools keep their folders, with .kiro and .git denied', () => {
+  for (const persona of [
+    { permissionMode: 'auto', tools: [] },
+    { permissionMode: 'acceptEdits', tools: ['shell'] },
+  ]) {
+    const list = kiroRules({ persona, folders, resolve: false, kiroHome: '/nowhere/kiro-home' });
+    assert.ok(!has(list, 'fs_read', 'allow', ['*']) && !has(list, 'fs_write', 'allow', ['*']), JSON.stringify(persona));
+    assert.ok(has(list, 'fs_write', 'deny', guarded), JSON.stringify(persona));
+  }
+});
+
+test('#1723 on a host, the Kiro home kept from edits is the one the turn runs with there', async () => {
+  const { remoteKiroHome } = await import('../server/adapters/kiro-cli-remote.mjs');
+  assert.equal(remoteKiroHome({ handle: 'kay', usesHostSetup: false }, '/srv/hostuser'), '/srv/hostuser/.postbox-remote/kiro-home/kay');
+  assert.equal(remoteKiroHome({ handle: 'kay', usesHostSetup: true }, '/srv/hostuser'), '/srv/hostuser/.kiro');
+  assert.equal(remoteKiroHome({ handle: 'kay' }, undefined), null);
+});

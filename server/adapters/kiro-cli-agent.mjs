@@ -40,11 +40,12 @@ const spellings = (dir) => {
 /**
  * The agent’s permission rules. Their order doesn’t matter: in Kiro, deny beats ask beats allow, whatever the scope
  * a rule comes from (kiro.dev/docs/permissions), so a deny here holds against an allow in your own rules.
- * @param {{ persona: any, folders: string[], reads?: string[], resolve?: boolean }} turn  folders: where the agent works,
- *   and the folders it may also use; reads: files it may read and nothing more, those attached to the turn’s message
- *   (attached-files.mjs, #1307); resolve: also name each as resolved here (false for a host’s, which aren’t on this disk)
+ * @param {{ persona: any, folders: string[], reads?: string[], resolve?: boolean, kiroHome?: string|null }} turn  folders:
+ *   where the agent works, and the folders it may also use; reads: files it may read and nothing more, those attached
+ *   to the turn’s message (attached-files.mjs, #1307); resolve: also name each as resolved here (false for a host’s,
+ *   which aren’t on this disk); kiroHome: the Kiro home the turn runs with, kept from edits as Kiro’s own (#1723)
  */
-export function kiroRules({ persona, folders, reads = [], resolve = true }) {
+export function kiroRules({ persona, folders, reads = [], resolve = true, kiroHome = null }) {
   const { canPublish, usesHostSetup, mcpOff } = setupOf(persona);
   const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
   const dirs = [...new Set(folders.filter(Boolean).flatMap(resolve ? spellings : (d) => [d]))];
@@ -57,12 +58,21 @@ export function kiroRules({ persona, folders, reads = [], resolve = true }) {
   const files = [...new Set(reads.filter(Boolean).flatMap(resolve ? spellings : (f) => [f]))];
   if (files.length) rules.push({ capability: 'fs_read', match: files, effect: 'allow' });
   const mode = persona?.permissionMode ?? 'auto';
+  // In Auto with Shell, any command runs, so a read or an edit follows the shell’s rule anywhere (#1723, as #1710 did
+  // for Antigravity): Kiro can’t ask, and refusing a file tool what a command may do only sent the agent to the shell.
+  const shellReach = mode === 'auto' && has.has('shell');
   if ((mode === 'acceptEdits' || mode === 'auto') && dirs.length) {
     rules.push({ capability: 'fs_write', match: dirs, effect: 'allow' });
     // An edit there could become a command: Kiro starts the MCP servers a .kiro/settings/mcp.json in the working folder
     // names, and a .git/config can name a program git runs (#136). Kiro matches these case-blind where the disk is, as
-    // macOS’s is: kiro-cli 3.1.0 refused .KIRO/settings/mcp.json and .GIT/config there too, recorded live (#136).
-    rules.push({ capability: 'fs_write', match: dirs.flatMap((d) => [`${d}/.kiro`, `${d}/.git`]), effect: 'deny' });
+    // macOS’s is: kiro-cli 3.1.0 refused .KIRO/settings/mcp.json and .GIT/config there too, recorded live (#136). With
+    // Shell in Auto, a command could already write .git, so only .kiro, Kiro’s own, stays denied.
+    rules.push({ capability: 'fs_write', match: dirs.flatMap((d) => (shellReach ? [`${d}/.kiro`] : [`${d}/.kiro`, `${d}/.git`])), effect: 'deny' });
+  }
+  if (shellReach) {
+    rules.push({ capability: 'fs_read', match: ['*'], effect: 'allow' }, { capability: 'fs_write', match: ['*'], effect: 'allow' });
+    // Kiro’s own home stays as its working folders’ .kiro does: its settings start MCP servers.
+    if (kiroHome) rules.push({ capability: 'fs_write', match: resolve ? spellings(kiroHome) : [kiroHome], effect: 'deny' });
   }
   // Auto runs what the persona’s Tools allow, as #416’s option A: Kiro has no Auto of its own, and nothing judges these
   // calls. The denies below still hold, since Kiro reads deny over allow.
@@ -117,12 +127,12 @@ export const kiroSystemPrompt = (persona, guide) =>
 
 /**
  * The custom agent for one turn. Pure, so the tests can check it.
- * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[], reads?: string[], skills?: string | null }} turn
+ * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[], reads?: string[], kiroHome?: string|null, skills?: string | null }} turn
  *   shim: on a remote host, Postbox’s server is the host’s stdio shim, run as this command, in place of mcpUrl; the
  *   folders are then the host’s. skills: the folder of Postbox’s skills (agentSkills in agent-plugin.mjs), or null for
- *   none; a turn on a host has none, since the folder is on this computer
+ *   none; a turn on a host has none, since the folder is on this computer. kiroHome: the Kiro home the turn runs with
  */
-export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, reads = [], skills = shim ? null : agentSkills() }) {
+export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, reads = [], kiroHome = null, skills = shim ? null : agentSkills() }) {
   const { usesHostSetup } = setupOf(persona);
   return {
     name,
@@ -133,7 +143,7 @@ export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, re
     includeMcpJson: usesHostSetup,
     // A local server is a command and its arguments (kiro.dev/docs/custom-agents/configuration-reference).
     mcpServers: { [POSTBOX_SERVER]: shim ? { command: shim.command, args: [...shim.args] } : { type: 'http', url: mcpUrl } },
-    permissions: { rules: kiroRules({ persona, folders, reads, resolve: !shim }) },
+    permissions: { rules: kiroRules({ persona, folders, reads, resolve: !shim, kiroHome }) },
     // Postbox’s skills, as a skill resource (kiro.dev/docs/custom-agents/configuration-reference), which loads a
     // skill’s description and its body only when it’s used. Checked with kiro-cli 2.34.1: visual-explainer was listed
     // among the session’s skills before the model ran, and the defaults an agent with no resources gets (AGENTS.md, the
