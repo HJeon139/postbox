@@ -41,6 +41,14 @@ export function world(o = {}) {
     links: /** @type {string[][]} */ ([]),
     temps: /** @type {string[]} */ ([]),
     removed: /** @type {string[]} */ ([]),
+    killed: /** @type {string[]} */ ([]),
+    exits: /** @type {{ code: number, released: number, removed: string[], calls: any[] }[]} */ ([]),
+    handlers: /** @type {Set<(signal: string) => void>} */ (new Set()),
+    handled: 0,
+  };
+  /** Delivers signal to the script, as Ctrl-C, a kill or a closed terminal would. */
+  w.raise = (/** @type {string} */ signal) => {
+    for (const fn of w.handlers) fn(signal);
   };
   /** Advances the clock by ms and fires every timer that is set, as a minute passing would. */
   w.tick = (/** @type {number} */ ms) => {
@@ -61,6 +69,7 @@ function fakeDeps(w, runs, o) {
   return {
     run: async (argv, opts = {}) => {
       calls.push({ argv, o: opts });
+      opts.started?.((signal) => w.killed.push(signal));
       const line = argv.join(' ');
       const hit = table.find(([match]) => match.test(line));
       if (!hit) throw new Error(`The fake world has no answer for: ${line}`);
@@ -99,6 +108,13 @@ function fakeDeps(w, runs, o) {
       return () => w.released++;
     },
     log: (line) => lines.push(line),
+    onSignal: (fn) => {
+      w.handled++;
+      w.handlers.add(fn);
+      return () => w.handlers.delete(fn);
+    },
+    // What had happened when the script exited: the real exit ends the process there.
+    exit: (code) => w.exits.push({ code, released: w.released, removed: [...w.removed], calls: [...calls] }),
   };
 }
 

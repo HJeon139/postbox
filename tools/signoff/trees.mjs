@@ -9,6 +9,7 @@
 //   a clean merge is checked out and runs Biome and the project lints, as `npm run lint` and `npm run lint:project` do.
 
 import { join } from 'node:path';
+import { untilStopped } from './stop.mjs';
 import { exec, firstLine, lastLine, must } from './wait.mjs';
 
 /** Biome as npm run lint runs it, from this checkout’s node_modules: a temporary worktree has none. @param {string} root */
@@ -23,22 +24,27 @@ const MERGE_IDENTITY = {
 };
 
 /**
- * Runs fn in a temporary detached worktree at sha, and removes the worktree however fn ends.
+ * Runs fn in a temporary detached worktree at sha, and removes the worktree however fn ends, a signal included
+ * (./stop.mjs): fn runs its commands with the Stop it’s given. Only this worktree is removed, by its folder; the
+ * person’s others are never pruned.
  * @template T
- * @param {import('./deps.mjs').Deps} d @param {string} root @param {string} sha @param {(dir: string) => Promise<T>} fn
+ * @param {import('./deps.mjs').Deps} d @param {string} root @param {string} sha
+ * @param {(dir: string, stop: import('./stop.mjs').Stop) => Promise<T>} fn
  * @returns {Promise<T>}
  */
-export async function inWorktree(d, root, sha, fn) {
-  const dir = d.mkdtemp(join(d.tmpdir(), 'pb-signoff-'));
-  try {
-    await must(d, ['git', 'worktree', 'add', '--quiet', '--detach', dir, sha], { cwd: root });
-    // The project lints run Biome from the checkout’s node_modules (tools/lint-ternary.mjs), which git doesn’t hold.
-    d.link(join(root, 'node_modules'), join(dir, 'node_modules'));
-    return await fn(dir);
-  } finally {
-    await exec(d, ['git', 'worktree', 'remove', '--force', dir], { cwd: root });
-    d.rm(dir);
-  }
+export function inWorktree(d, root, sha, fn) {
+  return untilStopped(d, 'a temporary worktree’s checks', async (stop) => {
+    const dir = d.mkdtemp(join(d.tmpdir(), 'pb-signoff-'));
+    try {
+      await must(d, ['git', 'worktree', 'add', '--quiet', '--detach', dir, sha], { cwd: root, stop });
+      // The project lints run Biome from the checkout’s node_modules (tools/lint-ternary.mjs), which git doesn’t hold.
+      d.link(join(root, 'node_modules'), join(dir, 'node_modules'));
+      return await fn(dir, stop);
+    } finally {
+      await exec(d, ['git', 'worktree', 'remove', '--force', dir], { cwd: root });
+      d.rm(dir);
+    }
+  });
 }
 
 /**
@@ -62,13 +68,13 @@ export async function eachCommit(d, root, mergeBase) {
   if (!shas.length) return { ok: false, why: `no commits between the merge base ${mergeBase.slice(0, 8)} and HEAD` };
   /** @type {string[]} */
   const red = [];
-  await inWorktree(d, root, shas[0], async (dir) => {
+  await inWorktree(d, root, shas[0], async (dir, stop) => {
     for (const sha of shas) {
       const diff = ['git', 'diff', '--name-only', '--diff-filter=d', `${sha}^1`, sha];
-      const files = (await must(d, diff, { cwd: root })).split('\n').filter(Boolean);
+      const files = (await must(d, diff, { cwd: root, stop })).split('\n').filter(Boolean);
       if (!files.length) continue;
-      await must(d, ['git', 'checkout', '--quiet', '--detach', sha], { cwd: dir });
-      const r = await exec(d, [...biome(root), '--no-errors-on-unmatched', '--files-ignore-unknown=true', ...files], { cwd: dir });
+      await must(d, ['git', 'checkout', '--quiet', '--detach', sha], { cwd: dir, stop });
+      const r = await exec(d, [...biome(root), '--no-errors-on-unmatched', '--files-ignore-unknown=true', ...files], { cwd: dir, stop });
       if (r.code !== 0) red.push(`${sha.slice(0, 8)} (${firstLine(r.out)})`);
     }
   });
@@ -102,11 +108,11 @@ export async function mergedTree(d, root, base, baseSha) {
   const merged = await must(d, commitTree, { cwd: root, env: MERGE_IDENTITY });
   /** @type {string[]} */
   const failed = [];
-  await inWorktree(d, root, merged, async (dir) => {
-    const lint = await exec(d, [...biome(root), '.'], { cwd: dir });
+  await inWorktree(d, root, merged, async (dir, stop) => {
+    const lint = await exec(d, [...biome(root), '.'], { cwd: dir, stop });
     if (lint.code !== 0) failed.push(`Biome (${firstLine(lint.out)})`);
     // BASE_REF points the lints that compare with a base (tools/merge-base.mjs) at this pull request’s.
-    const project = await exec(d, ['npm', 'run', '-s', 'lint:project'], { cwd: dir, env: { BASE_REF: base } });
+    const project = await exec(d, ['npm', 'run', '-s', 'lint:project'], { cwd: dir, env: { BASE_REF: base }, stop });
     // Each lint prints a line; the one that failed is the last, as .githooks/pre-commit reads it.
     if (project.code !== 0) failed.push(`the project lints (${lastLine(project.out)})`);
   });

@@ -7,10 +7,12 @@ import { cpus, homedir, loadavg, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { acquire } from '../heavy-lock.mjs';
 import { ghJson } from '../signoff-checks.mjs';
+import { SIGNALS } from './stop.mjs';
 
 /**
  * @typedef {{ code: number, out: string }} RunResult
- * @typedef {{ cwd?: string, env?: Record<string, string>, stream?: boolean }} RunOptions
+ * @typedef {{ cwd?: string, env?: Record<string, string>, stream?: boolean, stop?: import('./stop.mjs').Stop,
+ *   started?: (kill: (signal: string) => void) => void }} RunOptions
  * @typedef {{
  *   run: (argv: string[], o?: RunOptions) => Promise<RunResult>,
  *   gh: (args: string[]) => any,
@@ -32,12 +34,15 @@ import { ghJson } from '../signoff-checks.mjs';
  *   nodeVersion: string,
  *   acquire: (o: { label: string, dir?: string, log: (m: string) => void }) => Promise<() => void>,
  *   log: (line: string) => void,
+ *   onSignal: (fn: (signal: string) => void) => () => void,
+ *   exit: (code: number) => void,
  * }} Deps
  */
 
 /**
  * Runs argv, never through a shell. With stream, its output goes straight to this terminal and out is empty; else
- * out is its stdout and stderr together. A command that can’t start exits 127, as a shell reports it.
+ * out is its stdout and stderr together. A command that can’t start exits 127, as a shell reports it. o.started gets
+ * the function that sends the running child a signal.
  * @param {string[]} argv @param {RunOptions} [o]
  * @returns {Promise<RunResult>}
  */
@@ -45,6 +50,7 @@ function run(argv, o = {}) {
   return new Promise((ok) => {
     const stdio = o.stream ? 'inherit' : ['ignore', 'pipe', 'pipe'];
     const child = spawn(argv[0], argv.slice(1), { cwd: o.cwd, env: { ...process.env, ...o.env }, stdio: /** @type {any} */ (stdio) });
+    o.started?.((signal) => child.kill(/** @type {NodeJS.Signals} */ (signal)));
     let out = '';
     child.stdout?.on('data', (b) => (out += b));
     child.stderr?.on('data', (b) => (out += b));
@@ -82,5 +88,12 @@ export function defaultDeps() {
     nodeVersion: process.version,
     acquire,
     log: (line) => process.stdout.write(`${line}\n`),
+    onSignal: (fn) => {
+      for (const s of SIGNALS) process.on(s, fn);
+      return () => {
+        for (const s of SIGNALS) process.off(s, fn);
+      };
+    },
+    exit: (code) => process.exit(code),
   };
 }

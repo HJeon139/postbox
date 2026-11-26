@@ -22,11 +22,22 @@ export async function loud(d, label, work) {
 }
 
 /**
- * Runs argv through d.run, printing while it waits.
+ * Runs argv through d.run, printing while it waits. With o.stop (./stop.mjs), a signal passes on to it while it runs,
+ * and once one has arrived it runs nothing and throws.
  * @param {import('./deps.mjs').Deps} d @param {string[]} argv @param {import('./deps.mjs').RunOptions} [o]
  */
-export function exec(d, argv, o = {}) {
-  return loud(d, argv.join(' '), () => d.run(argv, o));
+export async function exec(d, argv, o = {}) {
+  const { stop, ...rest } = o;
+  if (!stop) return loud(d, argv.join(' '), () => d.run(argv, rest));
+  if (stop.signal) throw new Error(`stopped by ${stop.signal} before ${argv.join(' ')}`);
+  const started = (/** @type {(signal: string) => void} */ kill) => {
+    stop.kill = kill;
+  };
+  try {
+    return await loud(d, argv.join(' '), () => d.run(argv, { ...rest, started }));
+  } finally {
+    stop.kill = undefined;
+  }
 }
 
 /**
