@@ -18,7 +18,7 @@ flowchart LR
   P --> T[A turn: what they saved]
 ```
 
-- **`local`, the only provider today:** the account Postbox runs as (`server/identity/unix.mjs`). Nothing is proved beyond what the gate already holds: Postbox listens on 127.0.0.1 and a write carries the page’s token, so whoever reaches it is treated as that account, as before there were people.
+- **`local`, the only provider today:** the account Postbox runs as (`server/identity/unix.mjs`). Nothing is proved beyond what the gate already holds: Postbox listens on 127.0.0.1 and a write carries the page’s token, so whoever reaches it is treated as that account, as before there were people. On a local run the data folder is the Postbox and whoever opens it is its one person ([#1742](https://github.com/HJeon139/postbox/issues/1742)): the provider’s subject is the same under every account, and it says so (`sole`), so `People.known` finds the record first kept under its issuer whatever subject it was kept under. Nothing of the account is who they are: not the computer’s name, and not the uid, which the first version keyed on. The same folder opened by another account (another computer, a container, `sudo`, a service account) was then a second person, and what was stamped for the first, a need above all, rang no one.
 - **A provider is a function from a request to a principal,** so another is a module and a line in `PROVIDERS`. A hosted Postbox adds one; it doesn’t add a branch anywhere else.
 - **A person is keyed by issuer and subject.** The two together are the only stable key (OpenID Connect Core, [section 5.7](https://openid.net/specs/openid-connect-core-1_0.html#ClaimStability)); a name or an email is a default, never a key.
 
@@ -52,4 +52,4 @@ flowchart LR
 
 **What’s next, in order.** The main menu’s People and Members, showing the one person on a local run; people as seats in a room ([#1742](https://github.com/HJeon139/postbox/issues/1742): the sender named when there is more than one, which is built; then an @-mention of a person and their queue as “needs you”); then the hosted provider, which starts only with a sign-in allow list ([#1733](https://github.com/HJeon139/postbox/issues/1733)).
 
-**Revisit when** two accounts share one data folder on one computer: today each is a person, and both see everything.
+**Revisit when** two people share one data folder on one computer through two accounts: today they are one person, the folder’s, and telling them apart is the hosted provider’s job.

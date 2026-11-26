@@ -20,7 +20,12 @@ export class People {
 
   /** The person a principal is, in the state as it is, or none yet. @param {import('./identity/index.mjs').Principal} p */
   known(p) {
-    return Object.values(this.store.state.people).find((x) => x.identity.issuer === p.issuer && x.identity.subject === p.subject) ?? null;
+    const theirs = Object.values(this.store.state.people).filter((x) => x.identity.issuer === p.issuer);
+    // A provider with one person for the whole Postbox (`sole`, the local one): theirs is the record first kept under
+    // it, whatever subject it was kept under. One kept under an account’s uid, as the local provider keyed people
+    // until #1742, is still theirs under another account, so no profile or need is left to a person no one can be.
+    if (p.sole) return theirs.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))[0] ?? null;
+    return theirs.find((x) => x.identity.subject === p.subject) ?? null;
   }
 
   /**

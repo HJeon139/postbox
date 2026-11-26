@@ -26,13 +26,17 @@ export function unixAccount({ info = userInfo } = {}) {
     u = info();
   } catch {
     // An account the system has no entry for (a container started with a bare uid): Postbox still starts.
-    u = { uid: process.getuid?.() ?? -1, username: process.env.USER || process.env.USERNAME || 'you' };
+    u = { username: process.env.USER || process.env.USERNAME || 'you' };
   }
-  // Windows has no uid. The issuer names no computer: its name changes with the network, and the person doesn’t.
+  // On a run on this computer the data folder is the Postbox, and whoever opens it is its one person (`sole`): the
+  // same folder opened by another account (another computer, a container, sudo, a service account) is still theirs.
+  // So nothing of the account is who they are: not the computer’s name, which changes with the network, and not the
+  // uid, which changes with the account. The login and full name are what the account calls them, a default to change.
   return {
     provider: 'unix',
     issuer: 'unix:this-computer',
-    subject: u.uid >= 0 ? String(u.uid) : u.username,
+    subject: 'the-person',
+    sole: true,
     username: u.username,
     name: fullName(u.username) ?? u.username,
   };
