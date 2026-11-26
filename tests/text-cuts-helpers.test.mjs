@@ -43,10 +43,12 @@ test('#1686 the clip helpers that cut to n - 1 and add … keep the emoji at the
 });
 
 test('#1686 a permission card’s detail and its path lines keep both ends whole', () => {
-  // A path cut in its middle keeps its start and its end, the file’s name.
-  const detail = describePermission('Read', { paths: [`/a/${'d'.repeat(200)}${EMOJI}${'e'.repeat(200)}`, acrossTail(60)] }).detail;
+  // A path cut in its middle keeps its start and its end, the file’s name: 999 characters each, for one path line of
+  // 1,999 (pathLines); the first path’s emoji is at its head’s cut, the second’s at its tail’s. An MCP call’s detail is
+  // its JSON, whose text starts 13 characters in.
+  const detail = describePermission('Read', { paths: [`/a/${'d'.repeat(995)}${EMOJI}${'e'.repeat(1200)}`, `/b/${'h'.repeat(1500)}${acrossTail(999)}`] }).detail;
   whole(detail, 'the path lines');
-  whole(describePermission('mcp__x__y', { text: across(4000) }).detail, 'an MCP call’s detail');
+  whole(describePermission('mcp__x__y', { text: across(4000 - 13) }).detail, 'an MCP call’s detail');
 });
 
 test('#1686 a step’s label, who, detail, diff, input and folded detail are cut whole', () => {
@@ -54,7 +56,10 @@ test('#1686 a step’s label, who, detail, diff, input and folded detail are cut
   for (const k of ['label', 'who', 'detail', 'diff']) whole(s[k], `a step’s ${k}`);
   whole(turnStep({ id: 't', label: 'x', kind: 'thought', detail: across(STEP_TEXT.thought), state: 'done' }).detail, 'a thought’s detail');
   whole(stepInput(across(STEP_TEXT.input - 1)), 'a step’s input');
-  whole(stepInput(`/a/b/${acrossTail(STEP_TEXT.input)}`), 'a path input’s tail');
+  // A path over STEP_TEXT.input (300) keeps its first 89 characters and its last 210, the file name.
+  const tail = Math.ceil((STEP_TEXT.input - 1) * 0.7);
+  whole(stepInput(`/a/b/${'p'.repeat(200)}${acrossTail(tail)}`), 'a path input’s tail');
+  whole(stepInput(`/a/b/${across(STEP_TEXT.input - 1 - tail - 5)}${'q'.repeat(400)}`), 'a path input’s head');
   whole(foldedStep({ id: 'f', detail: across(STEP_TEXT.detail) }).detail, 'a folded step’s detail');
 });
 
