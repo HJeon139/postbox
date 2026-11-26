@@ -106,9 +106,9 @@ export function followOpen(draft, from, to) {
 /**
  * The comments an answer sends (#518), marked as it goes with the revision it answered and when it went, under that
  * answer’s own key: two answers can be on their way at once (a double click), and one refused mustn’t unmark what the
- * other sent. When it went tells an answer that landed before it, from another page, from this one. A spread
- * copies the marks, as followLines copies a comment, and JSON leaves them out, so they reach neither the answer nor what
- * a reload keeps.
+ * other sent. When it went tells this click’s own answer apart from another page’s answer that landed before the
+ * click. A spread copies the marks, as followLines copies a comment, and JSON leaves them out, so they reach neither
+ * the answer nor what a reload keeps.
  */
 const SENT = Symbol('sent');
 let answers = 0;
@@ -137,8 +137,10 @@ export function unmarkSent(d, key) {
  * a page elsewhere, a resync): the comments that answer sent are the block’s threads now, or, from a dismissal,
  * discarded with it, so they leave the draft here, where the block is drawn, and the person sees the draft they send
  * (#518). Only an answer that landed takes them: one the server refused as stale left them the person’s. The answer
- * that landed may be for the revision they were sent for or a later one, but not from before they went: another page’s
- * answer that landed before this page’s click, drawn late, leaves what the click sent, which the server refuses. What
+ * that landed may be for the revision they were sent for or a later one, but not one that landed before they were sent:
+ * another page’s answer that landed before this page’s click, drawn late, leaves what the click sent, which the server
+ * refuses. `landed.at` is the server’s Date.now() as the answer landed (server/blocks.mjs, act), and the mark’s is the
+ * page’s, on the same computer: a page clock running ahead of the server’s would keep a sent comment as a draft. What
  * they started on the newer revision stays, and so does the verdict on screen. An edit open is saved first, since it’s
  * kept by its place in the comments.
  * @param {any} d @param {{ action: string, revision: number, at: number } | undefined} landed
