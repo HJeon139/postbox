@@ -5,10 +5,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { offerNeed, releaseNeed } from '../server/card-needs.mjs';
-import { recordJob, settleJobs } from '../server/job-records.mjs';
+import { recordJob, runningJobs, settleJobs } from '../server/job-records.mjs';
 import { newId } from '../server/store.mjs';
 import { endSubagent } from '../server/subagent-end.mjs';
 import { threadLines } from '../server/thread-catch-up.mjs';
+import { heldBy } from '../server/turn-held.mjs';
 import * as arrange from './arrange.mjs';
 import { heldStore, setup, until } from './stop-reply-fixture.mjs';
 
@@ -186,5 +187,32 @@ test('a diagram reported while its first report is held behind a commit isn’t 
   await release();
   assert.equal(first, true, 'the first report reaches the agent');
   assert.equal(again, false, 'the same diagram isn’t reported twice');
+  await env.close();
+});
+
+test('a job recorded while a commit is held is one Stop asks about, and one a failed turn says it held (#623, runningJobs, heldBy)', async () => {
+  const env = await heldRoom();
+  const turn = turnOf(env);
+  const release = await env.hold();
+  recordJob(env.rt, turn, { id: 'job1', state: 'running', command: 'sleep 60', label: 'Sleep' });
+  const running = runningJobs(env.rt, env.se.id, turn.id).map((/** @type {any} */ j) => j.id);
+  const held = heldBy(env.rt, env.se, turn).stopped;
+  await release();
+  assert.deepEqual(running, ['job1'], 'Stop asks about the held job');
+  assert.deepEqual(held, ['Sleep'], 'the failed reply names it');
+  await env.close();
+});
+
+test('a job kept while a commit is held is one the kept-jobs poll watches (#623, kept-jobs keptJobs)', async () => {
+  const env = await heldRoom();
+  const turn = turnOf(env);
+  recordJob(env.rt, turn, { id: 'job1', state: 'running', command: 'sleep 60', label: 'Sleep' });
+  await env.store.flush();
+  const job = env.store.state.sessions[env.se.id].jobs[0];
+  const release = await env.hold();
+  arrange.setSession(env.rt, env.se.id, { jobs: [{ ...job, kept: true, pgid: 4242, groups: [{ pgid: 4242 }] }] });
+  const kept = env.rt.keptJobs().map((/** @type {any} */ j) => j.id);
+  await release();
+  assert.deepEqual(kept, ['job1'], 'the held kept job is watched');
   await env.close();
 });
