@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { majorsIn } from '../tools/signoff/toolchain.mjs';
+import { majorsIn } from '../tools/signoff/workflows.mjs';
 import { EXIT, signoff } from '../tools/signoff.mjs';
 import { COMMITS, gateLog, NO_CODEQL, NODE22, putLog, RED, world } from './signoff-fake.mjs';
 

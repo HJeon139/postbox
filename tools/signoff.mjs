@@ -1,7 +1,7 @@
 // The local sign-off on a pull request (#845, part A1): what a reviewer runs before saying a head is ready, so a
 // sign-off fails loudly where sprint 3’s scripts failed quietly. Six steps, in order, each printed as it ends:
 //   1. the head is pushed: the local HEAD is the pull request’s head on GitHub;
-//   2. the toolchain: every Node major CI runs is installed (tools/signoff/toolchain.mjs);
+//   2. the toolchain: every Node major CI runs (tools/signoff/workflows.mjs) is installed (tools/signoff/toolchain.mjs);
 //   3. Biome at each commit from the merge base to HEAD (tools/signoff/trees.mjs);
 //   4. the merged tree: HEAD merges cleanly with a freshly fetched base, and the merge passes Biome and the project lints;
 //   5. the gate: a log this script wrote for this exact head shows npm run check and both full browser runs passed
@@ -20,9 +20,10 @@ import { parseArgs, USAGE } from './signoff/args.mjs';
 import { defaultDeps } from './signoff/deps.mjs';
 import { readLog, verdict } from './signoff/gate-log.mjs';
 import { runGate } from './signoff/gate-run.mjs';
-import { ciMajors, toolchain } from './signoff/toolchain.mjs';
+import { toolchain } from './signoff/toolchain.mjs';
 import { eachCommit, fetchBase, mergedTree } from './signoff/trees.mjs';
 import { must } from './signoff/wait.mjs';
+import { ciMajors } from './signoff/workflows.mjs';
 import { EXIT as CHECKS_EXIT, signoffChecks } from './signoff-checks.mjs';
 
 /** Exit codes: 0 when every step passed, else the first failed step’s number; 64 for a command line that can’t run. */
