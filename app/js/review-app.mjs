@@ -24,8 +24,11 @@ const hints = new Map();
  * @returns {HTMLElement}  the block on the page
  */
 export function rerenderAround(itemId, node, build) {
+  // A block the page let go of (a server update re-rendered it, or the conversation changed) is let go of here too.
+  for (const [id, el] of onPage) if (!el.isConnected) onPage.delete(id);
   const cur = node.isConnected ? node : (onPage.get(itemId) ?? node);
-  const app = cur.querySelector('.app-review-wrap > .rv-app');
+  // Only a mounted app is kept: one that said it isn’t available mounts afresh, in case it is now.
+  const app = cur.querySelector('.app-review-wrap > .rv-app:has(> .app-body)');
   keeping = app ? { itemId, key: app.dataset.app } : null;
   let n;
   try {
