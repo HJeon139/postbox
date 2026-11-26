@@ -198,7 +198,7 @@ const waiting = /** @type {Map<HTMLElement, { id: string, threadId: string }>} *
 onPressEnd((node) => {
   const q = waiting.get(node);
   waiting.delete(node);
-  if (q) paintLive(node, itemsOf(q.threadId)[placeIn(q.threadId, q.id)], q.threadId);
+  if (q && node.isConnected) paintLive(node, itemsOf(q.threadId)[placeIn(q.threadId, q.id)], q.threadId);
 });
 let frame = 0;
 

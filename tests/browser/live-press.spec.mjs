@@ -94,7 +94,8 @@ test('#1616 a press held on “Show the whole reply” in a crowded room while a
   await running(page, eight);
   const block = page.locator('.live-steps.crowded').first();
   const who = /** @type {string} */ (await block.evaluate((b) => b.closest('[data-key]')?.querySelector('.who')?.textContent ?? ''));
-  const handle = eight.find((w) => who.includes(w)) ?? 'p1';
+  const handle = /** @type {string} */ (eight.find((w) => who.includes(w)));
+  expect(handle, 'the crowded block names its agent').toBeTruthy();
   await pressAcrossRefill(page, block.getByRole('button', { name: 'Show the whole reply' }), handle);
   await expect(page.locator('.live-steps.crowded.whole'), 'shown whole').toHaveCount(1);
   await finish(eight);
