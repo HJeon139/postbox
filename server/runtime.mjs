@@ -771,7 +771,7 @@ export class Runtime {
    * A browser has a thread open: its agents’ unread counts clear, then the thread’s (Threads.view), in the order they
    * always did. Each is read pending, as the thread's next: an unread a turn's end counted behind a held commit is
    * cleared too (#796).
-   * @param {string} threadId
+   * @param {string} threadId @param {string} [personId]  who has it open (#1742)
    */
   view(threadId, personId) {
     if (!threadId) return;

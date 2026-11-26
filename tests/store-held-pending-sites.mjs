@@ -56,6 +56,9 @@ export const PENDING = {
   ],
   // the item a repeated send's first try posted, and its conversation, either maybe behind a held commit (#1138, #1292)
   'send-message.mjs': ['repeatOf', 'repeatOf'],
+  // A reply that asks a person (#1742): the message its turn took, for its sender; the session and the asks it keeps,
+  // as the reply’s mark is written; and every session’s asks on a view. Each may be behind a held commit, as the reply is.
+  'person-mentions.mjs': ['peopleAsked', 'keep', 'markAsks', 'readAsks', 'readAsks', 'readAsks'],
   'persona-create.mjs': ['createPersonaFor'], // the conversation a new agent joins, maybe started behind a held commit (#1292)
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
