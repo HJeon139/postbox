@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { watchForgets } from '../server/remote/host-forget.mjs';
 import { hostTurnsPort } from '../server/remote/host-turns-port.mjs';
+import { settled as answered, rig as forgetRig } from './remote-host-forget-rig.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 /** The `forget` messages Postbox sent the host. @param {any} r */
@@ -47,4 +48,23 @@ test('#1680 only a turn stopping on that host holds a persona’s removal there'
   const port = hostTurnsPort({ remote: { stopping } });
   assert.deepEqual(port.stoppingPersonas('ho_a'), ['pe_a']);
   assert.deepEqual(port.stoppingPersonas('ho_c'), []);
+});
+
+test('#1680 a persona freed while another’s removal is being sent goes on that same connection, once', async () => {
+  const { store, manager, hosts } = forgetRig({ connected: [] });
+  const held = new Set(['pe_held']);
+  /** @type {(hostId: string) => void} */
+  let stopEnded = () => {};
+  hosts.hostTurns = { stoppingPersonas: () => [...held], onStopEnded: (/** @type {any} */ heard) => (stopEnded = heard) };
+  watchForgets(hosts);
+  store.emit('host.forget', { id: 'ho_a', add: ['pe_held', 'pe_free'] });
+  manager.connect('ho_a');
+  // pe_free’s send is waiting for its answer when pe_held’s stop is confirmed.
+  held.delete('pe_held');
+  stopEnded('ho_a');
+  await answered();
+  await answered();
+  const sent = manager.links.get('ho_a').sent.map((/** @type {any} */ m) => m.persona);
+  assert.deepEqual(sent, ['pe_free', 'pe_held'], 'each once, on the one connection');
+  assert.equal(store.state.hostForgets.ho_a, undefined);
 });
