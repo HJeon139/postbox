@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.51.2 (2026-11-26)
+
+### Fixes
+
+- **agent-sdk:** the stopped work’s summary reaches the agent as one cut line
+- **text:** a step’s output tail and a one-character glimpse are cut whole too
+- **text:** cut the clip helpers and step text only at a whole character
+- **agent-sdk:** tell of a stopped background subagent while it was still talking
+- **agent-sdk:** wait for background work as long as a host turn does, and say what was stopped
+- **apps:** let an app mounted under a resting pointer take it once its item renders
+- **remote:** a deleted agent's memory on a host waits for its turn there to stop
+
 ## 4.51.1 (2026-11-26)
 
 ### Fixes
