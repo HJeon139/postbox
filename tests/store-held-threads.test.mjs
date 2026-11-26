@@ -11,9 +11,10 @@ import * as arrange from './arrange.mjs';
 import { heldStore, setup, until } from './stop-reply-fixture.mjs';
 
 /** A room whose agent opens a topic once a commit is held; `release` lets the commit, and what it held, through. */
-async function topicWhileHeld(step = async () => {}) {
+async function topicWhileHeld(step = async () => {}, before = (/** @type {any} */ _env) => {}) {
   const h = await heldStore();
   const env = await setup(step, h.store);
+  before(env);
   const root = arrange.post(env.rt, env.t.id, { kind: 'agent', sessionId: env.se.id, handle: 'researcher', text: 'The numbers.', status: 'done' });
   await h.store.flush();
   h.hold();
@@ -116,5 +117,21 @@ test('a side thread opened while a commit is held counts its first message on it
   arrange.post(env.rt, side.id, { kind: 'user', text: 'A question in the side thread' });
   await env.release();
   assert.equal(env.store.items(env.t.id).find((i) => i.kind === 'sidelink')?.count, 1);
+  await env.close();
+});
+
+test('a reply in a topic opened while a commit is held knows its conversation’s terms (#623, checkTurn’s glossary)', async () => {
+  const { checkTurn } = await import('../server/turn-checks.mjs');
+  // The conversation defined the term before the commit was held, so it’s published; the topic isn’t.
+  const env = await topicWhileHeld(undefined, (e) =>
+    e.store.emit('glossary', {
+      threadId: e.t.id,
+      entry: { key: 'zorblax', term: 'Zorblax', definition: 'A made-up ranking.', source: '', by: 'researcher', at: Date.now() },
+    }),
+  );
+  const turn = { id: 'tu_x', threadId: env.topicId, said: 'We rank these with [Zorblax](term:zorblax).' };
+  const problems = checkTurn(env.rt.checks, turn, env.se).filter((p) => p.scope?.kind === 'term');
+  assert.deepEqual(problems, [], 'the conversation’s term is known in its held topic');
+  await env.release();
   await env.close();
 });
