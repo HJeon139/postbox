@@ -5,8 +5,9 @@
 //   quiet-stretches          not a defect: every quiet stretch of a minute or more, with its length, what was waiting
 //                            and what moved the room, and how long after the timed step was due the room knew it
 //                            had passed, so two runs can be compared
-// Each reads the run’s event history, and the first also the scenario’s definition of done, which only
-// tests/uat/e2e/scenarios/idleroom.md gives: in any other run it finds nothing.
+// Each reads the run’s event history, and the first also the run’s definition of done, which only a request that
+// names the sprint board (tests/uat/e2e/scenarios/idleroom.md) or the nightly check gives: in any other run it finds
+// nothing.
 
 import { workOf } from './board-log.mjs';
 import { midTurnAsks } from './mid-turn-asks.mjs';
@@ -14,11 +15,11 @@ import { clockOf, quietStretches } from './quiet-stretches.mjs';
 
 /**
  * How long a room may sit with work waiting and nothing to restart it before that is the finding, counted from when
- * the next step could have started: the moment the timed step was due, or the stretch’s start when no timed step had
- * been queued. So a room that waits out a 12-minute step isn’t idle for those 12 minutes. #1746 counted more than 10
- * minutes from the last activity; this is 5 from when work could go on, since the person in the scenario is back about
- * 8 minutes after the step is due, and a bar of 10 would need a run 10 minutes longer. It’s a bar on a fix too: one
- * that moves the room later than 5 minutes after the step was due still fails. The lengths are reported whatever it is.
+ * the next step could have started: the stretch’s start in a sprint room, or, in a room with a timed step, the moment
+ * that step was due, so waiting a 12-minute step out isn’t idling. #1746 counted more than 10 minutes; this is 5,
+ * since the person in the sprint scenario is away for 10 and a bar of 10 would need a run 10 minutes longer. It’s a
+ * bar on a fix too: one that moves the room later than 5 minutes after work could go on still fails. The lengths are
+ * reported whatever it is.
  */
 export const IDLE_MIN_MS = 5 * 60_000;
 /** The shortest quiet stretch the measurement lists: under a minute is the pause between two agents’ turns. */
@@ -56,7 +57,10 @@ const idleFor = (s) => s.overdueMs ?? s.ms;
 
 /** How a stall with no timed step pending reads: in a sprint room, and in a room whose timed step nobody had started. */
 const UNQUEUED = {
-  sprint: { how: 'with the sprint unfinished and nothing to restart it', why: 'The second sprint’s stories weren’t all done.' },
+  sprint: {
+    how: 'with the sprint unfinished and nothing to restart it',
+    why: 'The board’s record never showed a second sprint with every story done: a team that kept the board by hand, or left a story unmarked, reads the same.',
+  },
   timed: {
     how: 'with work waiting, the timed step not yet queued and nothing to restart it',
     why: 'Nobody had queued the timed step yet: the work stopped before it.',

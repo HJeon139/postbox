@@ -6,7 +6,7 @@
 // the customer’s answer is the person’s message. Nothing here reads what an agent wrote for a ceremony’s name, so an
 // agent that says “standup” and holds none doesn’t count, and one that holds one without the word does.
 
-import { boardAt, boardLog, openStories, whoRan } from './board-log.mjs';
+import { boardAt, boardLog, demos, openStories, whoRan } from './board-log.mjs';
 import { clockOf } from './quiet-stretches.mjs';
 import { standupRounds } from './standup.mjs';
 
@@ -17,7 +17,7 @@ function ranBy(f, lines) {
   /** @type {Map<string, number>} */
   const first = new Map();
   for (const x of lines) {
-    const who = whoRan(f, x.at);
+    const who = whoRan(f, x.at, undefined, new RegExp(`\\b${x.did}\\s+${x.story}\\b`));
     if (who && !first.has(who)) first.set(who, x.at);
   }
   return [...first].map(([handle, at]) => ({ handle, at }));
@@ -47,6 +47,26 @@ function beforeSprint(f, log) {
   return out;
 }
 
+/**
+ * The stories the customer sent back, with when the board showed it: put back with `return` after their answer to a
+ * demo, or simply taken again by a later sprint’s plan after it, which is what “take it back into the next sprint”
+ * also reads as.
+ * @param {any} f @param {any[]} log @returns {{ story: string, at: number, how: string }[]}
+ */
+function sentBack(f, log) {
+  const answered = demos(f, log).filter((d) => d.answer);
+  const first = answered[0]?.answer.at ?? Number.POSITIVE_INFINITY;
+  const out = [];
+  for (const x of log.filter((y) => y.at > first)) {
+    if (x.did === 'return') out.push({ story: x.story, at: x.at, how: 'went back to the backlog' });
+    if (x.did !== 'plan') continue;
+    const before = new Set(log.filter((y) => y.did === 'plan' && y.at < first).flatMap((y) => y.items));
+    for (const id of x.items)
+      if (before.has(id) && !out.some((b) => b.story === id)) out.push({ story: id, at: x.at, how: `was taken again into sprint ${x.sprint}` });
+  }
+  return out;
+}
+
 /** Each sprint’s plan, and the agents that took a story in it themselves. @param {any} f @param {any[]} log @returns {Ceremony[]} */
 function sprints(f, log) {
   const plans = log.filter((x) => x.did === 'plan');
@@ -55,7 +75,7 @@ function sprints(f, log) {
     const backlog = boardAt(log, p.at).stories.size;
     const taken = p.items.filter((/** @type {string} */ id) => id.startsWith('S'));
     const actions = p.items.filter((/** @type {string} */ id) => id.startsWith('A'));
-    const back = taken.filter((/** @type {string} */ id) => log.some((x) => x.did === 'return' && x.story === id && x.at < p.at));
+    const back = taken.filter((/** @type {string} */ id) => sentBack(f, log).some((b) => b.story === id));
     const takers = ranBy(
       f,
       log.filter((x) => x.did === 'claim' && x.at > p.at && x.at < until),
@@ -86,42 +106,41 @@ function sprints(f, log) {
 
 /** The sprint’s end: the demo, the customer’s answer, a story sent back, and the retrospective’s action items. @param {any} f @param {any[]} log @returns {Ceremony[]} */
 function reviews(f, log) {
-  const said = (f.events ?? [])
-    .filter((/** @type {any} */ e) => e?.type === 'item.add' && e.data?.item?.kind === 'user')
-    .map((/** @type {any} */ e) => e.data.item);
-  return log
-    .filter((x) => x.did === 'demo')
-    .flatMap((demo) => {
-      const answer = said.find((/** @type {any} */ m) => m.at > demo.at);
-      const back = log.find((x) => x.did === 'return' && answer && x.at > answer.at);
-      const actions = log.filter((x) => x.did === 'action' && x.at > demo.at);
-      /** @type {Ceremony[]} */
-      const out = [
-        { name: 'demo', at: demo.at, sprint: demo.sprint, evidence: `Sprint ${demo.sprint}’s stories were listed for the customer at ${clockOf(demo.at)}.` },
-      ];
-      if (answer)
-        out.push({
-          name: 'demo-answered',
-          at: answer.at,
-          sprint: demo.sprint,
-          evidence: `The person answered sprint ${demo.sprint}’s demo at ${clockOf(answer.at)}.`,
-        });
-      if (back)
-        out.push({ name: 'sent-back', at: back.at, sprint: demo.sprint, evidence: `${back.story} went back to the backlog after the customer’s answer.` });
-      if (actions.length)
-        out.push({
-          name: 'retro',
-          at: actions[0].at,
-          sprint: demo.sprint,
-          evidence: `${actions.length} action ${actions.length === 1 ? 'item' : 'items'} after sprint ${demo.sprint}’s demo: ${actions.map((x) => x.action).join(', ')}.`,
-        });
-      return out;
-    });
+  return demos(f, log).flatMap((demo) => {
+    const answer = demo.answer;
+    const back = answer ? sentBack(f, log).find((b) => b.at > answer.at) : null;
+    const actions = log.filter((x) => x.did === 'action' && x.at > demo.at);
+    /** @type {Ceremony[]} */
+    const out = [
+      {
+        name: 'demo',
+        at: demo.at,
+        sprint: demo.sprint,
+        evidence: `Sprint ${demo.sprint}’s stories were listed for the customer at ${clockOf(demo.at)}, with one or more done.`,
+      },
+    ];
+    if (answer)
+      out.push({
+        name: 'demo-answered',
+        at: answer.at,
+        sprint: demo.sprint,
+        evidence: `The person answered sprint ${demo.sprint}’s demo at ${clockOf(answer.at)}.`,
+      });
+    if (back) out.push({ name: 'sent-back', at: back.at, sprint: demo.sprint, evidence: `${back.story} ${back.how} after the customer’s answer.` });
+    if (actions.length)
+      out.push({
+        name: 'retro',
+        at: actions[0].at,
+        sprint: demo.sprint,
+        evidence: `${actions.length} action ${actions.length === 1 ? 'item' : 'items'} after sprint ${demo.sprint}’s demo: ${actions.map((x) => x.action).join(', ')}.`,
+      });
+    return out;
+  });
 }
 
-/** Each standup: a round of turns (one agent’s, then every other agent’s on it) while a story someone had taken wasn’t done. @param {any} f @param {any[]} log @returns {Ceremony[]} */
+/** Each standup: a round of turns (one agent’s, then an answer to it from every other agent) while a story someone had taken wasn’t done. @param {any} f @param {any[]} log @returns {Ceremony[]} */
 function standups(f, log) {
-  return standupRounds(f, { says: null })
+  return standupRounds(f, { says: null, toAsker: true })
     .filter((r) => openStories(log, r.at).some((s) => s.owner))
     .map((r) => ({
       name: 'standup',

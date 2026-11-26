@@ -67,38 +67,59 @@ function finishedAt(log) {
   return null;
 }
 
+/** The person’s messages, oldest first. @param {{ events?: any[] }} f */
+export const personSaid = (f) => (f.events ?? []).filter((e) => e?.type === 'item.add' && e.data?.item?.kind === 'user').map((e) => e.data.item);
+
+/**
+ * Each demo the team gave: a `demo` line when a story of that sprint was done, since a demo shows working software and
+ * the same command also just prints where a sprint stands. With the person’s answer, their next message, and how long
+ * the room waited on them for it: until that message, or the team’s next change to the board if that came first.
+ * @param {{ events?: any[] }} f  @param {any[]} log
+ * @returns {{ at: number, sprint: number, answer: any|null, until: number }[]}
+ */
+export function demos(f, log) {
+  const said = personSaid(f);
+  return log
+    .filter((x) => x.did === 'demo' && [...boardAt(log, x.at).stories.values()].some((s) => s.sprint === x.sprint && s.done))
+    .map((x) => {
+      const answer = said.find((m) => m.at > x.at) ?? null;
+      const changed = log.find((y) => y.at > x.at)?.at ?? Number.POSITIVE_INFINITY;
+      return { at: x.at, sprint: x.sprint, answer, until: Math.min(answer?.at ?? Number.POSITIVE_INFINITY, changed) };
+    });
+}
+
 /**
  * What “work is waiting” means for a sprint room: asked when the person’s request named the board, passed when the
- * second sprint’s stories were all done, and waiting on the person from each demo until their next message.
+ * second sprint’s stories were all done, and waiting on the person from each demo until their answer.
  * @param {{ workspace?: string|null, workspaceKept?: string|null, events?: any[] }} f  @returns {import('./quiet-stretches.mjs').Work}
  */
 export function sprintWork(f) {
-  const said = (f.events ?? []).filter((e) => e?.type === 'item.add' && e.data?.item?.kind === 'user').map((e) => e.data.item);
   const log = boardLog(f);
   const passed = finishedAt(log);
-  const customer = log
-    .filter((x) => x.did === 'demo')
-    .map((x) => ({
-      from: x.at,
-      to: said.find((m) => m.at > x.at)?.at ?? Number.POSITIVE_INFINITY,
-      what: `the customer’s answer to sprint ${x.sprint}’s demo`,
-    }));
-  return { asked: said.find((m) => BOARD.test(m.text ?? ''))?.at ?? null, queued: null, passed: passed === null ? null : { at: passed }, customer };
+  const customer = demos(f, log).map((d) => ({ from: d.at, to: d.until, what: `the customer’s answer to sprint ${d.sprint}’s demo` }));
+  const asked = personSaid(f).find((m) => BOARD.test(m.text ?? ''))?.at ?? null;
+  return { asked, queued: null, passed: passed === null ? null : { at: passed }, customer };
 }
 
 /** The run’s definition of done: the sprint board’s when the person’s request named the board, else the nightly check’s. @param {any} f */
-export const workOf = (f) => (sprintWork(f).asked === null ? nightlyWork(f) : sprintWork(f));
+export function workOf(f) {
+  const sprint = sprintWork(f);
+  return sprint.asked === null ? nightlyWork(f) : sprint;
+}
 
 /**
- * Which agent ran the board command that made a record’s line: the newest shell command naming the board that
- * started before it, within two minutes, from the work ledger in the event history. Null when the run recorded none.
- * @param {{ events?: any[] }} f  @param {number} at  @param {RegExp} [script]
+ * Which agent ran the board command that made a record’s line, from the work ledger in the event history: of the
+ * shell commands naming the board that started in the two minutes before it, the newest whose text says what the
+ * line did (`claim S2`), since agents taking their stories start their commands in the same second; else the newest.
+ * Null when the run recorded none.
+ * @param {{ events?: any[] }} f  @param {number} at  @param {RegExp} [script]  @param {RegExp|null} [did]
  * @returns {string|null}
  */
-export function whoRan(f, at, script = BOARD) {
+export function whoRan(f, at, script = BOARD, did = null) {
   const ran = (f.events ?? [])
     .filter((e) => e?.type === 'work.add' && e.data?.entry?.kind === 'command' && script.test(e.data.entry.command ?? ''))
     .map((e) => e.data.entry)
     .filter((c) => c.startedAt <= at && at - c.startedAt < 120_000);
-  return ran.at(-1)?.handle ?? null;
+  const same = did ? ran.filter((c) => did.test(c.command)) : [];
+  return (same.at(-1) ?? ran.at(-1))?.handle ?? null;
 }

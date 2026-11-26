@@ -70,6 +70,19 @@ test('a round is one agent’s turn and a turn from every other agent on it; the
   const researcher = run.events.find((/** @type {any} */ e) => e.type === 'session' && e.data.handle === 'researcher').data.id;
   const took = run.events.find((/** @type {any} */ e) => e.type === 'entry.patch' && e.data.sessionId === researcher).seq;
   assert.deepEqual(standupRounds({ events: run.events.filter((/** @type {any} */ e) => e.seq < took) }, { says: null }), []);
+  // A status round converges on whoever asked. The opening round’s answers went on to the next agent, none back to
+  // @alpha, so it isn’t one; the same room without @alpha’s turns has five rounds by shape, and two whose answers
+  // reached the agent that asked.
+  assert.deepEqual(standupRounds(run, { says: null, toAsker: true }), []);
+  const team = { events: run.events.filter((/** @type {any} */ e) => !(e.type === 'work.add' && e.data.entry.handle === 'alpha')) };
+  assert.equal(standupRounds(team, { says: null }).length, 5);
+  assert.deepEqual(
+    standupRounds(team, { says: null, toAsker: true }).map((r) => [r.by, r.at, r.answers.map((a) => a.handle)]),
+    [
+      ['developer', 1795678747545, ['critic', 'researcher']],
+      ['researcher', 1795678759829, ['developer', 'critic']],
+    ],
+  );
   // With no sprint board a round is no standup: the trigger wants a story someone had taken and not finished.
   assert.deepEqual(TRIGGERS['standup-round-held'].run(run), []);
   assert.equal(TRIGGERS['standup-round-held'].recorded({ workspace: 'a folder' }), true);
@@ -84,6 +97,11 @@ test('who ran a command is the agent whose shell command named the script, withi
   assert.equal(whoRan(run, 1795679300000, /nightly\.mjs/), null);
   // The run had no sprint board, so nobody ran one.
   assert.equal(whoRan(run, run.nightly[1].at), null);
+  // Two commands in the window: the one whose text says what the record’s line did, else the newest. @alpha’s status
+  // came 17 s after @researcher’s, and the third “passed” line is within two minutes of both.
+  assert.equal(whoRan(run, run.nightly[2].at + 1000, /nightly\.mjs/), 'alpha');
+  assert.equal(whoRan(run, run.nightly[2].at + 1000, /nightly\.mjs/, /date -u && node nightly/), 'researcher');
+  assert.equal(whoRan(run, run.nightly[2].at + 1000, /nightly\.mjs/, /no such words/), 'alpha');
 });
 
 test('the words that make a message a standup', () => {
@@ -131,7 +149,10 @@ test('a room waiting on the customer’s answer to a demo reads as waiting on th
   const sprint = { asked: nightly.asked, queued: null, passed: null, customer: [] };
   const [x] = idleFindings(f, { min: 240_000, work: sprint });
   assert.equal(x.title, 'The room sat idle for 4 min 6 s with the sprint unfinished and nothing to restart it');
-  assert.match(x.evidence, /moved by the person’s message\. The second sprint’s stories weren’t all done\. The definition of done wasn’t met/);
+  assert.match(
+    x.evidence,
+    /moved by the person’s message\. The board’s record never showed a second sprint with every story done: .* reads the same\. The definition of done wasn’t met/,
+  );
 });
 
 test('the run’s last pass decides after-ceremony too, which reads a stretch that may still be open', () => {

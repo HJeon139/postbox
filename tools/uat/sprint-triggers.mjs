@@ -7,20 +7,23 @@ import { ceremonies } from './sprint-ceremonies.mjs';
 /** What each trigger needs of a ceremony, and what Postbox “showed”. @type {Record<string, { name: string, says: string, when?: (c: import('./sprint-ceremonies.mjs').Ceremony) => boolean }>} */
 const NEEDS = {
   'backlog-groomed': { name: 'groomed', says: 'the team put the backlog on the board and ordered, split or clarified its stories before the first sprint' },
-  'stories-estimated': { name: 'estimated', says: 'two agents or more each gave their own estimates of the stories, not the scrum master alone' },
+  'stories-estimated': {
+    name: 'estimated',
+    says: 'two agents or more, the scrum master among them if it gave one, each entered their own estimates of the stories',
+  },
   'sprint-planned': {
     name: 'planned',
     says: 'a first sprint was planned with a goal and fewer stories than the backlog holds',
     when: (c) => c.sprint === 1 && (c.taken ?? 0) < (c.backlog ?? 0),
   },
-  'tasks-elected': { name: 'elected', says: 'three agents each took a story of the sprint themselves', when: (c) => c.sprint === 1 },
+  'tasks-elected': { name: 'elected', says: 'three agents, the scrum master among them if it took one, each took a story of a sprint themselves' },
   'standup-round-held': {
     name: 'standup',
     says: 'one agent asked every other agent for its status in one turn, and each took a turn on it, while a story someone had taken wasn’t done',
   },
-  'demo-shown': { name: 'demo', says: 'the first sprint’s stories were listed for the customer’s demo', when: (c) => c.sprint === 1 },
-  'demo-answered': { name: 'demo-answered', says: 'the person answered the first sprint’s demo', when: (c) => c.sprint === 1 },
-  'story-sent-back': { name: 'sent-back', says: 'a story the customer didn’t accept went back to the backlog' },
+  'demo-shown': { name: 'demo', says: 'a sprint’s stories were listed for the customer’s demo, with one or more done' },
+  'demo-answered': { name: 'demo-answered', says: 'the person answered a sprint’s demo' },
+  'story-sent-back': { name: 'sent-back', says: 'a story the customer didn’t accept went back to the backlog, or into a later sprint’s plan' },
   'retro-held': { name: 'retro', says: 'the retrospective put action items on the board' },
   'next-sprint-took-actions': {
     name: 'took-actions',

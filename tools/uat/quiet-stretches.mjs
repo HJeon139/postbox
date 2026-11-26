@@ -9,10 +9,12 @@
 //   nothing     the work wasn’t done, nobody was asked and nothing was scheduled: nothing would restart it
 //   done        the definition of done had been met
 //   unknown     the run’s records can’t say whether work was waiting
-// “Work is waiting” is the scenario’s own definition of done, as the records show it: from the person’s request that
-// names the command that proves it, until that command first said the work passed (tools/uat/nightly-log.mjs reads
-// both, for tests/uat/e2e/scenarios/idleroom.md). A run whose person never named the command has no such definition,
-// so its stretches are “unknown” there, never “nothing”: an idle room after a finished chat isn’t a finding.
+// “Work is waiting” is the run’s own definition of done, as the records show it (tools/uat/board-log.mjs, workOf): in
+// a sprint room (tests/uat/e2e/scenarios/idleroom.md), from the person’s request that names the sprint board until
+// the board’s record shows the second sprint’s stories all done; in a room with a timed check, from the request that
+// names the check until its own record says it passed (tools/uat/nightly-log.mjs). A run whose person named neither
+// has no such definition, so its stretches are “unknown” there, never “nothing”: an idle room after a finished chat
+// isn’t a finding.
 
 import { ASKING } from '../../shared/catalog.mjs';
 import { workOf } from './board-log.mjs';

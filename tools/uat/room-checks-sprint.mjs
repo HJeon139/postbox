@@ -6,7 +6,7 @@
 // the reply rules ending an exchange (server/reply-back.mjs) read differently from nobody having taken the next
 // story. Part of tools/uat/room-checks.mjs’s CHECKS; a run with no sprint board gets nothing.
 
-import { boardLog, openStories, workOf } from './board-log.mjs';
+import { boardLog, openStories, sprintWork, workOf } from './board-log.mjs';
 import { quietStretches } from './quiet-stretches.mjs';
 import { QUIET_LISTED_MS, stretchLine } from './room-checks-idle.mjs';
 import { ceremonies } from './sprint-ceremonies.mjs';
@@ -37,13 +37,23 @@ function context(f, log, held, s) {
   ].join(' ');
 }
 
+/** What a sprint room’s report says when the team never used the board: the stall check can’t tell that from a stall. */
+const NO_BOARD = {
+  title: 'No board command was recorded in this run',
+  evidence:
+    'The person’s request named the sprint board, and the board’s record is empty: the team kept no board with the tool, so no ceremony can be read from it, and idle-work-waiting can’t tell a sprint that finished from one that stopped.',
+  verdict: 'measurement',
+  note: 'Not a defect in Postbox: what the run’s other sprint findings rest on.',
+};
+
 /**
  * The measurement: every classed quiet stretch of a minute or more in a sprint room, each with its context.
  * @param {any} f  @param {import('./quiet-stretches.mjs').Work} [work]
  */
 export function afterCeremony(f, work = workOf(f)) {
   const log = boardLog(f);
-  const quiet = log.length ? quietStretches(f, work).filter((s) => s.ms >= QUIET_LISTED_MS && s.waiting !== 'unknown') : [];
+  if (!log.length) return sprintWork(f).asked === null ? [] : [NO_BOARD];
+  const quiet = quietStretches(f, work).filter((s) => s.ms >= QUIET_LISTED_MS && s.waiting !== 'unknown');
   if (!quiet.length) return [];
   const held = ceremonies(f);
   return [
