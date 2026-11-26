@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.1 (2026-11-26)
+
+### Fixes
+
+- **store:** word a refusal with no version, and pin each released format's list
+- **store:** record a data format number, raised only when an older Postbox can't replay
+- **store:** name --data for an older branch, and pin the version compare
+- **store:** refuse only a newer version's folder, and let the record only advise
+- **store:** refuse a data folder a newer Postbox wrote, changing nothing
+
 ## 4.52.0 (2026-11-26)
 
 ### Features
