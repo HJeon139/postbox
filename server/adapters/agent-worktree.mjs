@@ -3,7 +3,7 @@
 // shared the project’s folder, so they waited behind each other. Decided by the person on 23 November 2026: each
 // agent gets its own worktree. So an agent with no folder of its own, in a project whose folder is in a git
 // repository, works in a worktree of that repository made for it on its first turn: a branch of its own,
-// `postbox/<project id>-<handle>`, started from the project’s current commit, in Postbox’s data folder:
+// `postbox/<project id>-<handle>-<persona id>`, started from the project’s current commit, in Postbox’s data folder:
 //
 //   <data>/worktrees/<project id>/<persona id>-<repo>/     the worktree, kept across turns and restarts; <repo> is
 //                                                           a hash of the repository's folder
@@ -78,7 +78,8 @@ export async function agentWorktree(persona, project, workRoot, { git = defaultG
   if (storedFolder(persona) || !project?.folder || !project.id) return shared();
   const key = JSON.stringify([workRoot, project.id, project.folder, persona.id || persona.handle]);
   const seen = known.get(key);
-  if (seen && (await stateOf(seen.dir)) === 'finished') return seen.folder;
+  // Its folder below the repository’s top can go with a checkout: then it’s worked out, and made, again.
+  if (seen && (await stateOf(seen.dir)) === 'finished' && (await exists(seen.folder))) return seen.folder;
   const top = await git(project.folder, ['rev-parse', '--show-toplevel', '--show-prefix']);
   if (top.code !== 0) return shared();
   // A repository with no commit yet would give an empty worktree, without the project’s files.
@@ -167,7 +168,7 @@ const exists = (path) =>
 /**
  * A worktree folder’s state: unfinished while git’s marker for one it’s still making is there, a `locked` file in its
  * admin folder that says `initializing` (git writes it so, under the C locale runGit sets); finished, with its .git
- * naming that admin folder and no such marker; else none. A `locked` file saying anything else is a lock someone set
+ * naming that admin folder, whose HEAD is there, and no such marker; else none. A `locked` file saying anything else is a lock someone set
  * (`git worktree lock`, empty or with its reason) on a worktree that may hold their work: it’s finished, and used. A
  * lock someone set with the reason `initializing` reads as git’s own marker.
  * @param {string} dir @returns {Promise<'finished' | 'unfinished' | 'none'>}
@@ -176,6 +177,8 @@ async function stateOf(dir) {
   try {
     const admin = gitPointer(await readFile(join(dir, '.git'), 'utf8'), 'gitdir: ');
     if (!admin) return 'none';
+    // Git’s record of it gone (the repository cloned again, or its .git deleted): no worktree git can use.
+    if (!(await exists(join(resolve(dir, admin), 'HEAD')))) return 'none';
     const lock = await readFile(join(resolve(dir, admin), 'locked'), 'utf8').catch(() => null);
     return lock?.trim() === 'initializing' ? 'unfinished' : 'finished';
   } catch {
@@ -218,7 +221,7 @@ export function turnFolders(cwd, ctx, workRoot) {
 
 /**
  * The branch the worktree holding cwd is on now, read from git’s own files with no git run (the agent may have
- * checked out another), or null when it isn’t on one or there’s no worktree there.
+ * checked out another): empty when it’s on a commit rather than a branch, null when there’s no worktree there.
  * @param {string} cwd @param {string} workRoot
  */
 function branchIn(cwd, workRoot) {
@@ -232,12 +235,22 @@ function branchIn(cwd, workRoot) {
     }
     if (!admin) return null;
     try {
-      return /^ref: refs\/heads\/(.+)$/m.exec(readFileSync(join(resolve(dir, admin), 'HEAD'), 'utf8'))?.[1]?.trim() ?? null;
+      return /^ref: refs\/heads\/(.+)$/m.exec(readFileSync(join(resolve(dir, admin), 'HEAD'), 'utf8'))?.[1]?.trim() ?? '';
     } catch {
       return null;
     }
   }
   return null;
+}
+
+/**
+ * Where the note says the worktree is: on the branch it’s on now; on a commit, with Postbox’s branch to check out
+ * first; or, with no worktree found, on Postbox’s branch. @param {string|null} now @param {string} made
+ */
+function on(now, made) {
+  if (now) return `on branch ${now}`;
+  if (now === '') return `on a commit, not a branch: check out ${made} before you commit`;
+  return `on branch ${made}`;
 }
 
 /**
@@ -253,6 +266,6 @@ export function worktreeNote(cwd, persona, project, workRoot) {
   return [
     '## Where you work',
     '',
-    `Your current folder is your own git worktree, on branch ${branchIn(cwd, workRoot) ?? branchFor(persona, project)}. The project’s folder, ${project.folder}, is the person’s: read it, but don’t work there. Your work reaches the person and other agents only as commits on your branch, which the person merges; it doesn’t follow their later commits. When you commit, name your branch in your reply.`,
+    `Your current folder is your own git worktree, ${on(branchIn(cwd, workRoot), branchFor(persona, project))}. The project’s folder, ${project.folder}, is the person’s: read it, but don’t work there. Your work reaches the person and other agents only as commits on your branch, which the person merges; it doesn’t follow their later commits. When you commit, name your branch in your reply.`,
   ].join('\n');
 }

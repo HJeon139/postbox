@@ -38,8 +38,13 @@ function fakeGit({ top, repo = true, prefix = '', branches = [], refuse = false 
     if (sub === 'worktree' && a1 === 'add') {
       if (refuse) return { code: 128, stdout: '', stderr: "fatal: 'postbox/x-a' is already checked out at '/elsewhere'\n" };
       const dir = a2 === '-b' ? args[4] : a2;
+      const branch = args[3]; // after -b, or after the folder
+      // As git lays it out: the worktree’s .git names its record, whose HEAD names its branch.
+      const admin = `${dir}.record`;
+      mkdirSync(admin, { recursive: true });
+      writeFileSync(join(admin, 'HEAD'), `ref: refs/heads/${branch}\n`);
       mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, '.git'), 'gitdir: /repo/.git/worktrees/x\n');
+      writeFileSync(join(dir, '.git'), `gitdir: ${admin}\n`);
       return ok();
     }
     return no(`unexpected git ${args.join(' ')}`);
@@ -126,6 +131,10 @@ test('#1709 an agent whose branch exists already gets a worktree on it, not a ne
 test('#1709 a project folder below its repository’s top is the same folder within the worktree', async (t) => {
   const r = rig(t, { prefix: 'apps/web/' });
   assert.equal(await r.folderOf(A), join(r.wtOf(A), 'apps', 'web'));
+  // A checkout in the worktree can take that folder away: the next call makes it again, not hands back a missing one.
+  await rm(join(r.wtOf(A), 'apps'), { recursive: true, force: true });
+  assert.equal(await r.folderOf(A), join(r.wtOf(A), 'apps', 'web'));
+  assert.ok(existsSync(join(r.wtOf(A), 'apps', 'web')));
 });
 
 test('#1709 elsewhere the folder is as it was: its own folder, a project with none, or one not in git', async (t) => {

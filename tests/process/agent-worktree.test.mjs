@@ -152,15 +152,16 @@ test('#1709 in Auto, routine git runs with no card in an agent’s real worktree
   assert.equal(decide([dir, p.folder]), 'ask');
 });
 
-test('#1709 an Antigravity turn in an agent’s worktree is told its branch and that the person merges, in agy’s rules file', async () => {
-  const { project: p, workRoot } = await project('told');
-  const persona = { id: 'pe_a', handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode: 'ask', tools: [], description: '', instructions: '' };
-  /** @type {{ cwd: string, rules: string }[]} */
-  const seen = [];
-  // A fake agy: it records the rules file the turn wrote into its folder, and ends the turn with a result line.
+/**
+ * An Antigravity adapter over a fake agy, as 1.5.18 with its hook confirmed, in the project’s data folder, and a turn
+ * that returns the rules file agy found in its folder. @param {{ folder: string }} p @param {string} workRoot @param {string} name
+ */
+function agyOver(p, workRoot, name) {
+  /** @type {string[]} */
+  let rules = [];
   const spawnImpl = (/** @type {string} */ _bin, /** @type {string[]} */ _args, /** @type {any} */ opts) => {
-    const rules = join(opts.cwd, PLUGIN_DIR, 'rules', 'AGENTS.md');
-    seen.push({ cwd: opts.cwd, rules: existsSync(rules) ? readFileSync(rules, 'utf8') : '' });
+    const file = join(opts.cwd, PLUGIN_DIR, 'rules', 'AGENTS.md');
+    rules.push(existsSync(file) ? readFileSync(file, 'utf8') : '');
     const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true });
     setImmediate(() => {
       child.stdout.end(`${JSON.stringify({ type: 'result', result: 'ok', session_id: 'c1' })}\n`);
@@ -169,37 +170,65 @@ test('#1709 an Antigravity turn in an agent’s worktree is told its branch and 
     });
     return child;
   };
+  const settingsFile = join(home, name, 'settings.json');
   const adapter = new AntigravityCliAdapter({
     workRoot,
-    settingsFile: join(home, 'told', 'settings.json'),
+    settingsFile,
     spawnImpl: /** @type {any} */ (spawnImpl),
     env: {},
+    version: '1.5.18',
+    hookProbe: async () => true,
   });
-  const ctx = {
-    signal: new AbortController().signal,
-    mcpUrl: 'http://127.0.0.1:1/mcp?session=se_1',
-    persona,
-    project: p,
-    handles: ['gem'],
-    state: {},
-    saveState: () => {},
-    pathOf: () => null,
-    text: () => {},
-    activity: () => {},
-    status: () => {},
-    reported: () => {},
+  const persona = { id: 'pe_a', handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode: 'ask', tools: [], description: '', instructions: '' };
+  const ctx = { signal: new AbortController().signal, mcpUrl: 'http://127.0.0.1:1/mcp?session=se_1', persona, project: p, handles: ['gem'], state: {} };
+  const quiet = { saveState() {}, pathOf: () => null, text() {}, activity() {}, status() {}, reported() {} };
+  /** The rules file agy read for one turn. @param {string} text */
+  const turn = async (text) => {
+    rules = [];
+    await adapter.deliver({}, { kind: 'user', text }, { ...ctx, ...quiet }).catch(() => {});
+    return rules.find(Boolean) ?? '';
   };
-  await adapter.deliver({}, { kind: 'user', text: 'Go.' }, ctx).catch(() => {});
-  const turn = seen.find((x) => x.rules);
-  assert.ok(turn, 'agy ran with its rules file');
-  assert.notEqual(turn.cwd, p.folder, 'in its own worktree');
-  assert.match(turn.rules, /## Where you work/);
-  assert.ok(turn.rules.includes(`branch postbox/pr_told-gem-pe_a`), turn.rules.slice(0, 400));
-  assert.ok(turn.rules.includes(p.folder));
-  assert.match(turn.rules, /which the person merges/);
-  // The branch it’s on now, which the agent may have changed, is the one it’s told.
-  git(turn.cwd, ['checkout', '-q', '-b', 'gem-own-name']);
-  seen.length = 0;
-  await adapter.deliver({}, { kind: 'user', text: 'Again.' }, ctx).catch(() => {});
-  assert.ok(seen.find((x) => x.rules)?.rules.includes('branch gem-own-name'));
+  return { adapter, turn, folder: () => adapter.folderFor(persona, p) };
+}
+
+test('#1709 an Antigravity turn in an agent’s worktree is told its branch and that the person merges, in agy’s rules file', async () => {
+  const { project: p, workRoot } = await project('told');
+  const agy = agyOver(p, workRoot, 'told');
+  const rules = await agy.turn('Go.');
+  assert.match(rules, /## Where you work/);
+  assert.ok(rules.includes('branch postbox/pr_told-gem-pe_a'), rules.slice(-900));
+  assert.ok(rules.includes(p.folder));
+  assert.match(rules, /which the person merges/);
+});
+
+test('#1709 the note names the branch the worktree is on now, or says it’s on a commit, not a branch', async () => {
+  const { project: p, workRoot } = await project('branches');
+  const agy = agyOver(p, workRoot, 'branches');
+  const dir = await agy.folder();
+  git(dir, ['checkout', '-q', '-b', 'gem-own-name']);
+  assert.ok((await agy.turn('Again.')).includes('branch gem-own-name'));
+  git(dir, ['checkout', '-q', '--detach']);
+  assert.ok((await agy.turn('Detached.')).includes('on a commit, not a branch: check out postbox/pr_branches-gem-pe_a'));
+});
+
+test('#1709 an agy without the hook gets no note: it would refuse the reads the note promises, and its rules have no room', async () => {
+  const { project: p, workRoot } = await project('unhooked');
+  const agy = agyOver(p, workRoot, 'unhooked');
+  agy.adapter.version = '1.4.0';
+  const rules = await agy.turn('Old agy.');
+  assert.ok(rules, 'agy ran with its rules file');
+  assert.doesNotMatch(rules, /## Where you work/);
+});
+
+test('#1709 a worktree whose record in the repository is gone isn’t used: the agent works in the project’s folder, and the log says why', async () => {
+  const { project: p, workRoot } = await project('recloned');
+  const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
+  const admin = git(dir, ['rev-parse', '--git-dir']).trim();
+  // As when the repository is cloned again at the same path: the worktree’s .git names a record that’s gone.
+  await rm(admin, { recursive: true, force: true });
+  /** @type {string[]} */
+  const logs = [];
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: (l) => logs.push(l) }), p.folder);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /couldn’t make a worktree for @a/);
 });
