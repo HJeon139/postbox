@@ -164,7 +164,7 @@ Split from Memory in step 10 (“Risks”).
 
 - **Owns:** remote hosts: adding, updating and removing them, their status, installs and keep-updated (designs/architecture/remote-hosts.md).
 - **Interface:** `get`, `add`, `update`, `remove`, `status`, `describeInstall`, `install`, `retry`, `setKeepUpdated`, `setProjectFolder`, `watch()`.
-- **Depends on:** Store, Personas, Running, and the `hostTurns` port (`busyOn`, `sessionsOn`, `stopOn`, `cancel`, `confirmStops`, `stoppingSession`: the host turns that an update or a removal stops). External: the host manager. In the inbox step, Hosts takes this interface from Turns, and the port goes (“Delivery and Turns, built as the inbox”).
+- **Depends on:** Store, Personas, Running, and the `hostTurns` port (`busyOn`, `sessionsOn`, `stopOn`, `cancel`, `confirmStops`, `stoppingSession`: the host turns that an update or a removal stops; `stoppingPersonas`, `onStopEnded`: whose turns are still stopping on a host, which a deleted persona’s memory removal waits for, #1680). External: the host manager. In the inbox step, Hosts takes this interface from Turns, and the port goes (“Delivery and Turns, built as the inbox”).
 
 ### Delivery and Turns, built as the inbox
 
