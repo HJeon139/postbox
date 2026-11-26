@@ -129,11 +129,7 @@ function roomForm(
       'The people of this Postbox are in every room, and a room keeps at least one agent. + adds an agent you have, and − removes the one picked.',
     ),
     sectionHead('More'),
-    h(
-      'div.row-flex.wrap',
-      h('button.btn.sm', { type: 'button', title: sheets.chainLimitDesc(t.id), onclick: () => sheets.openChainLimit(t.id) }, 'Wake chain limit…'),
-      h('button.btn.sm', { type: 'button', onclick: () => sheets.openPermissions({ threadId: t.id }) }, 'Permissions…'),
-    ),
+    h('div.row-flex.wrap', h('button.btn.sm', { type: 'button', onclick: () => sheets.openPermissions({ threadId: t.id }) }, 'Permissions…')),
   ];
 }
 

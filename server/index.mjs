@@ -38,7 +38,6 @@ import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { requestGate } from './request-gate.mjs';
 import { settleInterrupted, stopStreaming } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY } from './review-files.mjs';
-import { patchThread } from './room-chain-limit.mjs';
 import { roomFileRoute } from './room-files.mjs';
 import { installRunClock, runClockOn } from './run-clock-install.mjs';
 import { httpError, Runtime } from './runtime.mjs';
@@ -317,7 +316,7 @@ export async function start({
 
     if (path === '/api/threads' && req.method === 'POST') return send(res, 201, rt.createThread(body, person.id));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, patchThread(rt, m[1], body));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.threads.rename(m[1], body?.title));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body, who.sender(person)));
     // A backend’s models, asked of its harness when a model field opens, here or on body.hostId’s host
     // (server/model-lists.mjs). A POST, so the page’s token gates the process it starts.

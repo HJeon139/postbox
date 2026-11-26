@@ -226,25 +226,25 @@ export const LIVE_CAPS = Object.freeze({ steps: 200, toolCalls: 5, subagents: 12
 export const LIVE_TEXT = Object.freeze({ windowMs: 50 });
 
 /**
- * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,
- * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, 50 since #492, and 1,000 since #1035,
- * after one held wake left every agent in a room waiting about 7.5 hours. It’s the default: each room can set its own
- * (server/room-chain-limit.mjs).
+ * Agent wakes in a row, without you, after which the chain stops: a loop guard against agents that never stop, high
+ * enough that only a runaway reaches it (#1623). 3 until #320 raised it to 10, 50 since #492, and 1,000 since #1035,
+ * after one held wake left every agent in a room waiting about 7.5 hours. At the cap the room shows one line and the
+ * next wake doesn’t go (server/chain-stop.mjs); since #1623 no room sets its own, and nothing waits for the person.
  */
 export const DEFAULT_HOP_LIMIT = 1000;
 /**
- * The most a room’s chain limit, or POSTBOX_CHAIN_LIMIT, can be (#1035): about a week of wakes at one a minute, so a
+ * The most POSTBOX_CHAIN_LIMIT can be (#1035): about a week of wakes at one a minute, so a
  * chain that never ends still stops (designs/intent.md, principle 6).
  */
 export const MAX_HOP_LIMIT = 10_000;
 /** A count as the person reads it: 1,000. @param {number} n */
 const count = (n) => n.toLocaleString('en-US');
 /**
- * The server’s default chain limit, which POSTBOX_CHAIN_LIMIT sets, or DEFAULT_HOP_LIMIT when it isn’t set (#508,
- * #1035). The UAT runner sets it for the Postbox it starts, so a scenario’s `- chain-limit: 3` reaches the card in a few
- * wakes. A value that isn’t a whole number from 1 to MAX_HOP_LIMIT is refused, so a mistyped one can’t run as the
- * default and a shell can’t turn the backstop off. Read once, when the module loads, so the check, the card and what
- * agents are told (shared/mcp-tools.mjs) get the same default.
+ * The server’s chain limit, which POSTBOX_CHAIN_LIMIT sets, or DEFAULT_HOP_LIMIT when it isn’t set (#508, #1035). The
+ * UAT runner sets it for the Postbox it starts, so a scenario’s `- chain-limit: 3` reaches the stop in a few wakes. A
+ * value that isn’t a whole number from 1 to MAX_HOP_LIMIT is refused, so a mistyped one can’t run as the limit and a
+ * shell can’t turn the loop guard off. Read once, when the module loads, so the check and the line the room shows get
+ * the same number.
  * @param {string|undefined} value  the variable’s text
  */
 export function chainLimit(value) {
@@ -254,13 +254,8 @@ export function chainLimit(value) {
     throw new Error(`POSTBOX_CHAIN_LIMIT takes a whole number from 1 to ${count(MAX_HOP_LIMIT)}, not “${text}”.`);
   return Number(text);
 }
-// The browser loads this module too (app/js/composer-to.mjs), where there is no process: it reads the default, and the
-// page reads the server’s from /api/state.
+// The browser loads this module too, where there is no process: there it reads the default.
 export const HOP_LIMIT = chainLimit(globalThis.process?.env?.POSTBOX_CHAIN_LIMIT);
-/** What a room’s own chain limit takes (#1035): the server refuses anything else with this, and the dialog shows it. */
-export const ROOM_CHAIN_LIMIT_TAKES = `A room’s wake chain limit is a whole number from 1 to ${count(MAX_HOP_LIMIT)}.`;
-/** Whether a value is a chain limit a room can have: a whole number from 1 to MAX_HOP_LIMIT, never a string. @param {unknown} v */
-export const isRoomChainLimit = (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_HOP_LIMIT;
 /** Wakes held on one waiting wake card, delivered or not as the person answers it (#439); past this, they’re refused. */
 export const HELD_WAKES = 20;
 /** Wakes one agent session may have pending with schedule_wake, not yet fired (#362); past this, it’s refused. */

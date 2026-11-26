@@ -419,8 +419,8 @@ function conversationMenu(anchor, shown) {
   openMenu(
     anchor,
     [
-      // Every control of a room is in the main menu’s form for it (#1735): its title, its members, its chain limit and
-      // its Delete. This menu only goes there, and to the room’s views.
+      // Every control of a room is in the main menu’s form for it (#1735): its title, its members, its permissions
+      // and its Delete. This menu only goes there, and to the room’s views.
       {
         label: 'Manage room and members…',
         icon: 'gear',

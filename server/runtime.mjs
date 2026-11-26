@@ -125,8 +125,8 @@ export class Runtime {
     // (#1135), and whether Postbox is shutting down (designs/architecture/services.md, “Running”).
     this.running = new Running();
     // Each agent's inbox in each conversation, as stored entries (designs/architecture/services.md, “Delivery and Turns,
-    // built as the inbox”). The chain cap's card stands in front of it (agentWake), so nothing it holds is past the cap
-    // until Asks replaces the card. An entry's size is its text until Turns gives it as turn-input.mjs's entryLine (step 3).
+    // built as the inbox”). The chain cap stops a wake before it reaches the inbox (agentWake, #1623), so nothing it
+    // holds is past the cap. An entry's size is its text until Turns gives it as turn-input.mjs's entryLine (step 3).
     // What an entry takes of a turn’s budget: its line as the turn gives it (turn-input.mjs), cut at its own ceiling.
     const sizeOf = (/** @type {any} */ e) => entryLine(e, (id) => store.pending.item(e.threadId, id)?.text ?? null).length;
     this.delivery = new Delivery({ store, bus: this.bus, running: this.running, chainHeld: () => false, sizeOf });
