@@ -45,7 +45,7 @@ export class Threads {
    * Starts a conversation in a project, with no agents yet: the facade’s createThread gives each its session.
    * @param {{ projectId: string, title: string, kind?: string, parentId?: string|null }} opts
    */
-  create({ projectId, title, kind = 'thread', parentId = null }) {
+  create({ projectId, title, kind = 'thread', parentId = null }, personId = undefined) {
     // Read pending: a project deleted behind a held commit takes no new conversation (#119).
     if (!this.store.pending.project(projectId)) throw httpError(404, 'That project doesn’t exist.');
     return this.put({
@@ -59,6 +59,8 @@ export class Threads {
       hops: 0,
       queue: [],
       createdAt: Date.now(),
+      // Who made it, until a person writes in it: whom its agents’ needs ring (#1742, Sessions’ needFor).
+      ...(personId ? { lastPerson: personId } : {}),
     });
   }
 
@@ -227,7 +229,10 @@ export class Threads {
    * side thread, #110). @param {string} level @param {any} se @param {string} title @param {string} text @param {string|null} [threadId]
    */
   notify(level, se, title, text, threadId = null) {
-    this.store.emit('notify', { level, sessionId: se.id, threadId: threadId ?? se.threadId, handle: se.handle, title, text });
+    // Whom it rings (#1742): the people the agent’s need is for as this is raised, so the page judges this notice by
+    // the need it was raised for, not by one the session has by the time it arrives. None named rings whoever looks.
+    const who = this.store.pending.session(se.id)?.needsFor;
+    this.store.emit('notify', { level, sessionId: se.id, threadId: threadId ?? se.threadId, handle: se.handle, title, text, ...(who ? { for: who } : {}) });
   }
 
   /**

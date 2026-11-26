@@ -13,7 +13,7 @@ import { openPalette } from './palette.mjs';
 import { openPermissions } from './permissions.mjs';
 import { projectPlaces } from './places-menu.mjs';
 import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
-import { ringFor, stateWord } from './ring.mjs';
+import { ringFor, stateWordOf } from './ring.mjs';
 import { openNewAgent, openSettings } from './sheets.mjs';
 import { threadState } from './thread-state.mjs';
 import './store-line.mjs';
@@ -385,7 +385,7 @@ function updateRow(n, t, active, fresh = false) {
   else n.removeAttribute('aria-current');
   const named = t.kind === 'room' ? ses : main ? [main] : [];
   const who = named.length ? named.flatMap((x, i) => [i ? ', ' : '', x.handle, mockMarker(x)]) : '—';
-  const word = lead ? ` · ${stateWord(lead.state).toLowerCase()}${away}` : '';
+  const word = lead ? ` · ${stateWordOf(lead).toLowerCase()}${away}` : '';
   const sig = JSON.stringify([t.title, named.map((x) => [x.handle, isMock(x)]), word, unread, ses.map((x) => x.id)]);
   if (!fresh && n.dataset.sig === sig) return;
   n.dataset.sig = sig;

@@ -347,8 +347,8 @@ export class Runtime {
    * its members: behind a held commit the published state doesn’t have it yet, and the route sends this as its body.
    * @param {{ projectId: string, title: string, personaIds?: string[], kind?: string, parentId?: string|null }} opts
    */
-  createThread({ personaIds = [], ...opts }) {
-    const t = this.threads.create(opts);
+  createThread({ personaIds = [], ...opts }, personId) {
+    const t = this.threads.create(opts, personId);
     for (const pid of personaIds) this.ensureSession(t.id, pid);
     return this.store.pending.thread(t.id);
   }

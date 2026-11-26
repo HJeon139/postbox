@@ -126,7 +126,8 @@ export const PENDING = {
   // that woke it, whose reactions decide whether it goes back at all (#1553), a reaction maybe behind a held commit too.
   // And the agent’s reply before it in the thread, whose mark says its turn only wrote (#1591), maybe behind one as well.
   'reply-back.mjs': ['planBack', 'wroteOnlyTo', 'endedByReaction'],
-  'sessions.mjs': ['pendingIn', 'pendingIn', 'ensure', 'update', 'needAt', 'remove', 'forgetReported', 'stampNeeds', 'unarchive'],
+  // needFor: the room’s last person, whom a need rings (#1742), maybe written behind a held commit, as the need’s item.
+  'sessions.mjs': ['pendingIn', 'pendingIn', 'ensure', 'update', 'needAt', 'needFor', 'remove', 'forgetReported', 'stampNeeds', 'unarchive'],
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written; and the agent and
   // project whose folder it runs in, maybe made or changed behind one (#1292).
   'shell-runs.mjs': ['commandFolder', 'commandFolder', 'commandOutput', 'endCommand'],
@@ -162,7 +163,21 @@ export const PENDING = {
   // reply and its thread as item.final carries them, both maybe held (#1367). And the project a new conversation starts
   // in, maybe deleted behind a held commit (#119).
   // conversationToWrite: the conversation a write lands in, through a topic maybe opened behind a held commit (#623).
-  'threads.mjs': ['create', 'patch', 'toWrite', 'pending', 'addItem', 'addItem', 'patchItem', 'patchItem', 'patchItem', 'bringForward', 'conversationToWrite'],
+  // notify: whom the agent’s need is for as a notice is raised (#1742), written a moment before, maybe behind a held commit.
+  'threads.mjs': [
+    'create',
+    'patch',
+    'toWrite',
+    'pending',
+    'addItem',
+    'addItem',
+    'patchItem',
+    'patchItem',
+    'patchItem',
+    'bringForward',
+    'conversationToWrite',
+    'notify',
+  ],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left

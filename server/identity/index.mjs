@@ -12,8 +12,9 @@ import { unixAccount } from './unix.mjs';
 
 /**
  * Who a provider says is asking. `issuer` and `subject` together are the key, and the only stable one; `username` and
- * `name` are what a person’s record starts from, theirs to change.
- * @typedef {{ provider: string, issuer: string, subject: string, username: string, name: string }} Principal
+ * `name` are what a person’s record starts from, theirs to change. `sole` says the provider answers with one person
+ * for the whole Postbox, whatever it called them before (the local provider): their record is found by the issuer alone.
+ * @typedef {{ provider: string, issuer: string, subject: string, username: string, name: string, sole?: boolean }} Principal
  * @typedef {(req: import('node:http').IncomingMessage) => Principal | Promise<Principal>} Identify
  */
 

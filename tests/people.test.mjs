@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { createIdentity } from '../server/identity/index.mjs';
 import { unixAccount } from '../server/identity/unix.mjs';
 import { People } from '../server/people.mjs';
+import { needsYouNow } from '../shared/needs.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** A fixture account: nothing here reads the computer’s own. */
@@ -115,4 +116,45 @@ test('the same tooling holds more than one person: each saves their own profile,
     ),
     text,
   );
+});
+
+test('#1742 on this computer the data folder’s one person is the same under any account, and a record kept under an old uid is still theirs', () => {
+  const account = (/** @type {number} */ uid, /** @type {string} */ username) => unixAccount({ info: /** @type {any} */ (() => ({ uid, username })) });
+  const [first, second] = [account(501, 'robin'), account(1000, 'svc-postbox')];
+  assert.deepEqual([first.subject, first.issuer, first.sole], [second.subject, second.issuer, true]);
+  assert.equal(first.subject.includes('501'), false, 'nothing of the account is who they are');
+  const { rt } = setup();
+  const people = new People({ store: rt.store });
+  assert.equal(people.of(first).id, people.of(second).id, 'one person before anything is kept');
+  // A record as #1737 kept it, under the account’s uid: found from any account, with its id, its profile and its needs.
+  const old = { ...first, subject: '501', sole: undefined };
+  const kept = people.saveProfile(people.of(old), { name: 'Robin' });
+  assert.notEqual(kept.id, people.of({ ...first, subject: 'the-person', sole: undefined }).id, 'its id is the old one');
+  for (const who of [first, second]) assert.deepEqual([people.of(who).id, people.of(who).profile], [kept.id, { name: 'Robin' }]);
+  // What was stamped for them before still rings them, from the other account.
+  assert.equal(needsYouNow({ needs: { kind: 'failed' }, needsFor: [kept.id] }, people.of(second).id), true);
+  // Saving and sending from the other account write the same record, never a second person.
+  people.saveProfile(people.of(second), { name: 'Robin E.' });
+  people.seen(people.of(second));
+  assert.deepEqual(Object.keys(rt.store.state.people), [kept.id]);
+  // A provider that answers with many people still tells them apart by subject.
+  assert.notEqual(people.of({ ...ROBIN, subject: 'sam' }).id, people.of(ROBIN).id);
+});
+
+test('#1742 two records already kept under two accounts: the first kept is the local person, and no other issuer’s record is', () => {
+  const local = unixAccount({ info: /** @type {any} */ (() => ({ uid: 2000, username: 'robin' })) });
+  const { rt } = setup();
+  const people = new People({ store: rt.store });
+  const keep = (/** @type {any} */ principal, /** @type {number} */ createdAt) => {
+    const record = { ...people.of({ ...principal, sole: undefined }), createdAt };
+    rt.store.emit('person', record);
+    return record;
+  };
+  // Kept out of order, and beside an older record of another issuer: the oldest of the local issuer’s own is theirs.
+  const newer = keep({ ...local, subject: '1000' }, 2000);
+  const older = keep({ ...local, subject: '501' }, 1000);
+  const elsewhere = keep({ ...ROBIN, issuer: 'https://idp.example' }, 500);
+  assert.equal(people.of(local).id, older.id);
+  assert.notEqual(newer.id, older.id);
+  assert.notEqual(people.of(local).id, elsewhere.id);
 });

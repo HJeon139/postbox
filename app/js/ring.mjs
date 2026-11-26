@@ -17,7 +17,7 @@
 // what its agent needs only when the agent needs the person now (needs="you", from shared/needs.mjs).
 
 import { quotaOut } from '/shared/agent-state.mjs';
-import { needsYouNow } from '/shared/needs.mjs';
+import { needsAnother, needsMe } from './needs-mine.mjs';
 import { ringWhere } from './remote.mjs';
 
 // stopping: Stop was pressed, and its process hasn’t exited yet (#126). It holds still, in the idle color.
@@ -35,6 +35,15 @@ const STATE_VAR = { idle: '--st-idle', think: '--st-think', gen: '--st-gen', too
 const RING_SIZES = { xs: [4.5, 1.75, 3, 2], sm: [6, 2, 3.5, 2], lg: [10, 3, 5, 3] };
 const NS = 'http://www.w3.org/2000/svg';
 export const stateWord = (s) => STATE_WORD[s] ?? 'Idle';
+
+/** What “Needs you” reads when the need is another person’s (#1742): the agent waits, and not on the one looking. */
+const THEIRS = 'Waits on another person';
+
+/**
+ * A session’s state in a word or two, for the one looking: “Needs you” only when it is them it needs. Every other
+ * state reads as it is, whoever a need is for. @param {any} se
+ */
+export const stateWordOf = (se) => (se.state === 'needs' && needsAnother(se) ? THEIRS : stateWord(se.state));
 
 /**
  * One ring of a <pb-ring>: what holds still, drawn in the ring’s own SVG, and what moves, if anything, drawn in an SVG
@@ -133,7 +142,7 @@ export const subsAttr = (subagents = []) =>
   subagents.map((s) => `${s.state}:${Number.isFinite(s.ctx) ? Math.round(s.ctx) : ''}:${String(s.name).replace(/[,:]/g, ' ')}`).join(',');
 
 class PbRing extends HTMLElement {
-  static observedAttributes = ['state', 'ctx', 'subs', 'size', 'name', 'where', 'needs'];
+  static observedAttributes = ['state', 'ctx', 'subs', 'size', 'name', 'where', 'needs', 'theirs'];
   connectedCallback() {
     this.render();
   }
@@ -155,7 +164,8 @@ class PbRing extends HTMLElement {
     const c = S / 2;
     const rings = [ringSvg(c, rb, sw, state, ctx), ...shown.map((s, i) => ringSvg(c, rb + (i + 1) * pitch, sw * 0.8, s.state, s.ctx))];
     let inner = rings.map((x) => x.still).join('');
-    if (state === 'needs') inner += `<circle class="pulse" cx="${c}" cy="${c}" r="${R + sw}" fill="none" stroke-width="1.4"/>`;
+    // An agent that waits on another person shows its state, and doesn’t pulse for this one (#1742).
+    if (state === 'needs' && !this.getAttribute('theirs')) inner += `<circle class="pulse" cx="${c}" cy="${c}" r="${R + sw}" fill="none" stroke-width="1.4"/>`;
     const svg = ringBox(S, inner);
     svg.setAttribute('role', 'img');
     const movers = rings.map((x) => x.moving && moverBox(S, x.moving)).filter((m) => m !== null);
@@ -165,7 +175,10 @@ class PbRing extends HTMLElement {
       : '';
     const where = this.getAttribute('where') || '';
     const ctxText = ctx != null ? `${ctx}% of context used` : 'context unknown';
-    const label = state === 'rest' ? name : `${name}: ${stateWord(state)}, ${ctxText}${where ? `; ${where}` : ''}${subText}`;
+    const label =
+      state === 'rest'
+        ? name
+        : `${name}: ${state === 'needs' && this.getAttribute('theirs') ? THEIRS : stateWord(state)}, ${ctxText}${where ? `; ${where}` : ''}${subText}`;
     svg.setAttribute('aria-label', label);
     const title = document.createElementNS(NS, 'title');
     title.textContent = label;
@@ -209,7 +222,8 @@ export function ringFor(se, size = 'sm', el = null) {
   // Out of quota, a failed or idle agent’s ring says so, and isn’t the alert color of a failure the person can act on.
   const resting = !se.state || se.state === 'idle' || se.state === 'failed';
   set('state', resting && quotaOut(se) ? 'quota' : (se.state ?? 'idle'));
-  set('needs', needsYouNow(se) ? 'you' : '');
+  set('needs', needsMe(se) ? 'you' : '');
+  set('theirs', needsAnother(se) ? 'yes' : '');
   set('ctx', se.ctx != null ? String(se.ctx) : 'unknown');
   set('subs', subsAttr(se.subagents));
   set('size', size);
@@ -224,7 +238,7 @@ export function restRing(el) {
   el.holding = true;
   el.setAttribute('state', 'rest');
   // Nor is it a button to what its agent needs: it doesn’t follow the session, so it would outlive the need.
-  for (const a of ['ctx', 'subs', 'where', 'needs']) el.removeAttribute(a);
+  for (const a of ['ctx', 'subs', 'where', 'needs', 'theirs']) el.removeAttribute(a);
   el.holding = false;
   if (el.isConnected) el.render();
   return el;

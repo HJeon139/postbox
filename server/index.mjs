@@ -315,7 +315,7 @@ export async function start({
 
     const body = req.method === 'POST' || req.method === 'PATCH' || req.method === 'PUT' ? (path === '/api/files' ? null : await json(req)) : null;
 
-    if (path === '/api/threads' && req.method === 'POST') return send(res, 201, rt.createThread(body));
+    if (path === '/api/threads' && req.method === 'POST') return send(res, 201, rt.createThread(body, person.id));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, patchThread(rt, m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body, who.sender(person)));
