@@ -258,6 +258,15 @@ test('#1713 a turn whose only work was a Postbox tool that writes, such as open_
   assert.match(retried, /after it had started work: open_topic\./, 'named, and the read isn’t');
 });
 
+test('#1713 five steps of the agent’s own don’t push a Postbox call that wrote off the list', async () => {
+  const f = room();
+  const retried = await overloadedAfter(f, async (tools, asked) => {
+    await tools.open_topic({ itemId: asked.id, message: 'a question for alpha' });
+    for (let i = 1; i <= 5; i++) f.rt.turns.get(f.beta.id)?.steps.push({ id: `b${i}`, label: `Bash: step ${i}`, kind: 'tool' });
+  });
+  assert.match(retried, /after it had started work: open_topic; Bash: step 1/);
+});
+
 test('#1713 a turn that only read through Postbox’s tools goes again with no line to check', async () => {
   const f = room();
   const retried = await overloadedAfter(f, async (tools) => {

@@ -29,7 +29,8 @@ const startedLabels = (/** @type {any} */ turn) => {
   const own = (turn.steps ?? [])
     .filter((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said' && !turn.postboxSteps?.has(s.id))
     .map((/** @type {any} */ s) => String(s.label ?? s.tool ?? 'a tool').slice(0, 80));
-  return [...own, ...(turn.wrote ?? [])].slice(0, 5);
+  // Postbox’s first: what posts and wakes in the room is what a repeat costs most, and five shell steps mustn’t hide it.
+  return [...(turn.wrote ?? []), ...own].slice(0, 5);
 };
 
 /** What a retried turn that had started work is told first. @param {{ status: number, started: string[] }} r */
