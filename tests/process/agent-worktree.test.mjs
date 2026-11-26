@@ -156,7 +156,7 @@ test('#1709 in Auto, routine git runs with no card in an agent’s real worktree
  * An Antigravity adapter over a fake agy, as 1.5.18 with its hook confirmed, in the project’s data folder, and a turn
  * that returns the rules file agy found in its folder. @param {{ folder: string }} p @param {string} workRoot @param {string} name
  */
-function agyOver(p, workRoot, name) {
+function agyOver(p, workRoot, name, { mode = 'ask', hook = true } = {}) {
   /** @type {string[]} */
   let rules = [];
   const spawnImpl = (/** @type {string} */ _bin, /** @type {string[]} */ _args, /** @type {any} */ opts) => {
@@ -177,9 +177,9 @@ function agyOver(p, workRoot, name) {
     spawnImpl: /** @type {any} */ (spawnImpl),
     env: {},
     version: '1.5.18',
-    hookProbe: async () => true,
+    hookProbe: async () => hook,
   });
-  const persona = { id: 'pe_a', handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode: 'ask', tools: [], description: '', instructions: '' };
+  const persona = { id: 'pe_a', handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode: mode, tools: ['web.fetch'], description: '', instructions: '' };
   const ctx = { signal: new AbortController().signal, mcpUrl: 'http://127.0.0.1:1/mcp?session=se_1', persona, project: p, handles: ['gem'], state: {} };
   const quiet = { saveState() {}, pathOf: () => null, text() {}, activity() {}, status() {}, reported() {} };
   /** The rules file agy read for one turn. @param {string} text */
@@ -218,6 +218,17 @@ test('#1709 an agy without the hook gets no note: it would refuse the reads the 
   const rules = await agy.turn('Old agy.');
   assert.ok(rules, 'agy ran with its rules file');
   assert.doesNotMatch(rules, /## Where you work/);
+  // Nor one whose hook doesn’t check out.
+  const failed = agyOver(p, workRoot, 'unhooked-failed', { hook: false });
+  assert.doesNotMatch(await failed.turn('Hook failed.'), /## Where you work/);
+});
+
+test('#1709 Run everything, where agy refuses nothing, gets the note', async () => {
+  const { project: p, workRoot } = await project('bypass');
+  const agy = agyOver(p, workRoot, 'bypass', { mode: 'bypass' });
+  const rules = await agy.turn('Go.');
+  assert.match(rules, /## Where you work/);
+  assert.match(rules, /which the person merges/);
 });
 
 test('#1709 an add stopped before git wrote its record’s HEAD is still removed and made again', async () => {

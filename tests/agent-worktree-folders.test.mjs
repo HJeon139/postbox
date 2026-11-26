@@ -70,3 +70,18 @@ test('#1709 an agent in its own worktree is told its worktree, its branch and th
   // In the project’s shared folder there’s nothing to say.
   assert.equal(worktreeNote(join(workRoot, 'pr_x'), persona, project, workRoot), '');
 });
+
+test('#1709 the note can’t name a branch it doesn’t know: a reftable stub, or a name too long for the rules file', () => {
+  const { workRoot, project, wt } = layout();
+  const persona = { id: 'pe_a', handle: 'a' };
+  const admin = join(workRoot, '..', 'record');
+  mkdirSync(admin, { recursive: true });
+  writeFileSync(join(wt, '.git'), `gitdir: ${admin}\n`);
+  // A repository in git’s reftable format: the record’s HEAD is a stub (git 2.52), so Postbox’s own name is given.
+  writeFileSync(join(admin, 'HEAD'), 'ref: refs/heads/.invalid\n');
+  assert.ok(worktreeNote(wt, persona, project, workRoot).includes(`on branch ${branchFor(persona, project)}`));
+  writeFileSync(join(admin, 'HEAD'), `ref: refs/heads/${'b'.repeat(300)}\n`);
+  const note = worktreeNote(wt, persona, project, workRoot);
+  assert.ok(note.includes('on a branch of its own (git branch --show-current names it)'));
+  assert.ok(!note.includes('b'.repeat(101)));
+});

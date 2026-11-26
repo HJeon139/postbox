@@ -593,9 +593,15 @@ export class AntigravityCliAdapter {
     const prompt = formatMessage(turnMessage, ctx.pathOf);
     const useHook = agySupportsHooks(this.version) && (persona?.permissionMode !== 'bypass' || agyBypassWebOff(persona));
     const place = worktreeNote(cwd, persona, ctx.project, this.workRoot);
-    // Without the hook, agy refuses the project folder’s reads the note promises, and the rules file has no room for it.
+    // Not without the hook, where agy refuses the reads it promises and has no room; Run everything refuses nothing.
     const rulesWith = (hooked) =>
-      agyRules({ persona, guide, place: hooked ? place : '', schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
+      agyRules({
+        persona,
+        guide,
+        place: hooked || persona?.permissionMode === 'bypass' ? place : '',
+        schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER),
+        hooked,
+      });
     const rules = rulesWith(useHook);
     const { addDirs, reads } = turnFolders(cwd, ctx, this.workRoot);
     const asked = this.usage?.start(this.version, ctx.signal) ?? null;

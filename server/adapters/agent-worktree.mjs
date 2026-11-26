@@ -236,7 +236,10 @@ function branchIn(cwd, workRoot) {
     }
     if (!admin) return null;
     try {
-      return /^ref: refs\/heads\/(.+)$/m.exec(readFileSync(join(resolve(dir, admin), 'HEAD'), 'utf8'))?.[1]?.trim() ?? '';
+      const head = readFileSync(join(resolve(dir, admin), 'HEAD'), 'utf8');
+      // A repository in git’s reftable format keeps a stub here, `ref: refs/heads/.invalid`: the branch isn’t known.
+      if (/^ref: refs\/heads\/\.invalid\s*$/m.test(head)) return null;
+      return /^ref: refs\/heads\/(.+)$/m.exec(head)?.[1]?.trim() ?? '';
     } catch {
       return null;
     }
@@ -249,6 +252,8 @@ function branchIn(cwd, workRoot) {
  * first; or, with no worktree found, on Postbox’s branch. @param {string|null} now @param {string} made
  */
 function on(now, made) {
+  // A branch name has no length limit, and agy’s rules file has little room to spare.
+  if (now && now.length > 100) return 'on a branch of its own (git branch --show-current names it)';
   if (now) return `on branch ${now}`;
   if (now === '') return `on a commit, not a branch: check out ${made} before you commit`;
   return `on branch ${made}`;
