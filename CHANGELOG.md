@@ -2,6 +2,36 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.3 (2026-11-26)
+
+### Fixes
+
+- **adapters:** a project whose repository has submodules keeps the project's folder
+- **adapters:** keep a turn-end commit's status and add out of a nested repository that arrives late
+- **adapters:** read a worktree's status only once it holds no nested repository
+- **adapters:** no turn-end commit of a worktree that holds a repository of its own
+- **adapters:** commit only in the worktree Postbox made, on the agent's own branch
+- **adapters:** a turn-end commit skips any conflict, and a bisect in progress
+- **adapters:** a turn-end commit skips a half-done merge, and sees every new file
+- **adapters:** the commit at an Antigravity turn's end is never signed
+- **adapters:** Postbox commits what an Antigravity turn left in its worktree
+- **adapters:** the worktree note comes last in agy's rules, and the hook's reads are tested
+- **adapters:** the worktree note doesn't guess a branch git's files don't name
+- **adapters:** Run everything gets the worktree note, and a reftable stub isn't a branch
+- **adapters:** an add stopped before git wrote its record's HEAD is still made again
+- **adapters:** no worktree note without agy's hook, and no worktree whose record is gone
+- **adapters:** the worktree note names the branch the agent's worktree is on now
+- **adapters:** an Antigravity agent in its worktree is told its branch, which the person merges
+- **adapters:** an agent in its own worktree reads the project's folder with no card
+- **adapters:** a ready agent worktree costs no git, and a reused handle gets its own branch
+- **adapters:** remove only an agent's own worktree record, never prune the person's
+- **adapters:** clear git's own record of a half-made worktree whose folder is gone
+- **adapters:** a failed worktree add that made no folder removes nothing
+- **adapters:** keep a worktree someone locked, and pin the worktree git guards
+- **adapters:** clean up only a worktree Postbox made and git didn't finish
+- **adapters:** routine git in an agent's worktree, and no half-made worktree
+- **adapters:** give each Antigravity agent its own git worktree
+
 ## 4.52.2 (2026-11-26)
 
 ### Fixes
