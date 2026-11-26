@@ -11,6 +11,7 @@
 //   asks, since Postbox’s write ask rules beat the allow rule it sends, so this check is what lets the call run.
 
 import { passesWriteCheck, ruleMatches, splitCommand } from '../shared/permission-match.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { isPublishingTool, POSTBOX_SERVER, setupOf, WRITE_TOOLS } from './adapters/setup.mjs';
 import { hostRulesOf } from './host-rules.mjs';
 import { readRules } from './permission-rules.mjs';
@@ -103,7 +104,7 @@ const TARGET_FIELDS = [
 ];
 
 /** A word of a command without its quotes, cut to fit a card. */
-const unquoted = (w) => w.replace(/^["']|["']$/g, '').slice(0, 120);
+const unquoted = (w) => cutText(w.replace(/^["']|["']$/g, ''), 120);
 
 /**
  * Where one write in a command lands: a push on its remote (--repo when it names one, else the first word after push
@@ -146,7 +147,7 @@ export function whereOf(tool, input) {
   for (const [field, what] of TARGET_FIELDS) {
     const v = i[field];
     const text = typeof v === 'string' ? v : v && typeof v === 'object' ? Object.values(v).find((x) => typeof x === 'string') : null;
-    if (text?.trim()) return { server, target: { what, name: String(text).slice(0, 120) } };
+    if (text?.trim()) return { server, target: { what, name: cutText(String(text), 120) } };
   }
   return { server, target: null };
 }
@@ -163,5 +164,5 @@ const DRAFT_FIELDS = ['markdown', 'content', 'body', 'text', 'message', 'descrip
 export function draftOf(tool, input) {
   if (!String(tool ?? '').startsWith('mcp__') || !isWriteCall(tool, input) || !input || typeof input !== 'object') return null;
   const found = DRAFT_FIELDS.filter((f) => typeof input[f] === 'string' && input[f].trim()).sort((a, b) => input[b].length - input[a].length)[0];
-  return found ? { field: found, text: String(input[found]).slice(0, 20000) } : null;
+  return found ? { field: found, text: cutText(String(input[found]), 20000) } : null;
 }

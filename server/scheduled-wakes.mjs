@@ -1,5 +1,6 @@
 // Scheduled wake lifecycle: persistence, timers, cancellation, restart re-arming and network recovery (#458, #466).
 
+import { cutText } from '../shared/text-parts.mjs';
 import { isNetworkFailure } from './harness-failure.mjs';
 import { httpError } from './helpers.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
@@ -19,7 +20,7 @@ const POSTBOX_MCP = /^mcp__postbox__/;
 export function scheduleWake(rt, sessionId, { inMs, note }) {
   const se = rt.session(sessionId);
   const at = Date.now() + Math.max(1000, Math.min(inMs, 7 * DAY));
-  const sc = { id: newId('sc'), sessionId, threadId: se.threadId, handle: se.handle, at, note: String(note ?? '').slice(0, 200) };
+  const sc = { id: newId('sc'), sessionId, threadId: se.threadId, handle: se.handle, at, note: cutText(String(note ?? ''), 200) };
   rt.store.emit('schedule', sc);
   const line = { kind: 'system', variant: 'schedule', scheduleId: sc.id, handle: se.handle, at, note: sc.note, status: 'pending' };
   const it = rt.threads.addItem(se.threadId, line);

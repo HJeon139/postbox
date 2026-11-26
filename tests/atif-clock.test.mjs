@@ -69,3 +69,18 @@ test('stops say where they ran, and an expiry the turn may outlive says so', () 
   );
   assert.deepEqual(clockScope([]), { note: null, extra: {} });
 });
+
+test('#1749 a run the person ended says so, with its time used, and the turn its end stopped is one stop', () => {
+  const clocks = [
+    { type: 'clock.started', data: { sessionId, budgetMs: 600_000, at: T0 } },
+    { type: 'clock.ended', data: { sessionId, elapsedMs: 42_000, budgetMs: 600_000, stopping: ['turn:turn_1'], at: T0 + 42_000 } },
+    { type: 'clock.stopped', data: { sessionId, turn: 'turn:turn_1', at: T0 + 43_000 } },
+  ];
+  const [stop] = clockStops(clocks);
+  assert.deepEqual([stop.asked_by, stop.confirmed_at], ['clock.ended', T0 + 43_000]);
+  assert.equal(
+    CLOCK_WORDS['clock.ended'](clocks[1].data),
+    'Run clock ended by the person at elapsed 42s of 600s: Postbox stopped the agent’s turn, which may run on until its CLI has exited.',
+  );
+  assert.equal(CLOCK_WORDS['clock.ended']({ elapsedMs: 9_500, budgetMs: 60_000 }), 'Run clock ended by the person at elapsed 9s of 60s.');
+});

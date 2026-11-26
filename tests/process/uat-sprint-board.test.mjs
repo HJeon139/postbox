@@ -21,7 +21,7 @@ test('the board refuses what it can’t do, says why, and records nothing of it'
     boardLog({ workspace: r.dir }).map((x) => x.did),
     ['add'],
   );
-  assert.match(readFileSync(join(r.dir, 'BOARD.md'), 'utf8'), /\| S1 \| lowercase \| {2}\| {2}\| {2}\| backlog \|/);
+  assert.match(readFileSync(join(r.dir, 'BOARD.md'), 'utf8'), /\| S1 \| lowercase \| {2}\| {2}\| {2}\| {2}\| backlog \|/);
 });
 
 test('six of the team adding a story in the same moment each get one: no change to the board is lost', async () => {
@@ -54,4 +54,43 @@ test('a lock a killed command left behind is taken over, a fresh one is waited f
   spawnSync(process.execPath, ['../board.mjs', 'add', 'digits'], { cwd: join(r.dir, 'src'), timeout: 30_000 });
   assert.equal(existsSync(join(r.dir, 'src', 'BOARD.md')), false);
   assert.match(readFileSync(join(r.dir, 'BOARD.md'), 'utf8'), /\| S3 \| digits \|/);
+});
+
+test('a story waits on the stories it needs, and is done only once another of the team has reviewed it', () => {
+  const r = room();
+  for (const story of ['words', 'slug', 'title case']) r.as('alpha', 'add', story);
+  assert.equal(r.as('alpha', 'needs', 'S2', 'S1').said, 'S2 waits on S1');
+  r.as('alpha', 'plan', '1', 'words and what builds on them', 'S1', 'S2', 'S3');
+  // The story that builds on another can’t be taken until that one is done.
+  assert.deepEqual(r.as('critic', 'claim', 'S2', 'critic'), { said: 'Not done: S2 waits on S1, which isn’t done.', code: 1 });
+  r.as('developer', 'claim', 'S1', 'developer');
+  // Its owner can’t call it done alone, nor review it themselves.
+  assert.equal(
+    r.as('developer', 'done', 'S1').said,
+    'Not done: S1 hasn’t been reviewed. Another of the team reviews it first, with “node board.mjs review S1 <who>”.',
+  );
+  assert.equal(r.as('developer', 'review', 'S1', 'developer').said, 'Not done: S1 is developer’s own. Another of the team reviews it.');
+  assert.match(r.as('critic', 'review', 'S3', 'critic').said, /^Not done: review takes a story someone has taken/);
+  assert.equal(r.as('critic', 'review', 'S1', 'critic').said, 'S1 is reviewed by critic');
+  const board = readFileSync(join(r.dir, 'BOARD.md'), 'utf8');
+  assert.ok(board.includes('| S1 | words |  |  | 1 | developer | reviewed by critic |\n| S2 | slug |  | S1 | 1 |  | to do |'), board);
+  assert.equal(r.as('developer', 'done', 'S1').said, 'S1 is done');
+  assert.equal(r.as('critic', 'claim', 'S2', 'critic').said, 'S2 is critic’s');
+  assert.deepEqual(
+    boardLog({ workspace: r.dir }).map((x) => x.did),
+    ['add', 'add', 'add', 'needs', 'plan', 'claim', 'review', 'done', 'claim'],
+  );
+  // A story planned again starts afresh: its review was for the sprint before.
+  r.as('alpha', 'plan', '2', 'again', 'S1');
+  r.as('developer', 'claim', 'S1', 'developer');
+  assert.match(r.as('developer', 'done', 'S1').said, /^Not done: S1 hasn’t been reviewed/);
+  // A story never waits on what can’t be done: itself, or a story split since. And a wrong tie can be taken off.
+  assert.equal(r.as('alpha', 'needs', 'S3', 'S3').said, 'Not done: S3 can’t wait on itself.');
+  r.as('alpha', 'add', 'file name');
+  r.as('alpha', 'needs', 'S4', 'S3', 'S1');
+  r.as('alpha', 'plan', '3', 'the rest', 'S4');
+  r.as('alpha', 'split', 'S3', 'small words', 'capitals');
+  assert.equal(r.as('critic', 'claim', 'S4', 'critic').said, 'Not done: S4 waits on S1, which isn’t done.');
+  assert.equal(r.as('alpha', 'needs', 'S4').said, 'S4 waits on nothing');
+  assert.equal(r.as('critic', 'claim', 'S4', 'critic').said, 'S4 is critic’s');
 });

@@ -1,15 +1,20 @@
 // An agent’s run clock in the store’s reducer (their entries in EVENTS, shared/state.mjs): a budget the person sets for
 // one agent in one conversation, and how much of it the agent has used. Postbox’s server sets every time here, so an
 // agent on a host can’t move its clock; the agent reads it only in the line each of its turns carries (clockLine).
-// A clock is { sessionId, threadId, budgetMs, usedMs, since, state, startedAt, expiredAt, stopping }: usedMs is what it
-// used before `since`, when it last began counting, or null once it stops counting. Each event’s data carries `at`,
+// A clock is { sessionId, threadId, budgetMs, usedMs, since, state, startedAt, expiredAt, stopping }, and endedAt once
+// the person ends it: usedMs is what it used before `since`, when it last began counting, or null once it stops counting. Each event’s data carries `at`,
 // the server’s time it happened, since the store’s events have no time of their own.
-// `stopping` lists the turns that Postbox stopped, at a pause or the expiry, and that may still run: a turn on a host
+// `stopping` lists the turns that Postbox stopped, at a pause, the end or the expiry, and that may still run: a turn on a host
 // until the host confirms its stop (server/remote/turns-stops.mjs, askStop), as when the host can’t be reached, and a
 // turn on this computer until its CLI has exited, after up to its grace period (server/adapters/process-group.mjs). A paused clock counts on until each has stopped (clock.stopped), so a pause the agent works through is no
 // pause (#1526).
+// An ended clock is one the person stopped before its budget (#1749): over for good, as an expired one is, with the
+// time it had used. `endedAt` says when.
 
-/** @typedef {'running' | 'paused' | 'expired'} ClockState */
+/** @typedef {'running' | 'paused' | 'expired' | 'ended'} ClockState */
+
+/** Whether a clock’s run is over for good: it reached its budget, or the person ended it (#1749). @param {{ state?: string } | null | undefined} clock */
+export const clockOver = (clock) => clock?.state === 'expired' || clock?.state === 'ended';
 
 /**
  * A turn on this computer in a clock’s `stopping`: `turn:` and its id, until its CLI has exited (server/turn-stop.mjs).
@@ -41,11 +46,11 @@ export const clockLine = (clock, now) =>
   `[Postbox] Run clock: elapsed ${Math.floor(clockElapsed(clock, now) / 1000)}s / budget ${Math.floor(clock.budgetMs / 1000)}s. At the budget, Postbox stops your turn and starts no other.`;
 
 /**
- * Whether a run clock holds its agent’s turns: paused, until the person resumes it, or expired, for good. Delivery starts
+ * Whether a run clock holds its agent’s turns: paused, until the person resumes it, or over, for good. Delivery starts
  * no turn from its inbox meanwhile (server/delivery.mjs), so what it was sent waits there. The caller passes the clock
  * as in-process code must read it, pending (server/store-held.mjs). @param {{ state?: string } | null | undefined} clock
  */
-export const clockHolds = (clock) => clock?.state === 'paused' || clock?.state === 'expired';
+export const clockHolds = (clock) => clock?.state === 'paused' || clockOver(clock);
 
 /**
  * Refuses a clock event without the fields it needs, before anything changes (#609): a session’s id, and a time.
@@ -127,7 +132,19 @@ export const CLOCK_EVENTS = Object.freeze({
       }),
     public: true,
   },
-  // The host confirmed that a turn the clock’s pause or expiry asked to stop is over: a paused clock whose last such
+  // The person ended the run before its budget (#1749): the clock stops counting at what it had used, for good.
+  'clock.ended': {
+    apply: (/** @type {any} */ s, /** @type {any} */ d) => {
+      check(d, ['elapsedMs', 'budgetMs']);
+      withClock(s, d, (c) => {
+        // Only a run still going can end: an expired or void one stays as it is.
+        if (c.state !== 'running' && c.state !== 'paused') return;
+        Object.assign(c, { usedMs: d.elapsedMs, since: null, state: 'ended', endedAt: d.at, stopping: stoppingOf(d) });
+      });
+    },
+    public: true,
+  },
+  // The host confirmed that a turn the clock’s pause, end or expiry asked to stop is over: a paused clock whose last such
   // turn it was stops counting here.
   'clock.stopped': {
     apply: (/** @type {any} */ s, /** @type {any} */ d) => {
@@ -139,7 +156,7 @@ export const CLOCK_EVENTS = Object.freeze({
         // the run is void, and no turn of the agent starts again (clockHolds), beside it or after.
         if (d.forced) {
           c.stopping = (c.stopping ?? []).filter((/** @type {string} */ t) => t !== d.turn);
-          if (c.state !== 'expired') Object.assign(c, { usedMs: clockElapsed(c, d.at), since: null, state: 'expired', expiredAt: d.at });
+          if (!clockOver(c)) Object.assign(c, { usedMs: clockElapsed(c, d.at), since: null, state: 'expired', expiredAt: d.at });
           c.voided ??= { why: d.why, at: d.at };
           return;
         }

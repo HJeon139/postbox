@@ -3,66 +3,15 @@
 // a daemon from before `forget` leaves it owed and isn’t asked again on that connection.
 
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { oweForget, sendForgets, watchForgets } from '../server/remote/host-forget.mjs';
-import { Store } from '../server/store.mjs';
+import { rig, settled } from './remote-host-forget-rig.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
 // What a daemon from before `forget` answers it, recorded from main’s daemon at bb315158 (an in-process daemon given
 // the line, the way tests/fixtures/remote/models-before-1312.json was): it refuses a message it doesn’t carry.
 const BEFORE_FORGET = JSON.parse(readFileSync(new URL('./fixtures/remote/forget-before-491.json', import.meta.url), 'utf8'));
-
-/**
- * Hosts (host-service.mjs) over a real store with two hosts, and a fake manager: each host’s link, its state, and
- * what the daemon answers each message. answer(msg) is the reply, or null for none.
- * @param {{ answer?: (m: any) => any, connected?: string[], store?: any }} [o]
- */
-function rig({ answer = (m) => ({ type: 'forgotten', persona: m.persona }), connected = ['ho_a'], store = new Store(null) } = {}) {
-  for (const [id, name] of [
-    ['ho_a', 'a.example'],
-    ['ho_b', 'b.example'],
-  ])
-    store.emit('host', { id, name, settings: {}, createdAt: 1 });
-  const manager = Object.assign(new EventEmitter(), { links: new Map(), states: new Map(), needs: /** @type {any[]} */ ([]) });
-  const linkOf = (/** @type {string} */ id) => {
-    if (!manager.links.has(id)) manager.links.set(id, newLink(answer));
-    return manager.links.get(id);
-  };
-  for (const id of connected) manager.states.set(id, 'connected');
-  Object.assign(manager, {
-    status: (/** @type {string} */ id) => ({ state: manager.states.get(id) ?? 'disconnected' }),
-    link: linkOf,
-    need: (/** @type {string} */ id) => manager.needs.push(['need', id]),
-    release: (/** @type {string} */ id) => manager.needs.push(['release', id]),
-    /** The host connects again: as in hosts.mjs, the host keeps its link, and link.mjs gives it a new welcome. @param {string} id */
-    connect(id) {
-      const l = linkOf(id);
-      l.connected = true;
-      l.welcome = {};
-      manager.states.set(id, 'connected');
-      manager.emit('status', id);
-    },
-  });
-  return { store, manager, hosts: /** @type {any} */ ({ store, manager }) };
-}
-
-/** A link whose daemon answers each message with answer(msg). @param {(m: any) => any} answer */
-function newLink(answer) {
-  const l = Object.assign(new EventEmitter(), { connected: true, welcome: {}, sent: /** @type {any[]} */ ([]) });
-  Object.assign(l, {
-    send(/** @type {any} */ msg) {
-      l.sent.push(msg);
-      const reply = answer(msg);
-      if (reply) setImmediate(() => l.emit('message', reply));
-      return true;
-    },
-  });
-  return /** @type {any} */ (l);
-}
-
-const settled = () => new Promise((r) => setImmediate(() => setImmediate(r)));
 
 test('#491 a deleted persona is owed by every host; a connected one removes it at once, and one that connects later then', async () => {
   const { store, manager, hosts } = rig();
@@ -273,4 +222,66 @@ test('#491 a send the link can’t write releases the host at once and leaves th
   await settled();
   assert.deepEqual(l.sent, [{ type: 'forget', persona: 'pe_gone' }], 'not marked asked, so the same connection sends it');
   assert.equal(store.state.hostForgets.ho_a, undefined);
+});
+
+test('#1683 a refused removal alone stays owed: the others the host answers on that connection are settled', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  // As daemon-forget.mjs answers: a refusal naming its persona, for the first; the others removed.
+  const { store, manager, hosts } = rig({
+    answer: (m) =>
+      m.persona === 'pe_stuck'
+        ? { type: 'error', code: 'internal', re: 'forget', persona: 'pe_stuck', message: 'The daemon couldn’t remove it.' }
+        : { type: 'forgotten', persona: m.persona },
+    connected: [],
+  });
+  watchForgets(hosts);
+  for (const p of ['pe_stuck', 'pe_two', 'pe_three']) oweForget(hosts, p);
+  manager.connect('ho_a');
+  await settled();
+  assert.deepEqual(store.state.hostForgets.ho_a, ['pe_stuck'], 'only the refused one stays owed');
+  // And it’s asked again on the next connection, alone.
+  manager.connect('ho_a');
+  await settled();
+  assert.deepEqual(
+    manager.links
+      .get('ho_a')
+      .sent.slice(-1)
+      .map((/** @type {any} */ m) => m.persona),
+    ['pe_stuck'],
+  );
+});
+
+test('#1683 a refusal naming its persona still leaves the next ask to the next connection, and ends the wait when it’s the last', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const { store, manager, hosts } = rig({
+    answer: (m) => ({ type: 'error', code: 'internal', re: 'forget', persona: m.persona, message: 'The daemon couldn’t remove it.' }),
+  });
+  watchForgets(hosts);
+  oweForget(hosts, 'pe_gone');
+  await settled();
+  const l = manager.links.get('ho_a');
+  assert.deepEqual(store.state.hostForgets.ho_a, ['pe_gone']);
+  assert.equal(l.listenerCount('message'), 0, 'the wait ended with the last answer, not at the timeout');
+  manager.emit('status', 'ho_a');
+  await settled();
+  assert.equal(l.sent.length, 1, 'not asked again on that connection');
+  manager.connect('ho_a');
+  await settled();
+  assert.equal(l.sent.length, 2, 'asked again on the next');
+});
+
+test('#1683 a refusal naming a persona not asked on this send settles nothing and says nothing', async (t) => {
+  const errors = t.mock.method(console, 'error', () => {});
+  const { store, manager, hosts } = rig({ answer: () => null });
+  watchForgets(hosts);
+  oweForget(hosts, 'pe_gone');
+  await settled();
+  const l = manager.links.get('ho_a');
+  l.emit('message', { type: 'error', code: 'internal', re: 'forget', persona: 'pe_other', message: 'Not this one.' });
+  await settled();
+  assert.equal(errors.mock.callCount(), 0);
+  assert.equal(l.listenerCount('message'), 1, 'still waiting for pe_gone’s answer');
+  l.emit('message', { type: 'forgotten', persona: 'pe_gone' });
+  await settled();
+  assert.equal(store.state.hostForgets.ho_a, undefined, 'pe_gone’s answer still counted');
 });

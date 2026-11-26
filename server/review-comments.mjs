@@ -9,6 +9,7 @@
 import { validateBlock } from '../shared/catalog.mjs';
 import { commentErrors, MAX_COMMENTS, quoteOf, VERDICTS } from '../shared/review-comments.mjs';
 import { findQuote, splitLines } from '../shared/review-diff.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { ownedAuthors } from './review-authors.mjs';
 import { SUMMARY_WAKES_NO_ONE } from './side-threads.mjs';
 
@@ -171,7 +172,7 @@ function find(apps, se, key) {
     .conversationThreads(se.threadId)
     .flatMap((where) => apps.store.items(where).map((it) => ({ it, where })))
     .filter(({ it }) => it.kind === 'block' && it.valid && it.block.type === 'review' && (it.id === key || it.block.id === key));
-  if (!all.length) return no(`There’s no review block “${key.slice(0, 80)}” in this conversation. read_conversation shows each block with its id.`);
+  if (!all.length) return no(`There’s no review block “${cutText(key, 80)}” in this conversation. read_conversation shows each block with its id.`);
   if (all.length > 1)
     return no(`More than one review block is called “${key}”: ${all.map(({ it }) => `@${it.handle}’s is ${it.id}`).join(', ')}. Name one by that id.`);
   return all[0];
@@ -196,5 +197,5 @@ function placeError(b, c, i) {
   const there = quoteOf(lines, c);
   return there === c.quote
     ? []
-    : [`comments[${i}]: its quote isn’t the text at those columns, which is “${there.slice(0, 120)}”. Send the text as it is there.`];
+    : [`comments[${i}]: its quote isn’t the text at those columns, which is “${cutText(there, 120)}”. Send the text as it is there.`];
 }
