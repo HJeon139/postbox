@@ -65,6 +65,8 @@ export function reviewBlock(apps, sessionId, args) {
     // The review hands off to the block’s author, so the turn’s reply doesn’t go back to it as well (reply-back.mjs, #1518).
     const turn = apps.running.turnOf(sessionId);
     if (turn) turn.named = true;
+    // And it reached that agent, so an ask of the author's this turn took is answered (#634, reply-owed.mjs).
+    if (turn) (turn.reached ??= new Set()).add(it.handle);
   } catch (e) {
     heard = `@${it.handle} didn’t hear them: ${e.message}`;
   }

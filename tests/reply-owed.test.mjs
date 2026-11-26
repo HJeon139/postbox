@@ -97,3 +97,34 @@ test('#634 beta’s reaction to the ask answers it: a “noted” in a click', a
   });
   assert.equal(f.ask().noReplyFrom ?? null, null);
 });
+
+test('#634 beta answering in a topic it opens for alpha reaches alpha: no mark', async () => {
+  const f = await asked(
+    async (c, { ask }) => {
+      await c.tools.open_topic({ itemId: ask().id, message: '@alpha it holds, details here.' });
+      c.text('Answered in the topic.');
+    },
+    { alsoPerson: true },
+  );
+  assert.equal(f.ask().noReplyFrom ?? null, null);
+});
+
+test('#634 beta answering by review comments on alpha’s block reaches alpha: no mark', async () => {
+  const f = setup();
+  const block = { id: 'plan', type: 'review', version: 1, title: 'plan.md', fallback: 'The plan', format: 'markdown', content: '# Plan\n\nShip it.' };
+  f.adapter.next.push(async (c) => {
+    c.tools.show_block({ block });
+    c.text('@beta please review the plan.');
+  });
+  f.adapter.next.push(async (c) => {
+    await c.tools.review_block({ blockId: 'plan', comments: [{ line: 3, text: 'When?' }] });
+    c.text('Reviewed.');
+  });
+  f.adapter.next.push(async (c) => c.text('Thanks, noted.'));
+  f.rt.sendMessage(f.t.id, { text: '@alpha write the plan' });
+  await settle(f.rt);
+  await settle(f.rt);
+  const ask = f.store.items(f.t.id).find((i) => i.kind === 'agent' && /@beta please review/.test(i.text ?? ''));
+  assert.ok(ask);
+  assert.equal(ask.noReplyFrom ?? null, null);
+});

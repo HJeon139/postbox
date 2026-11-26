@@ -9,12 +9,14 @@
 import { OWED } from '../shared/limits.mjs';
 
 /**
- * The agents a turn’s reply reached: those it @-mentioned, those it went back to, and those whose ask it reacted to,
- * a “noted” in a click. @param {any} turn @param {string[]} wentBack @param {any[]} asks  the asks the turn took
+ * The agents a turn reached: by @-mention, by going back, by a topic it opened or a review of their block, and those
+ * whose ask it reacted to, a “noted” in a click. @param {any} turn @param {string[]} wentBack @param {any[]} asks  the asks the turn took
  * @param {any} rt @param {string} handle  the turn’s agent
  */
 function reached(rt, turn, wentBack, asks, handle) {
-  const to = new Set([...(turn.mentioned ?? []), ...(turn.woken ?? []), ...wentBack]);
+  // Every route to an agent records it (`reached`: agentWake, a review of its block); a mention held on a card, and one
+  // the failed reply a Retry answers already woke, count too.
+  const to = new Set([...(turn.reached ?? []), ...(turn.mentioned ?? []), ...(turn.woken ?? []), ...wentBack]);
   for (const e of asks) {
     const it = rt.store.pending.item(e.threadId, e.itemId);
     if ((it?.reactions ?? []).some((/** @type {any} */ r) => r.handle === handle && r.at >= turn.startedAt)) to.add(e.from);
