@@ -250,21 +250,32 @@ for (const width of [1280, 768, 375])
     await expect(page.locator('.toast:visible')).toHaveCount(1);
     await expect(page.locator('.toast:visible')).toContainText('Couldn’t save the room');
     expect(/** @type {{ height: number }} */ (await page.locator('.toast:visible').boundingBox()).height, 'one line each').toBeLessThan(64);
-    const clear = (/** @type {import('@playwright/test').Locator} */ control) =>
-      control.evaluate((el) => {
-        const b = el.getBoundingClientRect();
-        return [
-          [b.x + 2, b.y + 2],
-          [b.x + b.width / 2, b.y + b.height / 2],
-          [b.x + b.width - 2, b.y + b.height - 2],
-        ].every(([x, y]) => el.contains(document.elementFromPoint(x, y)));
-      });
-    expect(await clear(dialog.getByRole('button', { name: 'Close' })), 'Close').toBe(true);
-    for (const tab of await dialog.getByRole('tab').all()) expect(await clear(tab), `the ${await tab.textContent()} tab`).toBe(true);
+    // What is over a control, read at its center and the middle of each edge, 3 px in: clear of a rounded corner, where
+    // a point 2 px in sits a third of a pixel from the curve. All of a bar is read in one look, and a miss says what it hit.
+    const covered = (/** @type {import('@playwright/test').Locator} */ controls) =>
+      controls.evaluateAll((els) =>
+        els.flatMap((el) => {
+          const b = el.getBoundingClientRect();
+          const [cx, cy] = [b.x + b.width / 2, b.y + b.height / 2];
+          return [
+            [cx, cy],
+            [cx, b.y + 3],
+            [cx, b.y + b.height - 3],
+            [b.x + 3, cy],
+            [b.x + b.width - 3, cy],
+          ].flatMap(([x, y]) => {
+            const hit = document.elementFromPoint(x, y);
+            const name = el.getAttribute('aria-label') ?? el.textContent;
+            return el.contains(hit) ? [] : [`${name} at ${Math.round(x)},${Math.round(y)}: ${hit?.tagName}.${hit?.className}`];
+          });
+        }),
+      );
+    expect(await covered(dialog.getByRole('button', { name: 'Close' })), 'Close').toEqual([]);
+    expect(await covered(dialog.getByRole('tab')), 'the tabs').toEqual([]);
     for (const tab of ['Personas', 'Projects', 'Rooms', 'People']) {
       await dialog.getByRole('tab', { name: tab }).click();
-      for (const control of await dialog.getByRole('toolbar').getByRole('button').all())
-        expect(await clear(control), `${tab}: ${await control.getAttribute('aria-label')}`).toBe(true);
+      await settled(page);
+      expect(await covered(dialog.getByRole('toolbar').getByRole('button')), `${tab}’s controls`).toEqual([]);
     }
     // The notices are still up, so nothing above passed under an empty stack; and with the sheet closed, all three show.
     await expect(page.locator('.toast')).toHaveCount(3);
