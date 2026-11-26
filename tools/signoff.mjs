@@ -3,7 +3,8 @@
 //   1. the head is pushed: the local HEAD is the pull request’s head on GitHub;
 //   2. the toolchain: every Node major CI runs (tools/signoff/workflows.mjs) is installed (tools/signoff/toolchain.mjs);
 //   3. Biome at each commit from the merge base to HEAD (tools/signoff/trees.mjs);
-//   4. the merged tree: HEAD merges cleanly with a freshly fetched base, and the merge passes Biome and the project lints;
+//   4. the merged tree: HEAD merges cleanly with the base freshly fetched from the pull request’s base repository, and
+//      the merge passes Biome and the project lints;
 //   5. the gate: a log this script wrote for this exact head shows npm run check and both full browser runs passed
 //      (tools/signoff/gate-log.mjs), or with --run-gate, it runs them now and writes that log (tools/signoff/gate-run.mjs);
 //   6. GitHub’s checks: every check main’s rules require, CodeQL included, passed on the head (tools/signoff-checks.mjs,
@@ -33,13 +34,14 @@ export const EXIT = { pass: 0, head: 1, toolchain: 2, commits: 3, merged: 4, gat
  * @typedef {{ ok: boolean, why?: string, note?: string, skip?: string }} StepResult
  * @typedef {{ pr: number, runGate: boolean, specs: string[], nodes: string[], lock?: string, root: string,
  *   gitDir: string, head: string, failed: boolean, load?: { one: number, cores: number }, base?: string,
- *   baseSha?: string, mergeBase?: string, fetchError?: string, node?: { major: number, path: string, version: string } }} Ctx
+ *   prUrl?: string, baseSha?: string, mergeBase?: string, fetchError?: string, node?: { major: number, path: string, version: string } }} Ctx
  */
 
 /** Step 1. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
 async function headIsPushed(d, ctx) {
-  const view = d.gh(['pr', 'view', String(ctx.pr), '--json', 'headRefOid,baseRefName']);
+  const view = d.gh(['pr', 'view', String(ctx.pr), '--json', 'headRefOid,baseRefName,url']);
   ctx.base = view.baseRefName;
+  ctx.prUrl = view.url;
   if (view.headRefOid !== ctx.head) {
     return {
       ok: false,
@@ -62,7 +64,7 @@ async function nodes(d, ctx) {
 async function commits(d, ctx) {
   if (!ctx.base) return { ok: false, why: 'no base branch: step 1 couldn’t read the pull request' };
   try {
-    Object.assign(ctx, await fetchBase(d, ctx.root, ctx.base));
+    Object.assign(ctx, await fetchBase(d, ctx.root, { pr: ctx.pr, prUrl: String(ctx.prUrl), base: ctx.base }));
   } catch (e) {
     ctx.fetchError = e.message;
     return { ok: false, why: `couldn’t fetch ${ctx.base}: ${e.message}` };

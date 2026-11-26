@@ -4,9 +4,10 @@
 // - Step 3: Biome at each commit from the merge base to HEAD, on the files that commit changes, with the biome.json
 //   of that commit. A commit that fails is red even when a later one fixes it: each commit is reviewed and reverted
 //   alone (designs/engineering-practices.md, “Commits and versions”).
-// - Step 4: the tree a merge would make with a freshly fetched base. main’s ruleset doesn’t require a head to be
-//   current with main, so a head green on its own can still conflict, or fail a lint, once merged. A conflict fails;
-//   a clean merge is checked out and runs Biome and the project lints, as `npm run lint` and `npm run lint:project` do.
+// - Step 4: the tree a merge would make with the base freshly fetched from the pull request’s base repository.
+//   main’s ruleset doesn’t require a head to be current with main, so a head green on its own can still conflict, or
+//   fail a lint, once merged. A conflict fails; a clean merge is checked out and runs Biome and the project lints, as
+//   `npm run lint` and `npm run lint:project` do.
 
 import { join } from 'node:path';
 import { untilStopped } from './stop.mjs';
@@ -48,12 +49,26 @@ export function inWorktree(d, root, sha, fn) {
 }
 
 /**
- * Fetches base and returns its commit and the merge base with HEAD.
- * @param {import('./deps.mjs').Deps} d @param {string} root @param {string} base
+ * The URL of the repository a pull request merges into, from the pull request’s own URL on GitHub: a fork’s origin is
+ * the fork, so a remote of the clone may not be it.
+ * @param {number} pr @param {string} prUrl
  */
-export async function fetchBase(d, root, base) {
-  await must(d, ['git', 'fetch', '--quiet', 'origin', base], { cwd: root });
-  const baseSha = await must(d, ['git', 'rev-parse', `refs/remotes/origin/${base}`], { cwd: root });
+export function baseRepo(pr, prUrl) {
+  const repo = /^(https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+)\/pull\/\d+$/.exec(String(prUrl))?.[1];
+  if (!repo) throw new Error(`#${pr}’s URL, ${prUrl}, names no repository`);
+  return repo;
+}
+
+/**
+ * Fetches base from the pull request’s base repository and returns its commit and the merge base with HEAD. The commit
+ * is FETCH_HEAD, read as soon as the fetch ends: a remote-tracking ref goes stale without a word in a single-branch
+ * clone or one with a narrowed refspec, and steps 3 and 4 must not use an old base.
+ * @param {import('./deps.mjs').Deps} d @param {string} root @param {{ pr: number, prUrl: string, base: string }} o
+ */
+export async function fetchBase(d, root, { pr, prUrl, base }) {
+  const repo = baseRepo(pr, prUrl);
+  await must(d, ['git', 'fetch', '--quiet', '--no-tags', '--', repo, `refs/heads/${base}`], { cwd: root });
+  const baseSha = await must(d, ['git', 'rev-parse', '--verify', 'FETCH_HEAD^{commit}'], { cwd: root });
   const mergeBase = await must(d, ['git', 'merge-base', 'HEAD', baseSha], { cwd: root });
   return { baseSha, mergeBase };
 }

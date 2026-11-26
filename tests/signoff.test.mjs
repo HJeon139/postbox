@@ -119,7 +119,7 @@ test('a merge conflict with the freshly fetched base fails step 4, naming the fi
   const w = signed({ answers: [[/^git merge-tree /, conflict]] });
   assert.equal(await signoff(['840'], w.d), EXIT.merged);
   assert.match(line(w, /^✖ 4\./), /conflicts with bbbbbbbb in server\/runtime\.mjs/);
-  assert.ok(ran(w, /^git fetch --quiet origin main$/).length, 'the base was fetched first');
+  assert.ok(ran(w, /^git fetch .* refs\/heads\/main$/).length, 'the base was fetched first');
   assert.equal(ran(w, /^npm run -s lint:project$/).length, 0, 'nothing ran on a merge that didn’t happen');
 });
 

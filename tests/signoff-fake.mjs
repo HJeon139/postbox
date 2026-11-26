@@ -14,6 +14,9 @@ export const RED = load('check-runs-808-red');
 export const ROOT = '/repo';
 export const GIT_DIR = '/repo/.git';
 export const BASE_SHA = 'b'.repeat(40);
+/** What refs/remotes/origin/main says: a narrow clone or a fork’s leaves it stale, so signoff never reads it. */
+export const STALE_SHA = '5'.repeat(40);
+export const BASE_REPO = 'https://github.com/HJeon139/postbox';
 export const MERGE_BASE = 'a'.repeat(40);
 export const COMMITS = ['c'.repeat(40), 'd'.repeat(40)];
 export const NODE22 = '/opt/homebrew/opt/node@22/bin/node';
@@ -121,7 +124,7 @@ function fakeDeps(w, runs, o) {
 /** What gh answers, from A2’s recorded fixtures. @param {string[]} args @param {typeof GREEN} runs @param {string} prHead */
 function ghAnswer(args, runs, prHead) {
   if (args[0] === 'repo') return { nameWithOwner: 'HJeon139/postbox' };
-  if (args[0] === 'pr') return { headRefOid: prHead, baseRefName: 'main' };
+  if (args[0] === 'pr') return { headRefOid: prHead, baseRefName: 'main', url: `${BASE_REPO}/pull/${args[2]}` };
   if (args[1].includes('/rules/')) return RULES;
   return [{ check_runs: runs.check_runs }];
 }
@@ -133,9 +136,12 @@ function defaults(head) {
     [/^git rev-parse --show-toplevel$/, ok(`${ROOT}\n`)],
     [/^git rev-parse --path-format=absolute --git-common-dir$/, ok(`${GIT_DIR}\n`)],
     [/^git rev-parse HEAD$/, ok(`${head}\n`)],
+    [new RegExp(`^git fetch --quiet --no-tags -- ${BASE_REPO} refs/heads/main$`), ok()],
+    [/^git rev-parse --verify FETCH_HEAD\^\{commit\}$/, ok(`${BASE_SHA}\n`)],
     [/^git fetch --quiet origin main$/, ok()],
-    [/^git rev-parse refs\/remotes\/origin\/main$/, ok(`${BASE_SHA}\n`)],
-    [/^git merge-base HEAD /, ok(`${MERGE_BASE}\n`)],
+    [/^git rev-parse refs\/remotes\/origin\/main$/, ok(`${STALE_SHA}\n`)],
+    // The merge base of HEAD and the fetched base; a stale base has another, so a range from it is told apart.
+    [/^git merge-base HEAD /, (argv) => ok(`${argv.at(-1) === BASE_SHA ? MERGE_BASE : '6'.repeat(40)}\n`)],
     [/^git rev-list --reverse /, ok(`${COMMITS.join('\n')}\n`)],
     [/^git diff --name-only /, ok('tools/signoff.mjs\n')],
     [/^git (worktree|checkout) /, ok()],
