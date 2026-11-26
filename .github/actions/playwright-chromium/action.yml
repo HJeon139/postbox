@@ -25,13 +25,17 @@ runs:
           'APT::Keep-Downloaded-Packages "true";' \
           "Dir::Cache::Archives \"$dir/\";" | sudo tee /etc/apt/apt.conf.d/99postbox-ci > /dev/null
         echo "dir=$dir" >> "$GITHUB_OUTPUT"
+        # The runner image, from the runner’s own environment variables, which an action’s env context doesn’t hold.
+        echo "os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
         echo "playwright=$(node -p "require('./package.json').devDependencies['@playwright/test']")" >> "$GITHUB_OUTPUT"
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.apt.outputs.dir }}
-        # A new runner image or Playwright version can want other packages, so either starts a new cache.
-        key: apt-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-playwright-${{ steps.apt.outputs.playwright }}-${{ inputs.only-shell }}
-        restore-keys: apt-${{ runner.os }}-${{ env.ImageOS }}-
+        # A new runner image or Playwright version can want other packages, so either starts a new cache, from the newest
+        # one for the same image OS: apt fetches only what that one lacks.
+        key: apt-${{ runner.os }}-${{ steps.apt.outputs.os }}-${{ steps.apt.outputs.image }}-playwright-${{ steps.apt.outputs.playwright }}-${{ inputs.only-shell }}
+        restore-keys: apt-${{ runner.os }}-${{ steps.apt.outputs.os }}-
     - name: Install Playwright’s Chromium
       shell: bash
       env:
@@ -42,4 +46,6 @@ runs:
     # apt wrote the folder as root, its lock file too: the runner’s cache step saves it as the runner’s user.
     - name: Let the cache read the packages apt kept
       shell: bash
-      run: sudo chown -R "$(id -u):$(id -g)" "${{ steps.apt.outputs.dir }}"
+      env:
+        ARCHIVES: ${{ steps.apt.outputs.dir }}
+      run: sudo chown -R "$(id -u):$(id -g)" "$ARCHIVES"
