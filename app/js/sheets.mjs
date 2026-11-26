@@ -695,7 +695,8 @@ export function openRename(threadId) {
  */
 export function confirmDelete(se, { keepConversation = false, removed } = {}) {
   // In a room, the agent leaves it and the room stays: that’s removing it, not deleting anything (#1743).
-  if (sessionsOf(se.threadId).length > 1) return confirmRemove(se, { removed });
+  // Live agents only, as the server counts them: a retired fork beside it can’t keep the room (#1620).
+  if (sessionsOf(se.threadId).filter((x) => !x.retiredFork).length > 1) return confirmRemove(se, { removed });
   const t = S().threads[se.threadId];
   const apps = Object.values(S().apps).filter((a) => a.sessionId === se.id).length;
   const blocks = headerOf(se.threadId).blocks[se.id] ?? 0;

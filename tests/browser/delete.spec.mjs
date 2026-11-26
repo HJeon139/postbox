@@ -66,6 +66,7 @@ test('#1743 @agent /delete in a room removes the agent from it at once after its
   await expect.soft(ask).toContainText('sesgone’s part in this room, from now on');
   await expect.soft(ask).toContainText('Its messages here, as they were said');
   await expect.soft(ask).toContainText('sesgone itself, its settings and its other rooms');
+  await expect.soft(ask).toContainText('Its session here. Added back, it starts a new one and reads the room again');
   await expect.soft(ask).not.toContainText('Delete');
   await ask.getByRole('button', { name: 'Remove sesgone' }).click();
   await expect.soft(page.locator(`#agent-row-${se.id}`)).toHaveCount(0);
@@ -182,4 +183,20 @@ test('a long project folder wraps in the delete confirm at 375 px, rather than w
   await expect(body).toContainText(folder.slice(0, 20));
   expect(await body.evaluate((b) => b.scrollWidth - b.clientWidth), 'nothing wider than the body').toBeLessThanOrEqual(0);
   expect((await axe(page)).filter((v) => v.startsWith('scrollable-region-focusable'))).toEqual([]);
+});
+
+test('#1743 beside only a retired fork, @agent /delete is the conversation’s delete, not a remove the server would refuse', async ({ page }) => {
+  const { p } = withAgent('lastlive');
+  const other = app.rt.createPersona({ handle: 'forked' });
+  const room = app.rt.createThread({ projectId: projectId(), title: 'Room with a fork', personaIds: [p.id, other.id] });
+  const fork = arrange.sessionsIn(app.rt, room.id).find((x) => x.personaId === other.id);
+  arrange.setSession(app.rt, fork.id, { retiredFork: true });
+  await page.goto(`${app.origin}/#/t/${room.id}`);
+  await synced(page, app);
+  await page.locator('#composer-input').focus();
+  await page.keyboard.type('@lastlive /delete');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('alertdialog', { name: 'Delete lastlive’s session?' }), 'the live agent is its last').toBeVisible();
+  await expect(page.getByRole('alertdialog', { name: /^Remove / })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 });

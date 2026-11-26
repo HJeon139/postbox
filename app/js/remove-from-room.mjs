@@ -1,6 +1,6 @@
 // Removing an agent from a room (#1743): it stops taking part there, from now on. What it already said stays as it was
 // said, under its name, and the agent itself, its settings and its other rooms are untouched. Its session in the room
-// ends, so if it’s added back it starts without what it knew here. The confirm says that, in words that can’t be
+// ends, so if it’s added back it starts a new one and reads the room again. The confirm says that, in words that can’t be
 // mistaken for deleting the agent (persona-delete.mjs), which takes it from every room.
 
 import { api, client } from './client.mjs';
