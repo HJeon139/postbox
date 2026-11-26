@@ -93,8 +93,6 @@ export function agentWake(
   const waits = rt.running.busy(target.id);
   const entry = { sessionId: target.id, threadId: at, source: 'mention', itemId: it.id, from: from.handle, ...(retryId ? { retryId } : {}), bounce };
   rt.delivery.send(entry, { wake });
-  // The turn reached that agent, however it woke it: a mention, a reply going back, open_topic (#634, reply-owed.mjs).
-  if (live && live.id === fromTurnId) (live.reached ??= new Set()).add(p.handle);
   // A card asking to wake it is stale once it’s woken now, or at the end of the waker’s turn under way (#439); one
   // woken once its own turn ends keeps the card the person may answer.
   if (!waits) retireStale(rt, at, target, `@${from.handle} woke it`);

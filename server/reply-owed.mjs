@@ -9,14 +9,20 @@
 import { OWED } from '../shared/limits.mjs';
 
 /**
- * The agents a turn reached: by @-mention, by going back, by a topic it opened or a review of their block, and those
- * whose ask it reacted to, a “noted” in a click. @param {any} turn @param {string[]} wentBack @param {any[]} asks  the asks the turn took
- * @param {any} rt @param {string} handle  the turn’s agent
+ * The agents of `askers` a turn reached: by @-mention, by going back, by a topic it opened or a review of their block,
+ * and those whose ask it reacted to, a “noted” in a click.
+ * @param {any} rt @param {any} turn @param {string} handle  the turn’s agent @param {string[]} wentBack
+ * @param {Set<string>} askers @param {any[]} asks  the asks the turn took
  */
-function reached(rt, turn, wentBack, asks, handle) {
-  // Every route to an agent records it (`reached`: agentWake, a review of its block); a mention held on a card, and one
-  // the failed reply a Retry answers already woke, count too.
-  const to = new Set([...(turn.reached ?? []), ...(turn.mentioned ?? []), ...(turn.woken ?? []), ...wentBack]);
+function reached(rt, turn, handle, wentBack, askers, asks) {
+  // A mention held on a card, and one the failed reply a Retry answers already woke, count too.
+  const to = new Set([...(turn.mentioned ?? []), ...(turn.woken ?? []), ...wentBack]);
+  const conv = rt.threads.conversationToWrite(turn.threadId);
+  for (const from of askers) {
+    // Whatever way it went, a mention, a topic it opened or a review of their block, it is an entry in their inbox.
+    const asker = rt.sessions.pendingIn(conv).find((/** @type {any} */ x) => x.handle === from && !x.retiredFork);
+    if (asker && rt.delivery.inbox(asker.id).some((/** @type {any} */ x) => x.from === handle && x.at >= turn.startedAt)) to.add(from);
+  }
   for (const e of asks) {
     const it = rt.store.pending.item(e.threadId, e.itemId);
     if ((it?.reactions ?? []).some((/** @type {any} */ r) => r.handle === handle && r.at >= turn.startedAt)) to.add(e.from);
@@ -33,8 +39,9 @@ function reached(rt, turn, wentBack, asks, handle) {
  */
 export function noteOwed(rt, turn, se, took, wentBack = []) {
   const asks = took.filter((e) => e.source === 'mention' && !e.bounce && e.from && e.itemId);
-  const to = reached(rt, turn, wentBack, asks, se.handle);
   const was = rt.store.pending.session(se.id)?.owes ?? [];
+  const askers = new Set([...asks, ...was].map((/** @type {any} */ x) => x.from));
+  const to = reached(rt, turn, se.handle, wentBack, askers, asks);
   const cleared = was.filter((/** @type {any} */ o) => to.has(o.from));
   for (const o of cleared) mark(rt, o, se.handle, false);
   const owed = asks.filter((e) => !to.has(e.from)).map((e) => ({ threadId: e.threadId, itemId: e.itemId, from: e.from }));

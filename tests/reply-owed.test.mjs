@@ -128,3 +128,15 @@ test('#634 beta answering by review comments on alpha’s block reaches alpha: n
   assert.ok(ask);
   assert.equal(ask.noReplyFrom ?? null, null);
 });
+
+test('#634 a later topic of beta’s that reaches alpha clears an earlier mark too', async () => {
+  const f = await asked(async (c) => c.text('@gamma can you check the relay?'));
+  assert.deepEqual(f.ask().noReplyFrom, ['beta']);
+  f.adapter.next.push(async (c) => {
+    await c.tools.open_topic({ itemId: f.ask().id, message: '@alpha it holds.' });
+    c.text('Answered in the topic.');
+  });
+  f.rt.sendMessage(f.t.id, { text: '@beta report back' });
+  await settle(f.rt);
+  assert.equal(f.ask().noReplyFrom ?? null, null);
+});
