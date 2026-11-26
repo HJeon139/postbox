@@ -10,12 +10,11 @@ import { openDialog, say, toast } from './ui.mjs';
 const S = () => client.state;
 
 /**
- * Asks to remove an agent’s session from a room, then removes it. keepConversation, from the Agents header’s − and the
- * Members bar (#1620), asks the server to refuse rather than erase the room if this is its last agent by the time the
- * person confirms. removed runs once it’s done.
- * @param {any} se @param {{ keepConversation?: boolean, removed?: () => void }} [opts]
+ * Asks to remove an agent’s session from a room, then removes it, through the route that refuses rather than erase the
+ * room if this is its last agent by the time the person confirms (#1620). removed runs once it’s done.
+ * @param {any} se @param {{ removed?: () => void }} [opts]
  */
-export function confirmRemove(se, { keepConversation = false, removed } = {}) {
+export function confirmRemove(se, { removed } = {}) {
   const t = S().threads[se.threadId];
   const room = t?.title ?? 'this room';
   const apps = Object.values(S().apps).filter((a) => a.sessionId === se.id).length;
@@ -32,8 +31,7 @@ export function confirmRemove(se, { keepConversation = false, removed } = {}) {
         h(
           'ul.what-goes',
           li(false, `${se.handle}’s part in this room, from now on`),
-          li(false, 'What it knew of this room: added back, it starts again without it'),
-          apps ? li(false, `The ${plural(apps, 'app')} it wrote here`) : null,
+          li(false, 'Its session here. Added back, it starts a new one and reads the room again'),
         ),
       ),
       h(
@@ -42,6 +40,7 @@ export function confirmRemove(se, { keepConversation = false, removed } = {}) {
         h(
           'ul.what-goes',
           li(true, 'Its messages here, as they were said'),
+          apps ? li(true, `The ${plural(apps, 'app')} it wrote here`) : null,
           li(true, `${se.handle} itself, its settings and its other rooms`),
           li(true, `Files in ${S().projects[t?.projectId]?.folder ?? 'the project folder'}`),
         ),
@@ -56,7 +55,8 @@ export function confirmRemove(se, { keepConversation = false, removed } = {}) {
           onclick: async () => {
             dlg.close();
             try {
-              await (keepConversation ? api(`/api/sessions/${se.id}/remove`, {}) : api(`/api/sessions/${se.id}`, undefined, 'DELETE'));
+              // Always the remove that keeps the room: if the agent is the last one by now, it’s refused, not the room erased.
+              await api(`/api/sessions/${se.id}/remove`, {});
               say(`Removed ${se.handle} from ${room}`);
               removed?.();
             } catch (e) {

@@ -30,7 +30,7 @@ function erasedWith(rt, t) {
 /**
  * Deletes a session at once: its turn stops, its wakes and queued messages go, and if it was alone in its conversation,
  * the conversation goes with it, unless keepConversation asks that it stay, which refuses the delete instead. In a room
- * it leaves, and its past messages stay, marked deleted. The persona stays. There is no Undo window, so nothing is held
+ * it leaves, and its past messages stay as they were, under its name (#1743). The persona stays. There is no Undo window, so nothing is held
  * for it (#604, #599).
  */
 export function deleteSession(rt, sessionId, { keepConversation = false } = {}) {
