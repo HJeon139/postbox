@@ -106,3 +106,51 @@ test('an output too large to read is noted by its size, and its blob isn’t rea
   assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: '[output too large to read: 104,857,600 bytes]' }]);
   assert.equal(read, 0);
 });
+
+/** The recording's events with the call's ending ledger patch changed by `edit`. @param {(p: any) => any} edit */
+const withEnded = (edit) =>
+  rec.events.map((e) =>
+    e.type === 'work.patch' && e.data.patch.output?.sha256 === ended.output.sha256 ? { ...e, data: { ...e.data, patch: edit(e.data.patch) } } : e,
+  );
+/** @dry's call step from these events, with the live frames and blob reader given. */
+const callIn = (/** @type {any[]} */ events, /** @type {any} */ opts) =>
+  trajectories(events, { version: POSTBOX_VERSION, prompts: rec.prompts, ...opts })
+    .find((x) => x.handle === 'dry')
+    .trajectory.steps.find((s) => s.tool_calls?.some((c) => c.tool_call_id === command.toolUseId));
+const theBlob = (/** @type {string} */ h) => (h === ended.output.sha256 ? 'the whole output\nhigh' : null);
+
+test('#1757 a failed call’s note is its detail, not its output, and the stored output is still its result', () => {
+  const failed = rec.live.map((f) =>
+    f.step?.id === command.toolUseId && 'output' in f.step ? { ...f, step: { id: f.step.id, state: 'failed', detail: 'Exit code 1' } } : f,
+  );
+  const step = dryCall({ live: failed, blob: theBlob });
+  assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: 'the whole output\nhigh' }]);
+  assert.equal(step.tool_calls[0].extra.display_detail, 'Exit code 1');
+  assert.equal(step.tool_calls[0].extra.display_output, undefined, 'a note isn’t output');
+  // With nothing stored, the note is the result, as before #1757.
+  const bare = dryCall({ live: failed, blob: () => null });
+  assert.deepEqual(bare.observation.results, [{ source_call_id: command.toolUseId, content: 'Exit code 1' }]);
+});
+
+test('#1757 a background command’s stored output is the job’s, seen later, so the call’s own text stays its result', () => {
+  const step = callIn(
+    withEnded((p) => ({ ...p, endedInBackground: true })),
+    { live: rec.live, blob: theBlob },
+  );
+  assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: 'high' }]);
+  assert.equal(step.tool_calls[0].extra.ended_in_background, true);
+});
+
+test('#1757 a stored output the ledger kept only the end of says so; one too large to read is noted over the live text', () => {
+  const cut = callIn(
+    withEnded((p) => ({ ...p, output: { ...p.output, cut: true } })),
+    { live: rec.live, blob: theBlob },
+  );
+  assert.match(cut.observation.results[0].content, /^\[the work ledger kept only its last \d+ bytes\]\nthe whole output/);
+  const big = callIn(
+    withEnded((p) => ({ ...p, output: { ...p.output, size: 100 * 1024 * 1024 } })),
+    { live: rec.live, blob: theBlob },
+  );
+  assert.deepEqual(big.observation.results, [{ source_call_id: command.toolUseId, content: '[output too large to read: 104,857,600 bytes]' }]);
+  assert.equal(big.tool_calls[0].extra.display_output, 'high', 'the live text is still what the conversation showed');
+});
