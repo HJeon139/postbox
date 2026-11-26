@@ -197,3 +197,23 @@ test('a gate command that throws still lets the slot go, fails step 5 and writes
   assert.equal(w.released, 1, 'the slot is let go');
   assert.equal(w.files.has(`${GIT_DIR}/signoff/${w.head}.json`), false, 'no log');
 });
+
+test('a working tree changed while the gate ran fails step 5, and writes no log', async () => {
+  let ran = false;
+  const w = world({
+    answers: [
+      [/^git status --porcelain$/, () => ({ code: 0, out: ran ? '?? notes.md\n' : '' })],
+      [
+        /^npm run check$/,
+        () => {
+          ran = true;
+          return { code: 0, out: '' };
+        },
+      ],
+    ],
+  });
+  assert.equal(await signoff(['840', '--run-gate'], w.d), EXIT.gate);
+  assert.match(line(w, /^✖ 5\./), /the working tree changed while the gate ran/);
+  assert.equal(w.files.has(`${GIT_DIR}/signoff/${w.head}.json`), false, 'no log');
+  assert.equal(w.released, 1, 'the slot is let go');
+});

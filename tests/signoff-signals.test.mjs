@@ -92,3 +92,9 @@ test('the real deps listen for SIGINT, SIGTERM and SIGHUP while asked, and stop 
     before,
   );
 });
+
+test('a step whose temporary worktree can’t be made leaves no signal handler behind', async () => {
+  const w = world({ answers: [[/^git worktree add /, () => ({ code: 128, out: 'fatal: could not create work tree dir' })]] });
+  assert.notEqual(await signoff(['840'], w.d), EXIT.pass);
+  assert.equal(w.handlers.size, 0, 'a later Ctrl-C still stops the script');
+});
