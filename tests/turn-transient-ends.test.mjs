@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { dismissFailed } from '../server/card-needs.mjs';
 import { withQuota, withTransient } from '../server/harness-failure.mjs';
+import { transientRetry } from '../server/turn-transient.mjs';
 import { agentState } from '../shared/agent-state.mjs';
 import { needsYouNow } from '../shared/needs.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
@@ -161,7 +162,7 @@ test('#1713 a retry its backend refused for quota ends the wait, and waits for t
   assert.notEqual(agentState(f.se(), f.store.state).state, 'retrying');
 });
 
-test('#1713 a tool-started turn whose retry was refused takes back its line to check what ran', async () => {
+test('#1713 a tool-started turn whose retry was refused leaves no line to check what ran for a later turn', async () => {
   const f = room();
   f.adapter.next.push(async (/** @type {any} */ ctx) => {
     ctx.activity?.({ id: 'tu1', label: 'Bash: git push', state: 'running', kind: 'tool' });
@@ -184,4 +185,35 @@ test('#1713 a tool-started turn whose retry was refused takes back its line to c
     (f.se().context ?? []).some((/** @type {string} */ x) => /Check what those calls changed/.test(x)),
     false,
   );
+});
+
+test('#1713 a retry refused with 409 while its reply is still failed, as by a paused run clock, needs the person', async () => {
+  const f = room();
+  await overloadedOnce(f);
+  f.rt.turnService.retry = async () => {
+    throw Object.assign(new Error('The run’s clock is paused.'), { status: 409 });
+  };
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    f.waits.shift()();
+    await settle(f.rt);
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(f.se().autoRetry ?? null, null);
+  assert.equal(needsYouNow(f.se()), true, 'still failed, with nothing to start it again');
+});
+
+test('#1713 the calls a retry is told to check are the agent’s own tools, not Postbox’s', () => {
+  const f = room();
+  const turn = {
+    steps: [
+      { id: 's1', label: 'react', kind: 'tool' },
+      { id: 's2', label: 'Bash: git push', kind: 'tool' },
+    ],
+    postboxSteps: new Set(['s1']),
+  };
+  const r = transientRetry(f.rt, f.se(), turn, { kind: 'transient', status: 529 });
+  assert.deepEqual(r?.started, ['Bash: git push']);
 });

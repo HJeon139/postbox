@@ -20,11 +20,11 @@ const STATUS_WORDS = { 429: 'was rate limiting requests', 529: 'was overloaded' 
 /** What the provider did, after its subject: “was overloaded (529)”. @param {number} status */
 const didWhat = (status) => `${STATUS_WORDS[/** @type {429|529} */ (status)] ?? 'had a server error'} (${status})`;
 
-/** The tools a turn started, by their labels, at most five: what its retry is asked to check before repeating. */
+/** The tools a turn started, by their labels, at most five, not Postbox’s own (reply-back.mjs, tookStep): what its retry checks. */
 const startedLabels = (/** @type {any} */ turn) =>
   tookStep(turn)
     ? (turn.steps ?? [])
-        .filter((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said')
+        .filter((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said' && !turn.postboxSteps?.has(s.id))
         .map((/** @type {any} */ s) => String(s.label ?? s.tool ?? 'a tool').slice(0, 80))
         .slice(0, 5)
     : [];
@@ -115,11 +115,12 @@ function armRetry(rt, sessionId, threadId, itemId, at) {
     if (rt.closing || se?.autoRetry?.itemId !== itemId || se.state !== 'failed') return;
     // A turn that started work before its provider failed: its retry is told to check what ran before repeating it,
     // as a scheduled wake’s recovery is (designs/508/design.md, “Record lifecycles”).
+    // Told only once the retry is sent: a retry refused leaves nothing for a later, unrelated turn to read.
     const told = se.autoRetry.started?.length ? checkWhatRan(se.autoRetry) : null;
-    if (told) rt.sessions.tell(sessionId, told);
+    const onSend = told ? () => rt.sessions.tell(sessionId, told) : undefined;
     Promise.resolve()
-      .then(() => rt.turnService.retry(threadId, itemId))
-      .catch((/** @type {any} */ e) => retryRefused(rt, sessionId, threadId, itemId, told, e));
+      .then(() => rt.turnService.retry(threadId, itemId, onSend))
+      .catch((/** @type {any} */ e) => retryRefused(rt, sessionId, threadId, itemId, e));
   };
   const wait = Math.max(0, at - Date.now());
   if (rt.config?.retryAfter) return rt.config.retryAfter(wait, fire);
@@ -132,17 +133,15 @@ function armRetry(rt, sessionId, threadId, itemId, at) {
 }
 
 /**
- * The retry at a wait’s end was refused. Its line to check what ran is taken back, as no turn went again. A 409 says
- * the reply isn’t failed any more, so nothing is owed. Anything else leaves the agent failed with nothing to start it
- * again, so it needs the person, as after its tries run out (#1713). Read pending: it decides the writes.
- * @param {any} rt @param {string} sessionId @param {string} threadId @param {string} itemId
- * @param {string | null} told  the line the retry was to read @param {any} e
+ * The retry at a wait’s end was refused. A reply no longer failed owes nothing. One still failed (a paused run clock,
+ * a request that can’t be read back, or any other refusal) leaves the agent with nothing to start it again, so it
+ * needs the person, as after its tries run out (#1713); a retired fork’s needs no one. Read pending: it decides the
+ * writes. @param {any} rt @param {string} sessionId @param {string} threadId @param {string} itemId @param {any} e
  */
-function retryRefused(rt, sessionId, threadId, itemId, told, e) {
-  if (told) rt.sessions.update(sessionId, (now) => ({ context: (now.context ?? []).filter((/** @type {string} */ x) => x !== `[Postbox] ${told}`) }));
+function retryRefused(rt, sessionId, threadId, itemId, e) {
   const se = rt.store.pending.session(sessionId);
   if (se?.autoRetry?.itemId !== itemId) return;
-  if (e?.status === 409) return forgetWait(rt, sessionId, { currentStep: 'Failed' });
+  if (rt.store.pending.item(threadId, itemId)?.status !== 'failed' || se.retiredFork) return forgetWait(rt, sessionId, { currentStep: 'Failed' });
   console.warn(`Postbox couldn’t retry @${se.handle}’s turn: ${e?.message ?? e}`);
   const text = `Postbox couldn’t try this turn again: ${e?.message ?? e}`;
   const needs = { kind: 'failed', itemId, text, ...rt.sessions.awayFrom(se, threadId) };
