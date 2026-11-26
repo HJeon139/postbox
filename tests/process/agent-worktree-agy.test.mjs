@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
@@ -16,7 +16,7 @@ import { git, home, project } from './agent-worktree-fixture.mjs';
  * An Antigravity adapter over a fake agy, as 1.5.18 with its hook confirmed, in the project’s data folder, and a turn
  * that returns the rules file agy found in its folder. @param {{ folder: string }} p @param {string} workRoot @param {string} name
  */
-function agyOver(p, workRoot, name, { mode = 'ask', hook = true } = {}) {
+function agyOver(p, workRoot, name, { mode = 'ask', hook = true, writes = '' } = {}) {
   /** @type {string[]} */
   let rules = [];
   /** @type {string[][]} */
@@ -25,6 +25,8 @@ function agyOver(p, workRoot, name, { mode = 'ask', hook = true } = {}) {
     const file = join(opts.cwd, PLUGIN_DIR, 'rules', 'AGENTS.md');
     rules.push(existsSync(file) ? readFileSync(file, 'utf8') : '');
     reads.push(JSON.parse(opts.env?.POSTBOX_AGY_READS ?? '[]'));
+    // As the agent writing a file with its file tools: no git of its own.
+    if (writes) writeFileSync(join(opts.cwd, writes), 'the agent’s work\n');
     const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true });
     setImmediate(() => {
       child.stdout.end(`${JSON.stringify({ type: 'result', result: 'ok', session_id: 'c1' })}\n`);
@@ -98,4 +100,27 @@ test('#1709 Run everything, where agy refuses nothing, gets the note', async () 
   const rules = await agy.turn('Go.');
   assert.match(rules, /## Where you work/);
   assert.match(rules, /which the person merges/);
+});
+
+test('#1709 what a turn leaves in an agent’s worktree is committed on its branch, by the agent, with no card and no Shell', async () => {
+  const { project: p, workRoot } = await project('committed');
+  const agy = agyOver(p, workRoot, 'committed', { writes: 'notes.md' });
+  const dir = await agy.folder();
+  const before = git(dir, ['rev-list', '--count', 'HEAD']).trim();
+  await agy.turn('Write your notes.');
+  assert.equal(git(dir, ['status', '--porcelain']), '', 'nothing left uncommitted');
+  assert.equal(Number(git(dir, ['rev-list', '--count', 'HEAD'])), Number(before) + 1);
+  assert.equal(git(dir, ['log', '-1', '--format=%an|%cn|%s']).trim(), '@gem|Postbox|@gem’s work at the end of a turn');
+  assert.equal(git(p.folder, ['show', 'postbox/pr_committed-gem-pe_a:notes.md']), 'the agent’s work\n', 'on its branch');
+  assert.equal(git(p.folder, ['status', '--porcelain']), '', 'the project’s folder is as it was');
+  assert.ok(!existsSync(join(p.folder, 'notes.md')));
+});
+
+test('#1709 a turn that changed nothing in its worktree makes no commit', async () => {
+  const { project: p, workRoot } = await project('unchanged');
+  const agy = agyOver(p, workRoot, 'unchanged');
+  const dir = await agy.folder();
+  const before = git(dir, ['rev-parse', 'HEAD']);
+  await agy.turn('Just look.');
+  assert.equal(git(dir, ['rev-parse', 'HEAD']), before);
 });

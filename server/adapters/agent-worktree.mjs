@@ -272,6 +272,31 @@ export function worktreeNote(cwd, persona, project, workRoot) {
   return [
     '## Where you work',
     '',
-    `Your current folder is your own git worktree, ${on(branchIn(cwd, workRoot), branchFor(persona, project))}. The project’s folder, ${project.folder}, is the person’s: read it, but don’t work there. Your work reaches the person and other agents only as commits on your branch, which the person merges; it doesn’t follow their later commits. When you commit, name your branch in your reply.`,
+    `Your current folder is your own git worktree, ${on(branchIn(cwd, workRoot), branchFor(persona, project))}. The project’s folder, ${project.folder}, is the person’s: read it, but don’t work there. Your work reaches the person and other agents only as commits on your branch, which the person merges; it doesn’t follow their later commits. Postbox commits what you leave at the end of each turn. When you change files, name your branch in your reply.`,
   ].join('\n');
+}
+
+/**
+ * Commits what a turn left in an agent’s own worktree, on its branch, so its work reaches the person and the other
+ * agents as a commit whether or not it could commit itself (#1709, the person’s decision of 26 November 2026: an agent
+ * without Shell would otherwise need a card for every `git commit`). Through runGit, so the repository’s hooks don’t
+ * run. The agent is its author, and Postbox its committer, for this commit only. Nothing for a turn in the project’s
+ * shared folder, or one that changed nothing. Returns whether it committed.
+ * @param {string} cwd @param {{ handle: string }} persona
+ * @param {{ folder?: string|null } | null | undefined} project @param {string} workRoot
+ * @param {{ git?: Git, log?: (line: string) => void }} [o]
+ */
+export async function commitTurn(cwd, persona, project, workRoot, { git = defaultGit, log = (l) => console.error(l) } = {}) {
+  if (!project?.folder || sharedFolder(cwd, project, workRoot)) return false;
+  const changed = await git(cwd, ['status', '--porcelain']);
+  if (changed.code !== 0 || !changed.stdout.trim()) return false;
+  const added = await git(cwd, ['add', '-A']);
+  const identity = ['-c', 'user.name=Postbox', '-c', 'user.email=postbox@postbox.invalid'];
+  const author = `--author=@${persona.handle} <${persona.handle}@postbox.invalid>`;
+  const made = added.code === 0 ? await git(cwd, [...identity, 'commit', '-q', author, '-m', `@${persona.handle}’s work at the end of a turn`]) : added;
+  if (made.code === 0) return true;
+  log(
+    `Postbox couldn’t commit @${persona.handle}’s work in ${cwd} (${made.stderr.trim().split('\n').at(-1) || `git exited with ${made.code}`}), so it stays there, uncommitted.`,
+  );
+  return false;
 }

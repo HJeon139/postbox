@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { agentWorktree, branchFor } from '../../server/adapters/agent-worktree.mjs';
+import { agentWorktree, branchFor, commitTurn } from '../../server/adapters/agent-worktree.mjs';
 import { decideAgyTool } from '../../server/adapters/agy-hook.mjs';
 import { excludePlugin, PLUGIN_DIR } from '../../server/adapters/agy-plugin.mjs';
 import { git, home, project } from './agent-worktree-fixture.mjs';
@@ -126,6 +126,11 @@ test('#1709 in Auto, routine git runs with no card in an agent’s real worktree
   assert.equal(decide([dir]), 'allow');
   // Given the project’s own folder too, the agent could have written the config git reads there.
   assert.equal(decide([dir, p.folder]), 'ask');
+  // With the project’s folder among what it may only read, routine git still runs, and still only in its own folders.
+  const run = (/** @type {string} */ CommandLine) =>
+    decideAgyTool({ toolCall: { name: 'run_command', args: { CommandLine } } }, { mode: 'auto', folders: [dir], reads: [p.folder], cwd: dir, home }).decision;
+  assert.equal(run('git status'), 'allow');
+  assert.equal(run(`git diff ${join(p.folder, 'README.md')}`), 'ask', 'read roots are for read-only commands, not git');
 });
 
 test('#1709 an add stopped before git wrote its record’s HEAD is still removed and made again', async () => {
@@ -151,4 +156,19 @@ test('#1709 a worktree whose record in the repository is gone isn’t used: the 
   assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: (l) => logs.push(l) }), p.folder);
   assert.equal(logs.length, 1);
   assert.match(logs[0], /couldn’t make a worktree for @a/);
+});
+
+test('#1709 Postbox never commits in the project’s own folder: only in an agent’s worktree', async () => {
+  const { project: p, workRoot } = await project('own-folder');
+  await writeFile(join(p.folder, 'person.md'), 'the person’s draft\n');
+  const head = git(p.folder, ['rev-parse', 'HEAD']);
+  assert.equal(await commitTurn(p.folder, { handle: 'gem' }, p, workRoot), false);
+  assert.equal(git(p.folder, ['rev-parse', 'HEAD']), head);
+  assert.equal(git(p.folder, ['status', '--porcelain']), '?? person.md\n', 'the person’s work is left as it was');
+  // In a worktree that changed nothing, nothing is committed and nothing is logged.
+  const dir = await agentWorktree({ id: 'pe_a', handle: 'gem' }, p, workRoot);
+  /** @type {string[]} */
+  const logs = [];
+  assert.equal(await commitTurn(dir, { handle: 'gem' }, p, workRoot, { log: (l) => logs.push(l) }), false);
+  assert.deepEqual(logs, []);
 });

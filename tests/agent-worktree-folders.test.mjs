@@ -61,7 +61,14 @@ test('#1709 an agent in its own worktree is told its worktree, its branch and th
   writeFileSync(join(wt, '.git'), `gitdir: ${record}\n`);
   const note = worktreeNote(wt, persona, project, workRoot);
   assert.ok(note.startsWith('## Where you work'), note);
-  for (const part of ['your own git worktree', branchFor(persona, project), project.folder, 'which the person merges', 'name your branch in your reply'])
+  for (const part of [
+    'your own git worktree',
+    branchFor(persona, project),
+    project.folder,
+    'which the person merges',
+    'Postbox commits what you leave',
+    'name your branch in your reply',
+  ])
     assert.ok(note.includes(part), part);
   // It reaches the rules file agy reads, after the guide, and with the real guide, a note naming long folders, and
   // the hook’s notes, the whole file still fits agy’s 12,000 characters (tests/agy-rules-hook.test.mjs).
@@ -103,4 +110,27 @@ test('#1709 the note comes after the persona’s limits, so a long project path 
   assert.ok(limits > 0, 'the persona has limits to keep');
   assert.ok(rules.indexOf('## Where you work') > limits, 'the note comes after them');
   assert.ok(rules.trimEnd().endsWith(note.trimEnd()), 'and last');
+});
+
+test('#1709 an agent in its own worktree runs read commands on the project’s folder with no card; writes and git there still ask', () => {
+  const { root, workRoot, project, wt } = layout();
+  const { addDirs, reads } = turnFolders(wt, { project }, workRoot);
+  const run = (/** @type {string} */ CommandLine) =>
+    decideAgyTool(
+      { toolCall: { name: 'run_command', args: { CommandLine } } },
+      { mode: 'auto', folders: [wt, ...addDirs], reads, cwd: wt, home: join(root, 'home') },
+    ).decision;
+  const notes = join(project.folder, 'notes.md');
+  assert.equal(run(`cat ${notes}`), 'allow');
+  assert.equal(run(`ls ${project.folder}`), 'allow');
+  assert.equal(run(`grep plan ${notes}`), 'allow');
+  assert.notEqual(run(`rm ${notes}`), 'allow', 'a write there still asks');
+  assert.notEqual(run(`touch ${join(project.folder, 'x')}`), 'allow');
+  assert.notEqual(run(`git diff ${notes}`), 'allow', 'git keeps to its own folders');
+  // Without the project’s folder among its reads, a read command there asks, as at 716b1c34.
+  const before = decideAgyTool(
+    { toolCall: { name: 'run_command', args: { CommandLine: `cat ${notes}` } } },
+    { mode: 'auto', folders: [wt], reads: [], cwd: wt, home: join(root, 'home') },
+  ).decision;
+  assert.notEqual(before, 'allow');
 });

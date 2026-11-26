@@ -221,8 +221,11 @@ function routineWords(w, where) {
   const [cmd, ...args] = w;
   const read = (x) => staysIn(x, where, false);
   const write = (x) => staysIn(x, where, true);
-  if (cmd === 'find') return findOk(args, read);
-  if (Object.hasOwn(READS, cmd)) return optionsOk(args, READS[cmd], read);
+  // A read-only command may also name what the agent may only read (readRoots: an agent in its own worktree reads the
+  // project’s folder, #1709). git keeps to its own folders, and ownGitDir to the folders it may edit.
+  const look = (x) => staysIn(x, { ...where, roots: [...where.roots, ...(where.readRoots ?? [])] }, false);
+  if (cmd === 'find') return findOk(args, look);
+  if (Object.hasOwn(READS, cmd)) return optionsOk(args, READS[cmd], look);
   if (Object.hasOwn(WRITES, cmd)) return optionsOk(args, WRITES[cmd], write);
   if (cmd === 'gh') return GH_COMMANDS.has(`${args[0]} ${args[1]}`) && optionsOk(args.slice(2), GH, read);
   if (cmd === 'git')
@@ -233,7 +236,8 @@ function routineWords(w, where) {
 /**
  * Whether Postbox runs this command without a card in Auto: every part routine, every path in the agent’s folders.
  * @param {string} command
- * @param {{ roots: string[], cwd: string, home: string, isProtected: (p: string) => boolean }} where
+ * @param {{ roots: string[], readRoots?: string[], cwd: string, home: string, isProtected: (p: string) => boolean }} where
+ *   readRoots: folders it may only read, which a read-only command may name
  */
 export function routineCommand(command, where) {
   const parts = splitCommand(command).map(words);
@@ -258,7 +262,7 @@ export function publicFetch(url) {
 /**
  * Whether Auto runs this Antigravity tool call without a card. File reads and edits keep the hook’s own rules.
  * @param {string} name @param {any} args
- * @param {{ roots: string[], cwd: string, home: string, isProtected: (p: string) => boolean }} where
+ * @param {{ roots: string[], readRoots?: string[], cwd: string, home: string, isProtected: (p: string) => boolean }} where
  */
 export function autoAllows(name, args, where) {
   switch (name) {

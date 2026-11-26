@@ -60,7 +60,7 @@ import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
-import { agentWorktree, turnFolders, worktreeNote } from './agent-worktree.mjs';
+import { agentWorktree, commitTurn, turnFolders, worktreeNote } from './agent-worktree.mjs';
 import { agyArgs, agyBypassWebOff } from './agy-args.mjs';
 import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
@@ -647,6 +647,7 @@ export class AntigravityCliAdapter {
         }
       } finally {
         await removeAgyPlugin(plugin);
+        await commitTurn(cwd, persona, ctx.project, this.workRoot); // what the turn left, in its own worktree (#1709)
       }
     });
     await (this.usage ? this.usage.reportAfter(ctx, asked, ran) : ran);
