@@ -7,7 +7,6 @@
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +22,7 @@ import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { dataFolder } from './home.mjs';
 import { hostsRoute } from './hosts-routes.mjs';
+import { httpServer } from './http-server.mjs';
 import { whoIs } from './identity/session.mjs';
 import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
@@ -207,7 +207,7 @@ export async function start({
       else res.end();
     }
   };
-  const server = createServer(handle);
+  const server = httpServer(handle);
 
   async function route(req, res) {
     const url = new URL(req.url, origin);
