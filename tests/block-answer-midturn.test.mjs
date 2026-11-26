@@ -176,3 +176,62 @@ test('#1810 a long answer held behind the running turn stays in its queue, and c
   assert.match(f.replies[0].message, /It reaches you whole when this turn ends/);
   assert.equal(answersGiven(f.adapter, f.item.id).length, 1, 'the queued turn gets it, whole, once');
 });
+
+test('#1810 a long answer that no longer waits comes in the refusal cut at its limit, which counts as reading it', async () => {
+  const { rt, store, t, adapter } = setup();
+  await turn(rt, adapter, t, (tools) => tools.show_block({ block: review }));
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  // Past the refusal’s cut, and with nothing carrying it: the refusal is all that’s left of it, as on main.
+  const comments = Array.from({ length: 5 }, (_, i) => ({ line: 1, text: `${i} ${'x'.repeat(3500)}` }));
+  const answer = { action: 'submit', values: { verdict: 'request_changes', comments }, voice: 'Changes', at: Date.now(), revision: 1, read: false };
+  rt.threads.patchItem(t.id, item.id, { answered: true, answer });
+  const [refused, read, applied] = await turn(rt, adapter, t, (tools) => [
+    tools.update_block({ block: { ...review, content: '# Draft 2' } }),
+    store.item(t.id, item.id).answer.read,
+    tools.update_block({ block: { ...review, content: '# Draft 2' } }),
+  ]);
+  assert.match(refused.message, /It didn’t reach you in a turn, so here it is in full: submit \{"verdict":"request_changes"/);
+  assert.equal(read, true);
+  assert.equal(applied.ok, true, applied.message);
+});
+
+test('#1810 a correction queued behind the running turn stays there when the answer beside it is settled', async () => {
+  const f = await answeredMidTurn({
+    during: ({ rt, t, item, se }) => {
+      // The answer and then the correction were each taken for a turn that waits behind this one.
+      startFromEntries(rt, se.id);
+      const event = {
+        blockId: item.block.id,
+        revision: 1,
+        action: 'correct',
+        values: { threadId: 'th_x', replaces: 'Name the owner.', text: 'Name the team.' },
+      };
+      const message = { kind: 'event', event, blockItemId: item.id };
+      rt.delivery.send({ sessionId: se.id, threadId: t.id, source: 'answer', itemId: item.id, from: 'you', message });
+      startFromEntries(rt, se.id);
+      assert.equal(rt.running.turnOf(se.id).pending.filter((p) => p.message.blockItemId === item.id).length, 2);
+    },
+  });
+  assert.equal(f.replies[0].ok, false);
+  assert.deepEqual(
+    answersGiven(f.adapter, f.item.id).map((m) => m.event?.action),
+    ['correct'],
+    'the queued correction reaches the next turn; the answer, given in the refusal, doesn’t',
+  );
+});
+
+test('#1810 another agent’s review of the block, waiting beside the answer, isn’t settled with it', async () => {
+  const f = await answeredMidTurn({
+    during: ({ rt, t, item, se }) => {
+      const event = { blockId: item.block.id, revision: 1, action: 'peer-review', values: { verdict: 'comment' } };
+      rt.delivery.send({ sessionId: se.id, threadId: t.id, source: 'review', itemId: item.id, from: 'beta', message: { kind: 'event', event } });
+    },
+  });
+  assert.equal(f.replies[0].ok, false);
+  const given = f.adapter.calls.slice(f.calls).flatMap((c) => c.message.messages ?? [c.message]);
+  assert.deepEqual(
+    given.filter((m) => m.kind === 'event').map((m) => m.event?.action),
+    ['peer-review'],
+    'the review reaches the next turn',
+  );
+});
