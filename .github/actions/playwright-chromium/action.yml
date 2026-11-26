@@ -1,9 +1,8 @@
 # Playwright’s Chromium and the system libraries it needs, from Ubuntu’s mirror (#869). The mirror can stall on one
 # font package for minutes, and that stall was the largest and most variable part of a pull request’s CI time. So apt
-# gives up on a stalled fetch after 20 s and tries again, up to five times, and keeps what it fetched in a folder the
-# runner caches: a warm run installs the packages from the cache and fetches none. apt installs a package it finds in
-# that folder by its size alone, with no hash check, so each restored package is checked against the signed index
-# first, and one that doesn’t match is deleted and fetched again.
+# keeps what it fetched in a folder the runner caches, and a warm run installs the packages from the cache and fetches
+# none. apt installs a package it finds in that folder by its size alone, with no hash check, so each restored package
+# is checked against the signed index first, and one that doesn’t match is deleted and fetched again.
 name: Playwright’s Chromium
 description: Installs Playwright’s Chromium with its system libraries, through a cache of the apt packages.
 inputs:
@@ -13,16 +12,13 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Point apt at a cached folder, with short timeouts and retries
+    - name: Point apt at a cached folder
       id: apt
       shell: bash
       run: |
         dir="$RUNNER_TEMP/apt-archives"
         mkdir -p "$dir/partial"
         printf '%s\n' \
-          'Acquire::http::Timeout "20";' \
-          'Acquire::https::Timeout "20";' \
-          'Acquire::Retries "5";' \
           'APT::Keep-Downloaded-Packages "true";' \
           "Dir::Cache::Archives \"$dir/\";" | sudo tee /etc/apt/apt.conf.d/99postbox-ci > /dev/null
         echo "dir=$dir" >> "$GITHUB_OUTPUT"
