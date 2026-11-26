@@ -140,3 +140,29 @@ test('#634 a later topic of beta’s that reaches alpha clears an earlier mark t
   await settle(f.rt);
   assert.equal(f.ask().noReplyFrom ?? null, null);
 });
+
+test('#634 a reply the previous turn sent as it ended doesn’t answer the next turn’s ask', async () => {
+  // beta’s first turn answers alpha’s first ask; its mention reaches alpha only after beta’s next turn, which takes the
+  // second ask, has started. That turn answers someone else, so the second ask is marked.
+  const f = setup();
+  const t = f.rt.createThread({ projectId: 'p1', title: 'Two asks', personaIds: [f.a.id, f.b.id, f.c.id] });
+  const items = () => f.store.items(t.id).filter((i) => i.kind === 'agent');
+  const first = held();
+  f.adapter.next.push(async (c) => c.text('@beta first, check the relay.'));
+  f.adapter.next.push(async (c) => {
+    await first.step(c);
+    c.text('@alpha the relay holds.');
+  });
+  f.rt.sendMessage(t.id, { text: '@alpha ask beta' });
+  for (let i = 0; i < 100 && !items().some((x) => /working on it/.test(x.text ?? '')); i++) await new Promise((r) => setTimeout(r, 5));
+  f.adapter.next.push(async (c) => c.text('@beta second, check the docs.'));
+  f.adapter.next.push(async (c) => c.text('@gamma can you look at the docs?'));
+  f.rt.sendMessage(t.id, { text: '@alpha ask beta again' });
+  for (let i = 0; i < 100 && !items().some((x) => /second, check/.test(x.text ?? '')); i++) await new Promise((r) => setTimeout(r, 5));
+  first.release();
+  await settle(f.rt);
+  const second = items().find((x) => /second, check/.test(x.text ?? ''));
+  const firstAsk = items().find((x) => /first, check/.test(x.text ?? ''));
+  assert.equal(firstAsk.noReplyFrom ?? null, null, 'the first ask was answered');
+  assert.deepEqual(second.noReplyFrom, ['beta']);
+});

@@ -132,7 +132,7 @@ export const PENDING = {
   'reply-back.mjs': ['planBack', 'wroteOnlyTo', 'endedByReaction'],
   // The asks a turn took that its reply didn’t reach, their items’ marks and reactions, and the asks the session owes:
   // each decides a write, maybe held behind a commit (#634).
-  'reply-owed.mjs': ['reached', 'noteOwed', 'mark'],
+  'reply-owed.mjs': ['reached', 'sentBy', 'noteOwed', 'mark'],
   // needFor: the room’s last person, whom a need rings (#1742), maybe written behind a held commit, as the need’s item.
   'sessions.mjs': ['pendingIn', 'pendingIn', 'ensure', 'update', 'needAt', 'needFor', 'remove', 'forgetReported', 'stampNeeds', 'unarchive'],
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written; and the agent and

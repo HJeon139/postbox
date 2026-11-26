@@ -21,13 +21,31 @@ function reached(rt, turn, handle, wentBack, askers, asks) {
   for (const from of askers) {
     // Whatever way it went, a mention, a topic it opened or a review of their block, it is an entry in their inbox.
     const asker = rt.sessions.pendingIn(conv).find((/** @type {any} */ x) => x.handle === from && !x.retiredFork);
-    if (asker && rt.delivery.inbox(asker.id).some((/** @type {any} */ x) => x.from === handle && x.at >= turn.startedAt)) to.add(from);
+    if (asker && sentBy(rt, rt.delivery.inbox(asker.id), handle, turn)) to.add(from);
   }
   for (const e of asks) {
     const it = rt.store.pending.item(e.threadId, e.itemId);
     if ((it?.reactions ?? []).some((/** @type {any} */ r) => r.handle === handle && r.at >= turn.startedAt)) to.add(e.from);
   }
   return to;
+}
+
+/**
+ * Whether this turn sent one of these entries. A mention’s entry points at the turn’s reply (`turnId`), or at the
+ * message a wake posted for it (`fromTurnId`): a time alone would credit this turn with what the previous one sent as
+ * it ended, after this one started. A review is sent during its own turn, so its time places it. Newest first, and it
+ * stops at the turn’s start, as the inbox keeps every entry. @param {any} rt @param {any[]} inbox @param {string} handle @param {any} turn
+ */
+function sentBy(rt, inbox, handle, turn) {
+  for (let i = inbox.length - 1; i >= 0; i--) {
+    const x = inbox[i];
+    if (x.at < turn.startedAt) return false;
+    if (x.from !== handle) continue;
+    if (x.source === 'review') return true;
+    const it = x.itemId ? rt.store.pending.item(x.threadId, x.itemId) : null;
+    if (it && (it.turnId === turn.id || it.fromTurnId === turn.id)) return true;
+  }
+  return false;
 }
 
 /**
