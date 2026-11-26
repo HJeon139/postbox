@@ -4,7 +4,7 @@ import { liveSessions } from './client.mjs';
 import { h, icon, plural } from './dom.mjs';
 import { failedActions } from './failed-actions.mjs';
 import { reach } from './open-threads.mjs';
-import { ringFor, stateWord } from './ring.mjs';
+import { ringFor, stateWord, stateWordOf } from './ring.mjs';
 import { jumpTo } from './view-jump.mjs';
 import { mountFor } from './window-live.mjs';
 
@@ -65,4 +65,7 @@ export function sideActive(sideId) {
 }
 export const sideSig = (se) => (se ? `${se.id}:${se.state}` : '');
 /** “is calling tools”, “needs you”: what an agent is doing, after its name. */
-export const doing = (se) => (se.state === 'needs' ? 'needs you' : se.state === 'failed' ? 'failed' : `is ${stateWord(se.state).toLowerCase()}`);
+export const doing = (se) => {
+  if (se.state === 'needs') return stateWordOf(se).toLowerCase();
+  return se.state === 'failed' ? 'failed' : `is ${stateWord(se.state).toLowerCase()}`;
+};

@@ -38,6 +38,10 @@ const LIVE_ONLY = new Set([
   'topbar-title-cut',
 ]);
 
+/** When a finished run ended, from when it started and how long it took, or null for one that didn’t record both. @param {any} saved @param {any} record */
+export const runEnd = (saved, record) =>
+  Number.isFinite(saved?.started) && Number.isFinite(record?.timing?.totalMs) ? saved.started + record.timing.totalMs : null;
+
 /**
  * What a recheck’s checks read from a finished run’s folder: the conversation’s threads, the streams, the history, and
  * the probes, samples, budget and timing the run saved. What the page shows (its apps and UI) is read after.
@@ -59,8 +63,12 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     codexStreams: readStreams(join(dir, 'streams', 'codex')),
     // The path the live run’s checks read commands against (#885: a temp folder since then), else where it’s kept.
     workspace: workspaceOf(dir, record),
+    // Where the run kept its workspace once it stopped (tools/uat/workspace.mjs, retainWorkspace): the files a check reads.
+    workspaceKept: join(dir, 'workspace'),
     sdkStreams: readStreams(join(dir, 'streams', 'sdk')),
     events: readHistory(dir),
+    // The last moment the run’s records cover: a room still quiet when it ended was quiet until then (quiet-stretches.mjs).
+    until: runEnd(saved, record),
     store: readStore(join(dir, 'data')),
     remote: remoteFacts(dir),
     console: logs,

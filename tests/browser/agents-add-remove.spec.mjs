@@ -1,5 +1,6 @@
-// #1620: the Agents header’s + adds an agent the person has to the conversation in one pick, and − removes one, as a
-// list’s + and − do in macOS. Where the sidebar is hidden, at 375 px, the conversation’s menu offers the same picks.
+// #1620, #1735: a room’s members are added and removed in one place, the Members list of the room’s form in the main
+// menu, whose + adds an agent the person has in one pick and whose − removes the one picked, as a list’s + and − do in
+// macOS. The Agents header’s button and the conversation’s ⋯ only go there.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -39,28 +40,44 @@ const handlesIn = (t) =>
     .map((x) => x.handle)
     .sort();
 
+/** The room’s form, opened from the Agents header, and its Members list’s controls. */
+async function members(page, t, from = 'header') {
+  if (from === 'header') await page.locator('.rail section.agents-sec').getByRole('button', { name: 'Manage this conversation’s members' }).click();
+  else {
+    await page.locator('header.topbar #conversation-actions').click();
+    await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
+  }
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  const list = settings.getByRole('listbox', { name: `Members of ${t.title}` });
+  await expect(list).toBeVisible();
+  return {
+    settings,
+    list,
+    row: (handle) => list.getByRole('option').filter({ has: page.locator('b', { hasText: new RegExp(`^@${handle}$`) }) }),
+    plus: settings.getByRole('button', { name: `Add an agent to ${t.title}` }),
+    minus: settings.getByRole('button', { name: /^Remove .+/ }),
+  };
+}
+const LAST = 'A room keeps at least one agent. Add another first, or delete the room.';
+
 test.describe('at 1280 px', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test('#1620 + adds an agent in one pick, by keyboard, and − removes it, its persona kept', async ({ page }) => {
+  test('#1620 + adds an agent in one pick, by keyboard, and with one agent − is off and says why', async ({ page }) => {
     const t = await opened(page);
-    const section = page.locator('.rail section.agents-sec');
-    const plus = section.getByRole('button', { name: 'Add an agent to this conversation' });
-    const minus = section.getByRole('button', { name: 'Remove an agent from this conversation' });
-    // Beside the heading, on its row.
-    const [head, p, m] = await Promise.all([section.locator('h2.label').boundingBox(), plus.boundingBox(), minus.boundingBox()]);
-    expect(Math.abs((p?.y ?? 0) + (p?.height ?? 0) / 2 - ((head?.y ?? 0) + (head?.height ?? 0) / 2)), '+ on the heading’s row').toBeLessThan(6);
-    expect((m?.x ?? 0) > (p?.x ?? 0), '− after +').toBe(true);
-
-    // One agent: removing it would erase the conversation, so − is off and says why.
+    const { list, row, plus, minus } = await members(page, t);
+    // The only control of membership on the page: the header has no + or − of its own.
+    await expect(page.locator('.rail section.agents-sec').getByRole('button', { name: /an agent (to|from) this conversation/ })).toHaveCount(0);
+    // One agent, picked: removing it would erase the conversation, so − is off, looks off, and says why.
+    await expect(row('librarian')).toHaveAttribute('aria-selected', 'true');
     await expect(minus).toHaveAttribute('aria-disabled', 'true');
-    // And looks off, as a disabled button does.
     await expect(minus).toHaveCSS('opacity', '0.5');
-    // Off, it still takes focus, and says why.
-    await expect(minus).toHaveAttribute('aria-description', 'The last agent can’t be removed. Delete the conversation instead.');
+    await expect(minus).toHaveAttribute('aria-description', LAST);
+    // And in words on the page: a title shows only under a pointer.
+    await expect(page.getByRole('dialog', { name: 'Settings' }).locator('.help', { hasText: 'a room keeps at least one agent' })).toBeVisible();
     await minus.focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('menu', { name: 'Remove an agent' }), 'a press does nothing').toHaveCount(0);
+    await expect(page.getByRole('alertdialog'), 'a press does nothing').toHaveCount(0);
     await plus.focus();
     await page.keyboard.press('Enter');
     const menu = page.getByRole('menu', { name: 'Add an agent' });
@@ -69,43 +86,40 @@ test.describe('at 1280 px', () => {
     await expect(menu.getByRole('menuitem', { name: /New agent/ })).toBeVisible();
     await menu.getByRole('menuitem', { name: /@indexer/ }).focus();
     await page.keyboard.press('Enter');
-    await expect(section.locator('.agent-rows li', { hasText: 'indexer' }), 'its row, at once').toBeVisible();
-    await expect(page.locator('#live'), 'announced').toHaveText('Added @indexer to this conversation');
-    // Focus goes back to the composer, as after any action (designs/intent.md, “Accessibility and keyboard”).
-    await expect(page.locator('#composer-input'), 'focus back in the composer').toBeFocused();
+    await expect(row('indexer'), 'its row in the list').toBeVisible();
+    await expect(list.getByRole('option').filter({ hasText: 'person' }), 'people are members too').not.toHaveCount(0);
     expect(handlesIn(t)).toEqual(['indexer', 'librarian']);
     await expect(page.locator('.sys-line', { hasText: 'indexer joined' })).toBeVisible();
     await expect(minus, 'two agents: − is on').toHaveAttribute('aria-disabled', 'false');
+    // A person is in every room: picked, − is off, says why, and a press asks nothing.
+    await list.getByRole('option').filter({ hasText: 'person' }).click();
+    await expect(minus).toHaveAttribute('aria-description', 'A person of this Postbox is in every room. Only an agent is added to a room or removed from it.');
+    await minus.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('alertdialog'), 'a press does nothing').toHaveCount(0);
   });
 });
 
 test.describe('at 1280 px, with two agents', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
-  test('#1620 − by keyboard: Cancel keeps the agent and focus on −, and a remove keeps the persona', async ({ page }) => {
+  test('#1620 − by keyboard removes the picked agent after its confirm: Cancel keeps it, and a remove keeps the persona', async ({ page }) => {
     const t = await opened(page, ['indexer']);
-    const section = page.locator('.rail section.agents-sec');
-    const minus = section.getByRole('button', { name: 'Remove an agent from this conversation' });
+    const { row, minus } = await members(page, t);
+    await row('indexer').click();
+    await expect(minus, 'it names the pick').toHaveAccessibleName(`Remove @indexer from ${t.title}…`);
     await expect(minus, 'two agents: − is on').toHaveAttribute('aria-disabled', 'false');
-    await expect(minus, 'and says nothing about being off').not.toHaveAttribute('aria-description', /.*/);
-    const removeIndexer = async () => {
-      await minus.focus();
-      await page.keyboard.press('Enter');
-      await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @indexer…' }).focus();
-      await page.keyboard.press('Enter');
-    };
-    // Cancel removes no one, and focus goes back to −, where the person was.
-    await removeIndexer();
-    await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Cancel' }).focus();
+    const ask = page.getByRole('alertdialog', { name: 'Delete indexer’s session?' });
+    await minus.focus();
     await page.keyboard.press('Enter');
-    await expect(minus, 'focus back on − after Cancel').toBeFocused();
+    await ask.getByRole('button', { name: 'Cancel' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(ask).toHaveCount(0);
     expect(handlesIn(t)).toEqual(['indexer', 'librarian']);
-    await removeIndexer();
-    await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Delete session' }).focus();
+    await minus.focus();
     await page.keyboard.press('Enter');
-    await expect(section.locator('.agent-rows li', { hasText: 'indexer' })).toHaveCount(0);
-    // The rail redraws − with the rows, so focus goes to the composer, as after an add, not to the page (#1620).
-    await expect(page.locator('#composer-input'), 'focus back in the composer after a remove').toBeFocused();
-    await expect(page.locator('#live'), 'announced').toHaveText('Deleted indexer’s session');
+    await ask.getByRole('button', { name: 'Delete session' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(row('indexer')).toHaveCount(0);
     expect(handlesIn(t)).toEqual(['librarian']);
     expect(arrange.persona(app.rt, 'indexer'), 'the persona stays').toBeTruthy();
     await expect(minus, 'one agent again: − is off').toHaveAttribute('aria-disabled', 'true');
@@ -121,9 +135,9 @@ test.describe('at 1280 px, a remove that races another', () => {
     const t = await opened(page);
     await app.rt.ensureSession(t.id, arrange.persona(app.rt, 'indexer').id);
     await synced(page, app);
-    const section = page.locator('.rail section.agents-sec');
-    await section.getByRole('button', { name: 'Remove an agent from this conversation' }).click();
-    await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @librarian…' }).click();
+    const { row, minus } = await members(page, t);
+    await row('librarian').click();
+    await minus.click();
     const ask = page.getByRole('alertdialog', { name: 'Delete librarian’s session?' });
     await expect(ask).toBeVisible();
     // While the dialog is open, @indexer goes, so @librarian is the last agent when the person confirms.
@@ -139,28 +153,23 @@ test.describe('at 1280 px, a remove that races another', () => {
 test.describe('at 375 px', () => {
   test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
 
-  test('#1620 where the sidebar is hidden, the conversation’s menu adds and removes an agent', async ({ page }) => {
+  test('#1620 where the sidebar is hidden, the conversation’s menu goes to the same Members list, which adds and removes', async ({ page }) => {
     const t = await opened(page);
-    const actions = page.locator('header.topbar #conversation-actions');
-    await actions.click();
-    await page.getByRole('menuitem', { name: /Add an agent/ }).click();
+    const { row, plus, minus } = await members(page, t, 'menu');
+    // The menu itself adds and removes no one.
+    await plus.click();
     await page
       .getByRole('menu', { name: 'Add an agent' })
       .getByRole('menuitem', { name: /@indexer/ })
       .click();
     await expect.poll(() => handlesIn(t)).toEqual(['indexer', 'librarian']);
-    // The page has heard it too, so its menu lists it.
-    await synced(page, app);
-    await actions.click();
-    await page.getByRole('menuitem', { name: /Remove an agent/ }).click();
-    await page.getByRole('menu', { name: 'Remove an agent' }).getByRole('menuitem', { name: 'Remove @indexer…' }).click();
+    await row('indexer').click();
+    await minus.click();
     await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Delete session' }).click();
     await expect.poll(() => handlesIn(t)).toEqual(['librarian']);
-    await expect(page.locator('#composer-input'), 'focus in the composer after a remove from the menu').toBeFocused();
-    await synced(page, app);
-    // One agent left: the menu offers no Remove, as removing it would erase the conversation.
-    await actions.click();
-    await expect(page.getByRole('menuitem', { name: /Add an agent/ })).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: /Remove an agent/ })).toHaveCount(0);
+    await expect(minus, 'one agent left: − is off').toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Escape');
+    await page.locator('header.topbar #conversation-actions').click();
+    await expect(page.getByRole('menuitem', { name: /^(Add an agent|Remove an agent|Rename|Delete)/ }), 'the menu has no control of its own').toHaveCount(0);
   });
 });

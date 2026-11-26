@@ -217,6 +217,7 @@ function stepCallback(rt, se0, turn, live) {
       added = null,
       deleted = null,
       diff = null,
+      postbox = false,
     }) {
       if (!live()) return;
       // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
@@ -224,6 +225,8 @@ function stepCallback(rt, se0, turn, live) {
       if (!who) stepTaken(turn);
       const i = turn.steps.findIndex((s) => s.id === id);
       const sid = id ?? newId('st');
+      // A step of one of Postbox’s own tools is work only if the tool acted, which its answer says (reply-back.mjs).
+      if (postbox) (turn.postboxSteps ??= new Set()).add(sid);
       // A new step of the agent’s own shows in the part it writes in now, after that part’s words so far.
       const place = i < 0 && !who ? placeStep(rt, turn, sid) : {};
       const step = turnStep({ id: sid, label, tool, state, ms, who, parent, detail, kind, job, input, output, ...place, added, deleted, diff });

@@ -1,7 +1,8 @@
 // A reply that goes back (#1518; designs/intent.md, the row on agents waking agents): a turn only other agents’
 // @-mentions started, whose replies @-mention no one, goes back to the agents whose mentions woke it, as if it had
-// mentioned them. Every time (#1523): chaining is how agents talk, an agent ends an exchange with a reaction, which
-// posts no reply, and the room’s chain limit counts each bounce as any wake. Functions take the Runtime first, as
+// mentioned them. Every time (#1523): chaining is how agents talk, and the room’s chain limit counts each bounce as
+// any wake. An exchange ends with a reaction to the reply that came back (#1553), or at an agent’s second reply in a
+// row to the same agent from a turn that reply woke and that did nothing but write (#1591). Functions take the Runtime first, as
 // waiting code does until Turns is a service.
 
 /**
@@ -18,25 +19,47 @@ export function backTo(entries) {
 }
 
 /**
- * The end of a turn that went well: if it named no agent, its last reply goes back to whom backTo says, through
- * agentWake, so the chain limit counts it and a card asks past it. An agent no longer in the conversation is skipped,
- * since only the person adds one. The reply keeps whom it went to now (`wentBack`), which the transcript shows under it.
+ * Whom the reply of a turn that went well goes back to, decided as the turn ends and before anything it took settles:
+ * if it named no agent, its last reply goes back to whom backTo says. An agent no longer in the conversation is
+ * skipped, since only the person adds one. An agent’s second reply in a row to the same agent that only writes ends
+ * their exchange, whatever line it closes with (#1591), so it goes back to the others only.
+ *
+ * The reply keeps whom a turn that only wrote meant it for (`wordsOnly`), on its item, where the agent’s next turn in
+ * the thread reads it, after a restart too. It is written here, not when the reply goes: the agent’s next turn may
+ * start, and be told where its own reply goes, before this one has gone (round 3 of the review of PR #1724: told
+ * “goes back to @beta and @gamma”, a reply went back to gamma alone). So the mark names the agents the exchange had
+ * already ended with, which keeps it ended, and one the chain limit then holds the reply from.
  * @param {any} rt @param {any} turn @param {any} se @param {any[]} took  the entries the turn took
+ * @returns {{ reply: any, to: string[] } | null}  the reply and whom it goes back to, or null when it goes back to no one
  */
-export function replyBack(rt, turn, se, took) {
+export function planBack(rt, turn, se, took) {
   // turn.named: a reply or an open_topic of this turn @-mentioned an agent, even one that couldn’t be woken, or it
   // reviewed an agent’s block, which hands off to its author.
-  if (turn.endErr || turn.named || turn.summarizeTo) return;
+  if (turn.endErr || turn.named || turn.summarizeTo) return null;
+  const wordsOnly = endedExchange(turn);
+  const had = wordsOnly ? wroteOnlyTo(rt, se, turn.threadId, turn.id) : [];
   const conv = rt.threads.conversationToWrite(turn.threadId);
   const here = (/** @type {string} */ h) => rt.sessions.pendingIn(conv).some((/** @type {any} */ x) => x.handle === h && !x.retiredFork);
   // A turn that took no entries carries whom it goes back to: a host turn continued under a new ID goes back as the turn
   // it continues would have (#1538), and a retry of one that took none as the failed turn would have (#1541).
   const asked = turn.backTo ?? backTo(took);
-  const to = asked.filter((h) => h !== se.handle && here(h) && !endedByReaction(rt, se, took, h, turn.startedAt));
-  if (!to.length) return;
+  const open = asked.filter((h) => h !== se.handle && here(h) && !endedByReaction(rt, se, took, h, turn.startedAt));
+  if (!open.length) return null;
   // Text with words: a harness may stream only whitespace around a tool call, such as a reaction, which is no reply.
   const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text?.trim());
-  if (!reply) return;
+  if (!reply) return null;
+  if (wordsOnly) rt.threads.patchItem(turn.threadId, reply.id, { wordsOnly: open });
+  return { reply, to: open.filter((h) => !had.includes(h)) };
+}
+
+/**
+ * The reply goes back to whom planBack decided, through agentWake, so the chain limit counts it and a card asks past
+ * it. The reply keeps whom it went to now (`wentBack`), which the transcript shows under it.
+ * @param {any} rt @param {any} turn @param {any} se @param {{ reply: any, to: string[] } | null} plan
+ */
+export function replyBack(rt, turn, se, plan) {
+  if (!plan?.to.length) return;
+  const { reply, to } = plan;
   const replyIn = turn.threadId !== se.threadId ? turn.threadId : null;
   const went = [];
   for (const h of to) {
@@ -45,6 +68,26 @@ export function replyBack(rt, turn, se, took) {
     if (r.ok) went.push(h);
   }
   if (went.length) rt.threads.patchItem(turn.threadId, reply.id, { wentBack: went });
+}
+
+/**
+ * The agents whose exchange with this one its next reply that only writes ends (#1591): those its last replies in the
+ * thread were for, as far back as each came from a turn that only wrote. The count belongs to an
+ * exchange, not to the agent: a lead that answered beta in words still answers gamma in words (round 2 of the review
+ * of PR #1724). One such reply is delivered, since it may be a follow-up question, its answer, a reviewer’s “ship it”
+ * or a hand-off in words, which Postbox can’t tell from a thanks without reading it. A second in a row to the same
+ * agent is what the recorded loops were made of, so the owner chose to end the exchange there. A reply of the agent’s
+ * that did work, or that a request or the person woke, carries no mark, so it starts every count again. Read by the
+ * turn’s input too (turns.mjs), so what the agent is told is what happens.
+ * @param {any} rt @param {any} se @param {string} threadId @param {string | null} [turnId]  the turn whose replies don’t count
+ * @returns {string[]}  handles, without @
+ */
+export function wroteOnlyTo(rt, se, threadId, turnId = null) {
+  const mine = rt.store.pending
+    .items(threadId)
+    .filter((/** @type {any} */ x) => x.kind === 'agent' && x.sessionId === se.id && x.turnId !== turnId && x.text?.trim());
+  const from = mine.findLastIndex((/** @type {any} */ x) => !Array.isArray(x.wordsOnly)) + 1;
+  return [...new Set(mine.slice(from).flatMap((/** @type {any} */ x) => x.wordsOnly))];
 }
 
 /**
@@ -64,3 +107,30 @@ export function endedByReaction(rt, se, took, handle, since) {
     (rt.store.pending.item(e.threadId, e.itemId)?.reactions ?? []).some((/** @type {any} */ r) => r.by === se.id && r.at >= since);
   return from.length > 0 && from.every((e) => e.source === 'mention' && e.bounce === true && reacted(e));
 }
+
+/**
+ * Only replies that went back on their own woke it, and it had nothing to add (#1543): it took no step and acted
+ * through none of Postbox’s tools, a reaction aside. An exchange between agents may end there quietly, since a
+ * failure is an alarm the person can’t act on (empty-reply.mjs), and the second reply in a row that such turns of
+ * one agent write to the same agent doesn’t go back to it (#1591, wroteOnlyTo): a model closes its turn with a line, the harness posts
+ * it as the reply, and two agents sent each other “I’m ending without a reply.” about 50 times each in a UAT run of
+ * 23 November 2026. It still wakes whom it @-mentions. A turn that took a step had work to report (#485), and its
+ * reply goes back, however many came back before (#1523). A direct @-mention is a request, so a turn it woke still
+ * owes its reply, which goes back, as do the person’s Retry and a host turn continued after Interrupted or Sign-in
+ * needed: the first was the person asking, and the second may have done its work before it was cut off.
+ * @param {any} turn
+ */
+export const endedExchange = (turn) => !turn.asked?.message?.retry && !turn.origin && !turn.backTo && onlyBounces(turn) && !tookStep(turn) && !turn.acted;
+
+/** Whether the entries a turn took were replies going back and Postbox’s notices, with one reply at least. @param {any} turn */
+function onlyBounces(turn) {
+  const asked = (turn.asked?.message?.entries ?? []).filter((/** @type {any} */ e) => e.source !== 'notice');
+  return asked.length > 0 && asked.every((/** @type {any} */ e) => e.source === 'mention' && e.bounce === true);
+}
+
+/**
+ * Whether a turn took a step: not a subagent’s, a thought or narration (turn-held.mjs counts the same), nor a call to
+ * one of Postbox’s own tools, which is work only when the tool acted (`acted`; tool-gate.mjs, isOwnWork). @param {any} turn
+ */
+export const tookStep = (turn) =>
+  (turn.steps ?? []).some((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said' && !turn.postboxSteps?.has(s.id));

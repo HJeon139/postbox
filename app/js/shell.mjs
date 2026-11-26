@@ -4,8 +4,6 @@
 import { isMock, mockMarker } from './agent-facts.mjs';
 import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
-import { canRemove, openAdd, openRemove } from './agents-header.mjs';
-import { chainLimitDesc, openChainLimit } from './chain-limit.mjs';
 import { busy, client, needsYou, sessionsOf, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
 import { installLine } from './install-line.mjs';
@@ -15,10 +13,11 @@ import { openPalette } from './palette.mjs';
 import { openPermissions } from './permissions.mjs';
 import { projectPlaces } from './places-menu.mjs';
 import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
-import { ringFor, stateWord } from './ring.mjs';
-import { confirmDelete, confirmDeleteThread, openNewAgent, openRename, openSettings } from './sheets.mjs';
+import { ringFor, stateWordOf } from './ring.mjs';
+import { openNewAgent, openSettings } from './sheets.mjs';
 import { threadState } from './thread-state.mjs';
 import './store-line.mjs';
+import { meButton } from './profile-tab.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
 import { closeWork, navigate, openMenu, openWork, route } from './ui.mjs';
 
@@ -49,7 +48,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
         { heading: 'Projects' },
         ...projectPlaces(Object.values(S().projects), pid, needsIn, (id) => navigate(`#/p/${id}`)),
         'hr',
-        { label: 'New project…', icon: 'plus', run: () => openSettings('projects') },
+        { label: 'Manage projects…', icon: 'gear', run: () => openSettings('projects') },
       ],
       { label: 'Go to' },
     );
@@ -141,7 +140,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
         h('span.sr-sm', n > 1 ? `${n} need you` : n ? 'Next that needs you' : 'Nothing needs you'),
         h('kbd.hide-sm', { 'aria-hidden': 'true' }, '⌃J'),
       ),
-      h('button.btn.icon.sm.ghost', { type: 'button', 'aria-label': 'Settings', onclick: () => openSettings() }, icon('gear')),
+      meButton(openSettings),
     ),
   );
   // Who it was drawn for: main.mjs rebuilds the view when an agent joins or leaves, and only then.
@@ -386,7 +385,7 @@ function updateRow(n, t, active, fresh = false) {
   else n.removeAttribute('aria-current');
   const named = t.kind === 'room' ? ses : main ? [main] : [];
   const who = named.length ? named.flatMap((x, i) => [i ? ', ' : '', x.handle, mockMarker(x)]) : '—';
-  const word = lead ? ` · ${stateWord(lead.state).toLowerCase()}${away}` : '';
+  const word = lead ? ` · ${stateWordOf(lead).toLowerCase()}${away}` : '';
   const sig = JSON.stringify([t.title, named.map((x) => [x.handle, isMock(x)]), word, unread, ses.map((x) => x.id)]);
   if (!fresh && n.dataset.sig === sig) return;
   n.dataset.sig = sig;
@@ -420,17 +419,14 @@ function conversationMenu(anchor, shown) {
   openMenu(
     anchor,
     [
-      { label: 'Rename…', icon: 'edit', run: () => openRename(t.id) },
-      { label: 'Wake chain limit…', icon: 'agent', desc: chainLimitDesc(t.id), run: () => openChainLimit(t.id) },
+      // Every control of a room is in the main menu’s form for it (#1735): its title, its members, its chain limit and
+      // its Delete. This menu only goes there, and to the room’s views.
       {
-        label: 'Add an agent…',
-        icon: 'agent',
-        desc: room ? 'It joins the room' : 'This conversation becomes a room',
-        // The Agents header’s picks, here too where the sidebar is hidden (#1620).
-        run: () => openAdd(anchor, t.id, { openNewAgent, confirmDelete }),
+        label: 'Manage room and members…',
+        icon: 'gear',
+        desc: room ? 'Its title, agents and people, and Delete' : 'Its title and agents, and Delete',
+        run: () => openSettings('rooms', t.id),
       },
-      // While one agent is left, removing it would erase the conversation: Delete does that, below.
-      ...(canRemove(t.id) ? [{ label: 'Remove an agent…', icon: 'trash', run: () => openRemove(anchor, t.id, { openNewAgent, confirmDelete }) }] : []),
       { label: 'Work', icon: 'file', desc: 'What its agents changed, ran and published', run: () => openWork(t.id) },
       {
         label: 'Permissions…',
@@ -444,13 +440,6 @@ function conversationMenu(anchor, shown) {
         (personaId) => openSettings('personas', personaId),
         anchor,
       ),
-      {
-        label: `Delete ${room ? 'room' : 'conversation'}…`,
-        icon: 'trash',
-        danger: true,
-        desc: 'Erases it and its sessions. The personas stay.',
-        run: () => confirmDeleteThread(t.id),
-      },
     ],
     { label: `Actions for ${t.title}` },
   );

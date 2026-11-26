@@ -240,9 +240,3 @@ export async function writeHistory(dir, facts) {
   await writeFile(join(dir, 'live.jsonl'), jsonl(facts.live ?? []));
   if (facts.gaps?.length) await writeFile(join(dir, 'stream-gaps.json'), `${JSON.stringify(facts.gaps)}\n`);
 }
-
-/** The live frames a run kept (writeHistory), or none for a run from before they were. @param {string} dir */
-export function readLive(dir) {
-  const saved = join(dir, 'live.jsonl');
-  return existsSync(saved) ? lines(readFileSync(saved, 'utf8')) : [];
-}

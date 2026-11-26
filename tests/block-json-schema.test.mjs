@@ -24,6 +24,8 @@ const ACROSS = [
   /^An app review needs appId\./,
   /review needs content\./,
   /^threads\[\d+\]: a (comment on a selection|selection’s end)/,
+  // edited is the person’s alone (#858): a comment by its author.
+  /only the person’s correction is marked edited/,
   /has two items with the /,
 ];
 

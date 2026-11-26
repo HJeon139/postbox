@@ -24,10 +24,12 @@ failOnPageErrors(test);
  */
 async function add(page, name, how) {
   const before = new Set(Object.keys(app.store.state.hosts ?? {}));
+  // + in the list’s bar shows the New host form (#1735), whose Add host is pinned under it.
+  await page.getByRole('button', { name: 'Add a host', exact: true }).click();
   const form = page.getByRole('region', { name: 'Add a host' });
   await form.getByRole('textbox', { name: 'SSH destination' }).fill(name);
   if (how === 'enter') await form.getByRole('textbox', { name: 'SSH destination' }).press('Enter');
-  else await form.getByRole('button', { name: 'Add host' }).click();
+  else await page.getByRole('button', { name: 'Add host', exact: true }).click();
   const added = () => Object.keys(app.store.state.hosts ?? {}).find((id) => !before.has(id)) ?? '';
   await expect.poll(added, { message: how === 'enter' ? 'Enter in the field adds it' : 'Add host adds it' }).not.toBe('');
   return added();

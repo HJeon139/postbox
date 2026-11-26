@@ -7,11 +7,13 @@
 
 import { parseMentions } from '../shared/text.mjs';
 import { copiedLine } from './copied-line.mjs';
+import { endedByReaction } from './reply-back.mjs';
 
 /**
  * The entries a final item’s mentions make: only an agent’s reply from a turn Postbox ran (not one mirrored from a
  * terminal, not a shell command’s output), and none from a summary’s turn, which wakes no one (#225). A reply doesn’t go
- * back to the agent that wrote it, nor to one the failed reply a Retry answers already woke (#485). A reply settled
+ * back to the agent that wrote it, nor to one the failed reply a Retry answers already woke (#485), nor to one whose
+ * exchange with the turn a reaction ended (#1591). A reply settled
  * while its turn ends waits for that end to wake anyone (`wake: false`), so a failed reply’s entry reads its error.
  * @param {any} rt @param {{ threadId: string, item: any }} final
  */
@@ -33,8 +35,14 @@ export function mentionEntries(rt, { threadId, item }) {
   let said = item.id;
   for (const h of parseMentions(item.text, rt.personas.handles(), copiedLine(rt, se))) {
     if (h.toLowerCase() === se.handle.toLowerCase()) continue;
+    // The turn reacted to this agent’s reply that came back, which ended their exchange (#1553), so naming it in
+    // the words that follow is no request (#1591): “I reacted ✅ to @critic’s acknowledgment.” woke critic 20 times in
+    // one UAT run of 23 November 2026. A reaction made after these words settled comes too late to hold the wake.
+    if (endedByReaction(rt, se, rt.delivery.takenBy(se.id, turn.id), h, turn.startedAt)) continue;
     // It named an agent, so it doesn’t go back to the one that woke it (reply-back.mjs), whether or not this wakes it.
     turn.named = true;
+    // And a reply of its own named one, which open_topic and a review don’t set: the reply-form checks read it (#1695).
+    turn.addressed = true;
     if (turn.woken.includes(h)) continue;
     const opts = { replyIn, fromTurnId: turn.id, itemId: said, prose: true, wake: live, retryId: replayKey(turn, h) };
     const r = rt.agentWake(se.id, h, item.text, opts);

@@ -348,8 +348,8 @@ export class Runtime {
    * its members: behind a held commit the published state doesn’t have it yet, and the route sends this as its body.
    * @param {{ projectId: string, title: string, personaIds?: string[], kind?: string, parentId?: string|null }} opts
    */
-  createThread({ personaIds = [], ...opts }) {
-    const t = this.threads.create(opts);
+  createThread({ personaIds = [], ...opts }, personId) {
+    const t = this.threads.create(opts, personId);
     for (const pid of personaIds) this.ensureSession(t.id, pid);
     return this.store.pending.thread(t.id);
   }
@@ -360,8 +360,8 @@ export class Runtime {
   // ── Messages from you: server/send-message.mjs and message-queue.mjs ──────────────
 
   /** You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies. */
-  sendMessage(threadId, message) {
-    return sendMessage(this, threadId, message);
+  sendMessage(threadId, message, sender) {
+    return sendMessage(this, threadId, message, sender);
   }
 
   // A message waiting in an agent’s queue is an entry in its inbox (server/entry-queue.mjs).
@@ -674,7 +674,10 @@ export class Runtime {
       // Read again each time: deleting one can erase others, as its conversation goes with it, side threads too.
       if (this.store.pending.session(sid)) this.deleteSession(sid);
     }
-    return this.personas.remove(id);
+    const removed = this.personas.remove(id);
+    // Its memory on a host is that host’s to remove (#491).
+    this.hostService.forgetPersona(id);
+    return removed;
   }
 
   // ── Remote hosts (#120): server/remote/placement.mjs and host-service.mjs ──────────

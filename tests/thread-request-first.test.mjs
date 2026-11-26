@@ -7,6 +7,7 @@ import { formatMessage } from '../server/adapters/guide.mjs';
 import { THREAD_CHECKS } from '../tools/uat/room-checks-threads.mjs';
 import * as arrange from './arrange.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 /** A room with a topic on alpha’s first reply, while beta has not taken a turn. */
 async function roomAndTopic() {
@@ -120,7 +121,7 @@ test('#504 failed and stopped topic turns without text keep their prompt marker'
   const waiting = held();
   stopped.adapter.next.push(waiting.step);
   stopped.rt.sendMessage(stopped.topic.id, { text: '@beta check another sentence.' });
-  for (let i = 0; i < 20 && !stopped.rt.turns.has(stopped.beta.id); i++) await new Promise((resolve) => setImmediate(resolve));
+  await untilTurns(() => stopped.rt.turns.has(stopped.beta.id), 'beta’s turn under way');
   assert.equal(stopped.rt.stop(stopped.beta.id), true);
   waiting.release();
   await settle(stopped.rt);

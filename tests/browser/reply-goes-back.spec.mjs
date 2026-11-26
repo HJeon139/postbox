@@ -56,3 +56,31 @@ test('replies that name no one go back and forth, each with a note under it, unt
   expect(app.store.items(thread.id).filter((it) => it.kind === 'hop')).toEqual([]);
   expect(arrange.sessionsIn(app.rt, thread.id).map((se) => se.needs ?? null)).toEqual([null, null]);
 });
+
+test('an agent’s second reply in a row that only writes posts with no note, and wakes no one (#1591)', async ({ page }) => {
+  const [first, second] = ['closer', 'acker'].map((name) => app.rt.createPersona({ handle: name, backend: 'claude-code' }));
+  const thread = app.rt.createThread({
+    projectId: Object.keys(app.store.state.projects)[0],
+    title: 'Nothing to add',
+    personaIds: [first.id, second.id],
+  });
+  // The lines two agents sent each other about 50 times each in a UAT run of 23 November 2026.
+  scripts.set('closer', ['@acker the plan is at v2.', 'Nothing here is for me to act on.', 'So I’m ending without a reply.']);
+  scripts.set('acker', ['Acknowledged. The plan stays at v2.', 'Acknowledged again.']);
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  app.rt.sendMessage(thread.id, { text: '@closer tell acker where the plan is' });
+
+  const reply = (text) => page.locator('.turn').filter({ has: page.getByText(text, { exact: true }) });
+  await expect(reply('Acknowledged. The plan stays at v2.').locator('.went-back')).toHaveText('Sent back to @closer: this reply @-mentions no one.');
+  // One reply that only writes is delivered from each: it may be a question, or an answer the other waits for.
+  await expect(reply('Nothing here is for me to act on.').locator('.went-back')).toHaveText('Sent back to @acker: this reply @-mentions no one.');
+  await expect(reply('Acknowledged again.').locator('.went-back')).toHaveText('Sent back to @closer: this reply @-mentions no one.');
+  const closing = reply('So I’m ending without a reply.');
+  await expect(closing).toBeVisible();
+  await expect.poll(() => arrange.sessionsIn(app.rt, thread.id).some((se) => arrange.running(app.rt, se.id) || arrange.exiting(app.rt, se.id))).toBe(false);
+  await expect(closing.locator('.went-back')).toHaveCount(0);
+  // acker wasn’t woken again: its script’s fallback line never posts, and no card asks the person.
+  await expect(page.getByText('Nothing more from me.')).toHaveCount(0);
+  expect(app.store.items(thread.id).filter((it) => it.kind === 'hop')).toEqual([]);
+});

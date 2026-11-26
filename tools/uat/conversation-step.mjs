@@ -55,6 +55,23 @@ export async function waitUntil(until, { now = Date.now, wait = sleep } = {}) {
 }
 
 /**
+ * The clicks of a delete, the same for a conversation with one agent and for a room: the conversation’s menu, the
+ * room’s form in the main menu, where Delete is (#1735), and the confirm, which opens over that form. Its Delete is
+ * pressed at `at` if one is given. @returns {Promise<string>}  what to say of the wait
+ */
+async function confirmDelete(kit, t, at) {
+  await kit.clickAt(`document.querySelector(${js(`[aria-label="Actions for ${t.title}"]`)})`, 'the conversation’s menu');
+  await kit.clickAt(byText('document', '.menu .mi, [role=menuitem]', 'Manage room and members'), 'Manage room and members in its menu');
+  await kit.clickAt(byText('document.querySelector(".dialog .d-foot")', 'button.danger', 'Delete…'), 'Delete… under the room’s form');
+  const { wait, note } = delayUntil(at, Date.now());
+  await waitUntil(Date.now() + wait);
+  // The confirm by its role: the main menu is a dialog too, and it is still open under the confirm.
+  const confirm = 'document.querySelector(".dialog[role=alertdialog]")';
+  await kit.clickAt(byText(confirm, 'button.danger', `Delete ${t.kind === 'room' ? 'room' : 'conversation'}`), 'the confirm’s Delete');
+  return note;
+}
+
+/**
  * Deletes the conversation that’s open, through its menu and the confirm, at `at` if it’s given (the confirm is open
  * and waiting), and waits for it to leave the state: a delete goes at once (#1224).
  */
@@ -64,12 +81,11 @@ async function remove({ d, api, facts }, a) {
   const state = (await api('/api/state')).state;
   const t = state.threads?.[threadId];
   if (!t) throw new Error('No conversation is open to delete.');
-  const room = t.kind === 'room';
-  await d.kit.clickAt(`document.querySelector(${js(`[aria-label="Actions for ${t.title}"]`)})`, 'the conversation’s menu');
-  await d.kit.clickAt(byText('document', '.menu .mi, [role=menuitem]', `Delete ${room ? 'room' : 'conversation'}`), 'Delete in its menu');
-  const { wait: atWait, note } = delayUntil(a.at, Date.now());
-  await waitUntil(Date.now() + atWait);
-  await d.kit.clickAt(byText('document.querySelector(".dialog")', 'button.danger', `Delete ${room ? 'room' : 'conversation'}`), 'the confirm’s Delete');
+  const note = await confirmDelete(d.kit, t, a.at).catch(async (e) => {
+    // What it opened on the way stays open over the page, and the tester’s next step would find none of it: close it.
+    for (let i = 0; i < 3 && (await d.kit.ev(`!!document.querySelector('.backdrop')`)); i++) await d.kit.press('Escape');
+    throw e;
+  });
   const at = Date.now();
   let gone = false;
   for (let i = 0; i < 20 && !gone; i++) {

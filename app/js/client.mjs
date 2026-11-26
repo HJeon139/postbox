@@ -324,5 +324,6 @@ export const liveSessions = () =>
     const t = S().threads[se.threadId];
     return !se.retiredFork && t && !(t.kind === 'side' && !S().threads[t.parentId]);
   });
-// Every kind its ring pulses for: a refused step and a tool it asked for too (#285).
-export const needsYou = () => liveSessions().filter(needsYouNow);
+// Every kind its ring pulses for: a refused step and a tool it asked for too (#285). Those of the one looking: a need
+// for another person rings them, not this page (#1742, app/js/needs-mine.mjs).
+export const needsYou = () => liveSessions().filter((se) => needsYouNow(se, client.config?.me?.id));

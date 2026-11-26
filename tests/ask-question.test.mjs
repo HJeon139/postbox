@@ -15,6 +15,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { STILL_OPEN } from '../shared/question-words.mjs';
 import * as arrange from './arrange.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 const RECORDED = JSON.parse(readFileSync(new URL('fixtures/claude-code/ask-user-question-prompts.json', import.meta.url), 'utf8')).prompts;
 const inputOf = (run) => structuredClone(RECORDED.find((p) => p.run === run).input);
@@ -277,7 +278,7 @@ test('#521 a question nobody answers within CARD_WAIT_MS stays open, and the age
       });
     });
     s.rt.sendMessage(s.t.id, { text: 'Ask me.' });
-    for (let i = 0; i < 2000 && s.questions().length === 0; i++) await new Promise((r) => setImmediate(r));
+    await untilTurns(() => s.questions().length > 0, 'the question');
     assert.equal(s.questions().length, 1, 'the question');
     mock.timers.tick(CARD_WAIT_MS);
     answer = await asked;

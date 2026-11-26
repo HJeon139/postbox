@@ -4,7 +4,7 @@
 
 import { api, busy, client, hrefOf, stopSession } from './client.mjs';
 import { fill, h, icon, plural } from './dom.mjs';
-import { ringFor, stateWord } from './ring.mjs';
+import { ringFor, stateWordOf } from './ring.mjs';
 import { navigate, say, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -192,7 +192,7 @@ export function treeEntry({ se, thread, by }) {
   // Who it’s talking with there: the other agent of the side thread’s pair, else who woke it.
   const partner = (thread.pair ?? '').split('|').find((x) => x && x !== se.handle) ?? (by && by !== 'you' ? by : null);
   // One line, state first, so it fits the sidebar: “Calling tools with @indexer”.
-  const line = `${stateWord(se.state)}${partner ? ` with ${partner}` : ''}`;
+  const line = `${stateWordOf(se)}${partner ? ` with ${partner}` : ''}`;
   const where = `in the ${thread.kind === 'topic' ? 'thread' : 'side thread'} “${thread.title}”${who ? `, woken by ${who}` : ''}`;
   const stop = h(
     'button.btn.sm.ghost',

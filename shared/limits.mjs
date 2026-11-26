@@ -128,6 +128,11 @@ export const HANDLE = /^[a-z][a-z0-9_-]{1,23}$/i;
  * `from`. A handle in any case that reads as it is the person’s, so no persona takes it.
  */
 export const PERSON = 'you';
+/**
+ * The person’s profile (#558): each field’s length, how many aliases it keeps, and `note`, the most of it a turn
+ * carries, past which the turn says what it cut.
+ */
+export const PROFILE = { name: 80, pronouns: 40, timezone: 64, preferences: 2000, aliases: 12, alias: 120, note: 1500 };
 /** What HANDLE allows, for a refusal that can’t echo what it was sent: that’s an agent’s text. */
 export const HANDLE_SHAPE = 'a handle is 2–24 letters, digits, - or _, and starts with a letter, such as “critic”';
 

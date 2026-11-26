@@ -14,6 +14,7 @@
 // answer). The tags must be exactly these, with no attributes; anything else, or an unclosed tag, is text.
 
 import { mapCodeSpans } from './code-spans.mjs';
+import { closesFence, FENCE, HEADING, LIST_ITEM, QUOTE, RULE, TABLE_SEP } from './markdown-blocks.mjs';
 import { escapeHtml, glossaryRegex, inline, mentionRegex } from './markdown-inline.mjs';
 import { displayMath } from './math.mjs';
 
@@ -21,16 +22,9 @@ export { escapeHtml };
 
 /** @typedef {{ blank: (i: number, out: string[]) => void, text: (line: string) => void }} Cut */
 
-// The block rules, shared with the review renderer's line grouping (review-lines.mjs).
-export const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_+#.-]*)\s*$/;
 export { MATH } from './math.mjs';
-export const HEADING = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
-export const LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
-export const QUOTE = /^ {0,3}>\s?(.*)$/;
-export const RULE = /^ {0,3}([-*_])(\s*\1){2,}\s*$/;
-export const TABLE_SEP = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
-/** Whether a line closes a fence opened with `marker` (``` or ~~~~): a run of its character, as long or longer (#344). */
-export const closesFence = (marker, line) => (/^ {0,3}(`+|~+)\s*$/.exec(line)?.[1] ?? '').startsWith(marker);
+// The block rules, shared with the review renderer's line grouping (review-lines.mjs), in markdown-blocks.mjs.
+export { closesFence, FENCE, HEADING, LIST_ITEM, QUOTE, RULE, TABLE_SEP };
 
 /**
  * @param {string} src

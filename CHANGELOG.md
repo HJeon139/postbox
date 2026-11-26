@@ -2,6 +2,173 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.48.0 (2026-11-26)
+
+### Features
+
+- **people:** what needs a person rings one person, the last to write in the room
+
+### Fixes
+
+- **shell:** “waits on another person” stands only where the words were “needs you”
+- **shell:** a toast is judged by the need it was raised for
+- **shell:** the top bar's needs button follows a need that becomes yours
+- **people:** on this computer the data folder's person is one person under any account
+
+## 4.47.0 (2026-11-26)
+
+### Features
+
+- **people:** a person's message says who sent it
+
+### Fixes
+
+- **people:** a person's first message names them in the turn it starts
+
+## 4.46.1 (2026-11-25)
+
+### Fixes
+
+- **uat:** refuse a scenario agent that personas.json doesn't have
+
+## 4.46.0 (2026-11-25)
+
+### Features
+
+- **settings:** one main menu, where every control is applied
+
+### Fixes
+
+- **uat:** the runner's delete finds the confirm over the main menu
+- **settings:** a room renamed from the list shows its new title there
+- **settings:** a list's bar is named for its actions, not for an Edit some lists lack
+- **settings:** a room's delete confirm opens over the main menu
+- **settings:** say on the page why People's and Members' controls are off
+- **settings:** an arrow key in the Hosts list keeps focus on the pick
+
+## 4.45.0 (2026-11-25)
+
+### Features
+
+- **people:** know who is asking, and tell agents who you say you are
+
+### Fixes
+
+- **people:** a turn says the person's profile is saved, not said in the room
+- **uat:** a run's workspace has a fixture person's git user, not the runner's
+
+## 4.44.0 (2026-11-25)
+
+### Features
+
+- **atif:** give each tool call its start time, exit code and stored output
+
+### Fixes
+
+- **atif:** treat a blob that can't be read as no output, not a failed export
+- **atif:** don't read a stored output over 64 MiB just to keep its start
+- **atif:** take a session's tool calls from its own work ledger entries
+
+## 4.43.3 (2026-11-24)
+
+### Fixes
+
+- **codex:** say what to do when an answer is too long to send from the host
+- **app:** move the speaker line in place, so an app after it keeps its frame
+- **app:** redraw a part whose last job ends, so the ring moves to the choice
+- **app:** move the speaker line when a part of an open turn ends hidden
+- **app:** give a turn's speaker line to its first part the page draws
+
+## 4.43.2 (2026-11-23)
+
+### Fixes
+
+- **threads:** mark a reply that only wrote before the agent's next turn is told where its reply goes
+- **threads:** count a second reply in a row per exchange, not per agent
+- **threads:** say in one place which of Postbox's tools are a turn's work
+- **threads:** end an exchange at an agent's second reply in a row that only writes
+- **kiro:** read a Postbox tool's name from the call's title
+- **threads:** let a turn with nothing to add end without waking anyone
+- **threads:** keep a mention from waking the agent a reaction just ended with
+
+## 4.43.1 (2026-11-23)
+
+### Fixes
+
+- **codex:** fail a turn whose thread answer the host left out, instead of waiting for good
+- **codex:** resume a thread without its past turns, so the answer fits a host's line
+
+## 4.43.0 (2026-11-23)
+
+### Features
+
+- **review:** edit a comment you sent, as a correction after it
+- **review:** let the person correct a comment after submitting a review
+
+### Fixes
+
+- **progress:** mark the turn a store outage reset as ended
+- **checks:** read whom a reply goes back to from what the turn took
+- **checks:** skip the reply-form lint for a retry's hand-off to an agent
+- **permissions:** count no command in a statement with a fold
+- **antigravity:** say in Auto's help that edits reach .git with Shell
+- **app:** read a step as stalled when its turn has ended, not after a minute
+- **review:** say an outcome is the update that keeps a closed block answered
+- **review:** tell the block's agent a reviewed block is closed when it is
+- **apps:** credit a check only to the turn whose reply waits for it
+- **app:** show a running progress step as running until its turn ends
+- **review:** refuse a correction to a deleted agent and hide Edit on a withdrawn review
+- **agy:** hold #1710's allowance to what a command reaches with no card
+- **agy:** in Auto with Shell, reads and edits follow the shell's rule
+- **remote:** ask a host again for owed memory removals at each connection
+- **text:** make TABLE_SEP linear and take write-intent code from the render
+- **apps:** tie the check wait to the turn and keep wait state on Apps
+- **review:** make the answered review note exact and derive answered at delivery
+- **server:** count only a reply's own mentions as addressed to an agent
+- **server:** don't ask for a block in a reply addressed to another agent
+- **text:** a heading, quote, list item, fence or rule over a rule starts no table
+- **text:** read code spans once, as the renderer does, for every reader
+- **apps:** keep the check wait's timer referenced, so a test can wait it out
+- **apps:** end a fix the reply carried, settle replaced waits, and wait only for a page in view
+- **apps:** show_app and update_app say how the app's check went
+- **review:** tell the block's agent that a reviewed review is already answered
+- **review:** let a reviewer comment on a review the person already answered
+- **review:** close the correction box when its text is unchanged
+- **remote:** say what a host's card can know about deleted agents' memory
+- **remote:** guard the memory removal in its handler, and show what a host owes
+- **remote:** remove a deleted agent's memory on each host
+- **review:** make a thread under a line an item of the Lines list
+- **review:** after a correction is sent, focus goes to the message box
+- **review:** bound corrections, keep edited the person's, and name the act apart
+
+## 4.42.0 (2026-11-23)
+
+### Features
+
+- **app:** delete a project from Settings › Projects
+- **app:** add and remove a conversation's agents from the Agents header
+- **server:** add an agent the person has to a conversation
+
+### Fixes
+
+- **settings:** list a created project once the page has heard of it
+- **assets:** remove bytes two refused writes of the same content left behind
+- **assets:** keep a damaged file a refused write made whole again
+- **assets:** remove the bytes a refused asset write put
+- **app:** take the press-time hold only while following the end
+- **app:** take hold of a pressed button the moment it's pressed
+- **server:** cancel a deleted session's scheduled wakes with it
+- **uat:** say live frames are saved for ATIF, not scanned for asset copies
+- **uat:** don't count live-frame tool previews as stored asset content
+- **app:** dim an off Delete project…, and count a project's every thread
+- **server:** count only live agents for −'s last-agent refusal
+- **app:** return focus to the composer after the Agents header's − removes one
+- **app:** dim the Agents header's − while it's off
+- **app:** never add a retired agent from the Agents header's +
+- **app:** name the agent when − can't remove it
+- **app:** never let the Agents header's − erase a conversation
+- **app:** keep the last agent and retired sessions out of + and −
+
 ## 4.41.0 (2026-11-23)
 
 ### Features

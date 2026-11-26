@@ -10,7 +10,7 @@ Projects are switched rarely, so they live in one menu that works from anywhere,
 
 ## Expected functionality
 
-- Lists every project (with how many agents need you there, or its folder), and New project….
+- Lists every project (with how many agents need you there, or its folder), and Manage projects…, which opens Settings › Projects, where a project is added, edited and deleted (#1735).
 - Every project has the same folder icon. The current project is focused when the menu opens, highlighted, marked with a trailing check, and exposed as `aria-current`.
 - Choosing a project opens the conversation you were last in there, or its latest one; a project without conversations shows an empty page with New conversation and New agent.
 - The menu is keyboard operable (arrow keys, Enter, Escape) and returns focus to the mark when closed.

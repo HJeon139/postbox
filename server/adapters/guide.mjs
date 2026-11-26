@@ -86,7 +86,7 @@ export function roomText(room) {
 
 ${who}
 
-Each agent here has a part. Your task is this turn’s request and anything that @-mentions you; what else happened since your last turn is context. A message the person sent to another agent is that agent’s, unless it asks for you too. Of a request, take the part that’s yours and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. A reply to agents that @-mentioned you, if it @-mentions no one, goes back to them, and each answer continues the chain. When an exchange is done, react to the last message with the react tool instead of replying: a thanks or an acknowledgment as a reply wakes them again. An @-mention in a quote, in code or in a line you copied wakes no one. After the room’s chain limit of agent wakes in one chain (${HOP_LIMIT.toLocaleString('en-US')} unless the person set another), the person must allow the next one. Before redoing something, read what the others already did here.`;
+Each agent here has a part. Your task is this turn’s request and anything that @-mentions you; what else happened since your last turn is context. A message the person sent to another agent is that agent’s, unless it asks for you too. Of a request, take the part that’s yours and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. A reply to agents that @-mentioned you, if it @-mentions no one, goes back to them, and each answer continues the chain. Once a reply has come back to you, one reply that only writes still goes back, and your second in a row to the same agent doesn’t wake it: @-mention the agent if it must act on those words or answer them. When an exchange is done, react to the last message with the react tool instead of replying. After a reaction to a reply that came back to you, nothing you write in that turn wakes its sender, even by name. An @-mention in a quote, in code or in a line you copied wakes no one. After the room’s chain limit of agent wakes in one chain (${HOP_LIMIT.toLocaleString('en-US')} unless the person set another), the person must allow the next one. Before redoing something, read what the others already did here.`;
 }
 
 /**
@@ -161,7 +161,7 @@ Postbox shows blocks the person answers with a click. Every time you reply, whet
 - Questions for the person → a form, one field per question, not questions in prose. For “Who will read it, and how long?”: fields [{ id: "reader", label: "Who will read it?", kind: "text" }, { id: "words", label: "How many words?", kind: "number" }].
 - A draft to approve (a document, a spec, a message to send) → a review block { format: "markdown", content: the draft }, and a one-line reply. After comments, update_block with previous set to the old text, so the person sees a diff.
 - Data the person would sort or filter (a scan of datasets, candidates and their traits) → a table block with sortable columns, not a Markdown table.
-- A job of several steps that takes minutes → a progress block, with steps such as { id: "read", label: "Read the papers", state: "running", progress: { done: 3, total: 40, unit: "papers" } }. Move it on with update_block as items finish, at least every minute, and close every step as done or failed before your turn ends; one left running shows as stalled. Give each parallel subagent its own step.
+- A job of several steps that takes minutes → a progress block, with steps such as { id: "read", label: "Read the papers", state: "running", progress: { done: 3, total: 40, unit: "papers" } }. Move it on with update_block as items finish, and close every step as done or failed before your turn ends; one left running shows as stalled. Give each parallel subagent its own step.
 - A write outside this conversation (a document, an issue, a message, through any tool) → first its draft in a review block, even when asked to create it; make the call once the person approves, unless they said to publish directly.
 - Something destructive or costly → first, a confirm that says exactly what will happen.
 - Anything else → Markdown.
@@ -235,6 +235,21 @@ Plain English, sentence case, American spelling, curly quotes and apostrophes (�
  */
 const isReview = (event) =>
   !event.sent && (typeof event.from === 'string' || typeof event.values?.verdict === 'string') && Array.isArray(event.values?.comments);
+
+/**
+ * What the block’s agent does about another agent’s review (#133). On a review the person already answered (#716), a
+ * revision or a new comment in a thread asks them again, so it’s told only a thread’s status change keeps their answer.
+ * On one withdrawn or dismissed since, any update asks again.
+ * @param {any} event
+ */
+function reviewedNote(event) {
+  const where = 'Each comment is on the block now, by its threadId.';
+  if (event.closed)
+    return `${where} This block is closed, so it no longer asks the person: any update_block to it but an outcome, even one that only resolves a comment, asks them again.`;
+  if (event.answered)
+    return `${where} The person already answered this block: changing only status to “resolved” in update_block’s threads? keeps their answer; adding a reply, changing its content or sending it back unchanged asks them again.`;
+  return `${where} Revise with update_block, and keep each one in the block’s threads? with status “resolved” once you’ve handled it. The block still waits on the person.`;
+}
 
 /**
  * Writes one Postbox message as the text of a turn for the agent: the turn’s envelope (designs/508, “Delivering a
@@ -319,10 +334,8 @@ function formatBody(message, pathOf) {
               .map((c) => `- ${commentAt(c)}: ${c.text}`)
               .join('\n')
           : '',
-        // Another agent’s review (#133): its comments are on the block now, and the person still decides.
-        message.event.from
-          ? 'Each comment is on the block now, by its threadId. Revise with update_block, and keep each one in the block’s threads? with status “resolved” once you’ve handled it. The block still waits on the person.'
-          : '',
+        // Another agent’s review (#133): its comments are on the block now; reviewedNote says where the block stands with the person.
+        message.event.from ? reviewedNote(message.event) : '',
         // The person’s review (#1143): their comments are threads now, and they can’t resolve one, so the agent does.
         !message.event.from && isReview(message.event) && message.event.values.comments.some((c) => c?.threadId)
           ? `Each comment is on the block now, by its threadId, and only you can resolve it: once you’ve handled one, keep it in update_block’s threads? with status: "resolved". Up to ${REVIEW_THREADS_OPEN} can be open at once.`

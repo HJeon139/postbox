@@ -11,6 +11,8 @@ Your turns must be distinct from the agents’ at a glance.
 ## Expected functionality
 
 - Right-aligned card with time and “You”; Markdown rendered; @mentions highlighted; attachments as chips.
+- When this Postbox knows more than one person (#1742), another person’s message has their name where yours has “You”, on a line of its own. On your own computer there is one person, so every message of yours reads “You”. `npx playwright test tests/browser/sender.spec.mjs` checks both.
+- Sending a message doesn’t save your profile: Settings › Profile still starts from your account’s name until you save.
 - Turns typed in an attached Claude Code terminal say “from terminal”.
 - Reply in thread is always visible under it.
 

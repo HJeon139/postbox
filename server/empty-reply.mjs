@@ -4,7 +4,8 @@
 // ends as a failed reply that says so, with Retry, keeping the turn’s last raw lines for diagnosis, and the agent hears
 // of it at its next turn.
 
-import { READ_TOOLS } from './tool-gate.mjs';
+import { endedExchange } from './reply-back.mjs';
+import { isOwnWork, NO_ANSWER } from './tool-gate.mjs';
 
 /**
  * The turns that owe a reply: a message from the person or from another agent. Others may end quietly: an event (a
@@ -13,18 +14,36 @@ import { READ_TOOLS } from './tool-gate.mjs';
 const ASKED = new Set(['user', 'agent']);
 
 /**
- * Postbox’s tools that answer no one: they read, ask, or keep something for later (a wake, a term). A turn that called
- * nothing else still owes its reply.
- */
-const READS = new Set([...READ_TOOLS, 'permission_prompt', 'schedule_wake', 'cancel_wake', 'define_term']);
-
-/**
  * Marks a turn that answered through one of Postbox’s tools that act, such as a reaction or a term, which leave no
- * item of the turn’s own. server/mcp.mjs and a host’s calls (remote/turns-tools.mjs) both call it.
+ * item of the turn’s own. server/mcp.mjs and a host’s calls (remote/turns-tools.mjs) both call it, and so does a call
+ * in Postbox’s own process (notedTools). `acted` marks one that did work (tool-gate.mjs, isOwnWork): a turn that showed
+ * or changed something has it to report, so its reply goes back (reply-back.mjs, endedExchange).
  * @param {any} turn  the turn the call came from, or null @param {string} name @param {any} r  the tool’s result
  */
 export function noteAnswer(turn, name, r) {
-  if (turn && !READS.has(name) && (r?.ok !== false || r?.waiting)) turn.answered = true;
+  if (!turn || NO_ANSWER.has(name) || (r?.ok === false && !r?.waiting)) return;
+  turn.answered = true;
+  if (isOwnWork(name)) turn.acted = true;
+}
+
+/**
+ * A turn’s Postbox tools, each noting its answer as it returns, for a call made in Postbox’s own process, as the mock
+ * backend makes them: MCP and a host note theirs once Postbox has read the call’s files, and noting twice changes
+ * nothing. A tool that calls another (show_app, update_app) is noted once, as the call the agent made.
+ * @param {any} turn @param {Record<string, Function>} tools
+ */
+export function notedTools(turn, tools) {
+  if (!turn) return tools;
+  const raw = { ...tools };
+  for (const [name, fn] of Object.entries(raw))
+    tools[name] = (/** @type {any[]} */ ...args) => {
+      const r = fn.apply(raw, args);
+      // A promise is noted when it settles; one that rejects answered nothing, and its caller hears why.
+      if (typeof r?.then === 'function') void r.then((/** @type {any} */ done) => noteAnswer(turn, name, done)).catch(() => {});
+      else noteAnswer(turn, name, r);
+      return r;
+    };
+  return tools;
 }
 
 /**
@@ -37,25 +56,6 @@ export function endedWithoutReply(turn, items) {
   if (endedExchange(turn)) return false;
   return !items.some((it) => (it.turnId === turn.id || it.fromTurnId === turn.id) && (it.kind !== 'agent' || it.text?.trim()));
 }
-
-/**
- * Only replies that went back on their own woke it, and it ended at once with nothing to add (#1543): an exchange
- * between agents may end quietly, and a failure there is an alarm the person can’t act on. A turn that took a step had
- * work to report (#485). A direct @-mention is a request, so a turn it woke still owes its reply, as do the person’s
- * Retry and a host turn continued after Interrupted or Sign-in needed: the first was the person asking, and the second
- * may have done its work before it was cut off.
- * @param {any} turn
- */
-const endedExchange = (turn) => !turn.asked?.message?.retry && !turn.origin && !turn.backTo && onlyBounces(turn) && !tookStep(turn);
-
-/** Whether the entries a turn took were replies going back and Postbox’s notices, with one reply at least. @param {any} turn */
-function onlyBounces(turn) {
-  const asked = (turn.asked?.message?.entries ?? []).filter((/** @type {any} */ e) => e.source !== 'notice');
-  return asked.length > 0 && asked.every((/** @type {any} */ e) => e.source === 'mention' && e.bounce === true);
-}
-
-/** Whether a turn took a step: not a subagent’s, a thought or narration (turn-held.mjs counts the same). @param {any} turn */
-export const tookStep = (turn) => (turn.steps ?? []).some((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said');
 
 /**
  * The failure an empty turn ends with: what the person reads, and the turn’s raw ending, which the failed reply keeps.

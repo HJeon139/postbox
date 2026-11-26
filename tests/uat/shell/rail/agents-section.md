@@ -10,9 +10,9 @@ The person needs to see what each agent runs with, from wherever they are. The c
 
 ## Expected functionality
 
-- **+ and − beside the Agents heading** (#1620), as a list has in macOS:
-  - **+** lists the agents you have that aren’t in this conversation, each added in one pick, with a line in the conversation saying it joined, then New agent…. A retired agent isn’t listed. After an add, focus goes to the composer.
-  - **−** lists the agents here, each removed through the [Delete session](../../sheets/delete-session.md) confirm; its persona stays. While one agent is left, − is off and says why (“The last agent can’t be removed. Delete the conversation instead.”), and it still takes focus. If another agent is removed while the confirm is open, the server refuses, and the conversation stays.
+- **One button beside the Agents heading** (#1735), “Manage this conversation’s members”, opens the room’s form in the main menu at its Members list. Members are added and removed there, not here:
+  - **+** lists the agents you have that aren’t in this conversation, each added in one pick, with a line in the conversation saying it joined, then New agent…. A retired agent isn’t listed.
+  - **−** removes the member picked, through the [Delete session](../../sheets/delete-session.md) confirm; its persona stays. While one agent is left, − is off and says why (“A room keeps at least one agent. Add another first, or delete the room.”), and it still takes focus. A person of this Postbox is in every room, so − is off for one and says so.
 - One row per agent: its ring, `@handle` (“mock” after it on the mock), its state in words, and on a second line the model that answered its last turn and the effort (“Sonnet 5.5, not Opus 5.5 · medium effort”). Switched to another backend or model, it shows the new setting until a turn reports its own, never the model an earlier turn reported (#1315: Kiro on its router reports none, and its row kept saying “Opus 5.5, not auto”). A mock agent has no second line. Each part follows the agent live.
 - **Its state** (#1403), read from its records, never from what it said, on the row’s one line, cut with an ellipsis, with the whole of it as the line’s tooltip. A change of state never changes the row’s size, so nothing moves under the pointer. The first that holds:
   - “· needs you”;
@@ -24,6 +24,7 @@ The person needs to see what each agent runs with, from wherever they are. The c
   - “· waiting behind @researcher since 3:04 PM”, while something it posted waits in that agent’s inbox;
   - “· idle”.
 - An agent with blocks left open from earlier turns shows a quiet “1 open review” button under its row, which scrolls to the block and focuses it (#69).
+- A need rings one person (#1742): the one who last wrote in the room, or who made it. On your own computer that is you, so nothing changes. Where Postbox knows more than one person, an agent that waits on someone else reads “waits on another person”, its ring shows the state without the pulse, and it isn’t counted in the title, reached by ⌃J or raised as a toast for you. `npx playwright test tests/browser/needs-for.spec.mjs` checks it.
 - While an agent needs you, its ring goes to what it needs: its ask is scrolled into view, focused and outlined for a moment, in the side panel when it asked in a side or topic thread (#285). The ring is then a button of its own, “Go to what @handle needs”, one Tab stop before the name. Its name still opens its persona sheet (#320).
 - Clicking an agent’s name, or Enter on it, opens Settings › Personas on its persona, the one place its settings change. Every change there applies from its next turn, in every conversation it’s in; a turn that’s running keeps what it started with. Escape closes it and returns focus to the row.
 - There’s no quick panel. What an agent does is a command addressed to it in the composer: `@handle /stop` (while it works), `@handle /compact`, and `@handle /delete`, which asks once and then deletes its session at once ([delete session](../../sheets/delete-session.md)) (#320, #405).

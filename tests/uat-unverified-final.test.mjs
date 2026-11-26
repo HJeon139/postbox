@@ -28,3 +28,15 @@ test('lastCheckPass drops the early unverified rows before the pass that adds th
   assert.deepEqual(added, ['view-moved:final']);
   assert.equal(findings.get('view-moved:final').evidence, '6 samples');
 });
+
+test('the last pass decides the idle room’s finding and measurement too: a step reads a stretch before it has ended', () => {
+  const early = { source: 'check', check: 'quiet-stretches', evidence: 'The timed step was due at 03:38:58 UTC and hadn’t passed when the records end.' };
+  const open = { source: 'check', check: 'idle-work-waiting', evidence: '…; still quiet when the records end.' };
+  const findings = new Map([
+    ['quiet-stretches:quiet-stretches', early],
+    ['idle-work-waiting:idle-work-waiting:1', open],
+    ['tester:idle', { source: 'tester', check: 'idle-work-waiting' }],
+  ]);
+  dropUnverified(findings);
+  assert.deepEqual([...findings.keys()], ['tester:idle']);
+});

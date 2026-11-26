@@ -3,6 +3,7 @@
 // text is escaped, as there.
 
 import { codeSpanAt, longestRunFrom } from './code-spans.mjs';
+import { ESCAPED } from './markdown-blocks.mjs';
 import { mathAt } from './math.mjs';
 import { isSafeUrl, LOCAL_HTTP, onPageOrigin } from './urls.mjs';
 
@@ -61,7 +62,7 @@ export function inline(s, ctx, at) {
       piece(`<span class="md-math"${math.display ? ' data-display="true"' : ''}>${escapeHtml(math.tex)}</span>`, math.end);
       continue;
     }
-    if (c === '\\' && /[\\`*_{}[\]()#+\-.!|$~>@]/.test(s[i + 1] ?? '')) {
+    if (c === '\\' && ESCAPED.test(s[i + 1] ?? '')) {
       buf += s[i + 1];
       i += 2;
       continue;

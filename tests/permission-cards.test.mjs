@@ -12,6 +12,7 @@ import { CARD_WAIT_MS, expireWait } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const folders = [];
@@ -103,8 +104,9 @@ test('#281 a card that expires while Always allow writes its rule leaves no rule
     answer = await c.askPermission({ tool: 'Bash', summary: 'run the tests', input: { command: 'npm test' } });
   });
   rt.sendMessage(t.id, { text: 'run the tests' });
-  await sleep(20);
-  const card = store.items(t.id).find((i) => i.kind === 'permission');
+  const shown = () => store.items(t.id).find((i) => i.kind === 'permission');
+  await untilTurns(() => !!shown(), 'the card');
+  const card = shown();
   assert.equal(card.always.saves, 'Bash(npm test:*)');
   const pending = rt.act(t.id, card.id, 'always');
   expireWait(rt, card.id); // while the rule is being written
@@ -133,8 +135,9 @@ test('#238 a permission card for a chained command offers no Always allow, since
     answer = await c.askPermission({ tool: 'Bash', summary: 'run the tests', input: { command: 'cd src && npm test' } });
   });
   rt.sendMessage(t.id, { text: 'run the tests' });
-  await sleep(20);
-  const card = store.items(t.id).find((i) => i.kind === 'permission');
+  const shown = () => store.items(t.id).find((i) => i.kind === 'permission');
+  await untilTurns(() => !!shown(), 'the card');
+  const card = shown();
   assert.equal(card.always, null);
   rt.act(t.id, card.id, 'allow');
   await settle(rt);
@@ -154,12 +157,12 @@ test('#220 a card nobody answers expires at CARD_WAIT_MS, says how long it waite
   });
   rt.sendMessage(thread.id, { text: 'run the tests' });
   const card = () => store.items(thread.id).find((i) => i.kind === 'permission');
-  for (let i = 0; i < 50 && !card(); i++) await new Promise(setImmediate);
+  await untilTurns(() => !!card(), 'the card');
   assert.equal(card()?.status, 'open');
   t.mock.timers.tick(CARD_WAIT_MS - 1);
   assert.equal(card().status, 'open', 'still open a moment before');
   t.mock.timers.tick(1);
-  for (let i = 0; i < 50 && !answer; i++) await new Promise(setImmediate);
+  await untilTurns(() => !!answer, 'the answer');
   assert.equal(card().status, 'expired');
   assert.equal(card().waitedMs, CARD_WAIT_MS);
   assert.deepEqual(answer, { allow: false, message: 'Nobody answered within 25 hours, so the request expired. Ask again if you still need it.' });
@@ -181,7 +184,7 @@ test('#220 a card expires before Claude Code’s deadline for the call, even whe
   });
   rt.sendMessage(thread.id, { text: 'run the tests' });
   const card = () => store.items(thread.id).find((i) => i.kind === 'permission');
-  for (let i = 0; i < 50 && !card(); i++) await new Promise(setImmediate);
+  await untilTurns(() => !!card(), 'the card');
   // The call left Claude Code 30 seconds before the card was made (a slow trip), so its deadline is that much sooner.
   const trip = 30 * 1000;
   /** @type {string|undefined} */
@@ -191,7 +194,7 @@ test('#220 a card expires before Claude Code’s deadline for the call, even whe
   }, POSTBOX_TIMEOUT_MS - trip);
   t.mock.timers.tick(POSTBOX_TIMEOUT_MS);
   assert.equal(atDeadline, 'expired', 'the card had expired when Claude Code gave up on the call');
-  for (let i = 0; i < 50 && !answer; i++) await new Promise(setImmediate);
+  await untilTurns(() => !!answer, 'the answer');
   assert.equal(answer?.allow, false, 'and the no reached the call');
   t.mock.timers.reset();
   await settle(rt);
@@ -205,7 +208,7 @@ test('#220 a card answered before the wait ends keeps its answer when the wait w
   });
   rt.sendMessage(thread.id, { text: 'run the tests' });
   const card = () => store.items(thread.id).find((i) => i.kind === 'permission');
-  for (let i = 0; i < 50 && !card(); i++) await new Promise(setImmediate);
+  await untilTurns(() => !!card(), 'the card');
   rt.act(thread.id, card().id, 'allow');
   t.mock.timers.tick(POSTBOX_TIMEOUT_MS);
   assert.equal(card().status, 'allowed', 'the expiry never fires on an answered card');

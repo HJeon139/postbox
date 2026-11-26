@@ -4,9 +4,11 @@
 // Functions take the Runtime first, as waiting code does until Turns is a service.
 
 import { SENDING, TURN_INPUT } from '../shared/limits.mjs';
+import { aboutPeople, senderName } from '../shared/profile.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
 import { lostEvent } from './app-entries.mjs';
 import { newerElsewhere } from './newer-waiting.mjs';
+import { wroteOnlyTo } from './reply-back.mjs';
 import { threadRefs } from './send-message.mjs';
 import { newId } from './store.mjs';
 import { combineMessages, plainMessage } from './turn-batch.mjs';
@@ -85,8 +87,13 @@ export function inputOf(rt, se, { entries, as }, where) {
   const root = inThread.root ?? room.root;
   // A newer message from one of its senders waiting in another thread is named, so it can read that one first (#734).
   const notes = [...newerElsewhere(rt, se.id, threadId, entries), ...room.notes];
-  const text = turnInput({ entries, thread, read, tail, notes, root, waitingElsewhere: elsewhere });
-  const attachments = entries.flatMap((e) => (e.itemId ? (rt.store.pending.item(e.threadId, e.itemId)?.attachments ?? []) : []));
+  // The profiles people have saved, as they are now (#558), so an edit reaches a session that’s already running.
+  const about = aboutPeople(Object.values(rt.s.people));
+  // An entry’s item as written: who sent it, named when there is more than one person (#1742), and its files.
+  const itemOf = (/** @type {any} */ e) => (e.itemId ? rt.store.pending.item(e.threadId, e.itemId) : null);
+  const person = (/** @type {any} */ e) => senderName(rt.s.people, itemOf(e)?.personId);
+  const text = turnInput({ entries, thread, read, person, tail, notes, root, waitingElsewhere: elsewhere, wroteOnly: wroteOnlyTo(rt, se, where), about });
+  const attachments = entries.flatMap((e) => itemOf(e)?.attachments ?? []);
   // The threads the person’s messages link to, each with how to read it (threadRefs, #121), ride with it.
   const links = entries.flatMap((e) => (e.source === 'person' && e.itemId ? threadRefs(rt, e.threadId, read(e.itemId) ?? '') : []));
   // Its plain parts stay on what was asked (`turn.asked`), where what reads them looks; the agent is given the text.
@@ -144,6 +151,17 @@ const count = (/** @type {number} */ n) => n.toLocaleString('en-US');
 const given = (rt, entries) => entries.map((e) => messageOf(rt, e));
 
 /**
+ * Where a reviewed block stands when its review is delivered (#716): withdrawn or dismissed since, there’s no answer
+ * to keep and any update asks again (block-update.mjs); answered, only a thread’s status change keeps the answer.
+ * @param {any} it  the block’s item, or null
+ */
+function blockNow(it) {
+  if (it?.closed) return { closed: true };
+  if (it?.answered) return { answered: true };
+  return {};
+}
+
+/**
  * One entry as today’s deliver takes it. A mention is its item as it is now, whole up to what one message may carry,
  * with what its failed reply said first (#485): the entry keeps no copy, so a reply settled before its turn wrote the
  * error reads it here. A review carries the event it was sent with; a notice is Postbox’s own words.
@@ -153,6 +171,10 @@ export function messageOf(rt, e) {
   // A plain message carries its place, to sort in a batch; one with a turn of its own is given as it was sent.
   // An app’s event rides in memory; after a restart, its voice line is what’s left of it (app-entries.mjs).
   if (e.source === 'event') return rt.delivery.carriedFor(e.id) ?? lostEvent(rt, e);
+  if (e.source === 'review' && e.message?.event) {
+    const it = e.itemId ? rt.store.pending.item(e.threadId, e.itemId) : null;
+    return { ...e.message, event: { ...e.message.event, ...blockNow(it) } };
+  }
   if (e.message) return plainMessage(e.message) ? { ...e.message, at: e.at, seq: e.seq } : e.message;
   if (e.source === 'person') return personMessage(rt, e);
   if (!e.itemId) return { kind: 'notice', text: e.text, at: e.at, seq: e.seq };
