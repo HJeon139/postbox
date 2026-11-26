@@ -109,3 +109,30 @@ test('a name you emptied stays empty, and a thirteenth other name is refused in 
   await expect(page.getByText('A profile keeps 12 other names, and this has 13.')).toBeVisible();
   expect(saved()).toEqual({ pronouns: 'they/them' });
 });
+
+test('a handle you choose is what you are mentioned by: the tab says which it is, refuses one a mention can’t be written with, and tells agents nothing', async ({
+  page,
+}) => {
+  const dialog = await profileTab(page);
+  const handle = dialog.getByLabel('Handle', { exact: true });
+  const help = dialog.locator('#pf-handle-help');
+  await expect(handle).toHaveValue('');
+  await expect(help).toContainText('Left empty, you are @robin, your account’s login.');
+  // A refused save is a 422 the browser logs.
+  allowPageError(page, /status of 422/);
+  await handle.fill('robin example');
+  await dialog.getByRole('button', { name: 'Save profile' }).click();
+  await expect(page.locator('.toast', { hasText: 'A handle is 2–24 letters, digits, - or _, and starts with a letter' })).toBeVisible();
+  expect(saved().handle).toBeUndefined();
+  await handle.fill('@Robby');
+  await dialog.getByRole('button', { name: 'Save profile' }).click();
+  await expect.poll(() => saved().handle).toBe('Robby');
+  await expect(help).toContainText('You are @Robby.');
+  await expect(dialog.getByLabel('Handle', { exact: true })).toHaveValue('Robby');
+  // What agents are told doesn’t carry it: how to reach you is no part of the turn’s note.
+  await expect(dialog.locator('#pf-told')).not.toContainText('Robby');
+  // People shows what each person is mentioned by.
+  await dialog.getByRole('tab', { name: 'People' }).click();
+  await expect(dialog.getByRole('listbox', { name: 'People' }).getByRole('option').first()).toContainText('@Robby');
+  await audit(page, 'People with a handle saved');
+});

@@ -5,7 +5,7 @@
 // computer there is one person because its provider says it answers with one (`sole`), whatever account asks.
 
 import { createHash } from 'node:crypto';
-import { profileOf } from '../shared/profile.mjs';
+import { mentionOf, profileOf } from '../shared/profile.mjs';
 
 /**
  * A person’s id, from the issuer and subject that are them: the same for the same person on every request, with or
@@ -63,12 +63,29 @@ export class People {
   }
 
   /**
+   * A handle is one actor’s: refused when an agent has it, where a mention would wake the agent and never reach the
+   * person, or when it is how another person here is mentioned. Compared in any case, as a mention is read.
+   * @param {any} person  as it would be saved
+   */
+  refuseTaken(person) {
+    const handle = person.profile.handle;
+    if (!handle) return;
+    const is = (/** @type {string} */ name) => name.toLowerCase() === handle.toLowerCase();
+    const refuse = (/** @type {string} */ why) => Object.assign(new Error(why), { status: 422, userMessage: why });
+    if (Object.values(this.store.state.personas).some((p) => is(p.handle))) throw refuse(`@${handle} is an agent’s name here. Pick another handle.`);
+    // Their login too, though a handle of theirs has taken its place: a name that was someone’s isn’t handed on.
+    if (Object.values(this.store.state.people).some((p) => p.id !== person.id && (is(mentionOf(p)) || is(p.username ?? ''))))
+      throw refuse(`@${handle} is how someone else here is mentioned. Pick another handle.`);
+  }
+
+  /**
    * A person saves their own profile: checked whole, and from the next turn what agents are told of them.
    * @param {any} person @param {unknown} sent
    */
   saveProfile(person, sent) {
     const { unsaved: _, ...kept } = this.store.state.people[person.id] ?? { ...person, createdAt: Date.now() };
     const saved = { ...kept, profile: profileOf(sent) };
+    this.refuseTaken(saved);
     this.store.emit('person', saved);
     return saved;
   }

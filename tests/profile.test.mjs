@@ -172,7 +172,10 @@ test('PUT /api/me saves the profile of whoever is asking, refuses a bad one whol
   assert.deepEqual([forged.json.id, forged.json.name, Object.keys(app.rt.s.people)], [me.id, 'Robin Example', [me.id]]);
   // Refused whole, saying why, and what was kept stays.
   const refused = await put({ profile: { name: 'Robin', admin: true } });
-  assert.deepEqual([refused.status, refused.json.error], [422, 'A profile has no “admin”. It has a name, pronouns, a time zone, preferences and aliases.']);
+  assert.deepEqual(
+    [refused.status, refused.json.error],
+    [422, 'A profile has no “admin”. It has a name, a handle, pronouns, a time zone, preferences and aliases.'],
+  );
   assert.deepEqual(app.rt.s.people[me.id].profile, { name: 'Robin' });
   // Without the page’s token it is no one’s to write (#74).
   assert.equal((await call({ method: 'PUT', path: '/api/me', body: { profile: { name: 'Mallory' } } })).status, 403);

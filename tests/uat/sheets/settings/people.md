@@ -8,7 +8,7 @@ Postbox knows who you are (#558), and a room’s Members list shows people besid
 
 ## Expected functionality
 
-- On your own computer the list has one row: you, by the name you saved or your account’s, marked “you”, with your account’s user name and your pronouns if you saved them.
+- On your own computer the list has one row: you, by the name you saved or your account’s, marked “you”, with what you are mentioned by (`@` and the handle you saved, else your account’s login) and your pronouns if you saved them.
 - The bar is pinned under the sheet: +, − and Edit. + and − are off, dimmed and still in the tab order: who is here isn’t added or removed in Postbox. The line under the list says so in words: “On this computer, you are the account Postbox runs as. There is no one to add or remove.”
 - Edit, Enter or a double click on your row goes to [Profile](profile.md). A person edits only their own profile.
 - The last line says what people see of each other: every room, and each other’s profile, and that agents are told of a person only what that person saved.

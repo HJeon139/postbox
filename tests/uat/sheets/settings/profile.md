@@ -9,6 +9,7 @@ Agents call you “the person”, and nothing tells one that a GitHub login on a
 ## Expected functionality
 
 - **Name** starts as your computer’s account’s name, and the line under it says so, and that agents aren’t told it until you save. Once you have saved, it holds what you saved: a name you emptied stays empty.
+- **Handle**: what follows @ when you are mentioned, 2–24 letters, digits, - or _, starting with a letter. The line under it says what you are mentioned by now: the handle you saved, else your account’s login, or that the login can’t be written as a mention and you should choose one. One that is an agent’s name here, another person’s, or `you` is refused, saying which, and what was saved stays. Agents aren’t told it: “What agents are told” doesn’t list it.
 - **Also written as**: other names that are yours, one a line, as “github: your-login” or “git: Your Commit Name”. A line with no kind Postbox knows is kept as “other”. Up to 12; a thirteenth is refused, saying so, and what was saved stays.
 - **Preferences**, **Time zone** and **Pronouns**: free text, each one line once saved.
 - Every field is optional, and each stops at its bound as you type, so a save never cuts what you see.

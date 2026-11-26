@@ -3,7 +3,7 @@
 // written by the person. It is kept on their record (state.people, server/people.mjs) and given to agents in each
 // turn, in the part that changes during a room (server/turn-input.mjs), so an edit reaches a session that’s already running.
 
-import { PROFILE } from './limits.mjs';
+import { HANDLE, PERSON, PROFILE } from './limits.mjs';
 
 /** What an alias is, so an agent reading a commit or a pull request knows which name to match. */
 export const ALIAS_KINDS = ['nickname', 'github', 'git', 'email', 'other'];
@@ -21,6 +21,18 @@ const line = (/** @type {unknown} */ v, /** @type {number} */ max) =>
     .trim()
     .slice(0, max);
 
+/**
+ * The handle a person chooses, as a mention reads it (#1742): without a leading @, and shaped as an agent’s handle is,
+ * since one rule reads both. Empty is none: they are mentioned by their account’s login, as before.
+ */
+function handleOf(/** @type {unknown} */ sent) {
+  const name = line(sent, 40).replace(/^@/, '').trim();
+  if (!name) return '';
+  if (!HANDLE.test(name)) throw refuse('A handle is 2–24 letters, digits, - or _, and starts with a letter, such as “robin”.');
+  if (name.toLowerCase() === PERSON) throw refuse(`@${PERSON} already means whoever a reply answers. Pick another handle.`);
+  return name;
+}
+
 function aliasesOf(/** @type {unknown} */ list) {
   if (!Array.isArray(list)) throw refuse('Aliases are a list, each with what it is and its value.');
   if (list.length > PROFILE.aliases) throw refuse(`A profile keeps ${PROFILE.aliases} other names, and this has ${list.length}.`);
@@ -35,18 +47,19 @@ function aliasesOf(/** @type {unknown} */ list) {
  * A profile as it’s kept, from what the page sent: only its own fields, each bounded and on one line, and none that
  * is empty, so a cleared profile is `{}`. An unknown field is refused, never kept: a profile goes to agents, so
  * nothing rides along. @param {unknown} sent
- * @returns {{ name?: string, pronouns?: string, timezone?: string, preferences?: string, aliases?: { kind: string, value: string }[] }}
+ * @returns {{ name?: string, handle?: string, pronouns?: string, timezone?: string, preferences?: string, aliases?: { kind: string, value: string }[] }}
  */
 export function profileOf(sent) {
   if (sent === null || typeof sent !== 'object' || Array.isArray(sent))
-    throw refuse('A profile is its fields: a name, pronouns, a time zone, preferences and aliases.');
+    throw refuse('A profile is its fields: a name, a handle, pronouns, a time zone, preferences and aliases.');
   const from = /** @type {Record<string, unknown>} */ (sent);
   /** @type {Record<string, any>} */
   const out = {};
   for (const key of Object.keys(from)) {
     if (key === 'aliases') out.aliases = aliasesOf(from.aliases);
+    else if (key === 'handle') out.handle = handleOf(from.handle);
     else if (key === 'name' || key === 'pronouns' || key === 'timezone' || key === 'preferences') out[key] = line(from[key], PROFILE[key]);
-    else throw refuse(`A profile has no “${line(key, 40)}”. It has a name, pronouns, a time zone, preferences and aliases.`);
+    else throw refuse(`A profile has no “${line(key, 40)}”. It has a name, a handle, pronouns, a time zone, preferences and aliases.`);
   }
   for (const key of Object.keys(out)) if (!out[key].length) delete out[key];
   return out;
@@ -103,16 +116,23 @@ export function aboutPeople(people) {
 }
 
 /**
+ * What follows @ when someone mentions a person (#1742): the handle they saved, else their account’s login. One name
+ * for one person: with a handle saved, the login no longer reaches them.
+ * @param {{ username?: string, profile?: { handle?: string } } | null | undefined} person
+ */
+export const mentionOf = (person) => person?.profile?.handle || person?.username || '';
+
+/**
  * Who a person’s message is from, as an agent reads it (#1742). “The person” while this Postbox knows one person, as
  * agents have always read it, and for a message whose sender it doesn’t know (one typed in a terminal, or from before
- * senders were kept). With more than one, the name they saved, else their user name, after the same two words, so no
+ * senders were kept). With more than one, the name they saved, else what they are mentioned by, after the same two words, so no
  * name reads as an agent’s handle or as Postbox. On one line: a turn is read line by line.
- * @param {Record<string, { username?: string, profile?: { name?: string } }> | undefined} people @param {string | undefined} personId
+ * @param {Record<string, { username?: string, profile?: { name?: string, handle?: string } }> | undefined} people @param {string | undefined} personId
  */
 export function senderName(people, personId) {
   const known = people ?? {};
   const sender = personId ? known[personId] : undefined;
   if (!sender || Object.keys(known).length < 2) return 'The person';
-  const name = line(sender.profile?.name || sender.username, PROFILE.name);
+  const name = line(sender.profile?.name || mentionOf(sender), PROFILE.name);
   return name ? `The person ${name}` : 'The person';
 }

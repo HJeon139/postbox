@@ -1,6 +1,8 @@
 // The main menu’s People (#1735): everyone this Postbox knows, as the list every other kind is managed in. Who can sign
 // in is the identity provider’s to decide, so there is nothing to add here, and a person edits only their own profile.
 
+import { HANDLE } from '/shared/limits.mjs';
+import { mentionOf } from '/shared/profile.mjs';
 import { h } from './dom.mjs';
 import { barAction, barSign, pickList } from './manage-list.mjs';
 import { called, me, people } from './profile-tab.mjs';
@@ -19,7 +21,8 @@ export function peopleTab(go, setFoot, at) {
       key: p.id,
       name: called(p),
       marks: p.id === mine?.id ? [h('span.small.dim', 'you')] : [],
-      facts: [[p.username, p.profile?.pronouns].filter(Boolean).join(' · ')],
+      // What they are mentioned by, when it can be written as a mention: the handle they chose, else their login.
+      facts: [[HANDLE.test(mentionOf(p)) ? `@${mentionOf(p)}` : p.username, p.profile?.pronouns].filter(Boolean).join(' · ')],
     })),
     open: (r) => r.key === mine?.id && go('profile'),
     controls: (r) => [
