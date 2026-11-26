@@ -57,6 +57,19 @@ test('a snapshot’s void clock keeps its run void in the export, and says what 
   assert.match(v.notes, /^Void as a timed run: Postbox couldn’t confirm one of the agent’s stopped turns ended \(watchdog\)/);
   assert.equal(traj({ [sessionId]: clock }).extra.clock_void, undefined, 'an expiry without voided is no void');
   assert.match(SNAPSHOT_LOSES[0], /with whether its run was void, are rebuilt/);
+  // #1749: a run the person ended comes back ended, with its time used, and a void after the end stays void.
+  const ended = { ...clock, state: 'ended', expiredAt: null, usedMs: 4_000, endedAt: 5_000 };
+  const e = traj({ [sessionId]: ended });
+  assert.deepEqual(
+    e.extra.clock_events.slice(0, 2).map((x) => [x.event, x.elapsedMs]),
+    [
+      ['clock.started', undefined],
+      ['clock.ended', 4_000],
+    ],
+    'the snapshot’s start and end come first, before the log’s own events',
+  );
+  assert.equal(e.extra.clock_void, undefined, 'an end without voided is no void');
+  assert.deepEqual(traj({ [sessionId]: { ...ended, voided } }).extra.clock_void, { why: 'watchdog', at: new Date(9_000).toISOString() });
 });
 
 test('a data folder’s snapshot gives a partial record, which the exporter refuses to write without --partial', (t) => {

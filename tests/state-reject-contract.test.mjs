@@ -89,6 +89,7 @@ export const VALID = {
   'clock.restored': { sessionId: 'se', elapsedMs: 90_000, budgetMs: 600_000, at: 5 },
   'clock.stopped': { sessionId: 'se', turn: 'host-turn-1', at: 6 },
   'clock.expired': { sessionId: 'se', elapsedMs: 60_000, budgetMs: 60_000, at: 4 },
+  'clock.ended': { sessionId: 'se', elapsedMs: 12_000, budgetMs: 60_000, at: 4 },
 };
 
 /** Every key path of a payload, as arrays. */

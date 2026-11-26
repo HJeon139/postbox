@@ -145,7 +145,7 @@ export class Delivery {
 
   /**
    * Whether the agent can start a turn from its entries now: free in Running, its session there and not failed, its run
-   * clock, with run clocks on, not holding it (paused or expired), and with a waiting entry that isn’t a notice and
+   * clock, with run clocks on, not holding it (paused, expired or ended), and with a waiting entry that isn’t a notice and
    * isn’t held at the chain cap.
    * @param {string} sessionId
    */
