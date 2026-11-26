@@ -202,13 +202,16 @@ export function checkDecision(v, at) {
  */
 export function checkError(m) {
   return (
-    fields(m, 'error', ['code', 'message'], ['re', 'turn', 'id']) ||
+    fields(m, 'error', ['code', 'message'], ['re', 'turn', 'id', 'persona']) ||
     oneOf(m.code, 'error.code', ERROR_CODES) ||
     str(m.message, 'error.message', REMOTE_LIMITS.messageChars, 1) ||
     opt(m.re, (v) => (typeof v === 'string' && /^[a-z][a-z-]{0,31}$/.test(v) ? '' : 'error.re must be the type of the message it answers.')) ||
     opt(m.turn, (v) => turnId(v, 'error.turn')) ||
     opt(m.id, (v) => id(v, 'error.id')) ||
-    (m.id !== undefined && m.turn === undefined ? 'error.id names a prompt or a tool call within a turn, so it comes with error.turn.' : '')
+    (m.id !== undefined && m.turn === undefined ? 'error.id names a prompt or a tool call within a turn, so it comes with error.turn.' : '') ||
+    // The persona a refused `forget` was for (#1683), so Postbox settles nothing but that one.
+    opt(m.persona, (v) => id(v, 'error.persona')) ||
+    (m.persona !== undefined && m.re !== 'forget' ? 'error.persona names the persona a forget was for, so it comes with re: forget.' : '')
   );
 }
 

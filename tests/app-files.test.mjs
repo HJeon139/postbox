@@ -138,3 +138,28 @@ test('#54: a read stops one byte past its limit, so a file that grew after its s
   assert.equal(await readCapped(f, 2 * 1024 * 1024 + 4), null);
   assert.equal((await readCapped(f, 3 * 1024 * 1024)).length, 2 * 1024 * 1024 + 5);
 });
+
+test('#1751: update_app with only new data files keeps the code, and a call with neither is refused in its own reply', async () => {
+  const { rt, folder, call } = await setup();
+  await writeFile(join(folder, 'rows.csv'), 'a,1\n');
+  assert.equal((await call('show_app', { id: 'panel', title: 'Panel', code: '<p>panel</p>', files: ['rows.csv'] })).isError, false);
+  await writeFile(join(folder, 'rows.csv'), 'a,1\nb,2\n');
+  const refreshed = await call('update_app', { id: 'panel', files: ['rows.csv'], summary: 'new rows' });
+  assert.equal(refreshed.isError, false, refreshed.text);
+  assert.match(refreshed.text, /App panel is now v2/);
+  const [v1, v2] = rt.store.state.apps.panel.versions;
+  assert.equal(v2.code, v1.code, 'the code carries over');
+  assert.notEqual(v2.files[0].sha256, v1.files[0].sha256, 'the new data replaces the old');
+  assert.equal(String(await rt.apps.appFile('panel', 'rows.csv', 2).then((f) => f.bytes ?? f)), 'a,1\nb,2\n');
+  // Neither code nor files: nothing to make a version of, said in the call’s own reply.
+  const empty = await call('update_app', { id: 'panel', summary: 'nothing' });
+  assert.equal(empty.isError, true);
+  assert.match(empty.text, /Send code, codePath or files/);
+  assert.equal((await call('update_app', { id: 'panel', code: null })).isError, true, 'a null code is no code');
+  // show_app on its own app with files alone does the same, and keeps the app’s permissions.
+  assert.equal((await call('update_app', { id: 'panel', code: '<p>panel</p>', permissions: ['assets.search'] })).isError, false);
+  const shown = await call('show_app', { id: 'panel', title: 'Panel', files: ['rows.csv'] });
+  assert.equal(shown.isError, false, shown.text);
+  const last = rt.store.state.apps.panel.versions.at(-1);
+  assert.deepEqual([last.code, last.permissions], ['<p>panel</p>', ['assets.search']]);
+});

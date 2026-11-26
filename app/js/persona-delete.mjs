@@ -64,7 +64,7 @@ function whatGoes(p) {
       h(
         'ul.what-goes',
         li(false, `${p.handle}, its instructions and its settings`),
-        li(false, `Its ${plural(sessions.length, 'session')}, as deleting each would: a conversation it’s alone in goes with it`),
+        li(false, `Its ${plural(sessions.length, 'session')}: it leaves every room it’s in, and a conversation it’s alone in goes with it`),
         li(false, 'What it remembered: its own memory, in every project'),
         // A host removes it when Postbox next connects there with this version on the host (#491); its card says so meanwhile.
         p.remote?.hostId ? li(false, 'Its memory on hosts, each the next time Postbox connects there, once the host runs this version') : null,

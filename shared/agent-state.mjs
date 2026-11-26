@@ -13,6 +13,8 @@
 //   quota shows in the agents area, and never as needs-you. Turns marks every agent of the backend on the same
 //   computer or host when a turn fails for quota, so only the person’s message starts one before the reset, and a
 //   session running again is past it (server/turn-quota.mjs);
+// - retrying: its last turn failed for its provider, such as 529 Overloaded, and Postbox tries it again on its own at
+//   `until` (#1713, server/turn-transient.mjs). Never needs-you: the person could do no more than Retry;
 // - failed: its last turn failed;
 // - job: a background job of its own still runs (`se.jobs`, at most 50, and a kept one stays until it ends);
 // - behind: something it posted still waits in another agent’s inbox, since that entry arrived;
@@ -26,8 +28,9 @@ const LIVE = new Set(['think', 'gen', 'tool']);
 const ON_HOST = new Set(['running', 'waiting', 'lost']);
 
 /**
- * @typedef {{ state: 'you'|'stopping'|'running'|'quota'|'failed'|'job'|'behind'|'idle', detail: string, since?: number, until?: number }} AgentState
- * until is the quota’s reset time, when the harness gave one; since is when the oldest entry arrived, for behind.
+ * @typedef {{ state: 'you'|'stopping'|'running'|'quota'|'retrying'|'failed'|'job'|'behind'|'idle', detail: string, since?: number, until?: number }} AgentState
+ * until is the quota’s reset time, when the harness gave one, or when a retry goes; since is when the oldest entry
+ * arrived, for behind.
  * detail is the step for running, the job’s label for job, and the other agent’s handle for behind.
  */
 
@@ -46,6 +49,7 @@ export function agentState(se, s, now = Date.now()) {
   if (se.remoteTurn?.state === 'stopping') return { state: 'stopping', detail: '' };
   const until = se.quota?.until;
   if (quotaOut(se, now)) return { state: 'quota', detail: '', ...(until ? { until } : {}) };
+  if (retryingNow(se)) return { state: 'retrying', detail: '', until: se.autoRetry.at };
   if (se.state === 'failed') return { state: 'failed', detail: '' };
   const job = jobOf(se);
   if (job) return { state: 'job', detail: job };
@@ -60,6 +64,9 @@ export function agentState(se, s, now = Date.now()) {
  * @param {any} se @param {number} [now]
  */
 export const quotaOut = (se, now = Date.now()) => Boolean(se?.quota) && (se.quota.until == null || se.quota.until > now);
+
+/** Whether the agent’s failed turn waits to go again on its own (#1713). @param {any} se */
+export const retryingNow = (se) => se?.state === 'failed' && Number.isFinite(se.autoRetry?.at);
 
 /** The label of the agent’s newest background job still running, from its session’s bounded list. */
 function jobOf(se) {

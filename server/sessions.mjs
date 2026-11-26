@@ -197,6 +197,7 @@ export class Sessions {
    * @returns {string[] | undefined}
    */
   needFor(need, where) {
+    if (need?.for?.length) return need.for; // a reply that names people is for them (server/person-mentions.mjs)
     const who = need && this.store.pending.thread(this.threads.conversationToWrite(where))?.lastPerson;
     return who ? [who] : undefined;
   }

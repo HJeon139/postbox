@@ -134,7 +134,7 @@ test('#251: a reply still being written, or a deleted agent’s, takes no reacti
   arrange.setItem(f.rt, f.t.id, f.reply.id, { status: 'streaming' });
   assert.throws(() => react(f, f.reply, '👍'), /still being written/);
   arrange.setItem(f.rt, f.t.id, f.reply.id, { status: 'done', deletedAgent: true });
-  assert.throws(() => react(f, f.reply, '👍'), /was deleted/);
+  assert.throws(() => react(f, f.reply, '👍'), /isn’t in this conversation any more/);
   arrange.setItem(f.rt, f.t.id, f.reply.id, { deletedAgent: false });
   // The marker is the newest reaction told, not the time of the catch-up: one at the same millisecond is told next.
   const se = arrange.agentIn(f.rt, f.t.id, 'alpha');

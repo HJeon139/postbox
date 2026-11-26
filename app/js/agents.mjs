@@ -77,6 +77,8 @@ export function stateWords(st) {
   if (st.state === 'stopping') return 'stopping';
   if (st.state === 'job') return `waiting on a job: ${st.detail}`;
   if (st.state === 'quota') return st.until ? `out of quota until ${timeOf(st.until)}` : 'out of quota';
+  // Its provider failed it for a while (#1713): Postbox tries it again on its own then, so nothing waits on the person.
+  if (st.state === 'retrying') return `retrying at ${timeOf(st.until)}`;
   if (st.state === 'behind') return `waiting behind @${st.detail}${st.since ? ` since ${timeOf(st.since)}` : ''}`;
   return { you: 'needs you', failed: 'failed' }[st.state] ?? 'idle';
 }

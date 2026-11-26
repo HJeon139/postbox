@@ -256,6 +256,9 @@ export const CASES = {
       bad: [
         [{ code: 'oops', message: 'x' }, /error\.code must be one of/],
         [{ code: 'internal', message: '' }, /error\.message can’t be empty/],
+        // A refused forget names its persona (#1683); nothing else carries one.
+        [{ code: 'internal', message: 'x', re: 'read', persona: 'pe_a' }, /error\.persona names the persona a forget was for/],
+        [{ code: 'internal', message: 'x', re: 'forget', persona: '../x' }, /error\.persona must be an ID/],
       ],
     },
   },

@@ -176,3 +176,51 @@ test('#1752 a command that printed nothing has an empty result, not none, so it 
   );
   assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: '' }]);
 });
+
+/**
+ * The events as a data folder's snapshot replays the call: its ledger entry once, as a work.add holding its last state
+ * (tools/atif-export.mjs), with no patches. @param {(entry: any) => any} last
+ */
+const asSnapshot = (last) =>
+  rec.events
+    .filter((e) => !(e.type === 'work.patch' && e.data.id === command.id))
+    .map((e) => (e.type === 'work.add' && e.data.entry.id === command.id ? { ...e, data: { ...e.data, entry: last({ ...command, ...ended }) } } : e));
+
+test('#1757 from a snapshot, with no live frames: a command’s stored output is its result, a background one’s said to be what the ledger kept', () => {
+  const plain = callIn(
+    asSnapshot((entry) => entry),
+    { live: [], blob: theBlob },
+  );
+  assert.deepEqual(plain.observation.results, [{ source_call_id: command.toolUseId, content: 'the whole output\nhigh' }]);
+  // A background command’s entry holds what the ledger kept once its job ended: the job’s output, or still its own.
+  const background = callIn(
+    asSnapshot((entry) => ({ ...entry, endedInBackground: true })),
+    { live: [], blob: theBlob },
+  );
+  const [result] = background.observation.results;
+  assert.ok(result.content.startsWith('[the command ran in the background: this is what the work ledger kept once its job ended'), result.content);
+  assert.ok(result.content.endsWith('the whole output\nhigh'));
+  // On a host the ledger never replaces the output with the job’s, so a host’s entry is the call’s own, with no note.
+  const onHost = callIn(
+    asSnapshot((entry) => ({ ...entry, endedInBackground: true, host: 'ho_1' })),
+    { live: [], blob: theBlob },
+  );
+  assert.deepEqual(onHost.observation.results, [{ source_call_id: command.toolUseId, content: 'the whole output\nhigh' }]);
+  // A snapshot taken while the job still ran holds the call’s own output, and the job’s end comes after it: the call’s
+  // output is still its result.
+  const job = { sha256: 'f'.repeat(64), size: 9 };
+  const running = asSnapshot((entry) => ({ ...entry, state: 'background', exit: null }));
+  const end = {
+    type: 'work.patch',
+    seq: rec.events.at(-1).seq + 1,
+    data: { id: command.id, patch: { state: 'done', exit: 0, output: job, endedInBackground: true } },
+  };
+  const later = callIn([...running, end], { live: [], blob: (/** @type {string} */ h) => (h === job.sha256 ? 'job’s end' : theBlob(h)) });
+  assert.deepEqual(later.observation.results, [{ source_call_id: command.toolUseId, content: 'the whole output\nhigh' }]);
+  // With live frames, the step’s own text is the result before that.
+  const live = callIn(
+    asSnapshot((entry) => ({ ...entry, endedInBackground: true })),
+    { live: rec.live, blob: theBlob },
+  );
+  assert.deepEqual(live.observation.results, [{ source_call_id: command.toolUseId, content: 'high' }]);
+});

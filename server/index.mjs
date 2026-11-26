@@ -7,7 +7,6 @@
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +22,7 @@ import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { dataFolder } from './home.mjs';
 import { hostsRoute } from './hosts-routes.mjs';
+import { closeServer, httpServer } from './http-server.mjs';
 import { whoIs } from './identity/session.mjs';
 import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
@@ -207,7 +207,7 @@ export async function start({
       else res.end();
     }
   };
-  const server = createServer(handle);
+  const server = httpServer(handle);
 
   async function route(req, res) {
     const url = new URL(req.url, origin);
@@ -324,7 +324,7 @@ export async function start({
     if ((m = path.match(/^\/api\/backends\/([^/]+)\/models$/)) && req.method === 'POST')
       return send(res, 200, await models.list(decodePath(m[1]), body?.hostId ?? null));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/view$/)) && req.method === 'POST') {
-      rt.view(m[1]);
+      rt.view(m[1], person.id);
       viewOf(rt).noteWindow(body);
       return send(res, 200, { ok: true });
     }
@@ -467,7 +467,7 @@ export async function start({
     await settleLedger(rt); // the stopped turns’ records, remote ones too, before the store closes
     narrator?.stop();
     await viewOf(rt).close();
-    if (server.listening) await new Promise((ok) => server.close(ok));
+    if (server.listening) await closeServer(server);
     await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
   if (listen) await listenServer(server, port, host, close, () => listening(rt)); // drain (#228), then archive (#305)

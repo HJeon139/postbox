@@ -3,6 +3,7 @@
 // start a turn the clock holds is refused instead of held, so no reply says it was retried while nothing runs.
 // Moved from server/run-clock.mjs.
 
+import { clockOver } from '../shared/run-clock.mjs';
 import { httpError } from './helpers.mjs';
 
 /** @type {WeakMap<any, Map<string, any[]>>} each runtime’s turns held by a paused clock, by session: memory only */
@@ -10,12 +11,12 @@ const heldTurns = new WeakMap();
 
 /**
  * A turn that came another way than the inbox (a message held behind a turn, a release after a stop) for an agent whose
- * clock is paused: kept for the resume. One whose clock expired is dropped. Memory only: a restart loses them, as it loses a message held for a busy agent.
+ * clock is paused: kept for the resume. One whose clock expired or ended is dropped. Memory only: a restart loses them, as it loses a message held for a busy agent.
  * @param {any} rt @param {string} sessionId @param {{ message: any, summarizeTo: string|null, threadId: string|null }} turn
  */
 export function holdForClock(rt, sessionId, turn) {
-  // An expired clock holds its agent for good: the turn can never run, so it isn’t kept.
-  if (rt.store.pending.clock(sessionId)?.state === 'expired') return;
+  // An expired or ended clock holds its agent for good (#1749): the turn can never run, so it isn’t kept.
+  if (clockOver(rt.store.pending.clock(sessionId))) return;
   const mine = heldTurns.get(rt) ?? new Map();
   heldTurns.set(rt, mine);
   mine.set(sessionId, [...(mine.get(sessionId) ?? []), turn]);
@@ -33,7 +34,7 @@ export function resumeHeld(rt, sessionId) {
 }
 
 /**
- * What the store says that ends the held turns of an agent: its clock expired or its run was voided, so none of them
+ * What the store says that ends the held turns of an agent: its clock expired or was ended (#1749) or its run was voided, so none of them
  * can run, or its session was deleted (installRunClock subscribes this). @param {any} rt @param {any} ev
  */
 export function dropHeldOn(rt, ev) {
@@ -43,7 +44,7 @@ export function dropHeldOn(rt, ev) {
 
 /** The session an event ends the held turns of, if it does. @param {any} ev @returns {unknown} */
 function endedBy(ev) {
-  if (ev.type === 'clock.expired' || (ev.type === 'clock.stopped' && ev.data?.forced === true)) return ev.data?.sessionId;
+  if (ev.type === 'clock.expired' || ev.type === 'clock.ended' || (ev.type === 'clock.stopped' && ev.data?.forced === true)) return ev.data?.sessionId;
   return ev.type === 'remove' && ev.data?.kind === 'session' ? ev.data.id : null;
 }
 
@@ -65,11 +66,12 @@ export function refuseWhileHeld(rt, sessionId, action) {
   if (!rt.runClock?.holds(sessionId)) return;
   const se = rt.store.pending.session(sessionId);
   const clock = rt.store.pending.clock(sessionId);
-  const resume = `Resume it with POST /api/sessions/${sessionId}/clock and {"action":"resume"}, then ${THEN[action]}.`;
-  throw httpError(
-    409,
-    clock?.state === 'paused'
-      ? `@${se?.handle}’s run clock is paused, so no turn of @${se?.handle} starts until it resumes. ${resume}`
-      : `@${se?.handle}’s run clock reached its budget, so no turn of @${se?.handle} starts in this conversation again. A new timed run goes in a new conversation.`,
-  );
+  const h = se?.handle;
+  if (clock?.state === 'paused') {
+    const resume = `Resume it with POST /api/sessions/${sessionId}/clock and {"action":"resume"}, then ${THEN[action]}.`;
+    throw httpError(409, `@${h}’s run clock is paused, so no turn of @${h} starts until it resumes. ${resume}`);
+  }
+  // Over for good: its budget ran out, or the person ended the run (#1749).
+  const why = clock?.state === 'ended' ? 'was stopped' : 'reached its budget';
+  throw httpError(409, `@${h}’s run clock ${why}, so no turn of @${h} starts in this conversation again. A new timed run goes in a new conversation.`);
 }

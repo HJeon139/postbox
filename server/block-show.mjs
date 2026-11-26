@@ -58,6 +58,8 @@ export function showBlock(apps, sessionId, { turn, se, threadId, endSegment, too
   const it = apps.threads.addItem(threadId(), { ...blockItem(sessionId, se, turn, block, v), ...files });
   if (files.files) given.held = true; // the item holds them, so keptIfShown keeps their blobs (#828)
   if (v.ok && v.block.type === 'app') registerApp(apps, sessionId, v.block, it.id, threadId(), given.files ?? []);
+  // The app’s first version holds its data files, so keptIfShown keeps their blobs (#1702).
+  if (v.ok && v.block.type === 'app' && given.files) given.held = true;
   if (v.ok && v.block.type === 'app') {
     const shown = renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown app ${v.block.id}.`;
     return withIntentNote(appReceipt(apps.store.pending.app(v.block.id), shown), saidIntent);

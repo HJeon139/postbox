@@ -281,14 +281,19 @@ function runTurn(rt, se, turn, message, { adapter, persona, hostId }) {
   void turn.exited.then(() => turnExited(rt, turn)).then(() => whenWritable(rt, () => endChain(rt, turn.threadId)));
 }
 
-/** Retry a failed reply: sends the same message again, or a promise of that when it’s read back from the store first. */
-export function retry(rt, threadId, itemId) {
+/**
+ * Retry a failed reply: sends the same message again, or a promise of that when it’s read back from the store first.
+ * onSend runs once it’s sent, before the turn starts, so what it tells the agent reaches that turn and no other (#1713).
+ * @param {any} rt @param {string} threadId @param {string} itemId @param {() => void} [onSend]
+ */
+export function retry(rt, threadId, itemId, onSend) {
   const it = rt.store.item(threadId, itemId);
   if (it?.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
   // With run clocks on: a clock that holds the agent would only hold the retry, so it’s refused (#1526).
   if (rt.runClock) refuseWhileHeld(rt, it.sessionId, 'retry');
   // What it was asked (turn-marks.mjs): refused, with nothing sent, when it was kept and can’t be read back exactly.
   return askedAgain(rt, threadId, it, (asked) => {
+    onSend?.();
     rt.threads.patchItem(threadId, itemId, { status: 'retried' });
     // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
     // retried turn starts, and that turn's end decides them.

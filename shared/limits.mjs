@@ -113,6 +113,14 @@ export const QUIET = Object.freeze({
   backgroundMax: 2 * 60 * 60 * 1000,
 });
 
+/**
+ * A turn its provider failed for a while, such as 529 Overloaded (#1713, server/turn-transient.mjs), goes again on its
+ * own after each of these waits, one per try, with Retry as the person’s: at most three tries in a row, over about ten
+ * minutes, before the agents waiting on it hear it didn’t answer. One that had started a tool goes again too, told to
+ * check what those calls did first. A scheduled wake’s turn isn’t retried here: it fails as any other failure does.
+ */
+export const TRANSIENT_RETRY = Object.freeze({ delaysMs: Object.freeze([30_000, 2 * 60_000, 8 * 60_000]) });
+
 /** A persona’s handle (Runtime.createPersona), which a handle an agent sends must match before it’s looked up (#650). */
 export const HANDLE = /^[a-z][a-z0-9_-]{1,23}$/i;
 /**
@@ -345,3 +353,11 @@ export const PALETTES = Object.freeze([
     when: 'passed or failed; never for a category, where they read as a verdict',
   },
 ]);
+
+/** What a session keeps of the asks its replies made of people (#1742, server/person-mentions.mjs). */
+export const ASKS = Object.freeze({
+  // The unread asks kept on the session, newest last, which a view reads at once. A bound on what every session
+  // patch carries, not on how many asks can wait: an older one is still on its reply, and a view reads it when it
+  // comes up as the session’s need. Eight is more than an agent leaves unread in practice: no recorded run has one.
+  kept: 8,
+});

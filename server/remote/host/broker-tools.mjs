@@ -42,6 +42,9 @@ export async function prepare(b, turn, name, args) {
   const update = carriesBlockFiles(name, out) ? withoutFiles(out.block) : out.block;
   const refused = hostBlockRefusal(name, update);
   if (refused) return { ok: false, text: refused };
+  // An update with neither code nor files has nothing to change (#1751): the laptop’s refusal, said in the call here too.
+  if (name === 'update_app' && out.code == null && out.files === undefined)
+    return { ok: false, text: 'Send code, codePath or files: an update with none of them has nothing to change.' };
   // An app the laptop would refuse, shown or updated, is refused here too, so the agent hears it in the call (#1319).
   if ((name === 'update_app' || name === 'show_app') && typeof out.code === 'string') {
     const v = validateBlock({

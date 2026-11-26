@@ -1,5 +1,5 @@
 // What the conversation shows of an agent’s run clock (server/run-clock.mjs): a line at each change of it, so the
-// person sees its state where they work, and why an agent with an expired or paused clock doesn’t answer. A system
+// person sees its state where they work, and why an agent with an expired, ended or paused clock doesn’t answer. A system
 // line with its text, which the page shows as it is (app/js/system-line.mjs); no turn reads it as a message.
 
 import { isLocalStop } from '../shared/run-clock.mjs';
@@ -46,6 +46,10 @@ const WORDS = {
     const stop = expiredStop(h, d);
     return `@${h}’s run clock reached its budget of ${s(d.budgetMs)}${stop ? `, so Postbox ${stop}` : ''}. Messages to @${h} here now wait, and no turn starts; a new timed run goes in a new conversation.`;
   },
+  ended: (h, d) => {
+    const stop = expiredStop(h, d);
+    return `@${h}’s run clock ended at ${s(d.elapsedMs)} of ${s(d.budgetMs)}, because you stopped it${stop ? `, so Postbox ${stop}` : ''}. Messages to @${h} here now wait, and no turn starts; a new timed run goes in a new conversation.`;
+  },
   voided: (h, d) =>
     `Postbox couldn’t confirm that @${h}’s stopped turn ended (${FORCED[d.forced] ?? d.forced}), so @${h} may still be working, uncounted. This timed run is void: no turn of @${h} starts here again, and a new timed run goes in a new conversation.`,
   stopped: (h, d) => `${stoppedWords(h, d)}${!d.left && d.state === 'paused' ? ' The paused clock stops counting here.' : ''}`,
@@ -64,13 +68,13 @@ export function clockNote(rt, sessionId, change, d) {
 }
 
 /** The line a clock’s state needs as its newest line of a change of state, for a state that holds the agent. */
-const HOLDING = /** @type {const} */ ({ paused: 'paused', expired: 'expired' });
+const HOLDING = /** @type {const} */ ({ paused: 'paused', expired: 'expired', ended: 'ended' });
 
 /**
  * The lines that hold the agent or let it go again. A stopped turn’s end and a restart change neither, so they may come
  * after the line a holding clock needs.
  */
-const STATE_LINES = new Set(['paused', 'resumed', 'expired', 'voided']);
+const STATE_LINES = new Set(['paused', 'resumed', 'expired', 'ended', 'voided']);
 
 /**
  * As Postbox starts, a clock that holds its agent gets its line if the conversation lacks it: the clock’s event and
@@ -81,7 +85,7 @@ const STATE_LINES = new Set(['paused', 'resumed', 'expired', 'voided']);
  */
 export function repairClockNote(rt, sessionId, clock) {
   // A void run’s line is the void’s, not the expiry’s: the clock expired because Postbox couldn’t confirm a stop.
-  const held = Object.hasOwn(HOLDING, clock?.state) ? HOLDING[/** @type {'paused' | 'expired'} */ (clock.state)] : null;
+  const held = Object.hasOwn(HOLDING, clock?.state) ? HOLDING[/** @type {'paused' | 'expired' | 'ended'} */ (clock.state)] : null;
   const change = clock?.voided ? 'voided' : held;
   const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
   if (!change || !se) return;

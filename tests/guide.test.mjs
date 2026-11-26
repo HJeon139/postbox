@@ -87,6 +87,10 @@ test('the guide stays short: agents follow defaults more than prose', () => {
   assert.equal(agentGuide(who), agentGuide(who));
 });
 
+test('#1684 the guide tells an agent an app’s animation loop stops at rest, with fixed-size history, before it ships one', () => {
+  assert.match(guideText(), /Stop loops when nothing moves; cap their history\./);
+});
+
 test('#1478 the guide names postbox.publish, so agents learn an app can share its data, and read_app reads it', () => {
   assert.match(guideText(), /^- postbox\.publish\(data\) shares the app’s data with you, no turn; read_app reads it$/m);
 });

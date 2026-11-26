@@ -18,7 +18,7 @@ export function correctComment(rt, threadId, itemId, values) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind !== 'block' || !it.valid || it.block.type !== 'review') throw httpError(409, 'Only a comment on a review can be corrected.');
   if (it.closed?.by === 'agent') throw httpError(409, `@${it.closed.handle} withdrew this review, so it takes no corrections. Say it in a message instead.`);
-  if (it.deletedAgent) throw httpError(409, 'That agent was deleted, so it can’t hear a correction. Say it in a message instead.');
+  if (it.deletedAgent) throw httpError(409, 'That agent isn’t in this conversation any more, so it can’t hear a correction. Say it in a message instead.');
   const text = typeof values?.text === 'string' ? values.text.trim() : '';
   if (!text) throw httpError(422, 'The correction is empty. Write what your comment should say.');
   if (text.length > COMMENT_MAX) throw httpError(422, `The correction is longer than ${COMMENT_MAX.toLocaleString('en-US')} characters. Shorten it.`);

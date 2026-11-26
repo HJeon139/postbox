@@ -5,6 +5,7 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { clip } from '../shared/text.mjs';
 import { httpError } from './helpers.mjs';
+import { forgetWait } from './turn-transient.mjs';
 
 /** The threads whose cards are the agent's: its own, and the side and topic threads off it. */
 const threadsOf = (rt, se) => [
@@ -29,7 +30,16 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
   // An AskUserQuestion’s block (#521) needs the person while its call waits, mid-turn too, as a permission card does.
   if (it.kind === 'block' && it.sessionId === se.id && !it.answered && rt.permissionWaits.get(it.id)?.question)
     return { kind: 'block', itemId: it.id, text: it.block.title ?? clip(it.block.prompt ?? it.block.fallback, 120), ...where };
-  if (it.sessionId !== se.id || (!turnIds.includes(it.turnId) && it.id !== keep)) return null;
+  // A reply that names a person asks them (#1742, server/person-mentions.mjs) until they read it, whatever turn it is
+  // from: only their reading, or their writing there, ends it, so neither the agent’s later turns nor another person
+  // moving on drops it. It comes after every card of the turns that count. `for` is whom it still waits for; with no
+  // one Postbox can name, Sessions’ needFor finds the room’s last person.
+  const waits = (/** @type {string} */ id) => !it.asksRead?.includes(id);
+  const ask =
+    it.kind === 'agent' && it.sessionId === se.id && it.asks && !it.asksSeen
+      ? { kind: 'mention', itemId: it.id, text: clip(it.text, 120), ...(it.asks.length ? { for: it.asks.filter(waits) } : {}), ...where }
+      : null;
+  if (it.sessionId !== se.id || (!turnIds.includes(it.turnId) && it.id !== keep)) return ask;
   // A failed reply waits for its Retry while you haven't moved past its turn, so a wake's release finds it again;
   // one the person dismissed (#883) doesn't.
   if (it.kind === 'agent' && it.status === 'failed' && !it.dismissed) {
@@ -44,7 +54,7 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
     return { kind: 'toolask', itemId: it.id, text: `@${se.handle} asks you to turn on “${it.label}”`, ...where };
   if (it.kind === 'viewask' && it.status === 'open')
     return { kind: 'viewask', itemId: it.id, text: `@${se.handle} asks to see its app: download Chromium?`, ...where };
-  return null;
+  return ask;
 }
 
 /**
@@ -54,7 +64,7 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
  * its tool request, and last the cards that wait until answered (wake requests). Within a kind,
  * the newest. It ranks exactly the kinds a need can have, shared/needs.mjs's NEEDS_KINDS (tests/card-needs-kinds.test.mjs).
  */
-export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, toolask: 4, viewask: 4, hop: 5 });
+export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, toolask: 4, viewask: 4, hop: 5, mention: 6 });
 
 /** The needs tied to a turn: the person moving on clears them (runtime.mjs, the turn's start). The rest wait until answered. */
 export const TURN_TIED = new Set(['failed', 'block', 'toolask']);
@@ -240,6 +250,8 @@ export function dismissFailed(rt, threadId, itemId) {
   if (it?.kind !== 'agent' || it.status !== 'failed') throw httpError(409, 'Only a failed reply can be dismissed.');
   if (it.dismissed) return { ok: true };
   rt.threads.patchItem(threadId, itemId, { dismissed: true });
+  // Dismissed, it isn’t tried again on its own either (#1713).
+  if (rt.store.pending.session(it.sessionId)?.autoRetry?.itemId === itemId) forgetWait(rt, it.sessionId);
   releaseNeed(rt, rt.s.sessions[it.sessionId], itemId);
   return { ok: true };
 }

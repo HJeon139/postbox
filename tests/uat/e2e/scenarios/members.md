@@ -28,4 +28,4 @@ Pass if @critic answers, and its answer shows it read what @developer said: an a
 
 Use the `members` action to remove critic. Read the Agents section and say whether it lists only developer. Then send this, exactly, with no handle in it: “Thanks. One more: what’s a good slug for ‘Hello, World’?”
 
-Pass if @developer answers and @critic doesn’t. Say whether Settings › Personas still lists critic: removing an agent from a conversation keeps its persona.
+Pass if @developer answers and @critic doesn’t. Say whether Settings › Personas still lists critic: removing an agent from a conversation keeps its persona. Say whether @critic’s earlier answer still reads as it did, under its name with no “(deleted)” mark: removing an agent leaves the room’s history unchanged (#1743).

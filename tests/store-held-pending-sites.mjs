@@ -8,7 +8,8 @@ export const PENDING = {
   // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
   // keptBlock: the block a turn kept, in any of the agent's threads, which decides the need its end writes (#647).
-  'card-needs.mjs': ['keptBlock', 'keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed'],
+  // dismissFailed: whether the reply dismissed is the one the agent waits to try again, which ends that wait (#1713).
+  'card-needs.mjs': ['keptBlock', 'keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'dismissFailed'],
   // The project a session is attached into, maybe deleted behind a held commit (#119); the mirrored reply a terminal
   // line adds to, maybe held behind a commit; and the session attachClaudeSession just made, whose transcript mirror
   // starts following.
@@ -56,6 +57,9 @@ export const PENDING = {
   ],
   // the item a repeated send's first try posted, and its conversation, either maybe behind a held commit (#1138, #1292)
   'send-message.mjs': ['repeatOf', 'repeatOf'],
+  // A reply that asks a person (#1742): the message its turn took, for its sender; the session and the asks it keeps,
+  // as the reply’s mark is written; and every session’s asks on a view. Each may be behind a held commit, as the reply is.
+  'person-mentions.mjs': ['peopleAsked', 'keep', 'markAsks', 'readAsks', 'readAsks', 'readAsks', 'nextAsk'],
   'persona-create.mjs': ['createPersonaFor'], // the conversation a new agent joins, maybe started behind a held commit (#1292)
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
@@ -187,6 +191,11 @@ export const PENDING = {
   // The quota marks that decide a mark or its clearing, and the persona that says whose quota it is, each maybe held
   // behind a commit (#442).
   'turn-quota.mjs': ['quotaKey', 'sessionsOn', 'quotaName', 'quotaMoved'],
+  // The count of a provider’s failures in a row, which decides whether a turn tries again or stops; the wait and its
+  // reply forgetWait clears, only if there is one; and whether a wait’s end, or a refused retry, still belongs to the
+  // session’s wait, and whether the reply a refused retry names is still failed (retryRefused): each maybe held behind
+  // a commit (#1713).
+  'turn-transient.mjs': ['forgetWait', 'forgetWait', 'transientRetry', 'armRetry', 'retryRefused', 'retryRefused'],
   // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
   'turn-stop.mjs': ['stop', 'turnExited'],
   'stop-record.mjs': ['recordStopped'], // the stopped turn’s segments still streaming, maybe held behind a commit (#602)

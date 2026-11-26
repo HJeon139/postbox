@@ -5,7 +5,7 @@
 // of it at its next turn.
 
 import { endedExchange } from './reply-back.mjs';
-import { isOwnWork, NO_ANSWER } from './tool-gate.mjs';
+import { isOwnWork, NO_ANSWER, READ_TOOLS } from './tool-gate.mjs';
 
 /**
  * The turns that owe a reply: a message from the person or from another agent. Others may end quietly: an event (a
@@ -17,11 +17,16 @@ const ASKED = new Set(['user', 'agent']);
  * Marks a turn that answered through one of Postbox’s tools that act, such as a reaction or a term, which leave no
  * item of the turn’s own. server/mcp.mjs and a host’s calls (remote/turns-tools.mjs) both call it, and so does a call
  * in Postbox’s own process (notedTools). `acted` marks one that did work (tool-gate.mjs, isOwnWork): a turn that showed
- * or changed something has it to report, so its reply goes back (reply-back.mjs, endedExchange).
+ * or changed something has it to report, so its reply goes back (reply-back.mjs, endedExchange). `wrote` names each
+ * call that wasn’t only a read, for a retry to check (turn-transient.mjs).
  * @param {any} turn  the turn the call came from, or null @param {string} name @param {any} r  the tool’s result
  */
 export function noteAnswer(turn, name, r) {
-  if (!turn || NO_ANSWER.has(name) || (r?.ok === false && !r?.waiting)) return;
+  if (!turn || (r?.ok === false && !r?.waiting)) return;
+  // Each of its calls that may have written, by name, which a retry of the turn is told to check (#1713): open_topic
+  // and react are quiet and make no step, and a call outside Postbox’s process makes none either.
+  if (!READ_TOOLS.has(name) && !(turn.wrote ??= []).includes(name)) turn.wrote.push(name);
+  if (NO_ANSWER.has(name)) return;
   turn.answered = true;
   if (isOwnWork(name)) turn.acted = true;
 }

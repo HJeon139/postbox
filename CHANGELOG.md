@@ -2,6 +2,81 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.51.0 (2026-11-26)
+
+### Features
+
+- **agents:** show an agent retrying after a provider's failure, without an alarm
+- **turns:** retry a turn its provider failed, and tell the waiting agents when retries run out
+- **failures:** classify a provider's passing error by its HTTP status
+
+### Fixes
+
+- **checks:** a table flagged with questions is still asked for, in one reply
+- **checks:** the lint turn says show the block only if it's for the person
+- **checks:** say a form or choice is for the person, and to @-mention an agent instead
+- **atif:** take a host turn's background output as its call's own from a snapshot
+- **atif:** give a background command a result from a data folder's snapshot too
+- **server:** let a response that's still going not hold Postbox's close
+- **server:** keep an idle connection open longer than clients pool one
+- **app:** a session event reads only the replies drawn on the page
+- **turns:** list a retried turn's Postbox writes before its own steps
+- **turns:** name the Postbox calls that wrote, as noteAnswer keeps them, in a retry's check
+- **turns:** a retried turn whose only work was a Postbox tool is told to check it
+- **atif:** give a background command the output its call ended with
+- **turns:** a refused auto-retry decides by its reply, and tells only a sent retry
+- **atif:** keep a background command's own text, and say when a stored output was cut
+- **atif:** give a call its whole stored output, not a step's capped text
+- **turns:** a refused auto-retry needs the person, and takes back its check line
+- **turns:** a provider-failed turn whose tries ran out needs the person
+- **turns:** retry a provider-failed turn that started tools, told to check what ran
+- **turns:** don't retry a turn the person moved past, or one that started a tool
+- **turns:** end an agent's wait to retry on any other failure, Dismiss or Stop
+
+## 4.50.0 (2026-11-26)
+
+### Features
+
+- **server:** a run clock's stop ends the timed run for good
+
+### Fixes
+
+- **text:** cut a card’s names and a write’s quoted path at a whole character too
+- **remote:** a host's file error ends its sentence, and the read failure test checks nothing went
+- **remote:** a refused memory removal is logged on the host and names its agent
+- **remote:** a host's refused memory removal holds up only its own persona
+- **server:** say an ended run was stopped, and keep its end in a snapshot's export
+- **text:** cut the rest of the text these files show only at a whole character
+- **text:** cut text agents and the person read only at a whole character
+
+## 4.49.1 (2026-11-26)
+
+### Fixes
+
+- **remote:** a host refuses an update_app with neither code nor files in the call
+- **server:** a session's delete counts live agents, as its confirm does
+- **app:** count live agents for the remove confirm, and say it in the docs
+- **app:** make the remove confirm true, and keep the room on every path
+- **app:** removing an agent from a room reads as leaving it, and keeps its history
+- **apps:** remove an app's data file blobs when the call doesn't keep them
+- **kiro:** match any path with ** for file tools in Auto with Shell
+- **apps:** keep an app's permissions when show_app sends new files alone
+- **kiro:** in Auto with Shell, file tools follow the shell's rule
+- **apps:** let update_app refresh an app's data files without resending its code
+
+## 4.49.0 (2026-11-26)
+
+### Features
+
+- **people:** a reply that names a person asks them, until they read it
+
+### Fixes
+
+- **people:** an ask older than the ones a session keeps is still read
+- **people:** an ask of a person waits for that person, and only their reading ends it
+- **uat:** say when the tester has had no step for five minutes while a turn is open
+- **uat:** hand back what still waits after an action that was held or failed
+
 ## 4.48.0 (2026-11-26)
 
 ### Features

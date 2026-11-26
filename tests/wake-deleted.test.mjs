@@ -28,7 +28,7 @@ test('#283: an agent’s @-mention of a deleted agent raises no card, and the wa
   );
   assert.deepEqual(
     f.store.state.sessions[f.beta.id].context.filter((x) => x.includes('@alpha')),
-    ['[Postbox] Your mention of @alpha woke no one: @alpha was deleted from this conversation, so it didn’t get your message. Carry on without it.'],
+    ['[Postbox] Your mention of @alpha woke no one: @alpha isn’t in this conversation any more, so it didn’t get your message. Carry on without it.'],
     'beta is told why, at its next turn',
   );
 });
