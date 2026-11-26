@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { launch, sleep } from './browser.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
-import { lastCheckPass, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
+import { lastCheckPass, MID_TURN, runChecks } from './uat/checks.mjs';
 import { failsRun } from './uat/checks-postbox.mjs';
 import { dollarFolders, streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
@@ -39,6 +39,7 @@ import { faultSetup } from './uat/fault-run.mjs';
 import { attachmentFile } from './uat/fixtures.mjs';
 import { remoteFacts, setUpRemote } from './uat/git-remote.mjs';
 import { preflightRun } from './uat/github-guard.mjs';
+import { stepHolds, waitingList } from './uat/held-steps.mjs';
 import { followEvents, writeHistory } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
@@ -66,6 +67,7 @@ import { gitInfo, mainCheckout, runRecord, runsRoot, writeJsonAtomic } from './u
 import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { midTurnAnswerer, staleNoter } from './uat/stale-notes.mjs';
+import { stalledFinding } from './uat/stall.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
 import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
@@ -210,12 +212,12 @@ async function main() {
     const goals = phaseGoals(scenario, { cap: phaseCap, start: phase, log });
     const noteStale = staleNoter({ d, facts, timeline, log }); // the page’s refused stale answers (#123)
     const answerMidTurn = midTurnAnswerer({ d, api, keys, facts, noteStale }); // an answer while the agent works (#123)
+    const holdFor = stepHolds({ goals, log });
     // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
     const hostFault = (spec) => (hr ? fault(hr, spec, page, d.input) : localRestart({ postbox, page, log, input: d.input }, spec));
     let lastAction = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked
-    let pushedBack = ''; // the waiting list the tester was last told to answer before moving on
 
     const threadsUnderTest = (state) => [
       mainThread,
@@ -261,11 +263,15 @@ async function main() {
       midTurn.push(...newFindings(MID_TURN));
     };
 
-    // What needs the person that a wait between steps has seen: it hands back to the tester once for each (#289).
+    // What needs the person that a wait between steps has seen: it hands back to the tester once for each (#289), and
+    // again after an action that was held or failed, which leaves the tester a refusal to read (#1760). A wait that
+    // leaves the tester without a step for STALL_MS while a turn is open is a finding of the run’s own.
     const told = new Set();
+    const onStall = (evidence) => findings.set(`stalled:${timeline.length}`, stalledFinding(evidence, timeline.length));
+    const stopped = () => Boolean(budget.stopped || bound.stopped);
     const settle = (handBack = false) =>
       timing.time('agents', () =>
-        settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log, stopped: () => Boolean(budget.stopped || bound.stopped) }),
+        settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, again: actionError !== null, log, stopped, onStall }),
       );
 
     const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
@@ -348,12 +354,8 @@ async function main() {
       // Stop’s question about background jobs (#126) can be a dialog, which isn’t an item: say it’s there.
       const jobsAsk = await d.jobsAsk();
       const ph = scenario.phases[phase];
-      // What “needs you” counts, every step, whether or not it changed: an old review draft stays on the list.
-      const waiting = waitingOnYou(facts.state, facts.threads).map((w) => {
-        const label = w.itemId ? labels.get(w.itemId) : null;
-        const where = facts.state.threads[w.threadId];
-        return `${label ? `[${label}] ` : ''}${w.what}${where && w.threadId !== mainThread ? ` (in the thread “${where.title}”${label ? '' : ', not on screen: open it'})` : ''}`;
-      });
+      // What “needs you” counts, every step (tools/uat/held-steps.mjs).
+      const waiting = waitingList(facts.state, facts.threads, { labels, mainThread });
       const prompt = stepPrompt({ step, steps, phase, scenario, goal, lastAction, actionError, actionResult, timedOut, obs, waiting, jobsAsk, fresh });
       // With --max-cost, the step goes ahead only if it, and an agent turn it may start, fit what’s left.
       const busy = obs.states.filter((s) => /: (?:think|tool|gen)\b/.test(s)).length;
@@ -377,30 +379,10 @@ async function main() {
       log(`action: ${JSON.stringify(a)}`);
       // The watch can stop the run while the tester thinks: its action would start a turn past a cap.
       if (budget.stopped || bound.stopped) break;
-      // Moving on, or waiting while no agent works, past something that waits on the person: say so once, and ask
-      // again. A second try with the same list goes ahead, so a run can’t loop on a block it can’t answer.
-      const idle = !busy;
-      if (waiting.length && (a.type === 'next_phase' || a.type === 'done' || (a.type === 'wait' && idle)) && pushedBack !== waiting.join('\n')) {
-        pushedBack = waiting.join('\n');
-        // The same again goes ahead, so a scenario that says to leave a card open (for a minute, say) still can.
-        actionError = `Not yet: ${waiting.length === 1 ? 'this is' : 'these are'} still waiting on you: ${waiting.join('; ')}. Answer ${waiting.length === 1 ? 'it' : 'them'} first, or, to leave ${waiting.length === 1 ? 'it' : 'them'} waiting on purpose, as the scenario says to, ask for the same again: the second time it goes ahead.`;
-        log(`action held: ${waiting.length} waiting on the person`);
-        continue;
-      }
-      // An interrupt acts on the turn running when it starts, and the wait can hand back while one runs (#289).
-      if (a.interrupt && !idle) {
-        actionError =
-          'Not yet: an agent is still working, so an interrupt would act on its turn, not the one this starts. Answer what needs you, or wait, first.';
-        log('action held: an interrupt while an agent works');
-        continue;
-      }
-      // Moving on from a phase whose triggers haven’t happened: held once, then a coverage gap.
-      const held = a.type === 'next_phase' || a.type === 'done' ? goals.leave(phase) : null;
-      if (held) {
-        actionError = held;
-        log('action held: the phase’s triggers haven’t happened');
-        continue;
-      }
+      // Held rather than done: moving on past what waits on the person, an interrupt while an agent works, or leaving
+      // a phase whose triggers haven’t happened (tools/uat/held-steps.mjs).
+      actionError = holdFor(a, { waiting, idle: !busy, phase });
+      if (actionError) continue;
       if (a.type === 'done') break;
       if (a.type === 'next_phase') {
         phase++;

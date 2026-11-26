@@ -30,6 +30,8 @@ export class Threads {
     this.bus = bus;
     /** @type {Map<string, number>} threadId → the last time a browser said it was open */
     this.viewing = new Map();
+    /** @type {Map<string, string | null>} who last had each thread open, by person id; null for a view that named no one (#1742) */
+    this.viewers = new Map();
   }
 
   // ── Threads ────────────────────────────────────────────────────────────────────────
@@ -238,12 +240,24 @@ export class Threads {
   /**
    * A browser has the thread open: it counts as viewed for a while, and its unread count clears, read pending as the
    * thread’s next write (#796). The sessions’ unread counts are Sessions’, cleared by the facade’s view().
-   * @param {string} threadId
+   * `personId` is who has it open (#1742), absent for a view no person’s request made: what its agents asked of them
+   * there is read (server/person-mentions.mjs, on thread.viewed).
+   * @param {string} threadId @param {string} [personId]
    */
-  view(threadId) {
+  view(threadId, personId) {
     if (!threadId) return;
     this.viewing.set(threadId, Date.now());
+    this.viewers.set(threadId, personId ?? null);
     this.patch(threadId, (t) => (t.unread ? { unread: 0 } : null));
+    this.bus.emit('thread.viewed', { threadId, personId });
+  }
+
+  /**
+   * Who has the thread open, if a browser had it open in the last 20 seconds: their person id, null for a view that
+   * named no one, and undefined when no one has it open. @param {string} threadId @returns {string | null | undefined}
+   */
+  viewer(threadId) {
+    return this.isViewing(threadId) ? (this.viewers.get(threadId) ?? null) : undefined;
   }
 
   /** Whether a browser had the thread open in the last 20 seconds. @param {string} threadId */

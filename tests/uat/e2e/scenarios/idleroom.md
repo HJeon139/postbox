@@ -53,4 +53,4 @@ The run hands you the form while @researcher still works. Don’t answer it yet.
 
 Pass if the page counted the form as needing you while @researcher’s turn still ran. Fail the phase if it said nothing needs you beside the open form.
 
-Don’t try to move on while that turn runs. The runner holds a `next_phase` given while an ask waits, and then gives you no step until the turn ends, since it hands each ask back once (#1746’s second stretch, in `tools/uat/turns.mjs`). Here that costs at most the 100 seconds the command takes.
+Don’t try to move on while that turn runs. The runner holds a `next_phase` given while an ask waits, and hands the form back to you at your next step, each time you leave it unanswered (#1760, #1746’s second stretch, in `tools/uat/turns.mjs`); a second `next_phase` goes ahead and leaves the form, and your next step then comes when the turn ends.
