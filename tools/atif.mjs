@@ -15,7 +15,7 @@
 // since the agent saw only its line in a prompt: they go in the trajectory’s extra (tools/atif-clock.mjs).
 
 import { CALL_KINDS, callsOf, questionsOf, WORK_KINDS } from './atif-calls.mjs';
-import { CLOCK_WORDS, clockScope } from './atif-clock.mjs';
+import { CLOCK_WORDS, clockScope, withClock } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { placePrompts, promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
 import { agentSessions, recordedCalls, withCalls } from './atif-streams.mjs';
@@ -325,9 +325,6 @@ export function trajectoryOf(f, sessionId, { version, blob, streams }) {
     final_metrics: finalMetrics(ctx.turns, ctx.meter.metered, steps.length),
   };
 }
-
-/** A trajectory’s scope, with its clock’s (tools/atif-clock.mjs). @param {{ notes: string, extra: any }} scope @param {{ note: string|null, extra: any }} clock */
-const withClock = (scope, clock) => ({ notes: clock.note ? `${clock.note} ${scope.notes}` : scope.notes, extra: { ...scope.extra, ...clock.extra } });
 
 /**
  * Every agent session’s trajectory in the events, or only `sessionId`’s.
