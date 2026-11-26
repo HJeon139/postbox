@@ -56,6 +56,10 @@ test('the request names the board and each ceremony the person expects, and tell
     /next sprint with them in it/,
   ])
     assert.match(request, ceremony);
+  // The standup has a point the team can’t pass by finishing first, and what makes a story take more than a turn.
+  assert.match(request, /a standup in every sprint once its stories are taken and before the first is done/);
+  assert.match(request, /another of the team has reviewed it, which the board holds you to/);
+  assert.match(request, /Some build on others/);
   // More than one sprint holds: six stories, about three a sprint.
   assert.match(request, /about three stories, so there are two sprints at least/);
 });
