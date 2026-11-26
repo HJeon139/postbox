@@ -13,13 +13,23 @@ export const answersGiven = (adapter, itemId) =>
   adapter.calls.flatMap((c) => c.message.messages ?? [c.message]).filter((m) => m.kind === 'event' && m.blockItemId === itemId);
 
 /**
- * The block shown, then a turn that waits until the test lets it go, and then calls `step` with its tools. The person
- * answers while it waits, and `during` runs once they have, before the turn goes on.
+ * The block shown, then a turn that waits until the test lets it go, and then tries to update it twice, to `revised`.
+ * The person answers while it waits (`act`: by default a review’s verdict with `comments`), and `during` runs once they
+ * have, before the turn goes on. `update` makes each try from the turn’s context, by default through its own tools.
+ * @param {{ during?: (f: any) => void, comments?: any[], block?: any, revised?: any, act?: [string, any],
+ *   update?: (c: any, block: any, f: any) => any }} [o]
  */
-export async function answeredMidTurn({ during = () => {}, comments = COMMENTS } = {}) {
+export async function answeredMidTurn({
+  during = () => {},
+  comments = COMMENTS,
+  block = review,
+  revised = { ...review, content: '# Draft 2' },
+  act = ['submit', { verdict: 'request_changes', comments }],
+  update = (c, b) => c.tools.update_block({ block: b }),
+} = {}) {
   const s = setup();
   const { rt, store, t, adapter } = s;
-  await turn(rt, adapter, t, (tools) => tools.show_block({ block: review }));
+  await turn(rt, adapter, t, (tools) => tools.show_block({ block }));
   const item = store.items(t.id).find((i) => i.kind === 'block');
   const se = sessionsIn(rt, t.id)[0];
   let go = () => {};
@@ -33,12 +43,12 @@ export async function answeredMidTurn({ during = () => {}, comments = COMMENTS }
       go = r;
       started();
     });
-    replies.push(c.tools.update_block({ block: { ...review, content: '# Draft 2' } }));
-    replies.push(c.tools.update_block({ block: { ...review, content: '# Draft 2' } }));
+    replies.push(await update(c, revised, { ...s, item, se }));
+    replies.push(await update(c, revised, { ...s, item, se }));
   });
   rt.sendMessage(t.id, { text: 'keep working' });
   await running;
-  rt.act(t.id, item.id, 'submit', { verdict: 'request_changes', comments }, 1);
+  rt.act(t.id, item.id, act[0], act[1], 1);
   during({ ...s, item, se });
   const calls = adapter.calls.length;
   go();

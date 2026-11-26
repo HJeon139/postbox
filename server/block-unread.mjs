@@ -26,10 +26,12 @@ export function unreadAnswer(apps, sessionId, threadId, it, outcome = false) {
         : `${a.action} ${clipText(full, 300)}`;
   const then = outcome ? 'then record the outcome' : 'then update';
   const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
-  // Only an answer the refusal can give whole is settled: past the cut, it still comes whole at the turn’s end.
-  const fits = full.length <= CATCH_UP_CHARS;
+  // Only an answer the refusal can give whole is settled: past the cut, it still comes whole at the turn’s end. A host
+  // turn’s update_block is queued, so its agent never reads this reply in the call (shared/remote-protocol-constants.mjs,
+  // TOOL_ROUTES): its answer comes at the turn’s end too.
+  const settles = full.length <= CATCH_UP_CHARS && !apps.running.turnOf(sessionId)?.remote;
   const waited = stillWaits(apps, sessionId, it);
-  if (waited && !fits) return { ok: false, message: `${said} It reaches you whole when this turn ends: read it, ${then}.` };
+  if (waited && !settles) return { ok: false, message: `${said} It reaches you whole when this turn ends: read it, ${then}.` };
   if (waited) settleWaiting(apps, sessionId, it);
   apps.threads.patchItem(threadId, it.id, { answer: { ...a, read: true } });
   const why = waited ? 'It was waiting for this turn to end, and comes here instead' : 'It didn’t reach you in a turn';
