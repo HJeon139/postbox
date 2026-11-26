@@ -7,7 +7,7 @@ import { join } from 'node:path';
 export const DECL =
   /^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)|^\s*(?:async\s+)?(?!if\b|for\b|while\b|switch\b|catch\b)(\w+)\s*\([^)]*\)\s*\{\s*$|^(?:export\s+)?const\s+(\w+)\s*=/;
 /** The function a line is in: the nearest declaration above it. @param {string[]} lines @param {number} i */
-function enclosing(lines, i) {
+export function enclosing(lines, i) {
   for (let j = i; j >= 0; j--) {
     const m = lines[j].match(DECL);
     if (m) return m[1] ?? m[2] ?? m[3];
@@ -37,21 +37,29 @@ export const joined = (text) =>
     .replace(/\s*\n\s*(?=\()/g, '');
 /** The server's sources, and `extra` probe sources named extra-0.mjs, extra-1.mjs…: [path, text]. @param {string[]} [extra] */
 export const withProbes = (extra = []) => [...sources(), ...extra.map((x, i) => [`extra-${i}.mjs`, joined(x)])];
-/** file → the enclosing function of each line matching `re`, in order. @param {RegExp} re @param {string[]} [extra] */
-export function sites(re, extra = []) {
+/**
+ * file → the enclosing function of each line matching `re`, in order. With `each`, a line is listed once per match on
+ * it, so a second read on a line already listed counts (#623); without it, once per line.
+ * @param {RegExp} re @param {string[]} [extra] @param {{ each?: boolean }} [opts]
+ */
+export function sites(re, extra = [], { each = false } = {}) {
+  const all = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
   /** @type {Record<string, string[]>} */
   const out = {};
   for (const [path, text] of withProbes(extra)) {
     const lines = text.split('\n');
     lines.forEach((line, i) => {
-      if (re.test(line) && !/^\s*(\/\/|\*)/.test(line)) (out[path] ??= []).push(enclosing(lines, i));
+      if (!re.test(line) || /^\s*(\/\/|\*)/.test(line)) return;
+      const times = each ? [...line.matchAll(all)].length : 1;
+      for (let k = 0; k < times; k++) (out[path] ??= []).push(enclosing(lines, i));
     });
   }
   return out;
 }
-export const placed = (re, table, what) =>
+/** Asserts the sites of `re` are `table`. @param {RegExp} re @param {Record<string, string[]>} table @param {string} what @param {{ each?: boolean }} [opts] */
+export const placed = (re, table, what, opts = {}) =>
   assert.deepEqual(
-    sites(re),
+    sites(re, [], opts),
     table,
-    `${what} changed: place each site, with its reason, by the rule at the top of its guard's file. Found: ${JSON.stringify(sites(re))}`,
+    `${what} changed: place each site, with its reason, by the rule at the top of its guard's file. Found: ${JSON.stringify(sites(re, [], opts))}`,
   );

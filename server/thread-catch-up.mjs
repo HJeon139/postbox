@@ -106,15 +106,18 @@ export function threadCatchUp(memory, se, threadId, exclude = []) {
  * @returns {string[]}
  */
 export function threadLines(memory, se, since) {
-  const now = memory.store.state.sessions[se.id] ?? se;
-  const told = { ...(now.threadsTold ?? {}) };
+  // Pending: the threads already told, and how far each catch-up read, as held writes leave them, so a line told a
+  // moment ago behind a held commit isn't told again (#623).
+  const now = memory.store.pending.session(se.id) ?? se;
+  const told = now.threadsTold ?? {};
   const out = Object.values(memory.store.state.threads)
     .filter((t) => (t.kind === 'topic' || t.kind === 'side') && t.parentId === se.threadId)
     .map((t) => ({ t, line: lineOf(memory.store, t), last: memory.store.items(t.id).findLast(SAID) }))
     .filter(({ t, line, last }) => line && last && last.at > since && last.sessionId !== se.id && !(t.kind === 'side' && line.at > since))
     .filter(({ t, last }) => told[t.id] !== last.id && !readUpTo(memory, now, t.id, last));
-  for (const { t, last } of out) told[t.id] = last.id;
-  if (out.length) memory.sessions.update(se.id, { threadsTold: told });
+  const newly = Object.fromEntries(out.map(({ t, last }) => [t.id, last.id]));
+  // Built from the pending session, so a thread told behind a held commit stays told (#796's class in sessions).
+  if (out.length) memory.sessions.update(se.id, (s) => ({ threadsTold: { ...(s.threadsTold ?? {}), ...newly } }));
   return out.map(({ t, line }) => describeThread(t, line));
 }
 

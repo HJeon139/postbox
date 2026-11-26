@@ -1,18 +1,17 @@
 // An agent’s updates to the blocks it showed (update_block), and the person’s answers it has read: when an answer is
-// read (answerDelivered, #123), and update_block’s refusal over one it hasn’t (unreadAnswer). Moved out of
+// read (answerDelivered, #123); update_block’s refusal over one it hasn’t is in server/block-unread.mjs. Moved out of
 // server/blocks.mjs, which keeps the person’s answer (act).
 
 import { withShape } from '../shared/block-examples.mjs';
 import { updateKind } from '../shared/block-updates.mjs';
 import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { LIMITS } from '../shared/limits.mjs';
-import { clip, clipText, echoedId } from './helpers.mjs';
+import { unreadAnswer } from './block-unread.mjs';
+import { clip, echoedId } from './helpers.mjs';
 import { stampSteps } from './progress-steps.mjs';
 import { echoedAuthors, ownedAuthors } from './review-authors.mjs';
 import { revisedFiles } from './review-files.mjs';
 import { revisedReview } from './review-person.mjs';
-
-export const CATCH_UP_CHARS = 16000;
 
 /**
  * An answer is read once its event starts one of the agent’s turns (#123). While the agent works, the event waits
@@ -36,37 +35,6 @@ function priorAnswerOf(existing) {
   const a = existing.answered && existing.block.type === 'review' ? existing.answer : null;
   if (!a) return {};
   return { priorAnswer: { action: a.action, ...(a.values?.verdict ? { verdict: a.values.verdict } : {}), revision: a.revision ?? 1, at: a.at } };
-}
-
-/**
- * update_block’s refusal over an answer the agent hasn’t read: the answer stays on screen, and the reply says what
- * it was. If its event is no longer waiting for the agent (a stopped or failed turn, or a restart, dropped it), the
- * reply carries the whole answer and counts as reading it, so the block isn’t stuck.
- * @param {string} sessionId @param {string} threadId @param {any} it  the answered block item
- * @param {boolean} [outcome]  the update set outcome: it reports on an answer the agent can’t know yet
- */
-export function unreadAnswer(apps, sessionId, threadId, it, outcome = false) {
-  const a = it.answer;
-  const at = new Date(a.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-  const n = Array.isArray(a.values?.comments) ? a.values.comments.length : 0;
-  const full = JSON.stringify(a.values ?? {});
-  const what =
-    a.action === 'dismiss'
-      ? 'they dismissed it'
-      : it.block.type === 'review'
-        ? `${a.values?.verdict}${n ? `, ${n} comment${n === 1 ? '' : 's'}` : ''}`
-        : `${a.action} ${clipText(full, 300)}`;
-  const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
-  // Waiting behind the turn, or as an answer entry in the agent’s inbox (designs/rooms-at-scale.md, “What an entry is”).
-  const pending = apps.running.turnOf(sessionId)?.pending.some((p) => p.message.blockItemId === it.id);
-  const waiting = pending || apps.delivery.waiting(sessionId).some((e) => e.source === 'answer' && e.itemId === it.id);
-  const then = outcome ? 'then record the outcome' : 'then update';
-  if (waiting) return { ok: false, message: `${said} It reaches you when this turn ends: read it, ${then}.` };
-  apps.threads.patchItem(threadId, it.id, { answer: { ...a, read: true } });
-  return {
-    ok: false,
-    message: `${said} It didn’t reach you in a turn, so ${it.block.type !== 'review' && full.length <= 300 ? 'that’s the whole answer' : `here it is in full: ${a.action} ${clipText(full, CATCH_UP_CHARS)}`}. Read it, ${then}.`,
-  };
 }
 
 /**

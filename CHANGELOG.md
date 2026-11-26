@@ -2,6 +2,38 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.51.6 (2026-11-26)
+
+### Fixes
+
+- **uat:** of two options with one label, pick the one whose description the tester named
+- **blocks:** word an answer left for the turn's end as main does
+- **blocks:** leave a confirm's answer to start its own turn
+- **blocks:** leave a host turn's answer to come when the turn ends
+- **blocks:** drop the stopped turn's hold from an answer's settle
+- **app:** a press on a running reply's live steps isn't lost to a refill
+- **blocks:** leave a long answer and a correction to come at the turn's end
+- **blocks:** hand an agent the answer to its own block mid-turn, once
+- **store:** read a thread's glossary as written where a turn's check decides on it
+- **uat:** an option named with “ — ” picks the longest whole label it starts with
+- **uat:** the option label fallback matches a whole label, not the first that contains it
+- **uat:** match a choice option by its label when the tester names it with its description
+
+## 4.51.5 (2026-11-26)
+
+### Fixes
+
+- **text:** cut an app's title, intent and check problems whole too
+- **text:** cut an app version's summary whole, and test the host reply cuts
+
+## 4.51.4 (2026-11-26)
+
+### Fixes
+
+- **store:** read sessions as written where the read decides a write
+- **store:** read a held topic's glossary through its conversation, as written
+- **store:** read threads as written where the read decides a write
+
 ## 4.51.3 (2026-11-26)
 
 ### Fixes

@@ -1,6 +1,6 @@
 // A room’s wake chain limit (#1035): agent wakes in a row, without you, before the next waits for your Allow. The room’s
 // own, saved on its conversation, else the server’s default from /api/state, since this page’s shared/limits.mjs knows
-// only the built-in one. The dialog the room’s “Actions for …” menu opens sets or clears it; only the person can
+// only the built-in one. The dialog the room’s form in the main menu opens sets or clears it; only the person can
 // (server/room-chain-limit.mjs).
 
 import { HOP_LIMIT, MAX_HOP_LIMIT, ROOM_CHAIN_LIMIT_TAKES } from '/shared/limits.mjs';

@@ -1,6 +1,6 @@
 # Permissions panel
 
-**Where:** The conversation’s ⋯ › Permissions…; Settings › Personas › an agent › Permissions…; `/permissions` (and `/mcp`) in the composer.
+**Where:** The room’s Manage button (the gear after its title) › Permissions…; Settings › Personas › an agent › Permissions…; `/permissions` (and `/mcp`) in the composer.
 
 ## Why it exists
 
@@ -32,7 +32,7 @@ An agent blocked by a rule shouldn’t send you to a terminal to run `/permissio
 ## Steps to reproduce
 
 1. Run `npx playwright test permissions mode-live-hooks` (`tests/browser/permissions.spec.mjs`, `tests/browser/permissions-hooks.spec.mjs` and `tests/browser/mode-live-hooks.spec.mjs`). Every test should pass.
-2. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>, in a project whose folder you can lose. Open a conversation with a Claude Code agent, then ⋯ › Permissions….
+2. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>, in a project whose folder you can lose. Open a conversation with a Claude Code agent, then the gear after its title, then Permissions….
 3. In “Which rule decides?”, type `Bash(rm -rf build)`. Add a deny rule for Bash with the pattern `rm:*`, and type the call again.
 4. In a terminal in that folder, run `claude`, then `/permissions`. Add an allow rule there, and reopen the panel.
 5. Set the mode to Accept edits, and send the agent a message.
@@ -51,4 +51,4 @@ An agent blocked by a rule shouldn’t send you to a terminal to run `/permissio
 
 - [Permission card](../conversation/harness-cards/permission-card.md)
 - [Refusal card](../conversation/harness-cards/refusal-card.md)
-- [Conversation menu](top-bar/conversation-menu.md)
+- [The room’s Manage button](top-bar/conversation-menu.md)

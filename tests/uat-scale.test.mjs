@@ -114,7 +114,7 @@ describe('triggers: what a targeted phase is there to cause', () => {
     const unread = call(
       'update_block',
       { block: { id: 'draft' } },
-      'The update wasn’t applied. The person answered revision 2 of draft at 17:13: request_changes, 3 comments. Their answer stays on screen. It reaches you when this turn ends: read it, then update.',
+      'The update wasn’t applied. The person answered revision 2 of draft at 17:13: request_changes, 3 comments. Their answer stays on screen. It was waiting for this turn to end, and comes here instead, so here it is in full: submit {}. Read it, then update.',
     );
     const repeated = call('show_block', { block: { id: 'draft' } }, 'Block draft is already shown. Use update_block to change it, or pick a new id.');
     const f = facts({ streams: [unread, repeated] });

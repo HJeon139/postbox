@@ -7,6 +7,7 @@ import { activityLabel, stepTree } from './activity-steps.mjs';
 import { agentMarkdown, markTerms, paintAgentMarkdown } from './agent-markdown.mjs';
 import { itemsOf, placeIn } from './client.mjs';
 import { h, icon, trusted } from './dom.mjs';
+import { onPressEnd, pressHolds } from './live-press.mjs';
 import { jobRows, runningNote } from './reply-stop.mjs';
 import { kiroStep } from './thread-host.mjs';
 import { recordOf, recordWords, workLink } from './work-record.mjs';
@@ -192,6 +193,13 @@ export function paintActivity(node, it, threadId) {
 
 /** The live replies to paint at the next frame: their nodes, with the thread each is in. */
 const live = /** @type {Map<HTMLElement, { id: string, threadId: string }>} */ (new Map());
+/** The live replies a press held, to paint once it ends. */
+const waiting = /** @type {Map<HTMLElement, { id: string, threadId: string }>} */ (new Map());
+onPressEnd((node) => {
+  const q = waiting.get(node);
+  waiting.delete(node);
+  if (q && node.isConnected) paintLive(node, itemsOf(q.threadId)[placeIn(q.threadId, q.id)], q.threadId);
+});
 let frame = 0;
 
 /**
@@ -207,7 +215,11 @@ function liveSoon(node, id, threadId) {
       frame = 0;
       const queued = [...live];
       live.clear();
-      for (const [n, q] of queued) if (n.isConnected) paintLive(n, itemsOf(q.threadId)[placeIn(q.threadId, q.id)], q.threadId);
+      for (const [n, q] of queued) {
+        // A press on its live parts holds it until after the click (#1616): it refills then, from the state then.
+        if (pressHolds(n)) waiting.set(n, q);
+        else if (n.isConnected) paintLive(n, itemsOf(q.threadId)[placeIn(q.threadId, q.id)], q.threadId);
+      }
     });
   return true;
 }

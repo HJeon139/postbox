@@ -4,7 +4,7 @@
 // the right end of that heading’s row (listHead), so what the controls act on reads beside them. A list that fills its
 // tab keeps that row in view as its rows scroll. Personas,
 // projects, rooms and their members, people and hosts are all managed this way, from the main menu (openSettings in
-// app/js/sheets.mjs), and nowhere else: a ⋯ menu or a rail button only opens it.
+// app/js/sheets.mjs), and nowhere else: a top-bar or rail button only opens it.
 
 import { h, icon } from './dom.mjs';
 

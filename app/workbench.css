@@ -1080,7 +1080,7 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   .dialog, .dialog.held { max-height: calc(100vh - 24px); }
   .me-card { max-width: 92%; }
   .form-grid { grid-template-columns: 1fr; }
-  /* Under the top bar, so its Work button and ⋯ stay in reach while the pane covers the conversation. */
+  /* Under the top bar, so its Work button and Manage button stay in reach while the pane covers the conversation. */
   .rpane { width: 100%; border-left: 0; }
   .has-panel .main { margin-right: 0; }
   .toasts { left: 12px; right: 12px; width: auto; top: 108px; }
