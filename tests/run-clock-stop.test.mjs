@@ -176,3 +176,23 @@ test('#1749 a host turn the end asked to stop is listed, and its confirmation do
   assert.deepEqual([c.stopping, c.state, c.usedMs, c.since], [[], 'ended', 12_000, null]);
   assert.equal(clockElapsed(c, T0 + 90_000), 12_000, 'not counted while the host ran on');
 });
+
+test('#1749 the stop is the person’s and silent: the reply says so, the event lists the turn, and a handoff still waits', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  clockAction(rt, se.id, { action: 'start', budgetS: 600 });
+  const turn = slowToExit();
+  adapter.next.push(turn);
+  rt.sendMessage(t.id, { text: 'Work until stopped.' });
+  await sleep(5);
+  const running = rt.turns.get(se.id);
+  // Another agent’s handoff, as a mention entry, while the agent works (server/mention-entries.mjs’s send).
+  store.emit('item.add', { threadId: t.id, item: { id: 'it_handoff', at: Date.now(), kind: 'agent', handle: 'critic', text: '@developer, over to you.' } });
+  rt.delivery.send({ sessionId: se.id, threadId: t.id, source: 'mention', itemId: 'it_handoff', from: 'critic' });
+  clockAction(rt, se.id, { action: 'stop' });
+  assert.equal(running.stopReason, 'stop', 'the reply says the person stopped it');
+  assert.deepEqual(store.since(0).find((e) => e.type === 'clock.ended').data.stopping, [`turn:${running.id}`]);
+  turn.exit();
+  await sleep(10);
+  assert.deepEqual(store.state.clocks[se.id].stopping, [], 'its exit is recorded');
+  assert.equal((store.state.inbox[se.id] ?? []).find((e) => e.itemId === 'it_handoff').state, 'waiting', 'not stopped by the end');
+});
