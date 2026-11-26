@@ -2,6 +2,26 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.0 (2026-11-26)
+
+### Features
+
+- **menu:** a room's button opens its form, with no pop-over between
+
+### Fixes
+
+- **menu:** the room form's rows and queue button follow the room
+- **atif:** mark a turn by time only in its step's own session
+- **atif:** with no work ledger turns, place a stream with no step by time as before
+- **atif:** place a stream by its step's turn, and count only turns that called a tool
+- **atif:** say a trajectory without streams has no Claude Code stream, not that none was recorded
+- **atif:** match a recorded stream to its turn, and count the turns with none
+- **atif:** count unplaced calls on a session that has a trajectory, reply or not
+- **atif:** count unplaced calls on a session that has a trajectory
+- **atif:** a background job that printed nothing reads as empty after its note
+- **atif:** place an agent's streams in the right one of its sessions
+- **atif:** take a turn's calls from its recorded stream, with no gap left unmarked
+
 ## 4.51.6 (2026-11-26)
 
 ### Fixes
