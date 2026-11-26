@@ -29,7 +29,10 @@ test('a standup is a round of answers to the agent that asked, while a taken sto
   const events = recorded.events.filter((/** @type {any} */ e) => !(e.type === 'work.add' && e.data.entry.handle === 'alpha'));
   const f = { events, workspaceKept: r.dir, threads: [] };
   const [standup, ...more] = ceremonies(f).filter((c) => c.name === 'standup');
-  assert.equal(standup.evidence, '@developer asked at 07:39:07 UTC, and @critic answered, @researcher answered, with 3 of the sprint’s stories not done.');
+  assert.equal(
+    standup.evidence,
+    '@developer asked at 07:39:07 UTC, and @critic answered, @researcher answered. Not done then: S1 (@developer’s, open 8 s, 2 of its turns in), S2 (@critic’s, open 8 s, 1 of its turns in), S3 (@researcher’s, open 8 s, 1 of its turns in).',
+  );
   assert.deepEqual(TRIGGERS['standup-round-held'].run(f)[0], { at: standup.at, evidence: standup.evidence });
   // @researcher’s round, twelve seconds on, is one too; the three rounds whose answers went elsewhere aren’t.
   assert.equal(more.length, 1);
@@ -96,7 +99,7 @@ test('idle-work-waiting, as the runner runs it, finds a sprint room that stopped
   assert.match(stall.evidence, /The board’s record never showed a second sprint with every story done: a team that kept the board by hand/);
   assert.deepEqual(more, []);
   // The same quiet after the demo is the customer’s to end.
-  r.as('developer', 'done', 'S1');
+  r.finish('developer', 'S1');
   r.as('alpha', 'demo', '1');
   const shown = Date.now();
   went('think', shown - 1);

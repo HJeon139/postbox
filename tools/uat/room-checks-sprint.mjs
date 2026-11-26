@@ -8,9 +8,10 @@
 
 import { boardLog, openStories, sprintWork, workOf } from './board-log.mjs';
 import { quietStretches } from './quiet-stretches.mjs';
-import { QUIET_LISTED_MS, stretchLine } from './room-checks-idle.mjs';
+import { lengthOf, QUIET_LISTED_MS, stretchLine } from './room-checks-idle.mjs';
 import { ceremonies } from './sprint-ceremonies.mjs';
 import { lastTurns } from './standup.mjs';
+import { storySizes } from './story-sizes.mjs';
 
 const CEREMONY = {
   groomed: 'backlog grooming',
@@ -66,4 +67,27 @@ export function afterCeremony(f, work = workOf(f)) {
   ];
 }
 
-export const SPRINT_CHECKS = [{ id: 'after-ceremony', inputs: ['events', 'threads'], issue: null, run: (/** @type {any} */ f) => afterCeremony(f) }];
+/**
+ * The measurement of the sprint’s size: each time a story was taken, how long it was open, over how many of its
+ * owner’s turns, and who reviewed it. None for a run whose team took no story on the board. @param {any} f
+ */
+export function storySizeMeasure(f) {
+  const sizes = storySizes(f, boardLog(f));
+  if (!sizes.length) return [];
+  const line = (/** @type {ReturnType<typeof storySizes>[number]} */ s) =>
+    `${s.story}, @${s.owner}’s: ${s.doneAt === null ? 'never done' : `open ${lengthOf(s.doneAt - s.at)}`} over ${s.turns} of its turns, ${s.reviewedBy ? `reviewed by @${s.reviewedBy}` : 'not reviewed'}.`;
+  const across = sizes.filter((s) => s.turns > 1).length;
+  return [
+    {
+      title: `${across} of ${sizes.length} stories were open across more than one of their owner’s turns`,
+      evidence: sizes.map(line).join(' '),
+      verdict: 'measurement',
+      note: 'Not a defect: whether the sprint was long enough for a standup to land on open work.',
+    },
+  ];
+}
+
+export const SPRINT_CHECKS = [
+  { id: 'story-sizes', inputs: ['events', 'threads'], issue: null, run: (/** @type {any} */ f) => storySizeMeasure(f) },
+  { id: 'after-ceremony', inputs: ['events', 'threads'], issue: null, run: (/** @type {any} */ f) => afterCeremony(f) },
+];

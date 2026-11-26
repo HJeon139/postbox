@@ -6,9 +6,11 @@
 // the customer’s answer is the person’s message. Nothing here reads what an agent wrote for a ceremony’s name, so an
 // agent that says “standup” and holds none doesn’t count, and one that holds one without the word does.
 
-import { boardAt, boardLog, demos, openStories, whoRan } from './board-log.mjs';
+import { boardAt, boardLog, demos, whoRan } from './board-log.mjs';
 import { clockOf } from './quiet-stretches.mjs';
+import { lengthOf } from './room-checks-idle.mjs';
 import { standupRounds } from './standup.mjs';
+import { openAt } from './story-sizes.mjs';
 
 /** @typedef {{ name: string, at: number, sprint?: number, taken?: number, backlog?: number, evidence: string }} Ceremony */
 
@@ -16,8 +18,12 @@ import { standupRounds } from './standup.mjs';
 function ranBy(f, lines) {
   /** @type {Map<string, number>} */
   const first = new Map();
+  /** @type {Map<string, Set<any>>} the commands already credited with a line that says the same */
+  const credited = new Map();
   for (const x of lines) {
-    const who = whoRan(f, x.at, undefined, new RegExp(`\\b${x.did}\\s+${x.story}\\b`));
+    const said = `${x.did} ${x.story}`;
+    if (!credited.has(said)) credited.set(said, new Set());
+    const who = whoRan(f, x.at, undefined, new RegExp(`\\b${x.did}\\s+${x.story}\\b`), credited.get(said));
     if (who && !first.has(who)) first.set(who, x.at);
   }
   return [...first].map(([handle, at]) => ({ handle, at }));
@@ -30,7 +36,7 @@ function beforeSprint(f, log) {
   const planned = log.find((x) => x.did === 'plan')?.at ?? Number.POSITIVE_INFINITY;
   const early = log.filter((x) => x.at < planned);
   const stories = early.filter((x) => x.did === 'add').length;
-  const groomed = early.filter((x) => ['order', 'split', 'clarify'].includes(x.did));
+  const groomed = early.filter((x) => ['order', 'split', 'clarify', 'needs'].includes(x.did));
   const sizers = ranBy(
     f,
     early.filter((x) => x.did === 'estimate'),
@@ -41,7 +47,7 @@ function beforeSprint(f, log) {
     out.push({
       name: 'groomed',
       at: groomed[0].at,
-      evidence: `${stories} stories in the backlog, and ${groomed.length} of them put in order, split or clarified before the first sprint.`,
+      evidence: `${stories} stories in the backlog, and ${groomed.length} ${groomed.length === 1 ? 'change' : 'changes'} to it (ordered, split, clarified or tied to another) before the first sprint.`,
     });
   if (sizers.length >= 2) out.push({ name: 'estimated', at: sizers[1].at, evidence: `${names(sizers)} each gave estimates before the first sprint.` });
   return out;
@@ -140,13 +146,20 @@ function reviews(f, log) {
 
 /** Each standup: a round of turns (one agent’s, then an answer to it from every other agent) while a story someone had taken wasn’t done. @param {any} f @param {any[]} log @returns {Ceremony[]} */
 function standups(f, log) {
-  return standupRounds(f, { says: null, toAsker: true })
-    .filter((r) => openStories(log, r.at).some((s) => s.owner))
-    .map((r) => ({
-      name: 'standup',
-      at: r.endedAt,
-      evidence: `@${r.by} asked at ${clockOf(r.at)}${r.said ? ', by that word' : ''}, and ${r.answers.map((a) => `@${a.handle} ${a.wrote ? 'answered' : 'took a turn and wrote nothing'}`).join(', ')}, with ${openStories(log, r.at).length} of the sprint’s stories not done.`,
-    }));
+  return standupRounds(f, { says: null, toAsker: true }).flatMap((r) => {
+    const open = openAt(f, log, r.at);
+    if (!open.length) return [];
+    const answers = r.answers.map((a) => `@${a.handle} ${a.wrote ? 'answered' : 'took a turn and wrote nothing'}`).join(', ');
+    // How far in each story was when the standup landed: what shows the sprint is long enough for one to matter.
+    const stories = open.map((s) => `${s.story} (@${s.owner}’s, open ${lengthOf(s.ms)}, ${s.turns} of its turns in)`).join(', ');
+    return [
+      {
+        name: 'standup',
+        at: r.endedAt,
+        evidence: `@${r.by} asked at ${clockOf(r.at)}${r.said ? ', by that word' : ''}, and ${answers}. Not done then: ${stories}.`,
+      },
+    ];
+  });
 }
 
 /**

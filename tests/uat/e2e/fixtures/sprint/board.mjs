@@ -11,10 +11,12 @@ const HELP = `node board.mjs <command>
   clarify <story> "<acceptance>"   say what done means for a story
   split <story> "<a>" "<b>"        replace a story with two smaller ones
   order <story> <story> …          put the backlog in priority order
+  needs <story> <story> …          say which stories the first one waits on: it can’t be taken until they’re done
   estimate <story> <points>        give your own estimate of a story; each of the team runs it themselves
   plan <sprint> "<goal>" <id> …    start a sprint with a goal and the stories, and action items, it takes
   claim <story> <who>              take a story of the current sprint as yours; run it yourself
-  done <story>                     mark a story you took as finished
+  review <story> <who>             say you’ve reviewed a story someone else took; run it yourself
+  done <story>                     mark a story finished, once another of the team has reviewed it
   demo <sprint>                    print the sprint’s stories and where each stands, to show the customer
   return <story> "<why>"           put back a story the customer didn’t accept
   action "<what to change>"        add a retrospective action item; prints its id (A1, A2…)
@@ -46,6 +48,7 @@ const points = (/** @type {any} */ s) =>
 /** Where a story stands. @param {any} s */
 function state(s) {
   if (s.done) return 'done';
+  if (s.reviewed) return `reviewed by ${s.reviewed}`;
   if (s.owner) return 'in progress';
   return s.sprint ? 'to do' : 'backlog';
 }
@@ -56,15 +59,15 @@ function render(board) {
     .filter((/** @type {any} */ s) => !s.split)
     .map(
       (/** @type {any} */ s) =>
-        `| ${s.id} | ${s.title} | ${points(s)} | ${s.sprint ?? ''} | ${s.owner ?? ''} | ${state(s)}${s.returned ? ` (sent back: ${s.returned})` : ''} |`,
+        `| ${s.id} | ${s.title} | ${points(s)} | ${(s.needs ?? []).join(', ')} | ${s.sprint ?? ''} | ${s.owner ?? ''} | ${state(s)}${s.returned ? ` (sent back: ${s.returned})` : ''} |`,
     );
   const sprints = board.sprints.map((/** @type {any} */ p) => `- Sprint ${p.sprint}: ${p.goal}`);
   const actions = board.actions.map((/** @type {any} */ a) => `- ${a.id}: ${a.text}${a.sprint ? ` (taken into sprint ${a.sprint})` : ''}`);
   return [
     '# Sprint board',
     '',
-    '| Story | What | Points | Sprint | Owner | Status |',
-    '|---|---|---|---|---|---|',
+    '| Story | What | Points | Waits on | Sprint | Owner | Status |',
+    '|---|---|---|---|---|---|---|',
     ...rows,
     '',
     '## Sprints',
@@ -116,20 +119,35 @@ const COMMANDS = {
     const sprint = Number(n);
     if (!Number.isInteger(sprint) || !goal || !ids.length)
       throw new Error('plan takes the sprint’s number, its goal in quotes, and the stories and action items it takes.');
-    for (const id of ids.filter((x) => x.startsWith('S'))) Object.assign(story(board, id), { sprint, owner: null, done: false });
+    for (const id of ids.filter((x) => x.startsWith('S'))) Object.assign(story(board, id), { sprint, owner: null, reviewed: null, done: false });
     for (const a of board.actions) if (ids.includes(a.id)) a.sprint = sprint;
     board.sprints.push({ sprint, goal });
     return { says: `Sprint ${sprint} takes ${ids.join(', ')}. Goal: ${goal}`, did: { sprint, goal, items: ids } };
   },
+  needs: (board, [id, ...others]) => {
+    if (!others.length) throw new Error('needs takes a story and the stories it waits on.');
+    story(board, id).needs = others.map((x) => story(board, x).id);
+    return { says: `${id} waits on ${others.join(', ')}`, did: { story: id, needs: others } };
+  },
   claim: (board, [id, who]) => {
     const s = story(board, id);
     if (!s.sprint || !who) throw new Error('claim takes a story of the current sprint and who takes it.');
+    const waits = (s.needs ?? []).filter((/** @type {string} */ x) => !story(board, x).done);
+    if (waits.length) throw new Error(`${id} waits on ${waits.join(', ')}, which ${waits.length === 1 ? 'isn’t' : 'aren’t'} done.`);
     s.owner = who;
     return { says: `${id} is ${who}’s`, did: { story: id, who } };
+  },
+  review: (board, [id, who]) => {
+    const s = story(board, id);
+    if (!s.owner || !who) throw new Error('review takes a story someone has taken and who reviewed it.');
+    if (who === s.owner) throw new Error(`${id} is ${who}’s own. Another of the team reviews it.`);
+    s.reviewed = who;
+    return { says: `${id} is reviewed by ${who}`, did: { story: id, who } };
   },
   done: (board, [id]) => {
     const s = story(board, id);
     if (!s.owner) throw new Error(`Nobody has taken ${id}. Claim it first.`);
+    if (!s.reviewed) throw new Error(`${id} hasn’t been reviewed. Another of the team reviews it first, with “node board.mjs review ${id} <who>”.`);
     s.done = true;
     return { says: `${id} is done`, did: { story: id } };
   },
@@ -139,7 +157,7 @@ const COMMANDS = {
     return { says: taken.map((/** @type {any} */ s) => `${s.id} ${s.title}: ${state(s)}`).join('\n'), did: { sprint: Number(n) } };
   },
   return: (board, [id, why]) => {
-    Object.assign(story(board, id), { returned: why ?? 'not accepted', done: false, owner: null, sprint: null });
+    Object.assign(story(board, id), { returned: why ?? 'not accepted', done: false, owner: null, reviewed: null, sprint: null });
     return { says: `${id} is back in the backlog: ${why}`, did: { story: id } };
   },
   action: (board, [text]) => {

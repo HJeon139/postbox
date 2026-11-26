@@ -27,7 +27,7 @@ test('two sprints through the real board leave every ceremony in its record, and
     ['critic', 'S2'],
     ['researcher', 'S3'],
   ])
-    r.as(who, 'done', id);
+    r.finish(who, id);
   assert.equal(r.as('alpha', 'demo', '1').said, 'S1 lowercase: done\nS2 no stray hyphens: done\nS3 untitled: done');
   assert.equal(sprintWork(f()).customer?.[0].to, Number.POSITIVE_INFINITY, 'the demo waits on the customer until they answer');
   r.says('Demo: I accept the sprint, except the story about lowercase words: it must also drop accents.');
@@ -79,9 +79,9 @@ test('work is waiting from the person’s request until sprint 2’s stories are
   );
   r.as('developer', 'claim', 'S1', 'developer');
   r.as('critic', 'claim', 'S4', 'critic');
-  r.as('developer', 'done', 'S1');
+  r.finish('developer', 'S1');
   assert.equal(work().passed, null, 'one of sprint 2’s stories is still open');
-  r.as('critic', 'done', 'S4');
+  r.finish('critic', 'S4');
   const log = boardLog(f());
   assert.deepEqual(work().passed, { at: log.at(-1).at });
   assert.deepEqual(workOf(f()), work(), 'a request that names the board makes it the run’s definition of done');
@@ -102,7 +102,7 @@ test('a ceremony done by the scrum master alone, or skipped, isn’t held', () =
   assert.deepEqual(held(all), ['groomed', 'estimated', 'planned']);
   // A second sprint that takes the action item and not the story sent back.
   const r = sprintOne();
-  r.as('developer', 'done', 'S1');
+  r.finish('developer', 'S1');
   r.as('alpha', 'demo', '1');
   r.says('Demo: send the first story back.');
   r.as('alpha', 'return', 'S1', 'accents');
@@ -116,7 +116,7 @@ test('a ceremony done by the scrum master alone, or skipped, isn’t held', () =
   );
   // A story put back before the customer answered isn’t one they sent back.
   const early = sprintOne();
-  early.as('developer', 'done', 'S1');
+  early.finish('developer', 'S1');
   early.as('alpha', 'demo', '1');
   early.as('alpha', 'return', 'S1', 'our own doubt');
   assert.deepEqual(held(early).slice(-1), ['demo']);
@@ -127,7 +127,7 @@ test('a ceremony done by the scrum master alone, or skipped, isn’t held', () =
   );
   // A second sprint that takes the story sent back and no action item.
   const noAction = sprintOne();
-  noAction.as('developer', 'done', 'S1');
+  noAction.finish('developer', 'S1');
   noAction.as('alpha', 'demo', '1');
   noAction.says('Demo: send the first story back.');
   noAction.as('alpha', 'return', 'S1', 'accents');
@@ -136,7 +136,7 @@ test('a ceremony done by the scrum master alone, or skipped, isn’t held', () =
   // An action item noted mid-sprint, with none after the demo, isn’t a retrospective’s.
   const mid = sprintOne();
   mid.as('alpha', 'action', 'pair on the hard story');
-  mid.as('developer', 'done', 'S1');
+  mid.finish('developer', 'S1');
   mid.as('alpha', 'demo', '1');
   assert.ok(!held(mid).includes('retro'), held(mid).join(', '));
 });
@@ -168,13 +168,15 @@ test('a demo is the sprint shown with a story done, and the room waits on the cu
   assert.equal(r.as('alpha', 'demo', '1').said, 'S1 lowercase: in progress\nS2 no stray hyphens: in progress\nS3 untitled: in progress');
   assert.deepEqual(sprintWork(r.facts()).customer, []);
   assert.equal(TRIGGERS['demo-shown'].run(r.facts()).length, 0);
-  r.as('developer', 'done', 'S1');
+  r.finish('developer', 'S1');
   r.as('alpha', 'demo', '1');
   assert.equal(TRIGGERS['demo-shown'].run(r.facts()).length, 1);
   assert.equal(sprintWork(r.facts()).customer?.[0].to, Number.POSITIVE_INFINITY);
   // The team goes on without an answer: the wait ended at its next change to the board.
-  r.as('critic', 'done', 'S2');
-  assert.equal(sprintWork(r.facts()).customer?.[0].to, boardLog(r.facts()).at(-1).at);
+  r.finish('critic', 'S2');
+  const log = boardLog(r.facts());
+  const shown = log.findLast((x) => x.did === 'demo').at;
+  assert.equal(sprintWork(r.facts()).customer?.[0].to, log.find((x) => x.at > shown).at);
 });
 
 test('three of the team taking their stories in the same moment are each credited with their own', () => {
@@ -195,7 +197,7 @@ test('three of the team taking their stories in the same moment are each credite
 
 test('a story the customer sent back counts when a later sprint simply takes it again', () => {
   const r = sprintOne();
-  r.as('developer', 'done', 'S1');
+  r.finish('developer', 'S1');
   r.as('alpha', 'demo', '1');
   r.says('Demo: accepted, except the first story. Take it back into the next sprint.');
   r.as('alpha', 'action', 'agree the acceptance first');
@@ -216,7 +218,7 @@ test('a story the customer sent back counts when a later sprint simply takes it 
   assert.equal(TRIGGERS['story-sent-back'].run(again.facts()).length, 0);
   // A story left unfinished and carried over isn’t one the customer sent back.
   const carried = sprintOne();
-  carried.as('developer', 'done', 'S1');
+  carried.finish('developer', 'S1');
   carried.as('alpha', 'demo', '1');
   carried.says('Demo: accepted, except the first story.');
   carried.as('alpha', 'action', 'smaller stories');
