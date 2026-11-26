@@ -102,7 +102,7 @@ export function postSummary(rt, se, turn, items) {
  */
 export function summarizing(rt, topicId) {
   const waiting = rt.sessions
-    .in(rt.threads.lineage(topicId).at(-1))
+    .in(rt.threads.conversationToWrite(topicId)) // as written: it decides clearSummaryPending's write (#623)
     .some((/** @type {any} */ se) => rt.delivery.waiting(se.id).some((/** @type {any} */ e) => e.threadId === topicId && e.message?.summary));
   return (
     waiting ||
