@@ -18,7 +18,7 @@ import { CALL_KINDS, callsOf, questionsOf, WORK_KINDS } from './atif-calls.mjs';
 import { CLOCK_WORDS, clockScope } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { placePrompts, promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
-import { recordedCalls, withCalls } from './atif-streams.mjs';
+import { agentSessions, recordedCalls, withCalls } from './atif-streams.mjs';
 import { iso } from './atif-time.mjs';
 
 export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
@@ -281,12 +281,6 @@ function contextOf(f, sessionId, blob = () => null, streams = []) {
     recorded: recordedCalls(streams, handle, agentSessions(f, handle), sessionId),
   };
 }
-
-/** A session’s replies, in the order they were added. @param {ReturnType<typeof foldEvents>} f @param {string} sessionId */
-const repliesOf = (f, sessionId) => f.order.map(({ id }) => f.items.get(id)).filter((it) => it?.kind === 'agent' && it.sessionId === sessionId && it.steps);
-
-/** Each session of an agent’s handle, with its replies, in the order the sessions came. @param {ReturnType<typeof foldEvents>} f @param {string | null} handle */
-const agentSessions = (f, handle) => new Map([...f.sessions].filter(([, se]) => se.handle === handle).map(([id]) => [id, repliesOf(f, id)]));
 
 /**
  * One agent session’s trajectory, or null when the events give it no step.

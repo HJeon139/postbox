@@ -114,3 +114,9 @@ export const withCalls = (scope, { streamed, unplaced }) => ({
     : `${scope.notes} Its calls are those that made a step in the conversation: one that made none, such as a reaction, isn’t in it, since the run recorded no stream of this agent’s turns.`,
   extra: { ...scope.extra, calls_from: streamed ? 'recorded streams' : 'steps', ...(unplaced ? { unplaced_calls: unplaced } : {}) },
 });
+
+/** A session’s replies, in the order they were added. @param {{ sessions: Map<string, any>, order: { id: string }[], items: Map<string, any> }} f @param {string} sessionId */
+const repliesOf = (f, sessionId) => f.order.map(({ id }) => f.items.get(id)).filter((it) => it?.kind === 'agent' && it.sessionId === sessionId && it.steps);
+
+/** Each session of an agent’s handle, with its replies, in the order the sessions came. @param {{ sessions: Map<string, any>, order: { id: string }[], items: Map<string, any> }} f @param {string | null} handle */
+export const agentSessions = (f, handle) => new Map([...f.sessions].filter(([, se]) => se.handle === handle).map(([id]) => [id, repliesOf(f, id)]));
