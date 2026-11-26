@@ -84,7 +84,7 @@ test('#464-b2a: no record, no install: a failing first write leaves the install 
     renameSync(dir, `${dir}.away`);
     writeFileSync(dir, 'not a folder');
     await t.mgr.connect('h1').catch(() => {});
-    await settle();
+    await until(() => typeof t.mgr.status('h1').update?.error === 'string', 'the failed write noted');
     assert.equal(t.runs.length, 0, 'nothing installed');
     assert.equal(typeof t.mgr.status('h1').update?.error, 'string');
   } finally {
