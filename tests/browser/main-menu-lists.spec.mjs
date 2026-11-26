@@ -235,25 +235,39 @@ test('Personas and Projects: the bar is in the row of the list’s heading, and 
   await inHeadingRow(dialog, 'Projects', projects, ['New project', `Delete project ${project}…`, `Edit ${project}`]);
 });
 
-test('one notice over the menu covers no control of a list: the stack starts in the sheet’s title row, clear of each heading’s row', async ({ page }) => {
-  const dialog = await menu(page, 'Personas');
-  // One notice, with a second line. A second and a third reach further down: that is not settled, and not held here.
-  await page.evaluate(async () => {
-    const { toast } = await import('/app/js/ui.mjs');
-    toast({ title: 'Added host.example.com', text: 'Postbox connects when an agent runs there.' });
-  });
-  await expect(page.locator('.toast')).toHaveCount(1);
-  const clear = (/** @type {import('@playwright/test').Locator} */ control) =>
-    control.evaluate((el) => {
-      const b = el.getBoundingClientRect();
-      return el.contains(document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2));
+for (const width of [1280, 768, 375])
+  test(`at ${width} px, three notices over the menu cover no tab and no control of a list: one shows, the newest, on one line`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    const dialog = await menu(page, 'Personas');
+    // As many as the stack holds, the last a long error: without the rule they reach each list’s heading row.
+    await page.evaluate(async () => {
+      const { toast } = await import('/app/js/ui.mjs');
+      for (const n of [1, 2]) toast({ title: `Added host-${n}.example.com`, text: 'Postbox connects when an agent runs there.' });
+      toast({ title: 'Couldn’t save the room', text: 'A room keeps at least one agent, and this would leave it with none. '.repeat(3), level: 'blocking' });
     });
-  expect(await clear(dialog.getByRole('button', { name: 'Close' })), 'Close').toBe(true);
-  for (const tab of ['Personas', 'Projects', 'Rooms', 'People']) {
-    await dialog.getByRole('tab', { name: tab }).click();
-    for (const control of await dialog.getByRole('toolbar').getByRole('button').all())
-      expect(await clear(control), `${tab}: ${await control.getAttribute('aria-label')}`).toBe(true);
-  }
-  // The notice is still up: it goes by itself after eight seconds, and no control is under an empty stack.
-  await expect(page.locator('.toast')).toHaveCount(1);
-});
+    // All three are there, and announced as they came; one is in sight, on a line each for its title and its text.
+    await expect(page.locator('.toast')).toHaveCount(3);
+    await expect(page.locator('.toast:visible')).toHaveCount(1);
+    await expect(page.locator('.toast:visible')).toContainText('Couldn’t save the room');
+    expect(/** @type {{ height: number }} */ (await page.locator('.toast:visible').boundingBox()).height, 'one line each').toBeLessThan(64);
+    const clear = (/** @type {import('@playwright/test').Locator} */ control) =>
+      control.evaluate((el) => {
+        const b = el.getBoundingClientRect();
+        return [
+          [b.x + 2, b.y + 2],
+          [b.x + b.width / 2, b.y + b.height / 2],
+          [b.x + b.width - 2, b.y + b.height - 2],
+        ].every(([x, y]) => el.contains(document.elementFromPoint(x, y)));
+      });
+    expect(await clear(dialog.getByRole('button', { name: 'Close' })), 'Close').toBe(true);
+    for (const tab of await dialog.getByRole('tab').all()) expect(await clear(tab), `the ${await tab.textContent()} tab`).toBe(true);
+    for (const tab of ['Personas', 'Projects', 'Rooms', 'People']) {
+      await dialog.getByRole('tab', { name: tab }).click();
+      for (const control of await dialog.getByRole('toolbar').getByRole('button').all())
+        expect(await clear(control), `${tab}: ${await control.getAttribute('aria-label')}`).toBe(true);
+    }
+    // The notices are still up, so nothing above passed under an empty stack; and with the sheet closed, all three show.
+    await expect(page.locator('.toast')).toHaveCount(3);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.toast:visible')).toHaveCount(3);
+  });

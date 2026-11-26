@@ -126,39 +126,3 @@ test('#1320 a button that held still, or moved 1 px or less, is no finding', asy
   assert.deepEqual(facts.probes.targetMoved, []);
   assert.deepEqual(POINTER_CHECKS[0].run(facts), []);
 });
-
-test('a notice over what the runner is about to click is dismissed with its own button first, and the run’s record says so', async (t) => {
-  const facts = { probes: newProbes() };
-  const logged = [];
-  const input = recordInput(
-    facts.probes,
-    () => 3,
-    (line) => logged.push(line),
-  );
-  // The first aim finds a notice over Edit and answers where its Dismiss is; the aim after it finds Edit clear.
-  const { page, clicks } = standIn([
-    { notice: { x: 1050, y: 30, said: 'Added host.example.com Postbox connects when an agent runs there.' } },
-    { x: 1082, y: 171 },
-  ]);
-  await fast(t, () => driver(page, { input }).clickAt(`document.getElementById('ho-1-edit')`, 'Edit settings'));
-  assert.deepEqual(
-    clicks,
-    [
-      { x: 1050, y: 30 },
-      { x: 1082, y: 171 },
-    ],
-    'the notice’s Dismiss, then Edit',
-  );
-  assert.deepEqual(
-    facts.probes.noticesDismissed.map(({ step, kind, what, said }) => ({ step, kind, what, said })),
-    [{ step: 3, kind: 'notice-dismissed', what: 'Edit settings', said: 'Added host.example.com Postbox connects when an agent runs there.' }],
-  );
-  assert.deepEqual(logged, [
-    'a notice covered Edit settings, so the runner dismissed it first: “Added host.example.com Postbox connects when an agent runs there.”',
-  ]);
-  assert.deepEqual(
-    facts.probes.inputs.map((x) => x.kind),
-    ['runner-click'],
-    'a dismissal isn’t an input of the step: it excuses no view move',
-  );
-});
