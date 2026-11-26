@@ -83,10 +83,15 @@ test('#168 Copy link, by keyboard, copies the message’s address, and the addre
   const target = items.at(-2);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
-  const copy = page.locator(`[data-key="${target.id}"]`).getByRole('button', { name: 'Copy link', exact: true });
+  // Copy link is made as focus comes to the message, first among its actions: Shift+Tab from the next one reaches it.
+  const message = page.locator(`[data-key="${target.id}"]`);
+  await expect(message.getByRole('button', { name: 'Copy link', exact: true }), 'not made until it’s wanted').toHaveCount(0);
+  await message.locator('.msg-actions button').first().focus();
+  await page.keyboard.press('Shift+Tab');
+  const copy = message.getByRole('button', { name: 'Copy link', exact: true });
+  await expect(copy, 'reached by keyboard, first among the message’s actions').toBeFocused();
   // Its name follows its text, which says Copied once it has: kept by a mark of its own here.
   await copy.evaluate((b) => b.setAttribute('data-test', 'copy'));
-  await copy.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-test="copy"]')).toHaveText('Copied');
   const link = await page.evaluate(() => navigator.clipboard.readText());

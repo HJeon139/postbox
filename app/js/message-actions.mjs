@@ -77,6 +77,7 @@ function copyAction(it, ctx) {
     'button.btn.sm.ghost.reveal',
     {
       type: 'button',
+      dataset: { copyLink: '' },
       onclick: async () => {
         clearTimeout(reset);
         const link = itemLink(ctx.threadId, it.id);
@@ -105,6 +106,13 @@ export function messageActions(node, it, ctx) {
   const bar = h('div.msg-actions');
   if (ctx.kind === 'thread' || ctx.kind === 'room') bar.append(threadAction(it, ctx));
   else if ((ctx.kind === 'topic' || ctx.kind === 'side') && (it.kind === 'agent' || it.kind === 'user') && it.text) bar.append(sendAction(it, ctx));
-  bar.append(copyAction(it, ctx));
+  // Made when the pointer or focus first comes to the message: one more element under every message cost a room of
+  // tables its element budget (#1155). First in the row, so the message’s last control stays its last, where Shift+Tab
+  // from the composer lands (#232), and Shift+Tab from the row’s first control reaches it.
+  const copy = () => {
+    if (!bar.querySelector('[data-copy-link]')) bar.prepend(copyAction(it, ctx));
+  };
+  node.addEventListener('pointerenter', copy, { once: true });
+  node.addEventListener('focusin', copy, { once: true });
   node.append(reactTo(bar, node, it, ctx));
 }
