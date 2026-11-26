@@ -31,7 +31,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /** Postbox’s own plugin, relative to the repo. */
 const PLUGIN = 'agent-plugin';
 /** The rules a backend turns tools off with; null for one that can’t (Codex, Antigravity). */
-const RULES_OF = { 'claude-code': TOOL_RULES, 'agent-sdk': TOOL_RULES, 'kiro-cli': KIRO_TOOL_RULES, codex: null, 'antigravity-cli': null };
+const RULES_OF = { 'claude-code': TOOL_RULES, 'kiro-cli': KIRO_TOOL_RULES, codex: null, 'antigravity-cli': null };
 
 /** A boilerplate as the persona it seeds: its handle is its name, lowercased. */
 const asPersona = (b) => ({

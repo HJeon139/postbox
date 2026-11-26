@@ -1,6 +1,5 @@
-// Claude Code’s AskUserQuestion (#521). The CLI sends it to its permission prompt tool and the Agent SDK to canUseTool,
-// in Auto and Ask me alike (Bypass passes no prompt tool, and the CLI then doesn’t offer it), and both reach
-// rt.requestPermission. So the question is asked there as Postbox’s own choice blocks, one per question and one at a
+// Claude Code’s AskUserQuestion (#521). The CLI sends it to its permission prompt tool, in Auto and Ask me alike (Bypass
+// passes no prompt tool, and the CLI then doesn’t offer it), which reaches rt.requestPermission. So the question is asked there as Postbox’s own choice blocks, one per question and one at a
 // time, and the person’s answers are the tool’s result:
 // { behavior: 'allow', updatedInput: { questions, answers } }, keyed by each question’s text, several labels joined
 // with “, ” (tests/fixtures/claude-code/ask-user-question-prompts.json). A question the catalog can’t show keeps the

@@ -27,7 +27,7 @@ const real = (handle, patch) => app.store.emit('persona', { ...personaNamed(hand
 test.beforeAll(async () => {
   app = await startPostbox('header');
   real('indexer', { backend: 'claude-code', model: 'claude-opus-5-5', effort: 'medium' });
-  real('researcher', { backend: 'agent-sdk', model: 'claude-opus-5-5', effort: 'high' });
+  real('researcher', { backend: 'claude-code', model: 'claude-opus-5-5', effort: 'high' });
   notes = Object.values(app.store.state.projects).find((p) => p.name === 'Reading notes');
   room = app.rt.createThread({
     projectId: notes.id,
@@ -108,7 +108,7 @@ test('#60 the conversation’s menu says it with full model ids', async ({ page 
   for (const line of [
     'librarian mock Mock agent · scripted replies, not a model · idle',
     'indexer Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle',
-    'researcher Agent SDK · claude-opus-5-5 · high effort · idle',
+    'researcher Claude Code · claude-opus-5-5 · high effort · idle',
     'critic mock Mock agent · scripted replies, not a model · idle',
   ])
     expect(said, `the menu says “${line}”`).toContain(line);
@@ -244,9 +244,8 @@ test('#12 without --demo there’s no banner, and with Claude Code missing, a fr
     await expect(demoNote(page), 'no demo banner without --demo').toHaveCount(0);
     const line = page.locator('.install-note');
     await expect(line, 'an install line on the page').toBeVisible();
-    // The Agent SDK loads without Claude Code when it’s installed (npm install), so say what agents run on.
-    const sdk = arrange.adapterNames(fresh.rt).includes('agent-sdk');
-    await expect(line).toContainText(sdk ? 'so agents run on the Agent SDK or the mock until it is.' : 'so agents run on the mock until it is');
+    // No other backend is here either, so it says what agents run on.
+    await expect(line).toContainText('so agents run on the mock until it is');
     await expect(line).toContainText('install Claude Code so claude --version works, or set POSTBOX_CLAUDE_BIN to where it is, then restart Postbox');
   } finally {
     // Leave the page first, so closing the server doesn’t cut its event stream mid-message.

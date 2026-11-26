@@ -65,7 +65,6 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     workspace: workspaceOf(dir, record),
     // Where the run kept its workspace once it stopped (tools/uat/workspace.mjs, retainWorkspace): the files a check reads.
     workspaceKept: join(dir, 'workspace'),
-    sdkStreams: readStreams(join(dir, 'streams', 'sdk')),
     events: readHistory(dir),
     // The last moment the run’s records cover: a room still quiet when it ended was quiet until then (quiet-stretches.mjs).
     until: runEnd(saved, record),

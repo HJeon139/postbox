@@ -170,7 +170,7 @@ test('a Codex agent’s guide says how to write, hand-offs included, and names n
   assert.match(g, /Don’t compress or abbreviate a hand-off to save room/);
   assert.doesNotMatch(g, /wake_agent/);
   assert.match(g, /a blank line before every list, and a space between all words/);
-  for (const backend of ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli'])
+  for (const backend of ['claude-code', 'kiro-cli', 'antigravity-cli'])
     assert.doesNotMatch(agentGuide({ persona: { handle: 'x', backend }, handles: ['x'] }), /How you write here/, backend);
   assert.doesNotMatch(agentGuide({ persona: { handle: 'gem' }, handles: ['gem'], setup: false }), /How you write here/);
 });
@@ -191,7 +191,7 @@ test('a Codex agent’s guide says its turn ends when it replies, to finish a ch
   assert.match(g, /don’t end with “results will follow”\. If something must outlive your turn, call schedule_wake/);
   assert.doesNotMatch(agentGuide({ persona: { handle: 'gem' }, handles: ['gem'], setup: false }), /When your turn ends/);
   // Only Codex agents ended turns that way, so the other backends aren’t told.
-  for (const backend of ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli'])
+  for (const backend of ['claude-code', 'kiro-cli', 'antigravity-cli'])
     assert.doesNotMatch(agentGuide({ persona: { handle: 'x', backend }, handles: ['x'] }), /When your turn ends/, backend);
 });
 

@@ -1,11 +1,11 @@
 // #220: permission_prompt is the Claude Code CLI’s way to ask (--permission-prompt-tool). A backend that asks another
-// way (the Agent SDK’s canUseTool) or can’t ask (Kiro) isn’t offered it, and a call from one is refused at once:
+// way (Codex’s approvals) or can’t ask (Kiro) isn’t offered it, and a call from one is refused at once:
 // otherwise it held a card and the call open for up to POSTBOX_TIMEOUT_MS.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
+import { CODEX_CAPABILITIES } from '../server/adapters/codex-remote.mjs';
 import { KIRO_CAPABILITIES } from '../server/adapters/kiro-cli.mjs';
 import { handleMcp } from '../server/mcp.mjs';
 import { Runtime } from '../server/runtime.mjs';
@@ -46,7 +46,7 @@ const PROMPT = { name: 'permission_prompt', arguments: { tool_name: 'Bash', inpu
 
 for (const [label, backend, capabilities] of [
   ['A Kiro CLI', 'kiro-cli', KIRO_CAPABILITIES],
-  ['An Agent SDK', 'agent-sdk', new AgentSdkAdapter({ sdk: { query() {} }, workRoot: '/nowhere' }).capabilities],
+  ['A Codex', 'codex', CODEX_CAPABILITIES],
 ])
   test(`#220 ${label} agent isn’t offered permission_prompt, and its call to it is refused at once, with no card`, async () => {
     const { store, rt, adapter, t, se } = setup(backend, capabilities);
@@ -69,7 +69,7 @@ for (const [label, backend, capabilities] of [
 
 test('#220 a Claude Code agent is offered permission_prompt and asks through it, even once its persona moves mid-turn', async () => {
   const { store, rt, adapter, t, se } = setup('claude-code', undefined);
-  arrange.withAdapter(rt, scripted('agent-sdk', { promptTool: false }));
+  arrange.withAdapter(rt, scripted('kiro-cli', KIRO_CAPABILITIES));
   /** @type {any} */
   let listed = null;
   /** @type {Promise<any>|null} */
@@ -77,7 +77,7 @@ test('#220 a Claude Code agent is offered permission_prompt and asks through it,
   adapter.next.push(async (c) => {
     listed = (await rpc(rt, se, 'tools/list')).result.tools.map((x) => x.name);
     // The running CLI was started with --permission-prompt-tool: the move reaches its next turn, not this call.
-    rt.updatePersona(se.personaId, { backend: 'agent-sdk' });
+    rt.updatePersona(se.personaId, { backend: 'kiro-cli' });
     // Its stream showed the call the prompt is for (#353).
     c.toolUse({ id: 'tu1', name: 'Bash', input: PROMPT.arguments.input });
     pending = rpc(rt, se, 'tools/call', PROMPT);
@@ -90,5 +90,5 @@ test('#220 a Claude Code agent is offered permission_prompt and asks through it,
   await settle(rt);
   assert.ok(listed.includes('permission_prompt'));
   assert.equal(JSON.parse((await pending).result.content[0].text).behavior, 'allow');
-  assert.ok(!(await rpc(rt, se, 'tools/list')).result.tools.some((x) => x.name === 'permission_prompt'), 'its next turn is the SDK’s');
+  assert.ok(!(await rpc(rt, se, 'tools/list')).result.tools.some((x) => x.name === 'permission_prompt'), 'its next turn is Kiro’s');
 });

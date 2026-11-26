@@ -136,7 +136,7 @@ export const SCHEMA = {
         },
         backend: {
           type: 'string',
-          description: 'agent_panel: the backend to pick, as the sheet names it (Claude Code, Agent SDK, Codex, Kiro CLI, Antigravity CLI).',
+          description: 'agent_panel: the backend to pick, as the sheet names it (Claude Code, Codex, Kiro CLI, Antigravity CLI).',
         },
         model: { type: 'string', description: 'agent_panel: the model to type into the Model field, such as claude-sonnet-5-5.' },
         add: { type: 'string', description: 'members: the handle of the agent to add to the open conversation.' },

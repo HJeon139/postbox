@@ -196,10 +196,6 @@ test('every backend is given the note as the turn has it: one function words a t
   const dir = new URL('../server/adapters/', import.meta.url);
   const adapters = readdirSync(dir).filter((f) => f.endsWith('.mjs') && /\basync deliver\(/.test(readFileSync(new URL(f, dir), 'utf8')));
   const real = adapters.filter((f) => f !== 'mock.mjs');
-  assert.deepEqual(
-    real.sort(),
-    ['agent-sdk.mjs', 'antigravity-cli.mjs', 'claude-code.mjs', 'codex.mjs', 'kiro-cli.mjs'],
-    'a new adapter: check it here, and it joins the list',
-  );
+  assert.deepEqual(real.sort(), ['antigravity-cli.mjs', 'claude-code.mjs', 'codex.mjs', 'kiro-cli.mjs'], 'a new adapter: check it here, and it joins the list');
   for (const f of real) assert.match(readFileSync(new URL(f, dir), 'utf8'), /\bformatMessage\(/, `${f} words its prompt with formatMessage`);
 });

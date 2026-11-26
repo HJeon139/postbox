@@ -1,8 +1,8 @@
 // #871 end to end: a PreToolUse hook that approves every call can live in a project skill’s or subagent’s frontmatter
-// as well as in a settings file. Claude Code registers it for the session when the skill or subagent runs, and the
-// docs bundled with the Agent SDK don’t say whether `disableAllHooks` covers it: its own doc names “the hooks defined
-// in settings files and by installed plugins” (sdk.d.ts, disableAllHooks). This asks a real turn through each real
-// adapter, in Ask me, to use the skill or the subagent, which asks for `git push origin HEAD:refs/heads/e2e`; the test
+// as well as in a settings file. Claude Code registers it for the session when the skill or subagent runs, and
+// Claude Code’s published types don’t say whether `disableAllHooks` covers it: its own doc names “the hooks defined
+// in settings files and by installed plugins” (sdk.d.ts, disableAllHooks). This asks a real turn through Claude
+// Code’s adapter, in Ask me, to use the skill or the subagent, which asks for `git push origin HEAD:refs/heads/e2e`; the test
 // answers the card no, and checks a card showed, the branch never reached the remote and the hook never ran. A control
 // turn in Run everything, where Postbox keeps the person’s hooks, shows the frontmatter hook does run when it loads.
 // Ask me, not Auto, since #806: in Auto Postbox keeps the person’s hooks (harness first, #961), as
@@ -14,12 +14,9 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { test } from 'node:test';
-import { landed, pushCard, pushTurn, sdkWhy, TURN_MS, why } from './claude-e2e.mjs';
+import { landed, pushCard, pushTurn, TURN_MS, why } from './claude-e2e.mjs';
 
-const ADAPTERS = /** @type {const} */ ([
-  ['claude-code', why],
-  ['agent-sdk', sdkWhy],
-]);
+const ADAPTERS = /** @type {const} */ ([['claude-code', why]]);
 
 for (const [hooksIn, owner] of /** @type {const} */ ([
   ['skill', 'a skill’s'],

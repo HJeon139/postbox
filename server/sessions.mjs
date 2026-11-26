@@ -22,7 +22,7 @@ const MAX_COMMANDS = 200;
 
 /**
  * An agent’s skills and commands, bounded and cleaned, for the / menu: from init (names; terminal-only ones are already
- * left out) or the SDK’s supportedCommands() (with descriptions and argument hints). @param {any[]} list
+ * left out) or a list the harness sends later (with descriptions and argument hints). @param {any[]} list
  */
 function commandsOf(list) {
   const seen = new Set();

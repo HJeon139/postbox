@@ -23,7 +23,7 @@ import { agentPlugins } from './agent-plugin.mjs';
 import { readRules } from './attached-files.mjs';
 import { postboxSkillsOn, skillDenies, skillOverrides } from './skill-config.mjs';
 /**
- * Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. The permissions panel reads the
+ * Setting sources, as `--setting-sources` spells them. The permissions panel reads the
  * same ones (permission-rules.mjs, readRules; permission-hooks.mjs, readHooks).
  * @type {readonly ('user'|'project'|'local')[]}
  */
@@ -34,7 +34,7 @@ export const HOST_SOURCES = ['user', 'project', 'local'];
 export const ISOLATED_SOURCES = ['project', 'local'];
 
 /**
- * The flag-settings overlay (`--settings`, the SDK’s `settings`): it sits above user, project and local
+ * The flag-settings overlay (`--settings`): it sits above user, project and local
  * settings. `outputStyle` is the settings key (code.claude.com/docs/en/output-styles); “default” is the
  * standard style, which adds no style instructions.
  */
@@ -50,7 +50,7 @@ export const modelOf = (persona) => (persona?.model && persona.model !== 'mock' 
  */
 export const AUTO_MODEL = 'auto';
 
-/** Effort levels, as `claude --effort <level>` and the SDK’s EffortLevel (sdk.d.ts) spell them. */
+/** Effort levels, as `claude --effort <level>` spells them. */
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
 /**
  * The effort a persona runs with when it names none: what Claude Code itself uses for claude-opus-5-5 with no
@@ -70,7 +70,7 @@ export const POSTBOX_SERVER = 'postbox';
  * operation timed out” (claude 2.1.308, cut at 60.0 s twice); with `timeout: 900000` it was still waiting at 8 min
  * 44 s. The per-server timeout raises that timer to itself, and sets a floor under the 5-minute idle window for calls
  * that send nothing (code.claude.com/docs/en/mcp, “Time limits on MCP tool calls”). Every other Postbox tool returns
- * at once, and the Agent SDK asks through canUseTool instead, so for them it changes nothing in practice.
+ * at once, so for them it changes nothing in practice.
  */
 export const POSTBOX_TIMEOUT_MS = 25 * 60 * 60 * 1000;
 /**
@@ -79,7 +79,7 @@ export const POSTBOX_TIMEOUT_MS = 25 * 60 * 60 * 1000;
  * operation timed out” instead of the denial the card shows (C1).
  */
 export const PERMISSION_WAIT_MARGIN_MS = 60 * 60 * 1000;
-/** Postbox’s own server, as `--mcp-config` and the SDK’s `mcpServers` take it. */
+/** Postbox’s own server, as `--mcp-config` takes it. */
 export const postboxServer = (mcpUrl) => ({ [POSTBOX_SERVER]: { type: 'http', url: mcpUrl, alwaysLoad: true, timeout: POSTBOX_TIMEOUT_MS } });
 // alwaysLoad: Postbox’s tools are in the first prompt, so the agent doesn’t have to search for them.
 
@@ -271,7 +271,7 @@ export const WRITE_TOOLS = [
 /**
  * The ask rules for writes outside Postbox, for a persona’s turn. Harness first (the person’s decision, 7 Nov 2026):
  * in Auto, none, so the harness decides and a card comes only when it asks; in Ask me and Accept edits, all of them;
- * in bypass, none. Auto is also what an unset or unknown mode runs as. The CLI, the SDK and host turns all build from
+ * in bypass, none. Auto is also what an unset or unknown mode runs as. The CLI and host turns both build from
  * this, and the person’s own ask rules are added beside it, in every mode.
  */
 export const writeRules = (persona) => (asksForWrites(persona?.permissionMode) ? [...WRITE_TOOLS] : []);
@@ -299,7 +299,7 @@ export const OUTSIDE_TOOLS = ['SendMessage', 'ListAgents', 'RemoteTrigger', 'Cro
 
 /**
  * The persona’s Tools checklist, as deny rules for real backends (#5): each id maps to the Claude Code tools it
- * stands for, and an id that isn’t ticked denies them (`--disallowedTools`, the SDK’s `disallowedTools`).
+ * stands for, and an id that isn’t ticked denies them (`--disallowedTools`).
  *
  * A ticked tool is not an allow rule. `--allowedTools Bash` would skip the permission mode’s ask for every
  * command, which “Run commands in the project folder” doesn’t promise: ticked means “not denied”, and the

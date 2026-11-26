@@ -182,7 +182,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
           )
         : null,
       status ? h('p.small.perm-status', { role: 'status' }, status) : null,
-      view.real ? hostNote(view) : h('p.help', `${p.handle} is a mock agent. Modes, rules and folders apply to Claude Code and Agent SDK agents.`),
+      view.real ? hostNote(view) : h('p.help', `${p.handle} is a mock agent. Modes, rules and folders apply to Claude Code agents.`),
       // A backend that doesn’t read Claude Code’s rules or MCP config (the Kiro CLI, #117) shows only what it honors.
       view.real && !view.readsRules ? h('p.help', backendNote(p)) : null,
       view.readsRules ? rulesSection() : null,

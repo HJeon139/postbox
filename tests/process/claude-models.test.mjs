@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { claudeModels } from '../../server/adapters/claude-models.mjs';
+import { claudeModels } from '../../server/remote/host/harness-models.mjs';
 import { removeListing } from './listing-folder.mjs';
 
 const claudeHere = spawnSync('claude', ['--version'], { timeout: 20_000 }).status === 0;

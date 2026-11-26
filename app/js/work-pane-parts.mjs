@@ -72,7 +72,7 @@ export function spend(s, go) {
         .filter(Boolean)
         .join(' · '),
     ),
-    e.priced ? null : h('p.small.dim', 'Spend shows for Claude Code and Agent SDK turns.'),
+    e.priced ? null : h('p.small.dim', 'Spend shows for Claude Code turns.'),
     agents.length > 1
       ? h(
           'p.small.dim',

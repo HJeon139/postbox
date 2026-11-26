@@ -1,5 +1,5 @@
 // #480: the persona sheet says, in one line under Backend, what each backend does with the agent’s memory: Claude Code
-// and the Agent SDK keep its own, Codex’s is off, Kiro’s is off when isolated and yours with your setup, and Antigravity’s,
+// keeps its own, Codex’s is off, Kiro’s is off when isolated and yours with your setup, and Antigravity’s,
 // if it keeps any, is your sign-in’s. At 1280 and 375 px, from the conversation’s ⋯, where its agents are named at either
 // width. A host’s lines, and an older Claude Code’s, are the unit test’s (tests/agent-memory.test.mjs).
 
@@ -12,7 +12,7 @@ let app;
 test.beforeAll(async () => {
   app = await startPostbox('persona-memory');
   // Stand-ins under each backend’s name, so a persona can be made on it here; none runs a turn (POSTBOX_BACKENDS=mock).
-  for (const name of ['claude-code', 'agent-sdk', 'codex', 'kiro-cli', 'antigravity-cli'])
+  for (const name of ['claude-code', 'codex', 'kiro-cli', 'antigravity-cli'])
     arrange.withAdapter(app.rt, {
       name,
       async folderFor() {
@@ -28,7 +28,6 @@ failOnPageErrors(test);
 
 const CASES = [
   ['claude-code', {}, 'Memory: its own. No other agent, and none of your own sessions, reads it.'],
-  ['agent-sdk', {}, 'Memory: its own. No other agent, and none of your own sessions, reads it.'],
   ['codex', {}, 'Memory: off. Codex keeps one memory for everything it runs, so Postbox turns it off.'],
   ['kiro-cli', { usesHostSetup: false }, 'Memory: off. Isolated agents share one Kiro home, so Postbox turns it off there.'],
   ['kiro-cli', { usesHostSetup: true }, 'Memory: yours. With your setup, it reads and adds to your own Kiro memory.'],

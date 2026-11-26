@@ -1,5 +1,5 @@
 // #874: a turn for an agent whose backend isn’t registered in this Postbox (POSTBOX_BACKENDS=mock, --demo, a missing
-// SDK, or a name this version doesn’t know) fails with a reason and Retry, wherever it comes from, instead of
+// agy, or a name this version doesn’t know) fails with a reason and Retry, wherever it comes from, instead of
 // throwing; a message you send to one is refused before it’s posted.
 
 import assert from 'node:assert/strict';

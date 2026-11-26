@@ -151,7 +151,7 @@ export async function changePermissionRule(
   if (!['local', 'user', 'conversation', 'host'].includes(where))
     throw httpError(422, 'A rule is saved in this folder’s local settings, your user settings or this conversation.');
   const { se, persona, folder } = await rt.panelTarget({ sessionId, personaId, projectId });
-  if (persona.backend === 'mock' || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
+  if (persona.backend === 'mock' || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code agents read permission rules.');
   const b = /** @type {'allow'|'ask'|'deny'} */ (behavior);
   // A rule Postbox keeps for the persona on a host (#120): only Always allow makes one, so only an allow rule.
   if (where === 'host') {

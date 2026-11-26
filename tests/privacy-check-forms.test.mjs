@@ -248,5 +248,5 @@ test('the other recorded Claude Code inits name only public plugins, connectors,
         assert.deepEqual(privateNames(event), { servers: 0, plugins: 0, commands: 0, agents: 0, tools: 0 }, `${path}:${i + 1}`);
       });
   }
-  assert.equal(inits, 15, 'the recordings hold 15 inits');
+  assert.equal(inits, 14, 'the recordings hold 14 inits');
 });

@@ -1,7 +1,6 @@
 // Postbox’s own Claude Code plugin (agent-plugin): the skills it gives every agent it runs on this computer, Isolated
 // or not, as it gives each one its MCP server. The first is visual-explainer (#206, #207), which loads when the person
-// asks how something works or what their data shows. Claude Code loads it with --plugin-dir and the Agent SDK with its
-// plugins option. The other backends don’t read Claude Code plugins, so each gets the skills folder its own way:
+// asks how something works or what their data shows. Claude Code loads it with --plugin-dir. The other backends don’t read Claude Code plugins, so each gets the skills folder its own way:
 // Antigravity a copy in the turn’s workspace plugin, Kiro a skill:// resource in the turn’s agent file, and Codex an
 // extra skills root on its app-server. None of them writes into the person’s project or their own CLI setup beyond
 // what Postbox already writes there for a turn. A turn on another computer doesn’t get it: the folder is on this one.

@@ -5,7 +5,7 @@
 // - the subagents at work in the tree, with their step and not their narration (#476), and the working row, from a
 //   recorded stream (#73), with End on each, by keyboard (#229);
 // - and at 375 px, a top bar with no agent rings whose menu names each agent (#320).
-// On the demo’s conversations, with @indexer and @researcher moved to Claude Code and the Agent SDK. Those backends
+// On the demo’s conversations, with @indexer and @researcher moved to Claude Code, and the Kiro CLI there to switch to. Those backends
 // are fakes that only record what they’re sent, so no real agent runs. Each test starts from @indexer as the demo
 // left it. Moved from tools/check-agents.mjs (#303).
 
@@ -48,7 +48,7 @@ const real = (handle, patch) => app.store.emit('persona', { ...personaNamed(hand
 test.beforeAll(async () => {
   app = await startPostbox('agents');
   const { rt, store } = app;
-  for (const name of ['claude-code', 'agent-sdk'])
+  for (const name of ['claude-code', 'kiro-cli'])
     arrange.withAdapter(rt, {
       name,
       async folderFor() {
@@ -81,7 +81,7 @@ test.beforeAll(async () => {
   });
   topic = store.state.threads[rt.startTopic(planning.id, root.id).threadId];
   real('indexer', { backend: 'claude-code', model: 'claude-opus-5-5', effort: 'medium', permissionMode: 'auto' });
-  real('researcher', { backend: 'agent-sdk', model: 'claude-opus-5-5', effort: 'high', permissionMode: 'auto' });
+  real('researcher', { backend: 'claude-code', model: 'claude-opus-5-5', effort: 'high', permissionMode: 'auto' });
   initial = { persona: structuredClone(personaNamed('indexer')) };
 });
 test.afterAll(async () => {
@@ -187,11 +187,11 @@ test('switched to another backend in the sheet, an agent’s row names the new m
   await open(page, `#/t/${planning.id}`);
   await expect(row(page, 'indexer')).toHaveText(/Opus 5\.5 · medium effort$/);
   await row(page, 'indexer').click();
-  await sheet(page).getByLabel('Backend', { exact: true }).selectOption('agent-sdk');
+  await sheet(page).getByLabel('Backend', { exact: true }).selectOption('kiro-cli');
   await sheet(page).getByLabel('Model', { exact: true }).fill('claude-sonnet-5-5');
   await sheet(page).getByLabel('Effort', { exact: true }).selectOption('low');
   await sheet(page).getByRole('button', { name: 'Save' }).click();
-  await expect.poll(() => personaNamed('indexer').backend).toBe('agent-sdk');
+  await expect.poll(() => personaNamed('indexer').backend).toBe('kiro-cli');
   await page.keyboard.press('Escape');
   await expect(row(page, 'indexer')).toHaveText(/Sonnet 5\.5 · low effort$/);
 });
