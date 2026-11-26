@@ -105,8 +105,12 @@ const errLine = (msg) => (msg ? h('span.err', { role: 'alert' }, icon('warn'), m
 async function submit(item, ctx, action, values, setError) {
   setError(null);
   const s = seen.get(item.id);
+  const asked = s?.revision ?? item.revision ?? 1;
   try {
-    await ctx.act(action, values, s?.revision ?? item.revision ?? 1);
+    await ctx.act(action, values, asked);
+    // The agent revised it while this answer was on its way, and every revision draws from this one draft: what the
+    // person started on the newer one stays (#518). What this answer sent went when its block was drawn answered.
+    if ((seen.get(item.id)?.revision ?? 0) > asked) return;
     drafts.delete(item.id);
     forgetReviewDraft(item.id);
     seen.delete(item.id);
