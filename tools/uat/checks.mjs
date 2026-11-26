@@ -25,7 +25,7 @@ export const runChecks = (facts, { only = null, checks = CHECKS } = {}) => runRo
  * The checks whose findings a step can read before they’ve settled: a quiet stretch still going on has no length or
  * “moved by” yet, and the timed step may not have passed (tools/uat/room-checks-idle.mjs).
  */
-const SETTLES_LAST = new Set(['idle-work-waiting', 'quiet-stretches']);
+const SETTLES_LAST = new Set(['idle-work-waiting', 'quiet-stretches', 'after-ceremony']);
 
 /**
  * Removes the check findings that say a check couldn’t vouch for the run (unverified rows), and those of a check that

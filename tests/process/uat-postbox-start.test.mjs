@@ -4,6 +4,7 @@
 // and never listens, so it starts a real process and is under tests/process/ (npm run test:process).
 
 import assert from 'node:assert/strict';
+import { randomInt } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -14,7 +15,7 @@ import { tempDir } from '../temp-dirs.mjs';
 /** A free port above 47000, away from the ports the other process tests pick. */
 async function freeHighPort() {
   for (let i = 0; i < 100; i++) {
-    const port = 47001 + Math.floor(Math.random() * 13000);
+    const port = randomInt(47001, 60001);
     if (await portFree(port)) return port;
   }
   throw new Error('No free port between 47001 and 60000 after 100 tries.');

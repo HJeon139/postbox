@@ -8,7 +8,7 @@ import { LIMITS } from '../../shared/limits.mjs';
 import { GONE_TOOLS } from '../../shared/mcp-tools.mjs';
 import { REMOTE_LIMITS, toolRoute } from '../../shared/remote-protocol.mjs';
 import { cutText } from '../../shared/text-parts.mjs';
-import { AgentFileError } from '../agent-files.mjs';
+import { AgentFileError, stageFiles } from '../agent-files.mjs';
 import { noteAnswer } from '../empty-reply.mjs';
 import { keptIfShown } from '../review-files.mjs';
 import { recordedTools } from '../scheduled-wakes.mjs';
@@ -124,19 +124,19 @@ async function appFiles(rts, args) {
   if (!Array.isArray(files)) throw fail('files is a list: [{ name?, path }].');
   if (files.length > LIMITS.appFiles) throw fail(`An app carries up to ${LIMITS.appFiles} data files.`);
   if (!rts.rt.blobs) throw fail('This Postbox can’t store files.');
-  /** @type {{ name: string, sha256: string, size: number }[]} */
-  const stored = [];
+  /** @type {{ name: string, buf: Buffer }[]} */
+  const read = [];
   for (const f of files) {
     const name = String(f?.name ?? '');
     if (!FILE_NAME.test(name)) throw fail(`“${name}” can’t name a file: use letters, digits and - _ . (up to 64).`);
-    if (stored.some((x) => x.name === name)) throw fail(`Two files are named “${name}”.`);
+    if (read.some((x) => x.name === name)) throw fail(`Two files are named “${name}”.`);
     if (typeof f.base64 !== 'string' || f.base64.length % 4 || !BASE64.test(f.base64)) throw fail(`The file “${name}” didn’t arrive whole from the host.`);
     const buf = Buffer.from(f.base64, 'base64');
     if (buf.length > LIMITS.appFileBytes) throw fail(`The file “${name}” is over the limit for an app’s data file.`);
-    const { sha256, size } = await rts.rt.blobs.put(buf);
-    stored.push({ name, sha256, size });
+    read.push({ name, buf });
   }
-  return { args: rest, files: stored };
+  // Staged, as a local call’s are: kept only once a version holds them (#1702).
+  return { args: rest, ...(await stageFiles(rts.rt.blobs, read)) };
 }
 
 /**

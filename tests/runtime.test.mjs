@@ -319,7 +319,7 @@ test('deleting a session removes it at once, with no Undo window', async () => {
   assert.equal(store.state.threads[t.id], undefined, 'its own thread goes with it');
 });
 
-test('deleting an agent in a room keeps its messages, marked deleted', async () => {
+test('deleting an agent in a room keeps its messages, flagged so nothing is sent to it', async () => {
   const { rt, store, t, b } = setup();
   rt.ensureSession(t.id, b.id);
   rt.sendMessage(t.id, { text: '@beta hi' });

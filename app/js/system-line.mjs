@@ -74,7 +74,7 @@ export function systemLine(it, _ctx) {
     case 'joined':
       return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', it.to), ' joined');
     case 'left':
-      return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', it.to), ' left (its session was deleted)');
+      return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', it.to), ' left');
     default:
       return h('div.col.sys-line', it.text ?? '');
   }
