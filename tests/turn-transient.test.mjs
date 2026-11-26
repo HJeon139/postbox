@@ -1,7 +1,7 @@
 // #1713: a turn that failed for its provider (529 Overloaded, or another status its adapter marks as one that passes)
 // goes again on its own, after a wait that grows, at most three times in a row. While it waits its row says it’s
 // retrying and nothing needs the person; once the tries run out, the agents whose messages it took hear so in the
-// room, and still nothing needs the person. The waits are the test’s own clock (config.retryAfter), so nothing sleeps
+// room, and the agent needs the person, as any failed one. The waits are the test’s own clock (config.retryAfter), so nothing sleeps
 // for them.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

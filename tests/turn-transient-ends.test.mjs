@@ -248,7 +248,7 @@ async function overloadedAfter(/** @type {any} */ f, /** @type {(tools: any, ask
 }
 
 test('#1713 a turn whose only work was a Postbox tool that writes, such as open_topic, is told to check it', async () => {
-  // Critic’s review of #1713’s merged head: open_topic and react make no step, so such a turn went again with no line,
+  // #1713: open_topic and react make no step, so such a turn went again with no line,
   // and could post the topic and wake its agents twice. Postbox’s calls are named as noteAnswer kept them.
   const f = room();
   const retried = await overloadedAfter(f, async (tools, asked) => {
