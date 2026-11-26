@@ -1,7 +1,7 @@
 // Background work after an Agent SDK turn’s reply (#1714). In a single-turn query the SDK waits after the last
 // `result` while background subagents and commands run on, but only up to CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS
 // (10 min by default); then it ends the run and that work is stopped. Recorded on 26 November 2026 with the SDK
-// 0.3.283 and claude 2.1.318 (tests/fixtures/agent-sdk/background-limit.jsonl): with the limit at 30 s, a background
+// 0.3.306 and claude 2.1.306 (tests/fixtures/agent-sdk/background-limit.jsonl): with the limit at 30 s, a background
 // `sleep 90` got a task_notification `stopped` 5 s after the reply’s result, and the query ended. The CLI on its own
 // waited the full 90 s with the same setting, so the limit is the SDK’s. Postbox gives it the bound a host turn waiting
 // on background work already has (QUIET.backgroundMax, #847), and tells the agent what the limit still stopped.
@@ -23,7 +23,8 @@ export function stoppedAfterReply() {
     /** @param {any} m */
     push(m) {
       if (m?.type === 'result') replied = true;
-      else if (m?.type === 'assistant') replied = false;
+      // The agent at work again: its own message, not one a subagent forwards (parent_tool_use_id) while it runs on.
+      else if (m?.type === 'assistant' && !m.parent_tool_use_id) replied = false;
       else if (replied && m?.type === 'system' && m.subtype === 'task_notification' && m.status === 'stopped')
         stopped.push(String(m.summary || m.task_id || 'background work').slice(0, 120));
     },
@@ -31,7 +32,7 @@ export function stoppedAfterReply() {
     told() {
       if (!stopped.length) return null;
       const hours = QUIET.backgroundMax / 3_600_000;
-      return `Background work you started was stopped, not finished, when it ran on ${hours} h past your reply: ${stopped.map((s) => `“${s}”`).join(', ')}. If you still need it, run it again, in the foreground or in smaller parts.`;
+      return `Background work you started was stopped after your reply, before it finished: ${stopped.map((s) => `“${s}”`).join(', ')}. Postbox waits up to ${hours} h for background work after a reply. If you still need it, run it again, in the foreground or in smaller parts.`;
     },
   };
 }

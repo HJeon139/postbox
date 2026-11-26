@@ -1,6 +1,6 @@
 // #1714: on the Agent SDK backend, background work an agent left running after its reply was stopped once the SDK’s
 // wait for it ran out (CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS, 10 min by default), and the agent wasn’t told. Two local
-// recordings of 26 November 2026 (SDK 0.3.283, claude 2.1.318) showed it: with the limit at 30 s, the SDK stopped a
+// recordings of 26 November 2026 (SDK 0.3.306, claude 2.1.306) showed it: with the limit at 30 s, the SDK stopped a
 // background `sleep 90` 5 s after the reply’s result, while `claude -p` with the same setting waited the full 90 s.
 // tests/fixtures/agent-sdk/background-limit.jsonl is the SDK run, its paths and ids replaced.
 
@@ -61,10 +61,8 @@ test('#1714 the SDK’s wait for background work after a reply is Postbox’s bo
 test('#1714 background work the bound stopped after the reply is named to the agent, once, as not finished', async () => {
   const { told } = await turnOver(RECORDED);
   assert.equal(told.length, 1);
-  assert.match(
-    told[0],
-    /^Background work you started was stopped, not finished, when it ran on 2 h past your reply: “Sleep 90 seconds then write done marker file”\./,
-  );
+  assert.match(told[0], /^Background work you started was stopped after your reply, before it finished: “Sleep 90 seconds then write done marker file”\./);
+  assert.match(told[0], /Postbox waits up to 2 h for background work after a reply\./);
   assert.match(told[0], /run it again, in the foreground or in smaller parts/);
 });
 
@@ -99,4 +97,14 @@ test('#1714 what an adapter tells (ctx.tell) is what the agent reads at the star
   f.rt.sendMessage(f.t.id, { text: '@beta how did it go?' });
   await settle(f.rt);
   assert.match(JSON.stringify(f.adapter.calls.at(-1).message.context ?? []), /\[Postbox\] Background work you started was stopped\./);
+});
+
+test('#1714 a background subagent stopped while it was still sending its own messages is told too', async () => {
+  // The subagent’s messages come forwarded with parent_tool_use_id (forwardSubagentText): the agent isn’t at work again.
+  const [result] = RECORDED.filter((m) => m.type === 'result');
+  const forwarded = RECORDED.find((m) => m.type === 'assistant' && m.parent_tool_use_id);
+  assert.ok(forwarded, 'the recording has a subagent’s forwarded message');
+  const stopped = RECORDED.find((m) => m.subtype === 'task_notification' && m.status === 'stopped');
+  const { told } = await turnOver([result, forwarded, stopped]);
+  assert.equal(told.length, 1);
 });
