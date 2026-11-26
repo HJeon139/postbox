@@ -22,6 +22,7 @@
 import { itemOf, positionOf } from '../shared/item-index.mjs';
 import { apply, patchSession } from '../shared/state.mjs';
 import { Fifo } from './fifo.mjs';
+import { pendingGlossary } from './store-held-glossary.mjs';
 
 /** The lists a pending read covers: the events that change one, the key they name it by, and how an add names its entry. */
 const LISTS = /** @type {const} */ ({
@@ -116,12 +117,14 @@ const heldOn = (store, name) => Boolean(store.held) && /** @type {any} */ (store
  *   clock: (sessionId: string) => Entry | null,
  *   schedule: (id: string) => Entry | undefined,
  *   schedules: () => Readonly<Record<string, Entry>>,
+ *   glossary: (threadId: string) => Readonly<Record<string, Entry>>,
  * }} PendingReads
  */
 
 /**
  * The pending reads of a store: one per list in LISTS; for apps and threads, one entity by id and the whole
- * collection; every session, or one by id; one persona or project by id; and every schedule, or one by id.
+ * collection; every session, or one by id; one persona or project by id; every schedule, or one by id; and a thread’s
+ * glossary (#1819, server/store-held-glossary.mjs).
  * @param {import('./store.mjs').Store} store @returns {PendingReads}
  */
 export function pendingReads(store) {
@@ -140,6 +143,7 @@ export function pendingReads(store) {
   reads.clock = (/** @type {string} */ sessionId) => pendingClock(store, sessionId);
   reads.schedule = (/** @type {string} */ id) => pendingEntity(store, 'schedules', id);
   reads.schedules = () => pendingCollection(store, 'schedules');
+  reads.glossary = (/** @type {string} */ threadId) => pendingGlossary(store, threadId);
   return /** @type {PendingReads} */ (reads);
 }
 
