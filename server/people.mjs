@@ -1,7 +1,7 @@
 // The people this Postbox knows (#558): each principal a provider answers with (server/identity/index.mjs) is one
 // person, with the provider’s name for them as a default they can change. A person holds the profile they save
 // (shared/profile.mjs), which is all agents are told of them, and their record is kept in the event log, as
-// state.people, from the first time they save one. It doesn’t ask how Postbox is run: on this computer there is one person because one account asks.
+// state.people, from the first time they save one or send a message. It doesn’t ask how Postbox is run: on this computer there is one person because one account asks.
 
 import { createHash } from 'node:crypto';
 import { profileOf } from '../shared/profile.mjs';
@@ -42,12 +42,27 @@ export class People {
   }
 
   /**
+   * A person did something that is kept as theirs (sent a message, #1742): they are someone this Postbox knows from
+   * then on, so a turn can name them among several and the page can show whose message it is. Kept once, with nothing
+   * saved (`unsaved`), so their profile still starts from the provider’s name and agents are told nothing of them, except their user name
+   * as the sender of a message once there is more than one person.
+   * @param {any} person  as `of` answers
+   */
+  seen(person) {
+    const kept = this.store.state.people[person.id];
+    if (kept) return kept;
+    const first = { ...person, createdAt: Date.now(), unsaved: true };
+    this.store.emit('person', first);
+    return first;
+  }
+
+  /**
    * A person saves their own profile: checked whole, and from the next turn what agents are told of them.
    * @param {any} person @param {unknown} sent
    */
   saveProfile(person, sent) {
-    const kept = this.store.state.people[person.id];
-    const saved = { ...(kept ?? { ...person, createdAt: Date.now() }), profile: profileOf(sent) };
+    const { unsaved: _, ...kept } = this.store.state.people[person.id] ?? { ...person, createdAt: Date.now() };
+    const saved = { ...kept, profile: profileOf(sent) };
     this.store.emit('person', saved);
     return saved;
   }

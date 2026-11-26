@@ -10,9 +10,15 @@ import { busy, client, itemsOf } from './client.mjs';
  */
 export const drawsNothing = (it, threadId) => it.kind === 'agent' && (it.status === 'replaced' || recordMoved(it, threadId));
 
+/**
+ * The id of the person a message is from when that is someone else this Postbox knows (#1742), else nothing: your own
+ * messages, and those that name no sender, share one “You” line as before. @param {any} it
+ */
+export const otherPerson = (it) => (it.personId && it.personId !== client.config?.me?.id && client.state.people?.[it.personId] ? it.personId : '');
+
 /** @param {any} it @param {string} threadId */
 function speaker(it, threadId) {
-  if (it.kind === 'user') return 'you';
+  if (it.kind === 'user') return `you:${otherPerson(it)}`;
   if (it.kind === 'agent') return drawsNothing(it, threadId) ? null : `s:${it.sessionId}`;
   return it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null;
 }

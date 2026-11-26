@@ -19,6 +19,13 @@ export function whoIs({ store, account }) {
      * person’s. @param {import('node:http').IncomingMessage} req @param {string} path
      */
     of: async (req, path) => (path === '/mcp' ? null : people.of(await identity.identify(req))),
+    /**
+     * Who a message is from, for the send (server/send-message.mjs): their id, which it is stamped with, and `keep`,
+     * which makes them someone this Postbox knows. The send calls it once nothing can refuse the message, so a refused
+     * one writes nothing, and before the message posts, since the turn it starts is worded as it posts and names a
+     * sender only if Postbox knows them. @param {any} person
+     */
+    sender: (person) => ({ id: person.id, keep: () => people.seen(person) }),
     /** A person saves their own profile. @param {any} person @param {any} body */
     saveProfile: (person, body) => people.saveProfile(person, body?.profile),
   };
