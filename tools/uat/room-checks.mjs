@@ -33,6 +33,7 @@ import { APP_CHECKS } from './room-checks-apps.mjs';
 import { ASK_CHECKS } from './room-checks-asks.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
 import { DELIVERY_CHECKS } from './room-checks-delivery.mjs';
+import { IDLE_CHECKS } from './room-checks-idle.mjs';
 import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { P0_CHECKS } from './room-checks-p0.mjs';
 import { PANEL_CHECKS } from './room-checks-panels.mjs';
@@ -70,6 +71,7 @@ export const CHECKS = [
   ...VIEW_CHECKS,
   ...POINTER_CHECKS,
   ...DELIVERY_CHECKS,
+  ...IDLE_CHECKS,
   ...P0_CHECKS,
   {
     id: 'page-errors',
