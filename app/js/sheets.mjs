@@ -33,6 +33,7 @@ import { lifeButtons } from './persona-delete.mjs';
 import { personasList } from './personas-list.mjs';
 import { profile } from './profile-tab.mjs';
 import { projectsTab } from './projects-tab.mjs';
+import { confirmRemove } from './remove-from-room.mjs';
 import { roomsTab } from './rooms-tab.mjs';
 import { focusOpened, openAt } from './settings-open.mjs';
 import { fullHeight, holdSheet } from './sheet-hold.mjs';
@@ -686,14 +687,16 @@ export function openRename(threadId) {
 // ── Delete confirm ──────────────────────────────────────────────────────────────────────
 
 /**
- * The Delete session confirm. keepConversation, from the Agents header’s − (#1620), asks the server to refuse rather
+ * The Delete session confirm, for an agent alone in its conversation, which goes with it; in a room, removing the agent
+ * from it (remove-from-room.mjs). keepConversation, from the Agents header’s − (#1620), asks the server to refuse rather
  * than erase the conversation if this turns out to be its last agent by the time the person confirms. removed runs
  * once the session is gone.
  * @param {any} se @param {{ keepConversation?: boolean, removed?: () => void }} [opts]
  */
 export function confirmDelete(se, { keepConversation = false, removed } = {}) {
+  // In a room, the agent leaves it and the room stays: that’s removing it, not deleting anything (#1743).
+  if (sessionsOf(se.threadId).length > 1) return confirmRemove(se, { keepConversation, removed });
   const t = S().threads[se.threadId];
-  const room = sessionsOf(se.threadId).length > 1;
   const apps = Object.values(S().apps).filter((a) => a.sessionId === se.id).length;
   const blocks = headerOf(se.threadId).blocks[se.id] ?? 0;
   const li = (ok, text) =>
@@ -708,15 +711,8 @@ export function confirmDelete(se, { keepConversation = false, removed } = {}) {
         h('span.label', 'This erases'),
         h(
           'ul.what-goes',
-          room
-            ? [
-                li(false, `${se.handle}’s session and its context, including ${plural(se.compactions ?? 0, 'compaction summary', 'compaction summaries')}`),
-                li(false, `${plural(apps, 'app')} it wrote`),
-              ]
-            : [
-                li(false, `The conversation: ${plural(headerOf(se.threadId).count, 'item')}, including ${plural(blocks, 'block')} and ${plural(apps, 'app')}`),
-                li(false, `${se.handle}’s context for this session`),
-              ],
+          li(false, `The conversation: ${plural(headerOf(se.threadId).count, 'item')}, including ${plural(blocks, 'block')} and ${plural(apps, 'app')}`),
+          li(false, `${se.handle}’s context for this session`),
         ),
       ),
       h(
@@ -725,7 +721,6 @@ export function confirmDelete(se, { keepConversation = false, removed } = {}) {
         h(
           'ul.what-goes',
           li(true, `The ${se.handle} persona and its other sessions`),
-          room ? li(true, `Its past messages in this room, marked “(deleted)”`) : null,
           li(true, `Files in ${S().projects[t?.projectId]?.folder ?? 'the project folder'}`),
         ),
       ),
@@ -743,7 +738,7 @@ export function confirmDelete(se, { keepConversation = false, removed } = {}) {
               await (keepConversation ? api(`/api/sessions/${se.id}/remove`, {}) : api(`/api/sessions/${se.id}`, undefined, 'DELETE'));
               say(`Deleted ${se.handle}’s session`);
               removed?.();
-              if (location.hash.includes(se.threadId) && !room) (await import('./last-place.mjs')).leave(se.threadId);
+              if (location.hash.includes(se.threadId)) (await import('./last-place.mjs')).leave(se.threadId);
             } catch (e) {
               toast({ title: keepConversation ? `Couldn’t remove @${se.handle}` : 'Couldn’t delete', text: e.message, level: 'blocking' });
             }

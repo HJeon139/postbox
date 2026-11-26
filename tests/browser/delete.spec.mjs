@@ -2,6 +2,7 @@
 // the conversation, the session or the persona is gone at once. There’s no Undo, and nothing waits on a window.
 
 import { expect, test } from '@playwright/test';
+import { toggleReaction } from '../../server/reactions.mjs';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { axe } from './remote-hosts.mjs';
@@ -48,24 +49,36 @@ test('deleting a conversation: the confirm says what goes and that it can’t be
   await expect.soft(page).not.toHaveURL(new RegExp(`#/t/${t.id}`));
 });
 
-test('deleting a session with @agent /delete removes it at once after its confirm', async ({ page }) => {
+test('#1743 @agent /delete in a room removes the agent from it at once after its confirm, and its history stays as it was', async ({ page }) => {
   const { p } = withAgent('sesgone');
   const other = app.rt.createPersona({ handle: 'stays' });
   const room = app.rt.createThread({ projectId: projectId(), title: 'Room for a delete', personaIds: [p.id, other.id] });
   const se = arrange.sessionsIn(app.rt, room.id).find((x) => x.personaId === p.id);
+  const said = arrange.post(app.rt, room.id, { kind: 'agent', sessionId: se.id, handle: 'sesgone', status: 'done', text: 'The index is built.' });
   await page.goto(`${app.origin}/#/t/${room.id}`);
   await synced(page, app);
   await page.locator('#composer-input').focus();
   await page.keyboard.type('@sesgone /delete');
   await expect(page.locator('.composer .hint')).toContainText('Enter runs /delete for sesgone');
   await page.keyboard.press('Enter');
-  const ask = page.getByRole('alertdialog', { name: 'Delete sesgone’s session?' });
-  await expect.soft(ask).toContainText('This can’t be undone.');
-  await ask.getByRole('button', { name: 'Delete session' }).click();
+  // It reads as leaving the room, not deleting the agent: what ends, and what stays.
+  const ask = page.getByRole('alertdialog', { name: 'Remove sesgone from Room for a delete?' });
+  await expect.soft(ask).toContainText('sesgone’s part in this room, from now on');
+  await expect.soft(ask).toContainText('Its messages here, as they were said');
+  await expect.soft(ask).toContainText('sesgone itself, its settings and its other rooms');
+  await expect.soft(ask).not.toContainText('Delete');
+  await ask.getByRole('button', { name: 'Remove sesgone' }).click();
   await expect.soft(page.locator(`#agent-row-${se.id}`)).toHaveCount(0);
   expect.soft(app.store.state.sessions[se.id]).toBeUndefined();
   expect.soft(app.store.state.threads[room.id]?.members, 'the room keeps its other agent').toHaveLength(1);
   await expect.soft(page.locator('#toasts').getByRole('button', { name: /Undo/ }), 'no Undo').toHaveCount(0);
+  // Its earlier message keeps its name with no mark, and the room says only that it left.
+  const before = page.locator(`[data-key="${said.id}"]`);
+  await expect.soft(before.locator('.who')).toContainText('sesgone');
+  await expect.soft(before, 'no “(deleted)”').not.toContainText('(deleted)');
+  await expect.soft(page.locator('.sys-line', { hasText: 'sesgone left' })).toHaveText(/^\s*sesgone left\s*$/);
+  // A reaction can’t reach it, and the refusal says why.
+  expect(() => toggleReaction(app.store, room.id, said.id, '👍')).toThrow('That agent isn’t in this conversation any more, so it can’t hear a reaction.');
 });
 
 test('deleting a persona from its sheet takes it and its sessions at once, and the sheet’s list leaves it out', async ({ page }) => {

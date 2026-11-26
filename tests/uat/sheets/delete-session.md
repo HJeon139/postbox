@@ -10,7 +10,7 @@ Removing one agent from a room keeps the room readable.
 
 ## Expected functionality
 
-- In a room, the agent leaves and its messages stay marked “(deleted)”; alone, the conversation goes. It goes at once after the confirm, and the confirm says it can’t be undone.
+- In a room, the confirm reads as removing the agent from the room, not deleting it: the agent leaves, and its messages stay as they were, under its name, with no mark (#1743). Alone, the conversation goes. It goes at once after the confirm, and the confirm says it can’t be undone.
 - It offers Cancel and Delete session, not Archive instead: an agent’s session is archived only with its conversation (#320).
 
 ## Steps to reproduce

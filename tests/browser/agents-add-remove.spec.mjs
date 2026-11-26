@@ -108,7 +108,7 @@ test.describe('at 1280 px, with two agents', () => {
     await row('indexer').click();
     await expect(minus, 'it names the pick').toHaveAccessibleName(`Remove @indexer from ${t.title}…`);
     await expect(minus, 'two agents: − is on').toHaveAttribute('aria-disabled', 'false');
-    const ask = page.getByRole('alertdialog', { name: 'Delete indexer’s session?' });
+    const ask = page.getByRole('alertdialog', { name: `Remove indexer from ${t.title}?` });
     await minus.focus();
     await page.keyboard.press('Enter');
     await ask.getByRole('button', { name: 'Cancel' }).focus();
@@ -117,7 +117,7 @@ test.describe('at 1280 px, with two agents', () => {
     expect(handlesIn(t)).toEqual(['indexer', 'librarian']);
     await minus.focus();
     await page.keyboard.press('Enter');
-    await ask.getByRole('button', { name: 'Delete session' }).focus();
+    await ask.getByRole('button', { name: 'Remove indexer' }).focus();
     await page.keyboard.press('Enter');
     await expect(row('indexer')).toHaveCount(0);
     expect(handlesIn(t)).toEqual(['librarian']);
@@ -138,11 +138,11 @@ test.describe('at 1280 px, a remove that races another', () => {
     const { row, minus } = await members(page, t);
     await row('librarian').click();
     await minus.click();
-    const ask = page.getByRole('alertdialog', { name: 'Delete librarian’s session?' });
+    const ask = page.getByRole('alertdialog', { name: `Remove librarian from ${t.title}?` });
     await expect(ask).toBeVisible();
     // While the dialog is open, @indexer goes, so @librarian is the last agent when the person confirms.
     app.rt.deleteSession(arrange.sessionsIn(app.rt, t.id).find((x) => x.handle === 'indexer').id);
-    await ask.getByRole('button', { name: 'Delete session' }).click();
+    await ask.getByRole('button', { name: 'Remove librarian' }).click();
     await expect(page.getByText('Couldn’t remove @librarian')).toBeVisible();
     await expect(page.getByText('@librarian is the last agent here, so removing it would delete the conversation.', { exact: false })).toBeVisible();
     expect(app.rt.store.state.threads[t.id], 'the conversation stays').toBeTruthy();
@@ -165,7 +165,10 @@ test.describe('at 375 px', () => {
     await expect.poll(() => handlesIn(t)).toEqual(['indexer', 'librarian']);
     await row('indexer').click();
     await minus.click();
-    await page.getByRole('alertdialog', { name: 'Delete indexer’s session?' }).getByRole('button', { name: 'Delete session' }).click();
+    await page
+      .getByRole('alertdialog', { name: `Remove indexer from ${t.title}?` })
+      .getByRole('button', { name: 'Remove indexer' })
+      .click();
     await expect.poll(() => handlesIn(t)).toEqual(['librarian']);
     await expect(minus, 'one agent left: − is off').toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('Escape');

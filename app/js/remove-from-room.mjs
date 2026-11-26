@@ -1,0 +1,73 @@
+// Removing an agent from a room (#1743): it stops taking part there, from now on. What it already said stays as it was
+// said, under its name, and the agent itself, its settings and its other rooms are untouched. Its session in the room
+// ends, so if it’s added back it starts without what it knew here. The confirm says that, in words that can’t be
+// mistaken for deleting the agent (persona-delete.mjs), which takes it from every room.
+
+import { api, client } from './client.mjs';
+import { h, plural } from './dom.mjs';
+import { openDialog, say, toast } from './ui.mjs';
+
+const S = () => client.state;
+
+/**
+ * Asks to remove an agent’s session from a room, then removes it. keepConversation, from the Agents header’s − and the
+ * Members bar (#1620), asks the server to refuse rather than erase the room if this is its last agent by the time the
+ * person confirms. removed runs once it’s done.
+ * @param {any} se @param {{ keepConversation?: boolean, removed?: () => void }} [opts]
+ */
+export function confirmRemove(se, { keepConversation = false, removed } = {}) {
+  const t = S().threads[se.threadId];
+  const room = t?.title ?? 'this room';
+  const apps = Object.values(S().apps).filter((a) => a.sessionId === se.id).length;
+  const li = (ok, text) =>
+    h('li', h(`span.i.i-${ok ? 'check' : 'x'}.i-sm`, { style: { color: ok ? 'var(--good)' : 'var(--alert-ink)' }, 'aria-hidden': 'true' }), h('span', text));
+  const dlg = openDialog({
+    title: `Remove ${se.handle} from ${room}?`,
+    sub: S().projects[t?.projectId]?.name,
+    role: 'alertdialog',
+    body: [
+      h(
+        'div.field',
+        h('span.label', 'This ends'),
+        h(
+          'ul.what-goes',
+          li(false, `${se.handle}’s part in this room, from now on`),
+          li(false, 'What it knew of this room: added back, it starts again without it'),
+          apps ? li(false, `The ${plural(apps, 'app')} it wrote here`) : null,
+        ),
+      ),
+      h(
+        'div.field',
+        h('span.label', 'This stays'),
+        h(
+          'ul.what-goes',
+          li(true, 'Its messages here, as they were said'),
+          li(true, `${se.handle} itself, its settings and its other rooms`),
+          li(true, `Files in ${S().projects[t?.projectId]?.folder ?? 'the project folder'}`),
+        ),
+      ),
+    ],
+    foot: [
+      h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'),
+      h(
+        'button.btn.danger',
+        {
+          type: 'button',
+          onclick: async () => {
+            dlg.close();
+            try {
+              await (keepConversation ? api(`/api/sessions/${se.id}/remove`, {}) : api(`/api/sessions/${se.id}`, undefined, 'DELETE'));
+              say(`Removed ${se.handle} from ${room}`);
+              removed?.();
+            } catch (e) {
+              toast({ title: `Couldn’t remove @${se.handle}`, text: e.message, level: 'blocking' });
+            }
+          },
+        },
+        `Remove ${se.handle}`,
+      ),
+    ],
+    initialFocus: () => null,
+  });
+  dlg.dialog.querySelector('.d-foot .btn')?.focus();
+}
