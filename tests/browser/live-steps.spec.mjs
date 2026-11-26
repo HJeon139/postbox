@@ -110,13 +110,8 @@ test('a finished turn’s steps fold into its work record at the top of the post
   await expect(post.locator('.work-list-turn .wl-row'), 'nor its edit again under it: the record lists its calls').toHaveCount(0);
 });
 
-// Detail fades within each agent’s share of the screen. A room of four and a room of eight are two tests, each with
-// its own budget (#1700): as one test they ran close to its 30 s under a loaded full run (15–44 s against 3 s alone).
-// With the page’s CPU slowed 20 times and the server’s event loop busy 90% of the time, the one test took 19 s, and
-// apart the rooms take 9 s and 13 s, so each has more than twice its time to spare.
-
 /**
- * Agents that each make nine calls and then wait, in a room of their own that the page opens, until each is waiting.
+ * Opens a room of `handles`, each making nine calls, and returns once every one is held at stage 1.
  * @param {import('@playwright/test').Page} page @param {string[]} handles
  */
 async function busyRoom(page, handles) {
@@ -129,16 +124,16 @@ async function busyRoom(page, handles) {
       await hold(who, 1);
     });
   const t = room(`${handles.length} agents`, handles);
-  // A room the page hasn’t heard of yet isn’t one it can open: with the stream late, it waits for it first.
-  if (page.url().startsWith(scripted.app.origin)) await synced(page, scripted.app);
   await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
   await expect(page.locator('.transcript'), 'the new room is open').toHaveAttribute('data-thread', t.id);
   await synced(page, scripted.app);
   scripted.app.rt.sendMessage(t.id, { text: `${handles.map((w) => `@${w}`).join(' ')} build` });
   await expect.poll(() => handles.map((w) => `${w}:${at(w)}`).join(' ')).toBe(handles.map((w) => `${w}:1`).join(' '));
   await synced(page, scripted.app);
-  return t;
 }
+
+// Detail fades within each agent’s share of the screen. The room of four and the room of eight are two tests, so each
+// has its own budget: as one, they ran close to its 30 s in a loaded full run (#1700).
 
 test('detail fades within each agent’s share of the screen: four agents show the newest step in full, a few lines, the rest as earlier steps', async ({
   page,
