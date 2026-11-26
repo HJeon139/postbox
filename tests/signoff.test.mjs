@@ -48,6 +48,27 @@ test('the Node majors come from the workflows, a matrix list included', () => {
   assert.deepEqual(majorsIn("node-version: '20.x'"), [20]);
 });
 
+test('a matrix key given as a block list, or in matrix.include entries, names its Node majors', () => {
+  const uses = `steps:\n  - with:\n      node-version: \${{ matrix.node }}\n`;
+  const block = `strategy:\n  matrix:\n    node:\n      - 22\n      - '24' # the next LTS\n    os: [ubuntu]\n${uses}`;
+  assert.deepEqual(majorsIn(block), [22, 24]);
+  const include = `strategy:\n  matrix:\n    include:\n      - node: 22\n        os: ubuntu\n      - os: macos\n        node: "24.x"\n${uses}`;
+  assert.deepEqual(majorsIn(include), [22, 24]);
+});
+
+test('a node-version whose matrix key lists no major throws, naming the key, rather than requiring nothing', () => {
+  const text = `strategy:\n  matrix:\n    version: [22]\nsteps:\n  - with:\n      node-version: \${{ matrix.node }}\n`;
+  assert.throws(() => majorsIn(text), /node-version: \$\{\{ matrix\.node \}\} names no Node major: matrix\.node lists none this script can read/);
+  assert.throws(() => majorsIn('node-version: lts/*\n'), /node-version: lts\/\* names no Node major/);
+});
+
+test('a workflow whose node-version names no major fails step 2, naming the workflow and the key', async () => {
+  const w = signed();
+  w.files.set('/repo/.github/workflows/nightly.yml', `jobs:\n  t:\n    steps:\n      - with:\n          node-version: \${{ matrix.nodes }}\n`);
+  assert.equal(await signoff(['840'], w.d), EXIT.toolchain);
+  assert.match(line(w, /^✖ 2\./), /\.github\/workflows\/nightly\.yml: node-version: \$\{\{ matrix\.nodes \}\} names no Node major: matrix\.nodes/);
+});
+
 test('a red commit fails step 3, naming it, even when the head’s own files pass', async () => {
   const at = { now: '' };
   const w = signed({
