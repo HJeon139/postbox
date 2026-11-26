@@ -180,3 +180,20 @@ test('HEAD moved while the gate ran fails step 5, and writes no log', async () =
   assert.equal(w.files.has(`${GIT_DIR}/signoff/${w.head}.json`), false, 'no log');
   assert.equal(w.released, 1, 'the slot is let go');
 });
+
+test('a gate command that throws still lets the slot go, fails step 5 and writes no log', async () => {
+  const w = world({
+    answers: [
+      [
+        /^npx playwright test$/,
+        () => {
+          throw new Error('spawn npx EAGAIN');
+        },
+      ],
+    ],
+  });
+  assert.equal(await signoff(['840', '--run-gate'], w.d), EXIT.gate);
+  assert.match(line(w, /^✖ 5\./), /spawn npx EAGAIN/);
+  assert.equal(w.released, 1, 'the slot is let go');
+  assert.equal(w.files.has(`${GIT_DIR}/signoff/${w.head}.json`), false, 'no log');
+});
