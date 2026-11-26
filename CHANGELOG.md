@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.50.0 (2026-11-26)
+
+### Features
+
+- **server:** a run clock's stop ends the timed run for good
+
+### Fixes
+
+- **text:** cut a card’s names and a write’s quoted path at a whole character too
+- **remote:** a host's file error ends its sentence, and the read failure test checks nothing went
+- **remote:** a refused memory removal is logged on the host and names its agent
+- **remote:** a host's refused memory removal holds up only its own persona
+- **server:** say an ended run was stopped, and keep its end in a snapshot's export
+- **text:** cut the rest of the text these files show only at a whole character
+- **text:** cut text agents and the person read only at a whole character
+
 ## 4.49.1 (2026-11-26)
 
 ### Fixes
