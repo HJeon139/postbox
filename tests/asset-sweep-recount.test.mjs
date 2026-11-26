@@ -10,6 +10,7 @@ import { test } from 'node:test';
 import { sweepAssets } from '../server/asset-orphans.mjs';
 import { assetBlobs, writeAsset } from '../server/assets.mjs';
 import { openDataFolder } from '../server/data-folder.mjs';
+import { emptyIndex } from '../shared/state-assets.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 test('#691 a released hash the index lost but a version still keeps is kept, and the log names it and its room', async (t) => {
@@ -74,11 +75,17 @@ test('#691 a released hash the index keeps but no version does is logged, and it
   store.emit('thread', { id: 'c1', members: [] });
   const blobs = assetBlobs(dir);
   const { sha256 } = await blobs.put(Buffer.from('drifted'));
-  store.state.assetRooms.c1 = { count: 0, bytes: 7, ids: {}, names: {}, ops: {}, files: { [sha256]: { n: 1, size: 7 } } };
+  // An index that keeps the hash, with no asset behind it, as a drift would leave it.
+  store.state.assetRooms.c1 = Object.assign(emptyIndex(), { bytes: 7 });
+  store.state.assetRooms.c1.files[sha256] = { n: 1, size: 7 };
   store.state.assetReleases[sha256] = 1;
   const warned = [];
   const swept = await sweepAssets(store, blobs, { warn: (line) => warned.push(line) });
   assert.deepEqual(swept.deleted, []);
   assert.ok(existsSync(blobs.pathOf(sha256)), 'the file stays');
-  assert.match(warned.find((l) => l.includes(sha256)) ?? '', /index says a version keeps it, but no version does/);
+  assert.match(
+    warned.find((l) => l.includes(sha256)) ?? '',
+    /index says a version keeps it, but no version does\. It isn’t deleted, and its release is dropped\./,
+  );
+  assert.equal(store.state.assetReleases[sha256], undefined, 'its release is dropped, as the line says');
 });

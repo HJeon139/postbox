@@ -39,7 +39,9 @@ function disagreements(released, kept, counted) {
         `Postbox kept a released asset file, ${sha}: room ${counted.get(sha)}’s index says no version keeps it, but a version there does. It isn’t deleted.`,
       );
     else if (kept.has(sha) && !counted.has(sha))
-      lines.push(`Postbox kept a released asset file, ${sha}: a room’s index says a version keeps it, but no version does. It isn’t deleted.`);
+      lines.push(
+        `Postbox kept a released asset file, ${sha}: a room’s index says a version keeps it, but no version does. It isn’t deleted, and its release is dropped.`,
+      );
   }
   return lines;
 }
@@ -75,7 +77,7 @@ async function removed(blobs, sha, warn) {
 }
 
 /**
- * Deletes the released files no version keeps, then drops their hashes, and every released hash a version keeps again,
+ * Deletes the released files no version keeps, then drops their hashes, and every released hash a room’s index keeps again,
  * from assetReleases in one commit. A crash between the two deletes nothing twice and loses nothing: the next load
  * finds the file gone and drops the hash then. Files nothing keeps and nothing released are counted, never deleted.
  * @param {import('./store.mjs').Store} store @param {import('./blobs.mjs').Blobs} blobs
