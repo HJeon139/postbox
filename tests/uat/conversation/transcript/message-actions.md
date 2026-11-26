@@ -6,14 +6,14 @@
 
 ## Why it exists
 
-Starting a topic thread must be discoverable without hovering. And a message needs an address the person can keep or paste for an agent, so “the plan in @researcher’s reply” can point at the reply (#168).
+Starting a topic thread must be discoverable without hovering. And a message needs an address the person can keep, reload or share, so a place in a long conversation isn’t lost (#168). An agent given one reads the message by the `it_…` id in it, with `read_message`.
 
 ## Expected functionality
 
 - Reply in thread is always visible under every finished message.
 - Once a thread exists, it becomes “N replies · last reply …” with an unread badge.
 - Copy link, under every finished message, copies the message’s address: its conversation’s or thread’s, with `?m=` and the message’s id (#168). Opened, a reload, Back or a new tab included, it scrolls the message into view, focuses it and outlines it for a moment. One that names a message the thread doesn’t have opens the thread and says “That message isn’t here”.
-- Going to what an agent needs (⌃J, “Next that needs you”, a pulsing ring) goes to its ask’s address, so Back returns to where you were.
+- Going to what an agent needs (⌃J, “Next that needs you”, a pulsing ring) goes to its ask’s address, so Back returns to where you were, and opens the Work left open in that conversation when the window has room for it beside the conversation. The ask is focused, not a reaction under it.
 - In a topic thread, each reply has Send to conversation. It waits for its answer after one click, so a double click posts once, and the reply then shows “Sent to the conversation” instead. A reply that went back as a summary shows it too (#93).
 
 ## Steps to reproduce
