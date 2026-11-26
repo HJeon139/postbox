@@ -13,8 +13,8 @@ const chip = (label, description) => ({
   textContent: description ? `${label}${description}` : label,
   offsetParent: {},
   getAttribute: () => null,
-  // The label’s own span, as `span.chip-text > span` draws it; a chip with no description has none.
-  querySelector: (sel) => (description && sel === '.chip-text > span' ? { textContent: label } : null),
+  // The label’s own span, as `span.chip-text > span` draws it, and the description’s; a chip with no description has neither.
+  querySelector: (sel) => (description && { '.chip-text > span': { textContent: label }, '.chip-desc': { textContent: description } }[sel]) || null,
   label,
 });
 
@@ -60,4 +60,12 @@ test('a label that holds “ — ” itself wins over a shorter label the name a
   const list = [chip('Daily', 'each evening'), chip('Daily — with digest', 'each morning')];
   assert.equal(found(byOption(ITEM, SEL, 'Daily — with digest — each morning'), list), 'Daily — with digest');
   assert.equal(found(byOption(ITEM, SEL, 'Daily — each evening'), list), 'Daily');
+});
+
+test('of two options with one label, a name that gives a description picks the option it describes', () => {
+  const list = [chip('Plan', 'cheap'), chip('Plan', 'fast')];
+  const doc = { querySelector: () => ({ querySelectorAll: () => list }) };
+  const pick = (name) => list.indexOf(new Function('document', `return ${byOption(ITEM, SEL, name)};`)(doc));
+  assert.equal(pick('Plan — fast'), 1);
+  assert.equal(pick('Plan — cheap'), 0);
 });
