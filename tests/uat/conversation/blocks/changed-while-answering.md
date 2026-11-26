@@ -22,7 +22,7 @@ On 22 October 2026, an agent revised a review block three times while the person
 
 ## Steps to reproduce
 
-1. Run `npx playwright test answers review-answer-race block-answer-race` (`tests/browser/answers.spec.mjs`, `tests/browser/review-answer-race.spec.mjs`, `tests/browser/block-answer-race.spec.mjs`). They check the review, choice and form cases above, the slow reply included.
+1. Run `npx playwright test answers review-answer-race block-answer-race review-answer-late` (`tests/browser/answers.spec.mjs`, `tests/browser/review-answer-race.spec.mjs`, `tests/browser/block-answer-race.spec.mjs`, `tests/browser/review-answer-late.spec.mjs`). They check the review, choice and form cases above, the slow reply included.
 2. With a real agent (see the README’s real-agent setup), ask: “Show me a three-line draft as a review block, then run `sleep 40`, then update the block with a new line added above its first line.”
 3. While it sleeps, comment on line 2 and choose Request changes, but don’t submit. Watch the update arrive.
 4. Check, before any click, the notice, the diff, and that your comment now sits on line 3: it moved down with its line, untagged, since the line itself didn’t change. Submit once.

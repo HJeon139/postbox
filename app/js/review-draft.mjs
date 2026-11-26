@@ -104,8 +104,9 @@ export function followOpen(draft, from, to) {
 }
 
 /**
- * The comments an answer sends (#518), marked as it goes with the revision it answered, under that answer’s own key: two
- * answers can be on their way at once (a double click), and one refused mustn’t unmark what the other sent. A spread
+ * The comments an answer sends (#518), marked as it goes with the revision it answered and when it went, under that
+ * answer’s own key: two answers can be on their way at once (a double click), and one refused mustn’t unmark what the
+ * other sent. When it went tells an answer that landed before it, from another page, from this one. A spread
  * copies the marks, as followLines copies a comment, and JSON leaves them out, so they reach neither the answer nor what
  * a reload keeps.
  */
@@ -118,7 +119,8 @@ let answers = 0;
  */
 export function markSent(d, revision) {
   const key = String(++answers);
-  for (const c of Array.isArray(d?.comments) ? d.comments : []) c[SENT] = { ...c[SENT], [key]: revision };
+  const mark = { revision, at: Date.now() };
+  for (const c of Array.isArray(d?.comments) ? d.comments : []) c[SENT] = { ...c[SENT], [key]: mark };
   return key;
 }
 
@@ -132,17 +134,18 @@ export function unmarkSent(d, key) {
 
 /**
  * A newer revision drawn after an answer that landed (its `priorAnswer`, which the page may never have drawn answered:
- * a page elsewhere, a resync): the comments that answer sent are the block’s threads now, so they leave the draft here,
- * where the block is drawn, and the person sees the draft they send (#518). Only an answer that landed takes them: one
- * the server refused as stale left them the person’s. It can be for the revision they were sent for or a later one, and
- * a dismissal counts too: a dismissal marks the comments as it goes, like any answer. What they started on the newer
- * revision stays, and so does the verdict on screen. An edit open is saved first, since it’s kept by its place in the
- * comments.
- * @param {any} d @param {{ action: string, revision: number } | undefined} landed
+ * a page elsewhere, a resync): the comments that answer sent are the block’s threads now, or, from a dismissal,
+ * discarded with it, so they leave the draft here, where the block is drawn, and the person sees the draft they send
+ * (#518). Only an answer that landed takes them: one the server refused as stale left them the person’s. The answer
+ * that landed may be for the revision they were sent for or a later one, but not from before they went: another page’s
+ * answer that landed before this page’s click, drawn late, leaves what the click sent, which the server refuses. What
+ * they started on the newer revision stays, and so does the verdict on screen. An edit open is saved first, since it’s
+ * kept by its place in the comments.
+ * @param {any} d @param {{ action: string, revision: number, at: number } | undefined} landed
  */
 function dropSent(d, landed) {
   if (!landed) return;
-  const taken = (/** @type {any} */ c) => Object.values(c[SENT] ?? {}).some((revision) => revision <= landed.revision);
+  const taken = (/** @type {any} */ c) => Object.values(c[SENT] ?? {}).some((mark) => mark.revision <= landed.revision && landed.at >= mark.at);
   if (!d.comments.some(taken)) return;
   saveEdit(d);
   d.comments = d.comments.filter((/** @type {any} */ c) => !taken(c));
