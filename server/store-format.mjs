@@ -33,6 +33,13 @@ function formatOf(rec) {
   return null;
 }
 
+/** The refusal, naming the version to run when the record has one. @param {unknown} version */
+function newerWords(version) {
+  const by = typeof version === 'string' ? `Postbox ${version}` : 'a newer Postbox';
+  const run = typeof version === 'string' ? `Postbox ${version} or newer` : 'a newer Postbox';
+  return `This data folder was last opened by ${by}, which keeps what this older Postbox (${OURS}) can’t read. Run ${run} on it, or start this one with --data <another folder>. Postbox left the folder as it was.`;
+}
+
 /**
  * Refuses a folder whose format is newer than this Postbox’s. Reads only. The record only advises: one that’s missing
  * (no Postbox since #683 has loaded the folder), or that can’t be read or read as a format (cut off by a crash, or
@@ -55,13 +62,7 @@ export async function checkFormat(io, at, warn = console.warn) {
   const format = formatOf(rec);
   if (format === null) return warn(`Postbox couldn’t read which data format this folder holds (${FORMAT_FILE}), so it loads it as before.`);
   if (format <= DATA_FORMAT) return;
-  const by = typeof rec.version === 'string' ? rec.version : 'a newer version';
-  throw Object.assign(
-    new Error(
-      `This data folder was last opened by Postbox ${by}, which keeps what this older Postbox (${OURS}) can’t read. Run Postbox ${by} or newer on it, or start this one with --data <another folder>. Postbox left the folder as it was.`,
-    ),
-    { code: 'NEWER_FORMAT' },
-  );
+  throw Object.assign(new Error(newerWords(rec.version)), { code: 'NEWER_FORMAT' });
 }
 
 /**

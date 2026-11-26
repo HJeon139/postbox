@@ -61,16 +61,25 @@ test('#683 a folder this Postbox loads records its data format and version', asy
   assert.equal(record(await written()), OURS);
 });
 
-test('#683 DATA_FORMAT goes up with the event types: EVENTS matches the newest format’s list, and each format has one', () => {
+/**
+ * Each released format’s list, by its SHA-256. Never change a released format’s list: a new event type goes in the next
+ * format’s, with DATA_FORMAT raised, and its hash added here.
+ */
+const RELEASED = { 1: 'f14fcd144b66da406cd71342390e7b4a8f62c117de85275135930ca25767343f' };
+
+test('#683 DATA_FORMAT goes up with the event types: every type in EVENTS is in the newest format’s list', () => {
   const formats = JSON.parse(readFileSync(new URL('./store-format-events.json', import.meta.url), 'utf8'));
   assert.deepEqual(
     Object.keys(formats).map(Number),
     Array.from({ length: DATA_FORMAT }, (_, i) => i + 1),
     'one list for each format up to DATA_FORMAT',
   );
-  // A new event type an older Postbox can’t replay: add the list under the next number, and raise DATA_FORMAT.
-  assert.deepEqual(Object.keys(EVENTS).sort(), formats[DATA_FORMAT], 'EVENTS gained or lost a type with DATA_FORMAT where it was');
-  for (let f = 2; f <= DATA_FORMAT; f++) assert.notDeepEqual(formats[f], formats[f - 1], `format ${f} changes the event types`);
+  // A type EVENTS adds, which an older Postbox can’t replay: the next format’s list, and DATA_FORMAT raised. A type it
+  // drops needs nothing: an older Postbox still replays what a newer one logs.
+  const missing = Object.keys(EVENTS).filter((t) => !formats[DATA_FORMAT].includes(t));
+  assert.deepEqual(missing, [], 'EVENTS gained a type with DATA_FORMAT where it was');
+  for (const [f, hash] of Object.entries(RELEASED))
+    assert.equal(createHash('sha256').update(JSON.stringify(formats[f])).digest('hex'), hash, `format ${f}’s list changed after it was released`);
 });
 
 test('#683 a folder a newer format opened is refused, naming the version to run, with every file in it unchanged', async () => {
@@ -123,7 +132,7 @@ test('#683 a folder of the same or an older format loads with its state and reco
 });
 
 test('#683 a record cut off by a crash, or naming no format, is read as none, with one warning, and the folder loads', async () => {
-  for (const text of ['', '{"format":', '{"format":"next"}\n', '{"format":0}\n', 'null\n', '[]\n']) {
+  for (const text of ['', '{"format":', '{"format":"next"}\n', '{"format":"2"}\n', '{"format":0}\n', '{"format":2.5}\n', 'null\n', '[]\n']) {
     const dir = await written();
     recordAs(dir, text);
     const { state, warned } = await loaded(dir);
@@ -197,4 +206,16 @@ test('#683 a load that finds its own record leaves it as it is, with no write', 
   const ino = statSync(join(dir, FORMAT_FILE)).ino;
   await loaded(dir);
   assert.equal(statSync(join(dir, FORMAT_FILE)).ino, ino, 'not written again');
+});
+
+test('#683 a newer format’s record with no version names no version, and still refuses', async () => {
+  const dir = await written();
+  recordAs(dir, `${JSON.stringify({ format: DATA_FORMAT + 1 })}\n`);
+  await assert.rejects(new Store(dir).load(), (e) => {
+    assert.equal(
+      e.message,
+      `This data folder was last opened by a newer Postbox, which keeps what this older Postbox (${VERSION}) can’t read. Run a newer Postbox on it, or start this one with --data <another folder>. Postbox left the folder as it was.`,
+    );
+    return true;
+  });
 });
