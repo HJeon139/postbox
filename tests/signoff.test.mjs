@@ -59,14 +59,17 @@ test('a matrix key given as a block list, or in matrix.include entries, names it
 test('a node-version whose matrix key lists no major throws, naming the key, rather than requiring nothing', () => {
   const text = `strategy:\n  matrix:\n    version: [22]\nsteps:\n  - with:\n      node-version: \${{ matrix.node }}\n`;
   assert.throws(() => majorsIn(text), /node-version: \$\{\{ matrix\.node \}\} names no Node major: matrix\.node lists none this script can read/);
-  assert.throws(() => majorsIn('node-version: lts/*\n'), /node-version: lts\/\* names no Node major/);
+  assert.throws(() => majorsIn('node-version: lts/*\n'), /node-version: lts\/\* names lts\/\*, which isn’t a Node major/);
 });
 
 test('a workflow whose node-version names no major fails step 2, naming the workflow and the key', async () => {
   const w = signed();
   w.files.set('/repo/.github/workflows/nightly.yml', `jobs:\n  t:\n    steps:\n      - with:\n          node-version: \${{ matrix.nodes }}\n`);
   assert.equal(await signoff(['840'], w.d), EXIT.toolchain);
-  assert.match(line(w, /^✖ 2\./), /\.github\/workflows\/nightly\.yml: node-version: \$\{\{ matrix\.nodes \}\} names no Node major: matrix\.nodes/);
+  assert.match(
+    line(w, /^✖ 2\./),
+    /\.github\/workflows\/nightly\.yml: node-version: \$\{\{ matrix\.nodes \}\} names no Node major: job t has no strategy\.matrix block/,
+  );
 });
 
 test('a red commit fails step 3, naming it, even when the head’s own files pass', async () => {

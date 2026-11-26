@@ -40,48 +40,116 @@ function blockItems(lines, i, indent) {
   return items;
 }
 
+const indentOf = (/** @type {string} */ l) => l.length - l.trimStart().length;
+const meaningful = (/** @type {string} */ l) => Boolean(l.trim()) && !l.trim().startsWith('#');
+
 /**
- * Every value a matrix key has in a workflow: a flow list (`node: [22, 24]`), a block list (`node:` then `- 22` lines),
- * or one value a line, as each of matrix.include’s entries gives it (`- node: 22`).
- * @param {string} text @param {string} key
+ * A line’s key and value, as `key: value` or a list entry’s first `- key: value` writes it, with the key’s column.
+ * @param {string} line
+ */
+function keyOf(line) {
+  const m = /^(\s*(?:-\s+)?)([\w-]+):(?:\s+(.*))?$/.exec(line);
+  return m ? { column: m[1].length, key: m[2], value: bare(m[3] ?? '') } : undefined;
+}
+
+/**
+ * The lines line i opens as a YAML block, by indent: from i + 1 up to the first meaningful line no deeper than line i.
+ * @param {string[]} lines @param {number} i @returns {number[]} their indexes, meaningful ones only
+ */
+function blockOf(lines, i) {
+  /** @type {number[]} */
+  const block = [];
+  for (let j = i + 1; j < lines.length; j++) {
+    if (!meaningful(lines[j])) continue;
+    if (indentOf(lines[j]) <= indentOf(lines[i])) break;
+    block.push(j);
+  }
+  return block;
+}
+
+/** The lines of a block at its own first column: a mapping’s keys, not what’s nested under them. @param {string[]} lines @param {number[]} block */
+const ownKeys = (lines, block) => {
+  const column = block.length ? keyOf(lines[block[0]])?.column : undefined;
+  return block.flatMap((j) => {
+    const kv = keyOf(lines[j]);
+    return kv && kv.column === column ? [{ ...kv, at: j }] : [];
+  });
+};
+
+/**
+ * The values a key gives: a flow list (`node: [22, 24]`), one value, or the block list under it (`- 22` lines).
+ * @param {string[]} lines @param {{ at: number, column: number, value: string }} kv
+ */
+function valuesOf(lines, kv) {
+  if (kv.value.startsWith('[')) return flowItems(kv.value);
+  if (kv.value) return [kv.value];
+  return blockItems(lines, kv.at, kv.column);
+}
+
+/**
+ * The job line i is in, as its key, or undefined outside `jobs:`.
+ * @param {string[]} lines @param {number} i
+ */
+function jobOf(lines, i) {
+  const jobsAt = lines.findIndex((l) => /^jobs:\s*(#.*)?$/.test(l));
+  if (jobsAt < 0) return undefined;
+  return ownKeys(lines, blockOf(lines, jobsAt))
+    .filter((job) => job.at < i)
+    .at(-1);
+}
+
+/**
+ * Every value matrix key has for the step at line i, read only from its job’s `strategy.matrix` block: the key as one
+ * of the matrix’s own, or in each of matrix.include’s entries (`- node: 22`). An exclude only removes combinations, so
+ * it never lowers what CI runs. Throws why there are none.
+ * @param {string[]} lines @param {number} i @param {string} key
  * @returns {string[]}
  */
-function matrixValues(text, key) {
-  const lines = text.split('\n');
-  const at = new RegExp(`^(\\s*)(?:-\\s+)?${key}:\\s*(.*)$`);
+function matrixValues(lines, i, key) {
+  const job = jobOf(lines, i);
+  const scope = job ? blockOf(lines, job.at) : lines.map((_, j) => j);
+  const at = scope.find((j) => /^\s*matrix:\s*(#.*)?$/.test(lines[j]));
+  if (at === undefined) throw new Error(`${job ? `job ${job.key}` : 'the workflow'} has no strategy.matrix block this script reads`);
   /** @type {string[]} */
   const values = [];
-  lines.forEach((l, i) => {
-    const m = at.exec(l);
-    if (!m) return;
-    const value = bare(m[2]);
-    if (value.startsWith('[')) values.push(...flowItems(value));
-    else if (value) values.push(value);
-    else values.push(...blockItems(lines, i, m[1].length));
-  });
+  for (const kv of ownKeys(lines, blockOf(lines, at))) {
+    if (kv.key === key) values.push(...valuesOf(lines, kv));
+    if (kv.key !== 'include') continue;
+    for (const entry of ownKeys(lines, blockOf(lines, kv.at))) if (entry.key === key) values.push(...valuesOf(lines, entry));
+  }
+  if (!values.length) throw new Error(`matrix.${key} lists none this script can read`);
   return values;
 }
 
 /**
- * The Node majors one workflow’s text names, in node-version keys and the matrix values they point at. A node-version
- * that names no major throws: CI runs some Node there, and requiring none would sign off without it.
+ * The Node majors one workflow’s text names, in node-version keys and the matrix values they point at. Any value
+ * that isn’t a major throws, as a node-version-file does: CI runs some Node there, and leaving it out would sign off
+ * without it.
  * @param {string} text
  * @returns {number[]}
  */
 export function majorsIn(text) {
+  const lines = text.split('\n');
   /** @type {number[]} */
   const found = [];
-  for (const m of text.matchAll(/^\s*-?\s*node-version:\s*(.+)$/gm)) {
-    const value = bare(m[1]);
-    const key = /\$\{\{\s*matrix\.([\w-]+)\s*\}\}/.exec(value)?.[1];
-    const items = key ? matrixValues(text, key) : flowItems(value);
-    const majors = items.map(majorOf).filter((n) => Number.isInteger(n));
-    if (!majors.length) {
-      const where = key ? `: matrix.${key} lists none this script can read` : '';
-      throw new Error(`node-version: ${value} names no Node major${where}`);
+  lines.forEach((line, i) => {
+    const kv = keyOf(line);
+    if (kv?.key === 'node-version-file') throw new Error(`node-version-file: ${kv.value} isn’t read by this script: name the major in node-version`);
+    if (kv?.key !== 'node-version') return;
+    const key = /^\$\{\{\s*matrix\.([\w-]+)\s*\}\}$/.exec(kv.value)?.[1];
+    let items;
+    try {
+      items = key ? matrixValues(lines, i, key) : flowItems(kv.value);
+    } catch (e) {
+      throw new Error(`node-version: ${kv.value} names no Node major: ${e.message}`);
     }
-    found.push(...majors);
-  }
+    for (const item of items) {
+      if (!Number.isInteger(majorOf(item))) {
+        throw new Error(`node-version: ${kv.value} names ${item}${key ? ` (matrix.${key})` : ''}, which isn’t a Node major this script can read`);
+      }
+      found.push(majorOf(item));
+    }
+  });
   return found;
 }
 
