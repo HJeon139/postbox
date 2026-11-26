@@ -38,6 +38,10 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
   }
   if (it.kind === 'block' && it.valid && ASKING.has(it.block?.type) && !it.answered)
     return { kind: 'block', itemId: it.id, text: it.block.title ?? clip(it.block.prompt ?? it.block.fallback, 120), ...where };
+  // A reply that names a person asks them (#1742, server/person-mentions.mjs), until they read it. `for` is whom it
+  // named; with none named it is the person it answers, whom Sessions’ needFor finds.
+  if (it.kind === 'agent' && it.asks && !it.asksSeen)
+    return { kind: 'mention', itemId: it.id, text: clip(it.text, 120), ...(it.asks.length ? { for: it.asks } : {}), ...where };
   // A refused call (a denial card) is never a need: the agent has the refusal and works around it, and the card shows
   // what happened (intent.md, principle 8).
   if (it.kind === 'toolask' && it.status === 'open')
@@ -54,10 +58,10 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
  * its tool request, and last the cards that wait until answered (wake requests). Within a kind,
  * the newest. It ranks exactly the kinds a need can have, shared/needs.mjs's NEEDS_KINDS (tests/card-needs-kinds.test.mjs).
  */
-export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, toolask: 4, viewask: 4, hop: 5 });
+export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, toolask: 4, viewask: 4, hop: 5, mention: 6 });
 
 /** The needs tied to a turn: the person moving on clears them (runtime.mjs, the turn's start). The rest wait until answered. */
-export const TURN_TIED = new Set(['failed', 'block', 'toolask']);
+export const TURN_TIED = new Set(['failed', 'block', 'toolask', 'mention']);
 
 /**
  * Which turns' asking blocks, refusals and tool requests count, answered here only. A turn that doesn't move on (another

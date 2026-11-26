@@ -6,6 +6,7 @@
 
 import { mentionEntries, wakeMentioned } from './mention-entries.mjs';
 import { takePending } from './message-queue.mjs';
+import { markAsks, readAsks } from './person-mentions.mjs';
 import { planBack, replyBack } from './reply-back.mjs';
 import { entriesFirst } from './turns.mjs';
 
@@ -17,6 +18,9 @@ export function listenInbox(rt) {
     if (item.kind === 'agent' && item.handle) delivery.postedSince({ threadId, from: item.handle, itemId: item.id, turnId: item.turnId });
   });
   bus.on('item.final', (final) => mentionEntries(rt, final));
+  // A reply that names a person asks them, and their reading it is its answer (#1742).
+  bus.on('item.final', (final) => markAsks(rt, final));
+  bus.on('thread.viewed', (viewed) => readAsks(rt, viewed));
   bus.on('entry.waiting', ({ sessionId }) => rt.turnService.start(sessionId));
   // R: what the turn took was delivered, the agents its replies mentioned are woken, and its own next entries start.
   // An entry that came before everything queued for the agent starts first, so what waited goes in arrival order (#733).

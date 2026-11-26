@@ -773,10 +773,10 @@ export class Runtime {
    * cleared too (#796).
    * @param {string} threadId
    */
-  view(threadId) {
+  view(threadId, personId) {
     if (!threadId) return;
     this.sessions.markRead(threadId);
-    this.threads.view(threadId);
+    this.threads.view(threadId, personId);
   }
 
   // ── UI tools (the same set MCP exposes): server/ui-tools.mjs ──────────────────────
