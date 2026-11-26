@@ -92,7 +92,7 @@ An audit of the code on 26 November 2026 (`main` at e7d50596e). Each row is a de
 | Project and agent folders, the folder picker, attachments from a folder | Paths on the server’s disk (`server/folder-path.mjs`, `server/folders.mjs`) | A project’s folder on each host exists already (`PUT /api/projects/:p/hosts/:h/folder`); the server-side folder has no meaning | Same-machine |
 | The work ledger’s git, pushes with `gh` | Run on the server, with its account’s sign-in (`server/ledger-git.mjs`, `server/push-on-request.mjs`) | Off for work on a host today ([remote-hosts.md](remote-hosts.md), “Revisit when”); unchanged | None |
 | Who has a room open | One viewer per room, the last to say so (`viewers` in `server/threads.mjs`) | Two people in one room: only one is seen, so an ask of the other isn’t read as it lands ([people.md](people.md), “Reading is its answer, and only reading”) | Several people |
-| Unread marks, the theme | One of each for the install (`shared/state.mjs`) | Unread cleared by anyone’s view; one theme for all. Per person, or accepted | Several people |
+| Unread marks, the theme | One of each for the install (`shared/state.mjs`) | Each person’s own (the owner, 26 November 2026): one person’s view clears only their unread marks, and each keeps their theme. On a local run there is one person, so both read as they do now | Several people |
 | Usage and quota | The server account’s own figures (`server/backends.mjs`) | A host’s account’s, not a person’s | Several people |
 | An agent’s view of its app | A headless browser on the server, loading loopback with no sign-in (`server/view-app/`) | Still loopback; the gate must let Postbox’s own browser in without the load balancer | Address |
 | What apps fetch | Private, loopback and link-local addresses refused, the cloud’s metadata address among them (`server/net-address.mjs`) | Holds as it is | None |
@@ -137,15 +137,14 @@ What it would need, noted so no one mistakes it for small: a host with an owner,
 | 2 | **Address:** the public origin and listen address | A Postbox started with them answers that origin and refuses others; `!` and app links are refused; with neither, the gate’s tests pass unchanged |
 | 3 | **Sign-in:** the load balancer’s provider, with the allow list of [#1733](https://github.com/HJeon139/postbox/issues/1733) | A request with a valid signed identity is that person; one without gets no route; a local run asks nothing |
 | 4 | **Same-machine:** each row above marked for it | Each surface works on a host’s agent or says plainly that it doesn’t apply here |
-| 5 | **Several people:** who has a room open, per person, then the rest of its rows | Two people in one room each read their own asks |
+| 5 | **Several people:** who has a room open, per person, then the rest of its rows | Two people in one room each read their own asks, each clear only their own unread marks, and each keep their own theme |
 | 6 | **Cloud hosts and deployment:** the image, the recipe, a real start on AWS | The owner starts it, signs in, adds a host and runs a room |
 
 Slices 2 and 3 change a security boundary and are reviewed as such. Slice 6 costs real money to prove and is the owner’s to start.
 
-## Open questions for the owner
+## Open question for the owner
 
-1. **Reads behind sign-in only.** Hosted, every read needs a signed identity, where locally reads need nothing. Is there any read a hosted Postbox should answer without sign-in (a health check for the load balancer is the one this design assumes)?
-2. **Per person or shared:** unread marks and the theme. Shared is nothing to build; per person is slice 5’s larger half.
+**Reads behind sign-in only.** Hosted, every read needs a signed identity, where locally reads need nothing. Is there any read a hosted Postbox should answer without sign-in (a health check for the load balancer is the one this design assumes)?
 
 ## Revisit when
 
