@@ -8,6 +8,7 @@
 import { join } from 'node:path';
 import { STORE_WAITS } from '../shared/limits.mjs';
 import { emptyState, ownState } from '../shared/state.mjs';
+import { checkFormat, recordFormat } from './store-format.mjs';
 import { HeldLog } from './store-held.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
 import { replay } from './store-replay.mjs';
@@ -121,9 +122,20 @@ export async function load(store, { fresh = false } = {}) {
     store.epoch = store.newEpoch();
     return store;
   }
+  // A folder a newer Postbox wrote is refused before anything in it changes, the lock included (#683). A fresh start
+  // empties it anyway.
+  if (!fresh) await checkFormat(store.io, (n) => store.at(n));
   await store.io.mkdir(store.dir, { recursive: true });
   store.lock = await lockStore(store.io, store.dir);
   try {
+    // Again under the lock: a newer Postbox could have opened the folder and gone between the first read and the lock.
+    // The first read has warned about a record it couldn’t read.
+    if (!fresh)
+      await checkFormat(
+        store.io,
+        (n) => store.at(n),
+        () => {},
+      );
     // A fresh start empties the folder only once it holds the lock, so a running Postbox’s files are never deleted
     // under it (the integrator’s review of 1a).
     // The asset folder goes too: its files belong to the state this empties, and left there, the asset pass at load
@@ -132,9 +144,11 @@ export async function load(store, { fresh = false } = {}) {
       for (const n of await store.io.readdir(store.dir))
         if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n) || n === 'assets') await store.io.rm(store.at(n), { force: true, recursive: true });
     // A snapshot’s temporary file left by a process that stopped while writing it (#1314): up to about 190 MB at
-    // 1,000,000 items, and nothing else removes it. With the lock held, no other store is writing one here.
-    for (const n of await store.io.readdir(store.dir)) if (/^snapshot\.json\.\d+\.tmp$/.test(n)) await store.io.rm(store.at(n), { force: true });
+    // 1,000,000 items, and nothing else removes it. The format record’s, likewise (#683). With the lock held, no other
+    // store is writing one here.
+    for (const n of await store.io.readdir(store.dir)) if (/^(snapshot|format)\.json\.\d+\.tmp$/.test(n)) await store.io.rm(store.at(n), { force: true });
     install(store, await recover(store));
+    await recordFormat(store.io, (n) => store.at(n));
     // The folder’s entries are made durable once per start: a segment rotated by an earlier run that only ever held
     // emits may never have had its entry synced (the integrator’s review of 1a). A filesystem that can’t sync a
     // folder is tolerated; any other error refuses the start.
