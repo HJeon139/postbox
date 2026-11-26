@@ -172,6 +172,11 @@ test('#1632 following, a pointer resting on a button holds it while the reply be
   await settled(page);
   const moved = (await topOfChip(page)) - aimedAt;
   expect(Math.abs(moved), `the button moved ${moved} px under the pointer`).toBeLessThan(1);
+  // Once the pointer leaves the button, the view goes on to the end.
+  await page.mouse.move(box.x + box.width / 2, 4);
+  await settled(page);
+  const gap = await page.evaluate(() => Math.round(document.documentElement.scrollHeight - scrollY - innerHeight));
+  expect(gap, 'at the end once the pointer left').toBeLessThanOrEqual(2);
 });
 
 // The same with a real press and release, which do make a click (#1653’s symptom): the pointer rests on the button
