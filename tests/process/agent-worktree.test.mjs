@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
@@ -96,6 +96,19 @@ test('#1709 a worktree someone locked keeps the work in it, and the agent goes o
     assert.equal(git(dir, ['status', '--porcelain']), '?? draft.md\n', 'the uncommitted work is still there');
     git(dir, ['worktree', 'unlock', dir]);
   }
+});
+
+test('#1709 a locked worktree whose folder someone moved keeps its lock, and git still works in the moved folder', async () => {
+  const { project: p, workRoot } = await project('moved');
+  const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
+  await writeFile(join(dir, 'draft.md'), 'not committed\n');
+  git(dir, ['worktree', 'lock', '--reason', 'on a removable drive', dir]);
+  const moved = join(home, 'moved', 'elsewhere');
+  await rename(dir, moved);
+  // Git refuses to add over a locked worktree whose folder is gone, so the agent works in the project’s folder.
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot), p.folder);
+  assert.match(git(p.folder, ['worktree', 'list', '--porcelain']), /^locked on a removable drive$/m, 'the lock stays');
+  assert.equal(git(moved, ['status', '--porcelain']), '?? draft.md\n', 'git still works in the moved folder');
 });
 
 test('#1709 in Auto, routine git runs with no card in an agent’s real worktree, as git lays it out', async () => {

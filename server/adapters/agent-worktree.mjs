@@ -108,8 +108,10 @@ async function worktree(git, repo, dir, branch) {
   const added = await git(repo, has ? [...add, dir, branch] : [...add, '-b', branch, dir]);
   if (added.code === 0) return { dir };
   // An add git stopped (its timeout) or refused may have made the folder, even its .git, and checked out part of it.
-  // Only a folder this add made goes, through git and then from disk, so the next turn can make it whole.
-  if (!there) await removeWorktree(git, repo, dir);
+  // Only a folder this add made goes, through git and then from disk, so the next turn can make it whole. With no
+  // folder there, nothing was made: git refused, perhaps for a locked worktree whose folder someone moved, and
+  // removing would drop that lock and git’s record of the moved folder.
+  if (!there && (await exists(dir))) await removeWorktree(git, repo, dir);
   const lines = added.stderr.trim().split('\n');
   // Git prints progress before its reason, which starts `fatal:`.
   return { why: (lines.find((l) => l.startsWith('fatal:')) ?? lines[0])?.slice(0, 200) || `git exited with ${added.code}` };
@@ -126,7 +128,8 @@ const exists = (path) =>
  * A worktree folder’s state: unfinished while git’s marker for one it’s still making is there, a `locked` file in its
  * admin folder that says `initializing` (git writes it so, under the C locale runGit sets); finished, with its .git
  * naming that admin folder and no such marker; else none. A `locked` file saying anything else is a lock someone set
- * (`git worktree lock`, empty or with its reason) on a worktree that may hold their work: it’s finished, and used.
+ * (`git worktree lock`, empty or with its reason) on a worktree that may hold their work: it’s finished, and used. A
+ * lock someone set with the reason `initializing` reads as git’s own marker.
  * @param {string} dir @returns {Promise<'finished' | 'unfinished' | 'none'>}
  */
 async function stateOf(dir) {
