@@ -65,9 +65,12 @@ export class Turns {
     return true;
   }
 
-  /** The person’s Retry of a failed reply. @param {string} threadId @param {string} itemId */
-  retry(threadId, itemId) {
-    return retry(this.rt, threadId, itemId);
+  /**
+   * The person’s Retry of a failed reply. @param {string} threadId @param {string} itemId
+   * @param {() => void} [onSend]  runs once the retry is sent, before its turn starts (turn-transient.mjs)
+   */
+  retry(threadId, itemId, onSend) {
+    return retry(this.rt, threadId, itemId, onSend);
   }
 
   /**

@@ -4,6 +4,7 @@
 // POSTBOX_STREAM_LAG.
 
 import { expect, test } from '@playwright/test';
+import { withTransient } from '../../server/harness-failure.mjs';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { heldBackend } from './side-threads.mjs';
@@ -24,17 +25,17 @@ failOnPageErrors(test);
 const ERROR = 'API Error: Request rejected (429). Too many tokens, please wait before trying again.';
 
 /** A room whose agent's turn really failed, so its reply is the need and Retry can run it again. */
-async function failedRoom(title) {
+async function failedRoom(title, error = () => new Error(ERROR)) {
   const { rt, store } = app;
   const researcher = Object.values(store.state.personas).find((p) => p.handle === 'researcher');
   const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title, personaIds: [researcher.id] });
   const [se] = arrange.sessionsIn(rt, t.id);
   held.scripts.set(se.id, async () => {
-    throw new Error(ERROR);
+    throw error();
   });
   rt.sendMessage(t.id, { text: '@researcher which dates are riskiest?' });
   await expect.poll(() => store.state.sessions[se.id].state, { message: 'the failed turn' }).toBe('failed');
-  const it = store.items(t.id).find((x) => x.kind === 'agent' && x.status === 'failed');
+  const it = store.items(t.id).find((x) => x.kind === 'agent' && x.status === 'failed' && x.sessionId === se.id);
   return { t, se, it };
 }
 
@@ -89,5 +90,29 @@ for (const width of [375, 1280])
       await expect(reply).toContainText('Retried below');
       await expect(reply).not.toContainText('Dismissed');
       held.release(se.id);
+    });
+  });
+
+for (const width of [375, 1280])
+  test.describe(`${width} px, a provider’s passing failure`, () => {
+    test.use({ viewport: { width, height: 900 } });
+
+    test(`#1713 a reply its provider overloaded says when it tries again, with no alert, and nobody is asked (${width} px)`, async ({ page }) => {
+      // The wait is held, so the reply stays as it is while it waits (config.retryAfter, as in turn-transient.test.mjs).
+      app.rt.config.retryAfter = () => {};
+      try {
+        const overloaded = () => withTransient(new Error('API Error: 529 Overloaded'), 529);
+        const { t, se, it } = await failedRoom(`Overloaded ${width}`, overloaded);
+        await page.goto(`${app.origin}/#/t/${t.id}`);
+        await synced(page, app);
+        const reply = page.locator(`#main [data-key="${it.id}"]`);
+        await expect(reply).toContainText('Postbox will try again in 30 s');
+        await expect(reply.locator('.callout')).not.toHaveAttribute('role', 'alert');
+        await expect(reply.locator('.callout').getByRole('button')).toHaveText(['Retry', 'Dismiss']);
+        expect(await page.locator('#main [role="alert"]').count(), 'no alert in the room').toBe(0);
+        expect(app.store.state.sessions[se.id].needs ?? null, 'it doesn’t need the person').toBe(null);
+      } finally {
+        delete app.rt.config.retryAfter;
+      }
     });
   });
