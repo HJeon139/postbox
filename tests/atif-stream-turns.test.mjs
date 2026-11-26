@@ -54,10 +54,11 @@ test('#1758 a turn with no stream is counted and noted, and its reply gets no ot
 test('#1758 an agent whose first turn alone has a stream has the rest counted, as on a run that switched backends', () => {
   const firstOnly = rec.streams.filter((s) => s.handle !== 'developer' || s.started === 1795679514826);
   const { developer, critic } = byHandle(rec.events, firstOnly);
-  assert.equal(developer.extra.turns_without_stream, 7);
+  // Seven turns have no stream; two of them called no tool, so they lack nothing a stream would add.
+  assert.equal(developer.extra.turns_without_stream, 5);
   assert.match(
     developer.notes,
-    / 7 of this agent’s turns in this conversation have no Claude Code stream, so a call they made that made no step isn’t in this trajectory\.$/,
+    / 5 of this agent’s turns in this conversation have no Claude Code stream, so a call they made that made no step isn’t in this trajectory\.$/,
   );
   assert.equal(callsOf(developer).length, 5, 'its first turn’s three calls and the two later ones that made a step');
   assert.equal(critic.extra.turns_without_stream, undefined, 'another agent’s turns all have one');
@@ -72,11 +73,13 @@ test('#1758 a stream is its agent’s latest turn that started at or before it, 
     ['B', [reply('b1', 'tb', [])]],
   ]);
   const turns = [
-    { id: 't2', sessionId: 'A', startedAt: 2000 },
-    { id: 't1', sessionId: 'A', startedAt: 1000 },
-    { id: 't3', sessionId: 'A', startedAt: 3000 },
-    { id: 'tb', sessionId: 'B', startedAt: 2500 },
-    { id: 't4', sessionId: 'A', startedAt: 4000 },
+    { id: 't2', sessionId: 'A', startedAt: 2000, toolCalls: 1 },
+    { id: 't1', sessionId: 'A', startedAt: 1000, toolCalls: 1 },
+    { id: 't3', sessionId: 'A', startedAt: 3000, toolCalls: 2 },
+    { id: 'tb', sessionId: 'B', startedAt: 2500, toolCalls: 1 },
+    { id: 't4', sessionId: 'A', startedAt: 4000, toolCalls: 1 },
+    // A turn stopped before it called anything, as one stopped before its process started: no gap.
+    { id: 't5', sessionId: 'A', startedAt: 5000, toolCalls: 0 },
   ];
   const use = (/** @type {string} */ id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'T', input: {} }] } });
   const streams = [
@@ -123,4 +126,70 @@ test('#1758 an agent whose streams another backend recorded, in streams/sdk/, ha
   assert.equal(developer.extra.calls_from, 'steps');
   assert.match(developer.notes, /since the run has no Claude Code stream of this agent’s turns\.$/);
   assert.equal(critic.extra.calls_from, 'recorded streams');
+});
+
+test('#1758 a recording with no work ledger turns still places each stream with a step by that step’s reply', () => {
+  // Runs recorded before the ledger kept turns have none: a stream’s step still names its reply.
+  const noTurns = rec.events.filter((e) => !(e.type === 'work.add' && e.data.entry.kind === 'turn'));
+  const before = byHandle();
+  const after = byHandle(noTurns);
+  for (const handle of ['developer', 'critic']) {
+    const stepped = callsOf(before[handle]).filter((/** @type {any} */ c) => c.extra.step !== 'none');
+    assert.deepEqual(
+      callsOf(after[handle])
+        .filter((/** @type {any} */ c) => c.extra.step !== 'none')
+        .map((/** @type {any} */ c) => c.tool_call_id),
+      stepped.map((/** @type {any} */ c) => c.tool_call_id),
+      `${handle}’s calls with a step`,
+    );
+  }
+  // A call with no step in a stream that has a step still goes with its turn’s reply, as with the ledger’s turns.
+  const noStep = (/** @type {any} */ t) =>
+    callsOf(t)
+      .filter((/** @type {any} */ c) => c.extra.step === 'none')
+      .map((/** @type {any} */ c) => c.tool_call_id);
+  const inSteppedStreams = rec.streams
+    .filter((s) => s.handle === 'developer')
+    .map((s) =>
+      s.events.flatMap(
+        (/** @type {any} */ e) => e.message?.content?.filter((/** @type {any} */ p) => p.type === 'tool_use').map((/** @type {any} */ p) => p.id) ?? [],
+      ),
+    )
+    .filter((ids) => ids.some((id) => callsOf(before.developer).some((/** @type {any} */ c) => c.tool_call_id === id && c.extra.step !== 'none')));
+  const expected = inSteppedStreams.flat().filter((id) => noStep(before.developer).includes(id));
+  assert.ok(expected.length > 0, 'the fixture has such a call');
+  assert.deepEqual(noStep(after.developer), expected);
+  // A stream whose calls made no step has no turn to go with, and says why.
+  const unplaced = after.developer.extra.unplaced_calls;
+  assert.equal(unplaced, noStep(before.developer).length - expected.length, 'the react-only streams’ calls are counted');
+  assert.match(after.developer.notes, /made no step, and the recording has no work ledger turns to match their streams to/);
+  assert.equal(after.developer.extra.turns_without_stream, undefined);
+});
+
+test('#1758 a stream with a step goes to that step’s turn, even when two turns started at once, and never takes another session’s call', () => {
+  /** @param {string} id @param {string} turnId @param {string[]} steps */
+  const reply = (id, turnId, steps) => ({ id, turnId, steps: new Map(steps.map((s) => [s, {}])) });
+  const sessions = new Map([
+    // t1 made two replies, and only its second has the step: a call before the step goes with t1’s first.
+    ['A', [reply('a0', 't1', []), reply('a1', 't1', ['x']), reply('a2', 't2', [])]],
+    ['B', [reply('b1', 'tb', ['y'])]],
+  ]);
+  const turns = [
+    { id: 't1', sessionId: 'A', startedAt: 1000, toolCalls: 2 },
+    { id: 't2', sessionId: 'A', startedAt: 1000, toolCalls: 1 },
+    { id: 'tb', sessionId: 'B', startedAt: 900, toolCalls: 1 },
+  ];
+  const use = (/** @type {string} */ id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'T', input: {} }] } });
+  // One stream holds a call before t1’s step x, x, a call with no step, and B’s step y, which it must leave to B.
+  const streams = [{ handle: 'h', started: 1001, events: [use('m'), use('x'), use('n'), use('y')] }];
+  const a = recordedCalls(streams, 'h', { sessions, turns }, 'A');
+  assert.deepEqual(
+    [...a.unstepped].map(([at, calls]) => [at, calls.map((c) => c.id)]),
+    [
+      ['a0', ['m']],
+      ['a1', ['n']],
+    ],
+  );
+  assert.equal(a.byId.has('y'), false, 'B’s step isn’t A’s');
+  assert.equal(a.turnsWithoutStream, 1, 't2, not t1, which its step names');
 });

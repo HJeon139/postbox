@@ -31,12 +31,12 @@ export function agentSessions(f, handle) {
  * An agent’s turns, from the work ledger: each one’s id, its session and when it started, which its recorded stream is
  * matched by (tools/atif-streams.mjs, recordedCalls).
  * @param {{ work: Map<string, any>, sessions: Map<string, any> }} f @param {string | null} handle
- * @returns {{ id: string, sessionId: string, startedAt: number }[]}
+ * @returns {{ id: string, sessionId: string, startedAt: number, toolCalls: number }[]}
  */
 export function agentTurns(f, handle) {
   return [...f.work.values()]
     .filter((w) => w.kind === 'turn' && typeof w.startedAt === 'number' && (w.handle ?? f.sessions.get(w.sessionId)?.handle) === handle)
-    .map((w) => ({ id: w.id, sessionId: w.sessionId, startedAt: w.startedAt }));
+    .map((w) => ({ id: w.id, sessionId: w.sessionId, startedAt: w.startedAt, toolCalls: w.toolCalls ?? 0 }));
 }
 
 /**

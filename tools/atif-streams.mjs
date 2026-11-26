@@ -45,7 +45,7 @@ export function callsInStream(events) {
 }
 
 /**
- * @typedef {{ id: string, sessionId: string, startedAt: number }} AgentTurn
+ * @typedef {{ id: string, sessionId: string, startedAt: number, toolCalls?: number }} AgentTurn
  * @typedef {{ id: string, turnId?: string, steps: Map<string, any> }} Reply
  */
 
@@ -59,6 +59,26 @@ function turnOf(turns, started) {
   let found = null;
   for (const t of turns) if (t.startedAt <= started && (!found || t.startedAt >= found.startedAt)) found = t;
   return found;
+}
+
+/**
+ * Where a stream’s calls go: the turn of its first call that made a step, by that step’s reply, since a step names its
+ * turn exactly; else, for a stream whose calls made none, its agent’s turn by time (turnOf). A recording with no work
+ * ledger turns, from before the ledger kept them, still places a stream with a step this way. Null when it has no turn;
+ * its replies can be none, as for a turn stopped before it replied. @param {StreamCall[]} calls @param {Map<string, { session: string, reply: string }>} owner
+ * @param {Map<string, Reply[]>} sessions @param {AgentTurn[]} turns @param {number | undefined} started
+ * @returns {{ sessionId: string, turnId: string | null, replies: Reply[] } | null}
+ */
+function placeOf(calls, owner, sessions, turns, started) {
+  const stepped = calls.map((c) => owner.get(c.id)).find(Boolean);
+  if (stepped) {
+    const replies = sessions.get(stepped.session) ?? [];
+    const turnId = replies.find((it) => it.id === stepped.reply)?.turnId ?? null;
+    const ofTurn = turnId ? replies.filter((it) => it.turnId === turnId) : replies.filter((it) => it.id === stepped.reply);
+    return { sessionId: stepped.session, turnId, replies: ofTurn };
+  }
+  const turn = turnOf(turns, started);
+  return turn ? { sessionId: turn.sessionId, turnId: turn.id, replies: (sessions.get(turn.sessionId) ?? []).filter((it) => it.turnId === turn.id) } : null;
 }
 
 /**
@@ -104,27 +124,28 @@ export function recordedCalls(streams, handle, { sessions, turns }, sessionId) {
       .filter((c) => !seen.has(c.id))
       .map((c) => ({ ...c, seq: seq++ }));
     for (const c of calls) seen.add(c.id);
-    const turn = turnOf(turns, s.started);
-    if (turn) streamed.add(turn.id);
-    const replies = turn ? (sessions.get(turn.sessionId) ?? []).filter((it) => it.turnId === turn.id) : [];
-    if (!turn || !replies.length) {
+    const place = placeOf(calls, owner, sessions, turns, s.started);
+    if (place?.turnId) streamed.add(place.turnId);
+    if (!place?.replies.length) {
       if (sessionId === [...sessions.keys()][0]) unplaced += calls.length;
-    } else if (turn.sessionId === sessionId) placeCalls(calls, replies, owner, sessionId, into);
+    } else if (place.sessionId === sessionId) placeCalls(calls, place.replies, owner, sessionId, into);
   }
-  const turnsWithoutStream = turns.filter((t) => t.sessionId === sessionId && !streamed.has(t.id)).length;
-  return { streamed: mine.length > 0, ...into, unplaced, turnsWithoutStream };
+  // A turn that called no tool has nothing a stream would add, so only one that did is a gap without its stream.
+  const turnsWithoutStream = turns.filter((t) => t.sessionId === sessionId && (t.toolCalls ?? 0) > 0 && !streamed.has(t.id)).length;
+  return { streamed: mine.length > 0, ...into, unplaced, turnsWithoutStream, ledgerTurns: turns.length > 0 };
 }
 
 /**
  * What a trajectory whose calls came from its turns’ streams says it lacks: the recorded calls that matched no reply,
  * and the turns of its session with no stream, whose calls that made no step it can’t have.
- * @param {{ unplaced: number, turnsWithoutStream: number }} recorded
+ * @param {{ unplaced: number, turnsWithoutStream: number, ledgerTurns?: boolean }} recorded
  */
-function streamGaps({ unplaced, turnsWithoutStream: silent }) {
+function streamGaps({ unplaced, turnsWithoutStream: silent, ledgerTurns = true }) {
+  const why = ledgerTurns
+    ? 'matched no reply in any of its conversations'
+    : 'made no step, and the recording has no work ledger turns to match their streams to';
   const notes = [
-    unplaced
-      ? ` ${unplaced} of this agent’s recorded calls matched no reply in any of its conversations, so ${unplaced === 1 ? 'it isn’t' : 'they aren’t'} in any trajectory.`
-      : '',
+    unplaced ? ` ${unplaced} of this agent’s recorded calls ${why}, so ${unplaced === 1 ? 'it isn’t' : 'they aren’t'} in any trajectory.` : '',
     silent
       ? ` ${silent} of this agent’s turns in this conversation ${silent === 1 ? 'has' : 'have'} no Claude Code stream, so a call ${silent === 1 ? 'it' : 'they'} made that made no step isn’t in this trajectory.`
       : '',
