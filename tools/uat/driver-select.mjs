@@ -1,5 +1,4 @@
 // The UAT driver’s pick of an option in a form’s select field, by the text the tester gave (tools/uat/driver.mjs, act).
-// Moved from driver.mjs.
 
 import { js } from '../browser.mjs';
 

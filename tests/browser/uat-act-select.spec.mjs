@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
 import { driver } from '../../tools/uat/driver.mjs';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { runnerPage } from './runner-page.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -17,15 +18,6 @@ test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
-
-/** tools/browser.mjs’s page, over this one: evaluate and send. */
-async function runnerPage(page) {
-  const cdp = await page.context().newCDPSession(page);
-  return {
-    evaluate: (/** @type {string} */ expr) => page.evaluate(expr),
-    send: (/** @type {string} */ method, /** @type {any} */ params) => cdp.send(/** @type {any} */ (method), params),
-  };
-}
 
 const FORM = {
   id: 'print-run',
