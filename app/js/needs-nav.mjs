@@ -5,9 +5,9 @@
 
 import { conversationOf, needsOrder, whereNeeds } from '/shared/needs.mjs';
 import { client, itemIn, liveSessions } from './client.mjs';
-import { itemHref } from './item-address.mjs';
 import { meId, needsMe } from './needs-mine.mjs';
 import { reach } from './open-threads.mjs';
+import { messagePane } from './pane-route.mjs';
 import { navigate, paneHref, route, toast } from './ui.mjs';
 import { jumpTo } from './view-jump.mjs';
 import { mountFor } from './window-live.mjs';
@@ -72,19 +72,12 @@ let addressed = null;
 
 /**
  * Goes to a message by its address (#168): the address goes on the history, so Back returns, and this goes to the
- * message itself, every time it’s asked, a second time after a pane change too. In the conversation on screen, Work
- * stays, with its turn and the item open in it, and a full view only when it’s the message’s own thread.
+ * message itself, every time it’s asked, a second time after a pane change too. What opens beside it, messagePane says.
  * @param {string} itemId @param {string} threadId
  */
 function goToAddress(itemId, threadId) {
-  const r = route();
   const conv = conversationOf(S(), threadId);
-  const side = threadId === conv ? null : threadId;
-  // A full view stays only if it’s this thread’s: full-screen Work, or another thread, would cover the message.
-  const full = r.full === 'thread' && r.sideId === side ? r.full : null;
-  // An item open in Work beside the thread stays; one open in full-screen Work goes with it.
-  const pane = { work: r.work, turn: r.turn, full, at: r.full === 'work' ? null : r.at };
-  const to = r.view === 'thread' && r.threadId === conv ? paneHref(conv, { ...pane, side, item: itemId }) : itemHref(threadId, itemId);
+  const to = paneHref(conv, { ...messagePane(route(), conv, threadId === conv ? null : threadId), item: itemId });
   // The address is this one’s: focusAddressed, as it comes in, doesn’t go to it a second time.
   addressed = { conv, key: `${threadId}?m=${itemId}` };
   navigate(to);

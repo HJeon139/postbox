@@ -1,6 +1,6 @@
 // #168, with the right pane open: going to a message by its address keeps the conversation’s Work, its turn and the
 // item open in it, drops a full view that would cover the message, goes to it again when asked again, and says when it
-// isn’t there. Moved from message-address.spec.mjs.
+// isn’t there.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -46,7 +46,8 @@ test('#168 Back to a message’s address after opening Work doesn’t pull the v
   }, t.id);
   await expect(page).toHaveURL(new RegExp(`#/t/${t.id}\\?work$`));
   await page.goBack();
-  await expect(page).toHaveURL(new RegExp(`\\?m=${items[3].id}$`));
+  // Back to the message’s address, which opens Work again as it was left (messagePane, pane-route.mjs).
+  await expect(page).toHaveURL(new RegExp(`\\?work&m=${items[3].id}$`));
   // Going to a message waits for it to be loaded and drawn: a second is longer than that takes here.
   const until = Date.now() + 1000;
   while (Date.now() < until) expect(await landed(page, items[3].id), 'still where you read').toBe('not in view');
@@ -111,7 +112,8 @@ test('#168 going to a message in a topic thread of the conversation on screen ke
 
 test('#168 going to an ask with Work full screen shows the ask, with Work beside it', async ({ page }) => {
   const { t, items } = longRoom(app, 'Address, full Work');
-  await page.goto(`${app.origin}/#/t/${t.id}?work&full=work`);
+  // With an item open in full-screen Work, which goes with it.
+  await page.goto(`${app.origin}/#/t/${t.id}?work&full=work&at=as_open`);
   await synced(page, app);
   await page.evaluate(
     async ([itemId, threadId]) => {
@@ -169,4 +171,48 @@ test('#168 going to a message in the conversation with another thread full scree
     [items[5].id, t.id],
   );
   await expect(page, 'the thread’s full view goes; Work and its item stay').toHaveURL(new RegExp(`#/t/${t.id}\\?work&at=as_open&m=${items[5].id}$`));
+});
+
+/** Only this session needs you, so ⌃J goes to its ask, not to one an earlier test left waiting. */
+function onlyNeeds(rt, se, itemId) {
+  for (const other of Object.values(rt.store.state.sessions)) if (other.needs) arrange.setSession(rt, other.id, { state: 'idle', needs: null });
+  arrange.setSession(rt, se.id, { state: 'needs', needs: { kind: 'block', itemId, text: 'Pick one' } });
+}
+
+// Work is the conversation’s (#122): going to an ask in another conversation opens the Work left open there, as going
+// back to that conversation does (designs/architecture/front-end.md, “The right pane”).
+test('#168 going to an ask in another conversation opens the Work left open there', async ({ page }) => {
+  const { t, se, items } = longRoom(app, 'Address, Work left open');
+  const ask = items[5];
+  onlyNeeds(app.rt, se, ask.id);
+  await page.goto(`${app.origin}/#/t/${t.id}?work`);
+  await synced(page, app);
+  // Away, at a turn in its own Work: that turn is the other conversation’s, and doesn’t come along.
+  const away = longRoom(app, 'Address, away from Work').t;
+  await page.goto(`${app.origin}/#/t/${away.id}?work&turn=tu_elsewhere`);
+  await synced(page, app);
+  await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
+  await page.keyboard.press('Control+j');
+  await expect(page, 'Work as it was left, with the ask’s address').toHaveURL(new RegExp(`#/t/${t.id}\\?work&m=${ask.id}$`));
+  await expect(page.locator('#work-button')).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => landed(page, ask.id), { message: 'on the ask' }).toBe('landed');
+});
+
+// In a window with no room for Work beside the conversation, Work would cover the ask (#197): going to it closes Work.
+test('#168 in a window too narrow for Work beside the conversation, going to an ask shows the ask, not Work over it', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  const { t, se, items } = longRoom(app, 'Address, narrow Work');
+  const ask = items[5];
+  onlyNeeds(app.rt, se, ask.id);
+  await page.goto(`${app.origin}/#/t/${t.id}?work`);
+  await synced(page, app);
+  await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
+  await page.keyboard.press('Control+j');
+  await expect(page, 'the ask’s address, without Work').toHaveURL(new RegExp(`#/t/${t.id}\\?m=${ask.id}$`));
+  await expect.poll(() => landed(page, ask.id), { message: 'on the ask' }).toBe('landed');
+  const onTop = await page.evaluate((key) => {
+    const r = document.querySelector(`[data-key="${CSS.escape(key)}"]`)?.getBoundingClientRect();
+    return Boolean(r) && !!document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20))?.closest(`[data-key="${CSS.escape(key)}"]`);
+  }, ask.id);
+  expect(onTop, 'nothing covers it').toBe(true);
 });
