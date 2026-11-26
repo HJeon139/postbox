@@ -207,7 +207,8 @@ export function agyRules({ persona, guide, schemas = null, hooked = false, place
     : '';
   const bypass = persona?.permissionMode === 'bypass';
   const approval = bypass ? '' : hooked ? HOOK_NOTE : `${HEADLESS_NOTE}\n\n${LOOKING_NOTE}`;
-  return `${[guide, place, schemas ? toolsNote(schemas) : '', approval, limits].filter(Boolean).join('\n\n')}\n`;
+  // Where it works comes last: its folder’s path has no length limit, and what comes before it mustn’t be pushed out.
+  return `${[guide, schemas ? toolsNote(schemas) : '', approval, limits, place].filter(Boolean).join('\n\n')}\n`;
 }
 
 export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp, stepId };

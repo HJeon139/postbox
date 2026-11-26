@@ -93,3 +93,14 @@ test('#1709 the note can’t name a branch it doesn’t know: a reftable stub, o
   assert.ok(note.includes('on its own branch, which `git branch --show-current` names'));
   assert.ok(!note.includes('b'.repeat(101)));
 });
+
+test('#1709 the note comes after the persona’s limits, so a long project path can’t push them out of agy’s rules', () => {
+  const { workRoot, project, wt } = layout();
+  const persona = { id: 'pe_a', handle: 'a', permissionMode: 'auto', tools: [] };
+  const note = worktreeNote(wt, persona, { ...project, folder: `/${'p'.repeat(399)}` }, workRoot);
+  const rules = agyRules({ persona, guide: 'GUIDE', place: note, hooked: true });
+  const limits = rules.indexOf('## What you don’t do here');
+  assert.ok(limits > 0, 'the persona has limits to keep');
+  assert.ok(rules.indexOf('## Where you work') > limits, 'the note comes after them');
+  assert.ok(rules.trimEnd().endsWith(note.trimEnd()), 'and last');
+});

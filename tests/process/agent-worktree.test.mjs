@@ -159,9 +159,12 @@ test('#1709 in Auto, routine git runs with no card in an agent’s real worktree
 function agyOver(p, workRoot, name, { mode = 'ask', hook = true } = {}) {
   /** @type {string[]} */
   let rules = [];
+  /** @type {string[][]} */
+  let reads = [];
   const spawnImpl = (/** @type {string} */ _bin, /** @type {string[]} */ _args, /** @type {any} */ opts) => {
     const file = join(opts.cwd, PLUGIN_DIR, 'rules', 'AGENTS.md');
     rules.push(existsSync(file) ? readFileSync(file, 'utf8') : '');
+    reads.push(JSON.parse(opts.env?.POSTBOX_AGY_READS ?? '[]'));
     const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true });
     setImmediate(() => {
       child.stdout.end(`${JSON.stringify({ type: 'result', result: 'ok', session_id: 'c1' })}\n`);
@@ -185,10 +188,11 @@ function agyOver(p, workRoot, name, { mode = 'ask', hook = true } = {}) {
   /** The rules file agy read for one turn. @param {string} text */
   const turn = async (text) => {
     rules = [];
+    reads = [];
     await adapter.deliver({}, { kind: 'user', text }, { ...ctx, ...quiet }).catch(() => {});
     return rules.find(Boolean) ?? '';
   };
-  return { adapter, turn, folder: () => adapter.folderFor(persona, p) };
+  return { adapter, turn, folder: () => adapter.folderFor(persona, p), reads: () => reads };
 }
 
 test('#1709 an Antigravity turn in an agent’s worktree is told its branch and that the person merges, in agy’s rules file', async () => {
@@ -199,6 +203,11 @@ test('#1709 an Antigravity turn in an agent’s worktree is told its branch and 
   assert.ok(rules.includes('branch postbox/pr_told-gem-pe_a'), rules.slice(-900));
   assert.ok(rules.includes(p.folder));
   assert.match(rules, /which the person merges/);
+  // And the hook is given the project’s folder to read with no card (5a0c7ae7): read only, beside its own folders.
+  assert.ok(
+    agy.reads().some((r) => r.includes(p.folder)),
+    JSON.stringify(agy.reads()),
+  );
 });
 
 test('#1709 the note names the branch the worktree is on now, or says it’s on a commit, not a branch', async () => {
