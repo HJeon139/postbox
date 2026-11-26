@@ -132,6 +132,15 @@ test('#683 a folder of the same or an older format loads with its state and reco
   }
 });
 
+test('#683 a folder with no record, as every folder is before its first load since #683, loads with no warning and is recorded', async () => {
+  const dir = await written();
+  await fs.rm(join(dir, FORMAT_FILE));
+  const { state, warned } = await loaded(dir);
+  assert.equal(state.threads.th_1?.title, 'Kept');
+  assert.deepEqual(warned, []);
+  assert.equal(record(dir), OURS);
+});
+
 test('#683 a record cut off by a crash, or naming no format, is read as none, with one warning, and the folder loads', async () => {
   for (const text of ['', '{"format":', '{"format":"next"}\n', '{"format":"2"}\n', '{"format":0}\n', '{"format":2.5}\n', 'null\n', '[]\n']) {
     const dir = await written();
