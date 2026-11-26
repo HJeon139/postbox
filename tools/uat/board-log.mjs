@@ -67,6 +67,24 @@ function finishedAt(log) {
   return null;
 }
 
+/**
+ * What the board’s own rules were holding a story for at a moment, in words, or '': a story nobody could take because
+ * a story it waits on wasn’t done, or one reviewed and never marked done. A room that stopped there stopped at the
+ * board, which isn’t the stall after a standup (#1784).
+ * @param {any[]} log  @param {string} id  @param {number} at
+ */
+export function heldBy(log, id, at) {
+  const { stories } = boardAt(log, at);
+  const mine = log.filter((x) => x.at <= at && x.story === id);
+  if (!stories.get(id)?.owner) {
+    const waits = (mine.findLast((x) => x.did === 'needs')?.needs ?? []).filter((/** @type {string} */ n) => !stories.get(n)?.done);
+    return waits.length ? `the board won’t let it be taken until ${waits.join(', ')} ${waits.length === 1 ? 'is' : 'are'} done` : '';
+  }
+  const taken = mine.findLast((x) => x.did === 'claim')?.at ?? 0;
+  const review = mine.findLast((x) => x.did === 'review' && x.at > taken);
+  return review ? `reviewed by @${review.who} and not marked done` : '';
+}
+
 /** The person’s messages, oldest first. @param {{ events?: any[] }} f */
 export const personSaid = (f) => (f.events ?? []).filter((e) => e?.type === 'item.add' && e.data?.item?.kind === 'user').map((e) => e.data.item);
 
@@ -123,7 +141,7 @@ export function whoRan(f, at, script = BOARD, did = null, used = new Set()) {
     .map((e) => e.data.entry)
     .filter((c) => c.startedAt <= at && at - c.startedAt < 120_000);
   const same = did ? ran.filter((c) => did.test(c.command)) : [];
-  const by = same.findLast((c) => !used.has(c)) ?? ran.at(-1);
+  const by = same.findLast((c) => !used.has(c)) ?? same.at(-1) ?? ran.at(-1);
   if (by) used.add(by);
   return by?.handle ?? null;
 }

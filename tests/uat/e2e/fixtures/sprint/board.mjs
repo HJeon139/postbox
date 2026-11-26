@@ -11,7 +11,8 @@ const HELP = `node board.mjs <command>
   clarify <story> "<acceptance>"   say what done means for a story
   split <story> "<a>" "<b>"        replace a story with two smaller ones
   order <story> <story> …          put the backlog in priority order
-  needs <story> <story> …          say which stories the first one waits on: it can’t be taken until they’re done
+  needs <story> <story> …          say which stories the first one waits on: it can’t be taken until they’re done;
+                                   with the first alone, it waits on nothing
   estimate <story> <points>        give your own estimate of a story; each of the team runs it themselves
   plan <sprint> "<goal>" <id> …    start a sprint with a goal and the stories, and action items, it takes
   claim <story> <who>              take a story of the current sprint as yours; run it yourself
@@ -125,14 +126,15 @@ const COMMANDS = {
     return { says: `Sprint ${sprint} takes ${ids.join(', ')}. Goal: ${goal}`, did: { sprint, goal, items: ids } };
   },
   needs: (board, [id, ...others]) => {
-    if (!others.length) throw new Error('needs takes a story and the stories it waits on.');
+    if (others.includes(id)) throw new Error(`${id} can’t wait on itself.`);
     story(board, id).needs = others.map((x) => story(board, x).id);
-    return { says: `${id} waits on ${others.join(', ')}`, did: { story: id, needs: others } };
+    return { says: `${id} waits on ${others.join(', ') || 'nothing'}`, did: { story: id, needs: others } };
   },
   claim: (board, [id, who]) => {
     const s = story(board, id);
     if (!s.sprint || !who) throw new Error('claim takes a story of the current sprint and who takes it.');
-    const waits = (s.needs ?? []).filter((/** @type {string} */ x) => !story(board, x).done);
+    // A story split since is no longer one to wait on: its halves are, if the team says so.
+    const waits = (s.needs ?? []).filter((/** @type {string} */ x) => board.stories.some((/** @type {any} */ y) => y.id === x && !y.split && !y.done));
     if (waits.length) throw new Error(`${id} waits on ${waits.join(', ')}, which ${waits.length === 1 ? 'isn’t' : 'aren’t'} done.`);
     s.owner = who;
     return { says: `${id} is ${who}’s`, did: { story: id, who } };

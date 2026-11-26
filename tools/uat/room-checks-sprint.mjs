@@ -6,7 +6,7 @@
 // the reply rules ending an exchange (server/reply-back.mjs) read differently from nobody having taken the next
 // story. Part of tools/uat/room-checks.mjs’s CHECKS; a run with no sprint board gets nothing.
 
-import { boardLog, openStories, sprintWork, workOf } from './board-log.mjs';
+import { boardLog, heldBy, openStories, sprintWork, workOf } from './board-log.mjs';
 import { quietStretches } from './quiet-stretches.mjs';
 import { lengthOf, QUIET_LISTED_MS, stretchLine } from './room-checks-idle.mjs';
 import { ceremonies } from './sprint-ceremonies.mjs';
@@ -29,7 +29,10 @@ const CEREMONY = {
 /** One quiet stretch of a sprint room, as evidence. @param {any} f @param {any[]} log @param {ReturnType<typeof ceremonies>} held @param {ReturnType<typeof quietStretches>[number]} s */
 function context(f, log, held, s) {
   const last = held.findLast((c) => c.at <= s.from);
-  const open = openStories(log, s.from).map((x) => `${x.id} (${x.owner ? `@${x.owner}’s` : 'nobody’s yet'})`);
+  const open = openStories(log, s.from).map((x) => {
+    const held = heldBy(log, x.id, s.from);
+    return `${x.id} (${x.owner ? `@${x.owner}’s` : 'nobody’s yet'}${held ? `; ${held}` : ''})`;
+  });
   return [
     `Quiet for ${stretchLine(s)}`,
     last ? `It came after ${CEREMONY[/** @type {keyof typeof CEREMONY} */ (last.name)]}.` : 'No ceremony had been held yet.',
@@ -75,7 +78,7 @@ export function storySizeMeasure(f) {
   const sizes = storySizes(f, boardLog(f));
   if (!sizes.length) return [];
   const line = (/** @type {ReturnType<typeof storySizes>[number]} */ s) =>
-    `${s.story}, @${s.owner}’s: ${s.doneAt === null ? 'never done' : `open ${lengthOf(s.doneAt - s.at)}`} over ${s.turns} of its turns, ${s.reviewedBy ? `reviewed by @${s.reviewedBy}` : 'not reviewed'}.`;
+    `${s.story}, @${s.owner}’s: ${s.doneAt === null ? 'not done' : `open ${lengthOf(s.doneAt - s.at)}`} over ${s.turns} of its turns, ${s.reviewedBy ? `reviewed by @${s.reviewedBy}` : 'not reviewed'}.`;
   const across = sizes.filter((s) => s.turns > 1).length;
   return [
     {

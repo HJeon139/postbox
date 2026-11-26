@@ -84,4 +84,13 @@ test('a story waits on the stories it needs, and is done only once another of th
   r.as('alpha', 'plan', '2', 'again', 'S1');
   r.as('developer', 'claim', 'S1', 'developer');
   assert.match(r.as('developer', 'done', 'S1').said, /^Not done: S1 hasn’t been reviewed/);
+  // A story never waits on what can’t be done: itself, or a story split since. And a wrong tie can be taken off.
+  assert.equal(r.as('alpha', 'needs', 'S3', 'S3').said, 'Not done: S3 can’t wait on itself.');
+  r.as('alpha', 'add', 'file name');
+  r.as('alpha', 'needs', 'S4', 'S3', 'S1');
+  r.as('alpha', 'plan', '3', 'the rest', 'S4');
+  r.as('alpha', 'split', 'S3', 'small words', 'capitals');
+  assert.equal(r.as('critic', 'claim', 'S4', 'critic').said, 'Not done: S4 waits on S1, which isn’t done.');
+  assert.equal(r.as('alpha', 'needs', 'S4').said, 'S4 waits on nothing');
+  assert.equal(r.as('critic', 'claim', 'S4', 'critic').said, 'S4 is critic’s');
 });

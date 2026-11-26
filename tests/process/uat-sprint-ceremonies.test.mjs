@@ -149,6 +149,11 @@ test('grooming needs a backlog and a change to it, and estimates count before th
   assert.deepEqual(held(bare), []);
   bare.as('alpha', 'order', 'S2', 'S1', 'S3');
   assert.deepEqual(held(bare), ['groomed']);
+  // Saying what a story waits on is grooming too.
+  const tied = room();
+  for (const story of ['words', 'slug', 'title case']) tied.as('alpha', 'add', story);
+  tied.as('alpha', 'needs', 'S2', 'S1');
+  assert.deepEqual(held(tied), ['groomed']);
   // Two stories aren’t a backlog to groom.
   const two = room();
   two.as('alpha', 'add', 'lowercase');
@@ -228,4 +233,16 @@ test('a story the customer sent back counts when a later sprint simply takes it 
   // Nor does a story put back after a sprint was planned count for that plan.
   carried.as('alpha', 'return', 'S4', 'too big after all');
   assert.equal(TRIGGERS['next-sprint-took-actions'].run(carried.facts()).length, 0);
+});
+
+test('estimates the scrum master enters in one command aren’t credited to an agent who looked at the board meanwhile', () => {
+  const r = room();
+  for (const story of ['words', 'slug', 'title case']) r.as('alpha', 'add', story);
+  // One shell command of @alpha’s makes both lines; @developer’s `show` started after it.
+  r.starts('alpha', 'estimate', 'S1', '2', '&&', 'node', 'board.mjs', 'estimate', 'S1', '3');
+  r.starts('developer', 'show');
+  r.runs('estimate', 'S1', '2');
+  r.runs('estimate', 'S1', '3');
+  r.as('alpha', 'plan', '1', 'words first', 'S1', 'S2');
+  assert.deepEqual(TRIGGERS['stories-estimated'].run(r.facts()), []);
 });
