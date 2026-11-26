@@ -154,6 +154,24 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 **Heavy suites take turns on one machine.** `npm run test:integration`, `npm run test:process` and every Playwright run first take one of the machine’s heavy-suite slots (`tools/heavy-lock.mjs`), two unless `POSTBOX_HEAVY_SLOTS` says otherwise, and wait with “Waiting for a heavy-suite slot” while both are in use. With every worktree’s suites at once, the load average reached 90 to 150 on 18 cores and failed tests no change had touched. A run that’s killed frees its slot. `npm run check` prints each stage’s time, so a stage that slows down shows in its output.
 
+**Sign off with `tools/signoff.mjs`, not a script of your own** (#845). In sprint 3, each author’s and reviewer’s own scripts failed quietly: a sign-off posted over a `git merge-tree` conflict, a spec list passed as one shell word ran no tests, and a wait that printed nothing for 15 minutes had its turn stopped. `node tools/signoff.mjs <pr>` runs six steps and prints a line as each ends. A failed step doesn’t stop the ones after it, so one run reports every problem:
+
+```mermaid
+flowchart LR
+  s1["1 · the head is pushed<br/>local HEAD = the PR’s head on GitHub"] --> s2["2 · the toolchain<br/>each Node major in .github/workflows is installed"]
+  s2 --> s3["3 · Biome at each commit<br/>merge base..HEAD, in a temporary worktree"]
+  s3 --> s4["4 · the merged tree<br/>git merge-tree with the fetched base, then Biome and lint:project on it"]
+  s4 --> s5["5 · the gate<br/>this script’s gate log for this exact head"]
+  s5 --> s6["6 · GitHub’s checks<br/>tools/signoff-checks.mjs: every required check, CodeQL included"]
+```
+
+- **The gate log.** By default, step 5 reads `<git common dir>/signoff/<head>.json`, which only `--run-gate` writes: inside git’s own folder, so it’s never committed, and shared by the clone’s worktrees. It holds each command with its exit code (`npm run check`, then `npx playwright test` plainly and with `POSTBOX_STREAM_LAG=300`), the Node version and the load. A log for another head, a failed or missing command, a run on a Node CI doesn’t use, or a run limited with `--spec` fails the step.
+- **`--run-gate`** runs those three commands now, on a clean working tree, and writes the log. It runs them on the Node CI uses, first on `PATH`, holding one heavy-suite slot (`tools/heavy-lock.mjs`, or the folder `--lock <folder>` names). The suites inside it don’t wait for a second slot. Before it takes the slot, it fails if the temp folder has under 100,000 free inodes. As it takes the slot, it reads the load once and warns when the load is above the core count. It runs only once steps 1 to 4 pass.
+- **The toolchain.** The majors come from each `node-version:` in `.github/workflows/*.yml`, following a `${{ matrix.<key> }}` to its list, so a major CI adds becomes a requirement here. Each is found as a `--node <path>` you give, the Node running the script, or the newest install under nvm, fnm, mise or Volta, or Homebrew’s `node@<major>`, and each candidate is asked its version.
+- **Lists stay lists.** Each `--spec <file>` is one argv entry, and a `--spec` with nothing after it is an error. A `--spec` limits the browser runs, for iterating, and such a log doesn’t sign off.
+- **It talks while it waits:** every command, and the wait for a slot, prints a line at least once a minute.
+- **It exits** 0 when every step passed, else with the first failed step’s number (1 to 6), or 64 for a command line it can’t use. It ends with one line to quote in a hand-back: `signoff #845 head=1a2b3c4d load=3.5/18 passed=6 failed=0 skipped=0 -> PASS`. It only reads from GitHub: it never labels, comments or pushes.
+
 **Install the way CI does.** CI runs Node 22 and `npm ci --ignore-scripts`, so the optional packages never download their models or binaries. A result from a machine with `kokoro-js` or the Agent SDK installed, and CI without them, are two different environments, and a change that touches either path says which one it ran in.
 
 **Use only your own ports and your own data.** Start a server with `--port` and `--data` of your own; a spec’s `startPostbox()` picks a free port and a temp folder for it. Never touch the preview on 4173, another tool’s server on 4320, or the person’s data: `~/.postbox`, which every run without `--data` shares, and a clone’s `data/`. Postbox refuses to start on a folder another Postbox is using, but `--fresh` without `--data` would still empty the person’s store. A spec or tool that talked to a server it didn’t start reports on someone else’s Postbox.

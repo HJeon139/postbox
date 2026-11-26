@@ -103,7 +103,7 @@ export function report(pr, head, v) {
 }
 
 /** gh’s JSON output for `args`. @param {string[]} args */
-const ghJson = (args) => JSON.parse(execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }));
+export const ghJson = (args) => JSON.parse(execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }));
 
 /**
  * Checks pull request `pr`, printing with `log`, and returns the exit code.
