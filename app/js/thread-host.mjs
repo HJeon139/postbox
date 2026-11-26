@@ -44,7 +44,7 @@ export function hostTurnsList(threadId) {
   return { el, paint };
 }
 
-/** @type {WeakMap<HTMLElement, string>} each drawn reply’s node, by whose reply it is: kept off the DOM, which is slower to read */
+/** @type {WeakMap<HTMLElement, string>} each drawn reply’s node, by whose reply it is: off the DOM, which was slower to read across a whole room (#851) */
 const replyOf = new WeakMap();
 
 /**
