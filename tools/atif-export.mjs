@@ -27,6 +27,7 @@ import { EVENTS } from '../shared/state.mjs';
 import { trajectories } from './atif.mjs';
 import { WORK_KINDS } from './atif-calls.mjs';
 import { lines } from './uat/history.mjs';
+import { readStreams } from './uat/run-files.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** Postbox’s version, as each trajectory’s agent.version. */
@@ -158,7 +159,14 @@ function pick(rec, { sessionId, handle }) {
   const lost = gapNote(rec.gaps);
   const notes = [rec.notes, lost].filter(Boolean).join(' ');
   const partial = { ...rec.partial, ...(rec.gaps?.length ? { stream_gaps: rec.gaps } : {}) };
-  return trajectories(rec.events, { version: POSTBOX_VERSION, live: rec.live ?? [], prompts: rec.prompts ?? [], blob: rec.blob, sessionId })
+  return trajectories(rec.events, {
+    version: POSTBOX_VERSION,
+    live: rec.live ?? [],
+    prompts: rec.prompts ?? [],
+    blob: rec.blob,
+    streams: rec.streams ?? [],
+    sessionId,
+  })
     .filter((t) => !handle || t.handle === handle)
     .map((t) =>
       notes
@@ -196,7 +204,10 @@ function gapNote(gaps) {
   return `Partial: the recording of /api/stream ${said.join('; and it ')}.`;
 }
 
-/** A UAT run’s folder (tools/uat/history.mjs, writeHistory): its events, its live frames and where its stream lost events. @param {string} dir */
+/**
+ * A UAT run’s folder (tools/uat/history.mjs, writeHistory): its events, its live frames, where its stream lost events,
+ * and its Claude Code turns’ recorded streams (streams/, tools/atif-streams.mjs). @param {string} dir
+ */
 function runRecording(dir) {
   const gaps = existsSync(join(dir, 'stream-gaps.json')) ? JSON.parse(readFileSync(join(dir, 'stream-gaps.json'), 'utf8')) : [];
   return {
@@ -205,6 +216,7 @@ function runRecording(dir) {
     prompts: promptsIn([dir, join(dir, 'data')]),
     blob: blobsIn([dir, join(dir, 'data')]),
     gaps,
+    streams: readStreams(join(dir, 'streams')),
   };
 }
 

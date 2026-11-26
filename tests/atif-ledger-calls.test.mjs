@@ -154,3 +154,11 @@ test('#1757 a stored output the ledger kept only the end of says so; one too lar
   assert.deepEqual(big.observation.results, [{ source_call_id: command.toolUseId, content: '[output too large to read: 104,857,600 bytes]' }]);
   assert.equal(big.tool_calls[0].extra.display_output, 'high', 'the live text is still what the conversation showed');
 });
+
+test('#1752 a command that printed nothing has an empty result, not none, so it reads apart from a missing one', () => {
+  const step = callIn(
+    withEnded((p) => ({ ...p, output: { size: 0 } })),
+    { live: [], blob: () => null },
+  );
+  assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: '' }]);
+});

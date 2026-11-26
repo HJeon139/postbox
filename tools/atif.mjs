@@ -18,6 +18,7 @@ import { CALL_KINDS, callsOf, questionsOf, WORK_KINDS } from './atif-calls.mjs';
 import { CLOCK_WORDS, clockScope } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { placePrompts, promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
+import { recordedCalls, withCalls } from './atif-streams.mjs';
 import { iso } from './atif-time.mjs';
 
 export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
@@ -160,7 +161,7 @@ function patchItem(it, d, seq) {
 
 /** An agent step for one of the session’s replies. @param {any} it @param {any} ctx @param {number} seq  where it was added */
 function replyStep(it, ctx, seq) {
-  const { tool_calls, results, thoughts, narration } = callsOf(it, ctx.calls, ctx.questions, ctx.blob);
+  const { tool_calls, results, thoughts, narration } = callsOf(it, ctx.calls, ctx.questions, ctx.blob, ctx.recorded);
   const metrics = ctx.meter.take(it.turnId);
   return {
     source: 'agent',
@@ -252,7 +253,7 @@ function carry(ctx, entry, what) {
  * The context one session’s steps are built in.
  * @param {ReturnType<typeof foldEvents>} f @param {string} sessionId @param {(sha256: string) => string | null} [blob]
  */
-function contextOf(f, sessionId, blob = () => null) {
+function contextOf(f, sessionId, blob = () => null, streams = []) {
   const turns = new Map([...f.work.values()].filter((w) => w.kind === 'turn' && w.sessionId === sessionId).map((w) => [w.id, w]));
   // Its own calls only: a tool call's id is its backend's, so another session's call can carry the same one.
   const calls = new Map([...f.work.values()].filter((w) => CALL_KINDS.has(w.kind) && w.toolUseId && w.sessionId === sessionId).map((w) => [w.toolUseId, w]));
@@ -271,17 +272,21 @@ function contextOf(f, sessionId, blob = () => null) {
     models: f.models.get(sessionId) ?? [],
     meter: meter(turns),
     blob,
+    recorded: recordedCalls(streams, f.sessions.get(sessionId)?.handle ?? null, repliesOf(f, sessionId)),
   };
 }
+
+/** A session’s replies, in the order they were added. @param {ReturnType<typeof foldEvents>} f @param {string} sessionId */
+const repliesOf = (f, sessionId) => f.order.map(({ id }) => f.items.get(id)).filter((it) => it?.kind === 'agent' && it.sessionId === sessionId && it.steps);
 
 /**
  * One agent session’s trajectory, or null when the events give it no step.
  * @param {ReturnType<typeof foldEvents>} f @param {string} sessionId
- * @param {{ version: string, blob?: (sha256: string) => string | null }} opts  blob: a stored blob's text, for outputs
+ * @param {{ version: string, blob?: (sha256: string) => string | null, streams?: { handle: string, events: any[] }[] }} opts  blob: a stored blob's text, for outputs; streams: the turns' recorded streams (tools/atif-streams.mjs)
  */
-export function trajectoryOf(f, sessionId, { version, blob }) {
+export function trajectoryOf(f, sessionId, { version, blob, streams }) {
   const se = f.sessions.get(sessionId) ?? {};
-  const ctx = contextOf(f, sessionId, blob);
+  const ctx = contextOf(f, sessionId, blob, streams);
   /** @type {{ seq: number, steps: any[] }[]} */
   // A step that brings its own place (an answer, at its patch) goes there; the rest go where their item was added.
   const placed = f.order.flatMap(({ seq, id }) =>
@@ -308,7 +313,7 @@ export function trajectoryOf(f, sessionId, { version, blob }) {
       ...(models.length === 1 ? { model_name: models[0] } : {}),
       extra: { handle, postbox_session: sessionId, ...(models.length > 1 ? { models } : {}) },
     },
-    ...withClock(scopeOf(prompts.length > 0, unresolvedGuides(f, sessionId)), clockScope(clocks)),
+    ...withCalls(withClock(scopeOf(prompts.length > 0, unresolvedGuides(f, sessionId)), clockScope(clocks)), ctx.recorded),
     steps,
     final_metrics: finalMetrics(ctx.turns, ctx.meter.metered, steps.length),
   };
@@ -319,18 +324,18 @@ const withClock = (scope, clock) => ({ notes: clock.note ? `${clock.note} ${scop
 
 /**
  * Every agent session’s trajectory in the events, or only `sessionId`’s.
- * @param {Event[]} events @param {{ version: string, live?: any[], prompts?: any[], sessionId?: string, blob?: (sha256: string) => string | null }} opts
+ * @param {Event[]} events @param {{ version: string, live?: any[], prompts?: any[], sessionId?: string, blob?: (sha256: string) => string | null, streams?: { handle: string, events: any[] }[] }} opts
  *   prompts: prompts.jsonl’s rows; blob: a stored blob's text, for the outputs live frames don't carry
  * @returns {{ sessionId: string, handle: string|null, trajectory: any }[]}
  */
-export function trajectories(events, { version, live = [], prompts = [], sessionId, blob }) {
+export function trajectories(events, { version, live = [], prompts = [], sessionId, blob, streams = [] }) {
   const f = foldEvents(events, live, prompts);
   // Every session that showed something: a reply, a block or an app, so one whose only output was a block has one too.
   const ids = new Set([...f.items.values()].filter((it) => OWN_KINDS.has(it.kind) && it.sessionId).map((it) => it.sessionId));
   for (const c of f.clocks) ids.add(c.data.sessionId);
   return [...ids]
     .filter((id) => !sessionId || id === sessionId)
-    .map((id) => ({ sessionId: id, trajectory: trajectoryOf(f, id, { version, blob }) }))
+    .map((id) => ({ sessionId: id, trajectory: trajectoryOf(f, id, { version, blob, streams }) }))
     .filter((x) => x.trajectory)
     .map((x) => ({ ...x, handle: x.trajectory.agent.extra.handle }));
 }

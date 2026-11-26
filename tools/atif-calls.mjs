@@ -89,6 +89,8 @@ const shown = (s) => s.output ?? s.detail;
 function storedResult(w, blob) {
   const out = w?.output;
   if (w?.endedInBackground) return null;
+  // A call that printed nothing: the ledger keeps no blob for it, and an empty result says so (#1752).
+  if (out?.size === 0) return '';
   if (typeof out?.size === 'number' && out.size > RESULT_READ_BYTES) return `[output too large to read: ${out.size.toLocaleString('en-US')} bytes]`;
   const text = typeof out?.sha256 === 'string' ? blob(out.sha256) : null;
   if (typeof text !== 'string') return null;
@@ -98,21 +100,28 @@ function storedResult(w, blob) {
 
 /**
  * The tool calls, their results, the thoughts and the narration of one reply. A call's start time and exit code are its
- * ledger entry's; its output is the store's blob the ledger names, else what a live frame showed (storedResult).
+ * ledger entry's; its output is its tool_result in the turn's recorded stream, else the store's blob the ledger names,
+ * else what a live frame showed (storedResult).
  * @param {any} it  the reply, with its steps @param {Map<string, any>} ledger  the work ledger’s calls, by tool call id
  * @param {Map<string, any[]>} [questions]  each AskUserQuestion call’s blocks, by its id
  * @param {(sha256: string) => string | null} [blob]  a stored blob's text, or null when it isn't there
+ * @param {ReturnType<typeof import('./atif-streams.mjs').recordedCalls> | null} [recorded]  what the turns' recorded
+ *   streams add: a call's input where the ledger kept none, and the calls that made no step (#1758, #1752)
  */
-export function callsOf(it, ledger, questions = new Map(), blob = () => null) {
+export function callsOf(it, ledger, questions = new Map(), blob = () => null, recorded = null) {
   const steps = [...it.steps.values()].filter((s) => s.label && s.kind !== 'reply');
   const thoughts = steps.filter((s) => s.kind === 'thought').map((s) => s.detail ?? s.label);
   const narration = steps.filter((s) => s.kind === 'said').map((s) => ({ step_id: s.id, text: s.detail ?? s.label, ...(s.who ? { who: s.who } : {}) }));
   const calls = steps.filter((s) => s.kind !== 'thought' && s.kind !== 'said');
+  /** @type {any[]} a step's call, or one its turn's stream has that made no step */
   const tool_calls = calls.map((s) => {
     const w = ledger.get(s.id);
     const name = typeof s.tool === 'string' && s.tool ? s.tool : ledgerName(w);
     const asked = !w && questions.has(s.id);
-    const args = asked ? questionArguments(questions.get(s.id)) : ledgerArguments(w);
+    const kept = asked ? questionArguments(questions.get(s.id)) : ledgerArguments(w);
+    // The ledger keeps no input for some calls, a Write’s among them: the turn’s recorded stream has it (#1752).
+    const streamed = kept ? null : (recorded?.byId.get(s.id)?.input ?? null);
+    const args = kept ?? streamed;
     return {
       tool_call_id: s.id,
       function_name: name ?? 'unknown',
@@ -125,7 +134,7 @@ export function callsOf(it, ledger, questions = new Map(), blob = () => null) {
         ...(typeof w?.exit === 'number' ? { exit: w.exit } : {}),
         ...(s.kind ? { kind: s.kind } : {}),
         ...(name ? {} : { function_name: 'not recorded' }),
-        arguments_source: argumentsSource(w, args, asked),
+        arguments_source: streamed ? 'recorded stream' : argumentsSource(w, args, asked),
         // What the conversation showed of its input and output, cut, and its step's note (a failure's reason, a
         // subagent's summary, a status): only live frames carry the first two.
         ...(typeof s.input === 'string' ? { display_input: s.input } : {}),
@@ -136,9 +145,21 @@ export function callsOf(it, ledger, questions = new Map(), blob = () => null) {
     };
   });
   const results = calls.flatMap((s) => {
-    const content = storedResult(ledger.get(s.id), blob) ?? shown(s);
+    // What the model got back, as its turn’s stream recorded it, is the result first (#1758).
+    const got = recorded?.byId.get(s.id)?.result;
+    const content = (typeof got === 'string' ? resultContent(got) : null) ?? storedResult(ledger.get(s.id), blob) ?? shown(s);
     return typeof content === 'string' ? [{ source_call_id: s.id, content }] : [];
   });
+  const unstepped = recorded?.unstepped.get(it.id) ?? [];
+  for (const c of unstepped) {
+    tool_calls.push({
+      tool_call_id: c.id,
+      function_name: c.name || 'unknown',
+      arguments: c.input,
+      extra: { arguments_source: 'recorded stream', step: 'none' },
+    });
+    if (typeof c.result === 'string') results.push({ source_call_id: c.id, content: resultContent(c.result) });
+  }
   return { tool_calls, results, thoughts, narration };
 }
 
