@@ -118,3 +118,14 @@ test('#1702 show_app on its own app, and on an id another agent holds, keeps the
   assert.equal(String(await f.rt.apps.appFile(id, 'c.csv', 1)), 'c,3\n');
   assert.equal(blobsIn(f.root).length, 3);
 });
+
+test('#1702 an update_app with files alone (#1751) keeps their blob, as one with code does', async () => {
+  const f = await setup();
+  await writeFile(join(f.folder, 'a.csv'), 'a,1\n');
+  await writeFile(join(f.folder, 'b.csv'), 'b,2\n');
+  assert.equal((await f.call('show_app', { id: 'chart', title: 'Chart', code: '<p>x</p>', files: ['a.csv'] })).isError, false);
+  assert.equal((await f.call('update_app', { id: 'chart', files: ['b.csv'] })).isError, false);
+  assert.equal(blobsIn(f.root).length, 2, 'the version made of files alone holds its file');
+  assert.equal(String(await f.rt.apps.appFile('chart', 'b.csv', 2)), 'b,2\n');
+  assert.deepEqual([f.rt.blobs.held.size, f.rt.blobs.kept.size], [0, 0], 'the call settled what it put');
+});
