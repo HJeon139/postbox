@@ -28,8 +28,9 @@ export function unreadAnswer(apps, sessionId, threadId, it, outcome = false) {
   const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
   // Only an answer the refusal can give whole is settled: past the cut, it still comes whole at the turn’s end.
   const fits = full.length <= CATCH_UP_CHARS;
-  const waited = settleWaiting(apps, sessionId, it, fits);
+  const waited = stillWaits(apps, sessionId, it);
   if (waited && !fits) return { ok: false, message: `${said} It reaches you whole when this turn ends: read it, ${then}.` };
+  if (waited) settleWaiting(apps, sessionId, it);
   apps.threads.patchItem(threadId, it.id, { answer: { ...a, read: true } });
   const why = waited ? 'It was waiting for this turn to end, and comes here instead' : 'It didn’t reach you in a turn';
   const whole =
@@ -38,27 +39,38 @@ export function unreadAnswer(apps, sessionId, threadId, it, outcome = false) {
 }
 
 /**
- * Settles what still carries an unread answer to the agent, once update_block’s refusal has given it whole (#1810), so
- * no later turn gives it again: its waiting entry in the agent’s inbox (designs/rooms-at-scale.md, “What an entry
- * is”), and a message holding its event behind the live turn, with the entry taken for it. Both are delivered, as a
- * turn’s end delivers what it took. Returns whether anything waited; with `settle` false it only says so, for an answer
- * too long to give whole here.
- * @param {string} sessionId @param {any} it  the answered block item @param {boolean} [settle]
+ * The answer itself, not a correction of one of its comments the person sent since (review-correct.mjs): that one
+ * still comes, as the refusal gives only the answer (#1810).
+ * @param {any} m
  */
-function settleWaiting(apps, sessionId, it, settle = true) {
-  // The answer itself, not a correction of one of its comments the person sent since (review-correct.mjs): that one
-  // still comes, as the refusal gives only the answer (#1810).
-  const answer = (/** @type {any} */ m) => m?.event?.action !== 'correct';
-  const entries = apps.delivery.waiting(sessionId).filter((e) => e.source === 'answer' && e.itemId === it.id && answer(e.message));
-  const list = apps.running.turnOf(sessionId)?.pending ?? [];
-  const carrying = list.filter((/** @type {any} */ p) => p.message.blockItemId === it.id && answer(p.message));
-  const held = carrying.length > 0;
-  if (held && settle) {
-    list.splice(0, list.length, ...list.filter((/** @type {any} */ p) => !carrying.includes(p)));
-    // The entry a turn took for it, whose turn now never starts: left taken, a restart would give it again.
-    for (const p of carrying.filter((x) => typeof x.message.turnId === 'string'))
-      entries.push(...apps.delivery.takenBy(sessionId, p.message.turnId).filter((e) => e.itemId === it.id && answer(e.message)));
-  }
-  if (settle && entries.length) apps.delivery.deliveredNow(entries);
-  return held || entries.length > 0;
+const answer = (m) => m?.event?.action !== 'correct';
+/** A message that carries the answer to this block. @param {any} it  the answered block item */
+const carriesAnswer = (it) => (/** @type {any} */ m) => m?.blockItemId === it.id && answer(m);
+/** Its answer’s entries waiting in the agent’s inbox (designs/rooms-at-scale.md, “What an entry is”). */
+const waitingEntries = (apps, sessionId, it) =>
+  apps.delivery.waiting(sessionId).filter((/** @type {any} */ e) => e.source === 'answer' && e.itemId === it.id && answer(e.message));
+
+/**
+ * Whether an unread answer still waits for the agent: its entry in the agent’s inbox, or a message holding its event
+ * behind the live turn.
+ * @param {string} sessionId @param {any} it  the answered block item
+ */
+function stillWaits(apps, sessionId, it) {
+  const carries = carriesAnswer(it);
+  const queued = (apps.running.turnOf(sessionId)?.pending ?? []).some((/** @type {any} */ p) => carries(p.message));
+  return queued || waitingEntries(apps, sessionId, it).length > 0;
+}
+
+/**
+ * Settles what still carries an unread answer to the agent, once update_block’s refusal has given it whole (#1810), so
+ * no later turn gives it again: Turns takes its message out of the live turn’s queue, and its entries, waiting or taken
+ * for that message’s turn, are delivered, as a turn’s end delivers what it took.
+ * @param {string} sessionId @param {any} it  the answered block item
+ */
+function settleWaiting(apps, sessionId, it) {
+  const entries = waitingEntries(apps, sessionId, it);
+  // The entry a turn took for it, whose turn now never starts: left taken, a restart would give it again.
+  for (const p of apps.turns.takeQueued(sessionId, carriesAnswer(it)).filter((/** @type {any} */ x) => typeof x.message.turnId === 'string'))
+    entries.push(...apps.delivery.takenBy(sessionId, p.message.turnId).filter((/** @type {any} */ e) => e.itemId === it.id && answer(e.message)));
+  if (entries.length) apps.delivery.deliveredNow(entries);
 }

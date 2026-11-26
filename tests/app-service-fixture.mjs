@@ -7,6 +7,7 @@ import { Bus } from '../server/bus.mjs';
 import { Running } from '../server/running.mjs';
 import { Store } from '../server/store.mjs';
 import { Threads } from '../server/threads.mjs';
+import { takeQueued } from '../server/turn-run.mjs';
 
 /** Apps over a store with one agent in a conversation; `blobs` is what the asset store holds, by hash. */
 export function rig({ tools = [], blobs = { f1: Buffer.from('data') } } = {}) {
@@ -47,6 +48,21 @@ export function rig({ tools = [], blobs = { f1: Buffer.from('data') } } = {}) {
   const send = (sessionId, message, opts) => sent.push({ sessionId, message, opts });
   const entries = /** @type {any[]} */ ([]);
   const delivery = { send: (/** @type {any} */ e) => entries.push(e), waiting: () => [], takenBy: () => [], deliveredNow: () => {} };
-  const apps = new Apps({ store, bus, threads, sessions, personas, assets, running, checks, delivery, send, narrator: null, config: { imageOrigins: [] } });
+  const turns = { takeQueued: (/** @type {string} */ id, /** @type {any} */ carries) => takeQueued({ running }, id, carries) };
+  const apps = new Apps({
+    store,
+    bus,
+    threads,
+    sessions,
+    personas,
+    assets,
+    running,
+    checks,
+    delivery,
+    turns,
+    send,
+    narrator: null,
+    config: { imageOrigins: [] },
+  });
   return { store, threads, running, apps, sent, entries, linted, signals, searched };
 }

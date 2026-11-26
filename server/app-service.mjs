@@ -26,13 +26,15 @@ export class Apps {
    *           checks: { lint: (sessionId: string, turnId: string|null|undefined, problems: any[]) => unknown },
    *           delivery: { send: (entry: any) => unknown, waiting: (sessionId: string) => any[], takenBy: (sessionId: string, turnId: string) => any[],
    *             deliveredNow: (entries: any[]) => unknown },
+   *           turns: { takeQueued: (sessionId: string, carries: (message: any) => boolean) => any[] },
    *           send: (sessionId: string, message: any, opts: { threadId: string, itemId?: string }) => unknown,
    *           narrator: { speak: (args: any) => any } | null, config: { imageOrigins: string[] } }} deps
    *   delivery: the inbox, which a review of a block reaches its author through (designs/rooms-at-scale.md, “What an
    *   entry is”). send: any other message for an agent (the port; designs/architecture/services.md, “The services”),
-   *   which the root binds to the runtime’s deliver until an app’s event is an entry too. narrator: speaks for an app that asks, or null where it isn’t installed.
+   *   which the root binds to the runtime’s deliver until an app’s event is an entry too. turns: takes an answer’s
+   *   message out of a live turn’s queue once the agent was given it another way (#1810), as only Turns writes it. narrator: speaks for an app that asks, or null where it isn’t installed.
    */
-  constructor({ store, bus, threads, sessions, personas, assets, running, checks, delivery, send, narrator, config }) {
+  constructor({ store, bus, threads, sessions, personas, assets, running, checks, delivery, turns, send, narrator, config }) {
     this.store = store;
     this.bus = bus;
     this.threads = threads;
@@ -42,6 +44,7 @@ export class Apps {
     this.running = running;
     this.checks = checks;
     this.delivery = delivery;
+    this.turns = turns;
     this.send = send;
     this.narrator = narrator;
     this.config = config;
