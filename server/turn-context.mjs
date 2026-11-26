@@ -128,6 +128,10 @@ function turnHooks(rt, turn, live) {
     job(j) {
       rt.recordJob(turn, j);
     },
+    /** A line the agent reads at the start of its next turn, as a Postbox notice (sessions.tell). @param {string} text */
+    tell(text) {
+      rt.sessions.tell(turn.sessionId, text);
+    },
     /** The backend refused a tool call without asking: { toolUseId, tool, input, label, reason, reasonType, who }. */
     denied(d) {
       if (!live()) return;
@@ -174,7 +178,9 @@ function replyWords(rt, se0, turn, live) {
         total,
         summary: cutText(String(summary ?? ''), 20000),
       });
-      rt.sessions.update(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
+      // With no counts, the context’s next reading says where it stands (#425).
+      const counted = Number.isFinite(kept) && Number.isFinite(total) && total > 0;
+      rt.sessions.update(turn.sessionId, { compactions: n, ...(counted ? { ctx: Math.round((kept / total) * 100) } : {}) });
     },
     sources(list) {
       if (!live()) return;

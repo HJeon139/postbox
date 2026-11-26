@@ -46,7 +46,8 @@ function record(took, steps, running, stopped) {
  * @param {any} rt @param {any} se @param {any} turn
  */
 export function heldBy(rt, se, turn) {
-  const jobs = (rt.s.sessions[se.id]?.jobs ?? []).filter((/** @type {any} */ j) => j.turnId === turn.id && j.state === 'running');
+  // Pending: a job recorded behind a held commit is one the turn held (#623).
+  const jobs = (rt.store.pending.session(se.id)?.jobs ?? []).filter((/** @type {any} */ j) => j.turnId === turn.id && j.state === 'running');
   return record(
     rt.delivery.takenBy(se.id, turn.id),
     turn.steps ?? [],

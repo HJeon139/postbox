@@ -120,7 +120,7 @@ Each of these was considered and left out, because nothing measured asks for it 
 
 | Idea | Why it’s left out |
 |---|---|
-| Send the roster and the tools turned off only when they change | It needs a record, per session, of what was last given, and a way to know the session lost it. Only Claude Code reports a compaction |
+| Send the roster and the tools turned off only when they change | It needs a record, per session, of what was last given, and a way to know the session lost it. Only Claude Code and Codex report a compaction (Codex since #425) |
 | Search by meaning | It needs an embedding model, a new dependency. It waits until a search by words is measured to miss |
 | A notice or an index after a compaction | Nothing shows what agents fail to find after one. The one filed loss is review thread ids ([#791](https://github.com/HJeon139/postbox/issues/791)) |
 | A one-line answer when an agent reads an item again | Of 54 repeat reads, 30 were reading on through a long item. An agent that reads twice usually can’t find the item ([#499](https://github.com/HJeon139/postbox/issues/499)) |

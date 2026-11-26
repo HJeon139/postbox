@@ -109,6 +109,8 @@ export class RemoteTurns {
     this.checkedAt = new Map();
     /** @type {Map<string, Stop>} host turn → a stop not yet confirmed */
     this.stopping = new Map();
+    /** @type {Set<(hostId: string) => void>} told the host when a stop there is confirmed (#1680) */
+    this.stopsEnded = new Set();
     this.closed = false;
     this.unsubscribe = rt.store.subscribe((/** @type {any} */ ev) => onStoreEvent(this, ev));
     // The manager emits 'status' with (hostId, status) when a host’s connection changes.
