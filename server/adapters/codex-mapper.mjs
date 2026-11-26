@@ -104,10 +104,14 @@ export function createCodexMapper(ctx, io = {}) {
     const p = msg?.params ?? {};
     switch (msg?.method) {
       case 'item/started':
-        itemStarted(emit, p.item);
+        if (p.item?.type === 'contextCompaction') emit({ kind: 'status', step: 'Summarizing the conversation' });
+        else itemStarted(emit, p.item);
         return null;
       case 'item/completed':
-        if (p.item?.type === 'agentMessage') messages.completed(p.item);
+        // Codex says only that it compacted (recorded with codex-cli 0.167.0): no summary, and no count of the context
+        // before or after, so the compaction carries none.
+        if (p.item?.type === 'contextCompaction') emit({ kind: 'compaction', summary: 'Codex summarized the earlier conversation to make room.' });
+        else if (p.item?.type === 'agentMessage') messages.completed(p.item);
         else itemCompleted(emit, p.item, io.read);
         return null;
       case 'item/agentMessage/delta':

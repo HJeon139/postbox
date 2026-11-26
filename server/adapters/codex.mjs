@@ -71,6 +71,12 @@ export function codexConfigArgs(mcpUrl) {
 }
 
 /**
+ * Whether a turn’s message is the /compact command, run as Codex’s compaction (#425). Codex’s takes no instructions,
+ * so any after it are left out rather than sent to the model as a prompt. @param {any} message
+ */
+const compacts = (message) => Boolean(message?.slash) && /^\/compact(?:\s|$)/.test(String(message.text ?? ''));
+
+/**
  * Answers an app-server approval or elicitation request, unless the host already has (remote turns: `host` is
  * codex-remote.mjs’s createCodexHost, null here).
  * @param {any} ctx @param {any} host @param {(payload: any) => void} send @param {any} msg
@@ -103,6 +109,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;
   const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
+  if (compacts(message) && !sourceThreadId) throw new Error('There’s nothing to compact yet: this agent has no Codex conversation.');
   const { opened, fresh } = await openCodexThread(ctx, request, { sourceThreadId, fork, cwd, model, openConfig }).catch((e) => {
     throw codexRefusal(ctx, e);
   });
@@ -110,6 +117,8 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   if (!id) throw new Error('Codex app-server did not return a thread id.');
   ctx.state.codexThreadId = id;
   ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
+  // /compact is Codex’s own compaction of the thread, not a prompt (#425): it runs as a turn of its own.
+  if (compacts(message)) return { started: await request('thread/compact/start', { threadId: id }), model: model ?? opened?.model ?? null };
   const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
   const inputText = formatMessage(fresh ? { ...turnMessage, text: note + turnMessage.text } : turnMessage, attachmentPaths(ctx, ctx.remote?.turn));
   const started = await request('turn/start', {
