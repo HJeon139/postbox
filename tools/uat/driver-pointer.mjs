@@ -19,15 +19,7 @@ export function pointer(page, ev, runnerClick, input) {
    */
   async function clickAt(findExpr, what) {
     runnerClick();
-    await dismissNoticesOver(findExpr);
-    const r = await ev(`(async () => {
-      const el = ${findExpr};
-      if (!el) return null;
-      const at = el.getBoundingClientRect();
-      if (!el.contains(document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2))) ${JUMP('el', 'center')};
-      const b = el.getBoundingClientRect();
-      return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
-    })()`);
+    const r = await aim(findExpr);
     if (!r) throw new Error(`Couldn’t find ${what} on screen.`);
     await sleep(120);
     const at = await heldStill(findExpr, r);
@@ -39,23 +31,27 @@ export function pointer(page, ev, runnerClick, input) {
   }
 
   /**
-   * A notice over what the runner is about to click is dismissed first, as a person does: the stack is at the top of
-   * a sheet, where a list’s controls are, and a notice stays eight seconds. Each is dismissed with its own button, by
-   * the pointer. @param {string} findExpr
+   * Where to click: the element’s centre, scrolled to if it can’t be reached where it is. A notice over it is dismissed
+   * first, with its own button, as a person does: the stack is at the top of a sheet, where a list’s controls are, and
+   * a notice stays eight seconds. The one measurement says which it is, so a page with no notice is read once.
+   * @param {string} findExpr @returns {Promise<{ x: number, y: number } | null>}
    */
-  async function dismissNoticesOver(findExpr) {
-    for (let i = 0; i < 3; i++) {
-      const dismiss = await ev(`(() => {
+  async function aim(findExpr) {
+    for (let notices = 0; ; notices++) {
+      const r = await ev(`(async () => {
         const el = ${findExpr};
         if (!el) return null;
         const at = el.getBoundingClientRect();
-        const over = document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2)?.closest('.toast');
-        const b = over?.querySelector('[aria-label="Dismiss"]')?.getBoundingClientRect();
-        return b ? { x: b.left + b.width / 2, y: b.top + b.height / 2 } : null;
+        const over = document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2);
+        const dismiss = ${notices} < 3 && over?.closest?.('.toast')?.querySelector('[aria-label="Dismiss"]')?.getBoundingClientRect();
+        if (dismiss) return { notice: { x: dismiss.left + dismiss.width / 2, y: dismiss.top + dismiss.height / 2 } };
+        if (!el.contains(over)) ${JUMP('el', 'center')};
+        const b = el.getBoundingClientRect();
+        return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
       })()`);
-      if (!dismiss) return;
+      if (!r?.notice) return r;
       for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
-        await page.send('Input.dispatchMouseEvent', { type, x: dismiss.x, y: dismiss.y, button: 'left', clickCount: 1 });
+        await page.send('Input.dispatchMouseEvent', { type, x: r.notice.x, y: r.notice.y, button: 'left', clickCount: 1 });
       await sleep(120);
     }
   }
