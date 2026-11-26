@@ -24,7 +24,7 @@ const resultsOf = (/** @type {any} */ t) =>
 const recorded = (/** @type {string} */ handle) => rec.streams.filter((s) => s.handle === handle).flatMap((s) => callsInStream(s.events));
 
 test('the fixture is the gap #1758 is about: 17 recorded calls, 10 of them steps', () => {
-  assert.equal(rec.streams.length, 9);
+  assert.equal(rec.streams.length, 15, 'one per turn, six of them with no call');
   assert.deepEqual([recorded('developer').length, recorded('critic').length], [9, 8]);
   const steps = byHandle(rec.events, []);
   assert.deepEqual([callsOf(steps.developer).length, callsOf(steps.critic).length], [4, 6]);
@@ -77,24 +77,25 @@ test('#1758 a call with no step goes with its turn’s reply: beside its turn’
   assert.equal(stepOf('Uogfnu'), stepOf('ck2VUP'));
 });
 
-test('#1758 a stream that shares no call with the session and holds none of its replies’ times is counted, not placed', () => {
-  const late = { ...rec.streams.find((s) => s.handle === 'critic'), started: Number.MAX_SAFE_INTEGER };
-  const foreign = { ...late, events: late.events.map((e) => JSON.parse(JSON.stringify(e).replaceAll('toolu_', 'toolu_other_'))) };
+test('#1758 a stream that started before any of its agent’s turns, or whose turn made no reply, is counted, not placed', () => {
+  const early = { ...rec.streams.find((s) => s.handle === 'critic' && s.events.length), started: 0 };
+  const foreign = { ...early, events: early.events.map((e) => JSON.parse(JSON.stringify(e).replaceAll('toolu_', 'toolu_other_'))) };
   const t = byHandle(rec.events, [...rec.streams, foreign]).critic;
   assert.equal(t.extra.unplaced_calls, callsInStream(foreign.events).length);
   assert.match(t.notes, /recorded calls? matched no reply/);
   assert.equal(callsOf(t).length, 8, 'its calls aren’t in the trajectory');
-  // Nor one whose time holds no reply before the agent’s next stream started: the next turn’s reply isn’t its.
+  // Nor one whose turn made no reply: the developer’s second turn, with its reply gone. The next turn’s reply isn’t its.
   const between = { ...foreign, handle: 'developer', started: 1795679530000 };
-  assert.equal(byHandle(rec.events, [...rec.streams, between]).developer.extra.unplaced_calls, callsInStream(between.events).length);
+  const noReply = rec.events.filter((e) => !(e.type === 'item.add' && e.data.item.id === 'it_qAd0QnoV'));
+  assert.equal(byHandle(noReply, [...rec.streams, between]).developer.extra.unplaced_calls, callsInStream(between.events).length);
 });
 
 test('#1758 the count of unplaced calls stays on a trajectory when the agent’s first session made none', () => {
   // The developer joins another room first and never replies there: that session has no trajectory.
   const first = rec.events.find((e) => e.type === 'session' && e.data.handle === 'developer');
   const idle = { ...first, seq: 0, data: { ...first.data, id: 'se_idle', threadId: 'th_elsewhere' } };
-  const late = { ...rec.streams.find((s) => s.handle === 'developer'), started: Number.MAX_SAFE_INTEGER };
-  const foreign = { ...late, events: late.events.map((e) => JSON.parse(JSON.stringify(e).replaceAll('toolu_', 'toolu_other_'))) };
+  const early = { ...rec.streams.find((s) => s.handle === 'developer' && s.events.length), started: 0 };
+  const foreign = { ...early, events: early.events.map((e) => JSON.parse(JSON.stringify(e).replaceAll('toolu_', 'toolu_other_'))) };
   const t = byHandle([idle, ...rec.events], [...rec.streams, foreign]).developer;
   assert.equal(t.extra.unplaced_calls, callsInStream(foreign.events).length);
 });
@@ -174,7 +175,7 @@ test('#1752 a call the ledger kept no input for takes it from its turn’s strea
 
 test('#1758 the export reads the streams from a run’s folder and from its events file alike, and writes them out', () => {
   const fromFile = readRecording(join(DIR, 'events.jsonl'));
-  assert.equal(fromFile.streams?.length, 9);
+  assert.equal(fromFile.streams?.length, 15);
   const out = tempDir('pb-atif-streams-');
   const written = writeTrajectories(out, rec);
   assert.equal(written.length, 2);
@@ -242,42 +243,42 @@ test('#1758 a result that isn’t all text names its other parts, and an error o
   assert.equal(only.result, '[image]', 'an image alone is a result, not none');
 });
 
-test('#1758 one agent in two sessions: a stream goes to the session whose steps it shares, and a call-less one by time only when one session fits', () => {
-  /** @param {string} id @param {number} at @param {string[]} steps */
-  const reply = (id, at, steps) => ({ id, at, steps: new Map(steps.map((s) => [s, {}])) });
+test('#1758 one agent in two sessions: a stream goes to its turn’s session, and one with no turn, or whose turn made no reply, is counted on the first', () => {
+  /** @param {string} id @param {string} turnId @param {string[]} steps */
+  const reply = (id, turnId, steps) => ({ id, turnId, steps: new Map(steps.map((s) => [s, {}])) });
   const sessions = new Map([
-    ['A', [reply('a1', 960, ['x', 'x3'])]],
-    ['B', [reply('b1', 1010, ['y', 'y3'])]],
+    ['A', [reply('a1', 'ta', ['x'])]],
+    ['B', [reply('b1', 'tb', ['y'])]],
   ]);
+  const turns = [
+    { id: 'ta', sessionId: 'A', startedAt: 900 },
+    { id: 'tb', sessionId: 'B', startedAt: 1000 },
+    { id: 'tc', sessionId: 'B', startedAt: 1100 },
+  ];
   const use = (/** @type {string} */ id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'T', input: {} }] } });
   const streams = [
-    { handle: 'h', started: 900, events: [use('y'), use('y2')] },
-    { handle: 'h', started: 950, events: [use('x'), use('x2')] },
+    // Before any of the agent’s turns started: no turn is its.
+    { handle: 'h', started: 850, events: [use('w')] },
+    { handle: 'h', started: 902, events: [use('x'), use('x2')] },
     // The same calls again, as a stray process’s stream can hold them: read once.
-    { handle: 'h', started: 951, events: [use('x'), use('x2')] },
-    // Both sessions have a reply in this one’s time: it could be either’s, so it’s counted, once, not placed.
-    { handle: 'h', started: 955, events: [use('z')] },
-    // A’s call first, then one of B’s steps: B’s stays B’s.
-    { handle: 'h', started: 2000, events: [use('x3'), use('y3')] },
+    { handle: 'h', started: 903, events: [use('x'), use('x2')] },
+    // B’s turn: a call before its first stepped one goes with the turn’s first reply.
+    { handle: 'h', started: 1001, events: [use('y2'), use('y')] },
+    // A turn that made no reply: its calls have none to go with.
+    { handle: 'h', started: 1102, events: [use('z')] },
   ];
-  const a = recordedCalls(streams, 'h', sessions, 'A');
-  const b = recordedCalls(streams, 'h', sessions, 'B');
-  assert.deepEqual([...a.byId.keys()].sort(), ['x', 'x2', 'x3']);
+  const a = recordedCalls(streams, 'h', { sessions, turns }, 'A');
+  const b = recordedCalls(streams, 'h', { sessions, turns }, 'B');
+  assert.deepEqual([...a.byId.keys()].sort(), ['x', 'x2']);
   assert.deepEqual([...b.byId.keys()].sort(), ['y', 'y2']);
-  assert.deepEqual(
-    [...a.unstepped.values()].flat().map((c) => c.id),
-    ['x2'],
-  );
-  assert.deepEqual(
-    [...b.unstepped.values()].flat().map((c) => c.id),
-    ['y2'],
-  );
-  assert.deepEqual([a.unplaced, b.unplaced], [1, 0], 'counted on the agent’s first session only');
+  assert.deepEqual([...a.unstepped], [['a1', [a.byId.get('x2')]]]);
+  assert.deepEqual([...b.unstepped], [['b1', [b.byId.get('y2')]]]);
+  assert.deepEqual([a.unplaced, b.unplaced], [2, 0], 'counted on the agent’s first session only');
 });
 
 test('#1758 a call’s result that its stream marks an error says so in its extra', () => {
   const step = { id: 'x', label: 'Read shot.png', tool: 'Read', state: 'failed' };
-  const it = { id: 'a1', at: 960, steps: new Map([['x', step]]) };
+  const it = { id: 'a1', turnId: 't', steps: new Map([['x', step]]) };
   const recorded = recordedCalls(
     [
       {
@@ -290,7 +291,7 @@ test('#1758 a call’s result that its stream marks an error says so in its extr
       },
     ],
     'h',
-    new Map([['A', [it]]]),
+    { sessions: new Map([['A', [it]]]), turns: [{ id: 't', sessionId: 'A', startedAt: 900 }] },
     'A',
   );
   const { tool_calls, results } = callsOfReply(it, new Map(), new Map(), () => null, recorded);

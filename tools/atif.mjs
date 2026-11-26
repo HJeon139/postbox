@@ -18,7 +18,7 @@ import { CALL_KINDS, callsOf, questionsOf, WORK_KINDS } from './atif-calls.mjs';
 import { CLOCK_WORDS, clockScope, withClock } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { placePrompts, promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
-import { agentSessions, shownSessions } from './atif-sessions.mjs';
+import { agentOf, shownSessions } from './atif-sessions.mjs';
 import { recordedCalls, withCalls } from './atif-streams.mjs';
 import { iso } from './atif-time.mjs';
 
@@ -280,7 +280,7 @@ function contextOf(f, sessionId, blob = () => null, streams = []) {
     models: f.models.get(sessionId) ?? [],
     meter: meter(turns),
     blob,
-    recorded: recordedCalls(streams, handle, agentSessions(f, handle), sessionId),
+    recorded: recordedCalls(streams, handle, agentOf(f, handle), sessionId),
   };
 }
 
