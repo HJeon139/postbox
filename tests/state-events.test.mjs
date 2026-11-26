@@ -210,6 +210,7 @@ const ADDED_SINCE = [
   'clock.restored',
   'clock.stopped',
   'clock.expired',
+  'clock.ended',
   // A person and their profile (#558): put by id, as a persona is.
   'person',
 ];

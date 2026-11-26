@@ -2,6 +2,7 @@
 
 import { withAllowRules, withAskRules } from '../permission-rules.mjs';
 import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
+import { withSteering } from './steering.mjs';
 
 // Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
 // settings, or auto, and an agent you set to ask could end up not asking. (manual is the CLI’s name for default.)
@@ -27,11 +28,12 @@ function sessionArgs(sessionId, resume, fork) {
  * @param {{ persona: any, sessionId: string, resume: boolean, mcpUrl?: string, guide: string, addDirs?: string[],
  *           fork?: { claudeSessionId: string, uuid?: string }|null, allowOnce?: string[], rules?: { allow?: string[], ask?: string[], deny?: string[] },
  *           server?: Record<string, object>|null, denyPrompts?: boolean, memoryDir?: string|null, plugins?: string[],
- *           hostAllow?: string[] }} turn
+ *           hostAllow?: string[], claudeMdExcludes?: string[] }} turn
  *   rules: the ones the person made for this conversation only (#66), passed every turn. server: Postbox’s server in
  *   place of the HTTP one at mcpUrl (a remote turn’s shim, shimServer). denyPrompts: --permission-prompts none in place
  *   of the prompt tool, so what would be asked is denied (a host’s denyPrompts, D2). memoryDir: the persona’s own memory
  *   folder (#208, setup.mjs’s memoryFolder). plugins: plugin folders to load, Postbox’s own (agent-plugin.mjs).
+ *   claudeMdExcludes: the Postbox checkout’s steering the agent mustn’t load (server/adapters/steering.mjs)
  *   hostAllow: on a host, the rules the person always allowed for it there (#120, server/host-rules.mjs), sent as allow
  *   rules in --settings, as JSON data.
  */
@@ -50,6 +52,7 @@ export function claudeArgs({
   memoryDir = null,
   plugins = [],
   hostAllow = [],
+  claudeMdExcludes = [],
 }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
@@ -57,7 +60,8 @@ export function claudeArgs({
   // With the persona’s own memory folder (#208), and ask rules for writes outside Postbox (#112), so each comes to a
   // card first, and the conversation’s own; on a host, the rules the person always allowed there (#120).
   const asks = withAskRules(settingsFor(persona, memoryDir), [...writeRules(persona), ...(rules.ask ?? [])]);
-  const settings = withAllowRules(asks, hostAllow);
+  // Not the Postbox checkout’s own AGENTS.md, for an agent working in the data folder inside it (#319).
+  const settings = withSteering(withAllowRules(asks, hostAllow), claudeMdExcludes);
   return [
     '-p',
     '--output-format',

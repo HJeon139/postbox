@@ -10,6 +10,7 @@ import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { cutText } from '../../shared/text-parts.mjs';
 import { stepTool } from '../step-text.mjs';
 import { describeTool } from '../tool-labels.mjs';
 import { contentBlocks } from './claude-content.mjs';
@@ -22,7 +23,7 @@ const clip = (s, n) => {
   const t = String(s ?? '')
     .replace(/\s+/g, ' ')
     .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+  return t.length > n ? `${cutText(t, n - 1)}…` : t;
 };
 
 /** Reads up to n bytes from the start or the end of a file, as complete lines. */

@@ -856,6 +856,9 @@
   },
   "codex-app-server/ask-mcp-allow.jsonl": {},
   "codex-app-server/ask-mcp-deny.jsonl": {},
+  "codex-app-server/compact.jsonl": {
+    "9": "OK"
+  },
   "codex-app-server/fail-before-output.jsonl": {},
   "codex-app-server/ledger-edits.jsonl": {
     "4": "I",

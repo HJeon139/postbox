@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const DIR = new URL('../.github/workflows/', import.meta.url);
+const ACTIONS = new URL('../.github/actions/', import.meta.url);
 
 /** Lines that call a status function outside an `if:`. GitHub allows them only there; anywhere else the whole
  * workflow is invalid, and no run of it starts (#391 did this to the prompt gate). */
@@ -17,6 +18,12 @@ test('a workflow calls success(), failure(), cancelled() and always() only in an
   for (const name of readdirSync(DIR).filter((f) => f.endsWith('.yml'))) {
     assert.deepEqual(misplacedStatus(readFileSync(new URL(name, DIR), 'utf8')), [], name);
   }
+});
+
+test('so does each local action the workflows use', () => {
+  const actions = readdirSync(ACTIONS, { recursive: true }).filter((f) => /(^|\/)action\.ya?ml$/.test(String(f)));
+  assert.ok(actions.length > 0, 'the local actions are found');
+  for (const name of actions) assert.deepEqual(misplacedStatus(readFileSync(new URL(String(name), ACTIONS), 'utf8')), [], String(name));
 });
 
 test('the status-function check catches one in a step’s env', () => {

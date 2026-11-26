@@ -85,9 +85,17 @@ function foldOne(f, e) {
       e.seq,
     );
   else if (e.type === 'entry.patch') noteTake(f, d.sessionId, Object.assign(inboxOf(f, d.sessionId).get(d.id) ?? {}, d.patch), e.seq);
-  else if (e.type === 'work.add' && WORK_KINDS.has(d.entry?.kind)) f.work.set(d.entry.id, { ...d.entry, from: e.seq });
-  else if (e.type === 'work.patch' && f.work.has(d.id)) Object.assign(f.work.get(d.id), d.patch, d.patch?.endedAt ? { to: e.seq } : {});
-  else if (Object.hasOwn(CLOCK_WORDS, e.type)) f.clocks.push({ seq: e.seq, type: e.type, data: d });
+  else if (e.type === 'work.add' && WORK_KINDS.has(d.entry?.kind)) {
+    // A snapshot replays each entry as it last stood, as a work.add: its output is the call's unless its job's end
+    // replaced it, which the ledger never does for a turn on a host (server/ledger.mjs, taskEnded).
+    const own = d.entry.output && (!d.entry.endedInBackground || d.entry.host) ? { callOutput: d.entry.output } : {};
+    f.work.set(d.entry.id, { ...d.entry, ...own, from: e.seq });
+  } else if (e.type === 'work.patch' && f.work.has(d.id)) {
+    const w = f.work.get(d.id);
+    // The output a call ended with, kept apart from the job's a background command's may be replaced with later (#1757).
+    if (d.patch?.output && !d.patch.endedInBackground) w.callOutput = d.patch.output;
+    Object.assign(w, d.patch, d.patch?.endedAt ? { to: e.seq } : {});
+  } else if (Object.hasOwn(CLOCK_WORDS, e.type)) f.clocks.push({ seq: e.seq, type: e.type, data: d });
 }
 
 /**
@@ -320,7 +328,7 @@ const withClock = (scope, clock) => ({ notes: clock.note ? `${clock.note} ${scop
 /**
  * Every agent session’s trajectory in the events, or only `sessionId`’s.
  * @param {Event[]} events @param {{ version: string, live?: any[], prompts?: any[], sessionId?: string, blob?: (sha256: string) => string | null }} opts
- *   prompts: prompts.jsonl’s rows; blob: a stored blob's text, for the outputs live frames don't carry
+ *   prompts: prompts.jsonl’s rows; blob: a stored blob's text, for each call's output (tools/atif-calls.mjs)
  * @returns {{ sessionId: string, handle: string|null, trajectory: any }[]}
  */
 export function trajectories(events, { version, live = [], prompts = [], sessionId, blob }) {

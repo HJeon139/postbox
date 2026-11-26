@@ -11,6 +11,7 @@ import { boardLog } from '../../tools/uat/board-log.mjs';
 import { idleFindings } from '../../tools/uat/room-checks-idle.mjs';
 import { afterCeremony } from '../../tools/uat/room-checks-sprint.mjs';
 import { ceremonies } from '../../tools/uat/sprint-ceremonies.mjs';
+import { openAt, storySizes } from '../../tools/uat/story-sizes.mjs';
 import { TRIGGERS } from '../../tools/uat/triggers.mjs';
 import { room, sprintOne, toSprintTwo } from './sprint-room.mjs';
 
@@ -29,7 +30,10 @@ test('a standup is a round of answers to the agent that asked, while a taken sto
   const events = recorded.events.filter((/** @type {any} */ e) => !(e.type === 'work.add' && e.data.entry.handle === 'alpha'));
   const f = { events, workspaceKept: r.dir, threads: [] };
   const [standup, ...more] = ceremonies(f).filter((c) => c.name === 'standup');
-  assert.equal(standup.evidence, '@developer asked at 07:39:07 UTC, and @critic answered, @researcher answered, with 3 of the sprint’s stories not done.');
+  assert.equal(
+    standup.evidence,
+    '@developer asked at 07:39:07 UTC, and @critic answered, @researcher answered. Not done then: S1 (@developer’s, open 8 s, 2 of its turns in), S2 (@critic’s, open 8 s, 1 of its turns in), S3 (@researcher’s, open 8 s, 1 of its turns in).',
+  );
   assert.deepEqual(TRIGGERS['standup-round-held'].run(f)[0], { at: standup.at, evidence: standup.evidence });
   // @researcher’s round, twelve seconds on, is one too; the three rounds whose answers went elsewhere aren’t.
   assert.equal(more.length, 1);
@@ -96,10 +100,72 @@ test('idle-work-waiting, as the runner runs it, finds a sprint room that stopped
   assert.match(stall.evidence, /The board’s record never showed a second sprint with every story done: a team that kept the board by hand/);
   assert.deepEqual(more, []);
   // The same quiet after the demo is the customer’s to end.
-  r.as('developer', 'done', 'S1');
+  r.finish('developer', 'S1');
   r.as('alpha', 'demo', '1');
   const shown = Date.now();
   went('think', shown - 1);
   went('idle', shown);
   assert.deepEqual(idleFindings(f(shown, 6)), []);
+});
+
+test('a quiet room says which open stories the board itself was holding: one that waits on another, one reviewed and never marked done', () => {
+  const r = room();
+  r.says('@alpha run it as scrum on the sprint board (node board.mjs help)');
+  for (const story of ['words', 'slug', 'title case']) r.as('alpha', 'add', story);
+  r.as('alpha', 'needs', 'S2', 'S1');
+  r.as('alpha', 'plan', '1', 'words and what builds on them', 'S1', 'S2', 'S3');
+  r.as('developer', 'claim', 'S1', 'developer');
+  r.as('critic', 'review', 'S1', 'critic');
+  r.as('researcher', 'claim', 'S3', 'researcher');
+  const stopped = Date.now();
+  for (const [state, at] of /** @type {[string, number][]} */ ([
+    ['think', stopped - 1],
+    ['idle', stopped],
+  ]))
+    r.events.push({ type: 'session', data: { id: 'se_dev', handle: 'developer', threadId: 't', state, updatedAt: at } });
+  const [quiet] = afterCeremony({ ...r.facts(), threads: [], until: stopped + 6 * 60_000 });
+  assert.ok(
+    quiet.evidence.includes(
+      'Not done in the sprint: S1 (@developer’s; reviewed by @critic and not marked done), S2 (nobody’s yet; the board won’t let it be taken until S1 is done), S3 (@researcher’s).',
+    ),
+    quiet.evidence,
+  );
+});
+
+test('a story’s size is its owner’s by who ran the command, and ends when the board starts the story afresh', () => {
+  const r = sprintOne(room(), { takers: [] });
+  // The name typed is free text: the ledger says who took it and who reviewed it.
+  r.as('developer', 'claim', 'S1', 'Dev');
+  r.as('critic', 'review', 'S1', 'the reviewer');
+  r.as('researcher', 'claim', 'S2', 'researcher');
+  const log = () => boardLog(r.facts());
+  assert.deepEqual(
+    storySizes(r.facts(), log()).map((s) => [s.story, s.owner, s.reviewedBy, s.resetAt]),
+    [
+      ['S1', 'developer', 'critic', null],
+      ['S2', 'researcher', null, null],
+    ],
+  );
+  // With no ledger line for the command, the name typed is all there is.
+  assert.equal(storySizes({ events: [] }, log())[0].owner, 'Dev');
+  // Carried into the next sprint’s plan, S2 is nobody’s again: not open as @researcher’s, and a later done isn’t theirs.
+  r.as('alpha', 'plan', '2', 'finish what we started', 'S2');
+  assert.deepEqual(
+    openAt(r.facts(), log(), Date.now()).map((s) => s.story),
+    ['S1'],
+  );
+  // Sent back, S1 isn’t @developer’s open story any more either.
+  r.as('alpha', 'return', 'S1', 'not what was asked');
+  assert.deepEqual(openAt(r.facts(), log(), Date.now()), []);
+  r.as('critic', 'claim', 'S2', 'critic');
+  r.as('developer', 'review', 'S2', 'developer');
+  r.as('critic', 'done', 'S2');
+  assert.deepEqual(
+    storySizes(r.facts(), log()).map((s) => [s.story, s.owner, s.doneAt !== null, s.reviewedBy]),
+    [
+      ['S1', 'developer', false, 'critic'],
+      ['S2', 'researcher', false, null],
+      ['S2', 'critic', true, 'developer'],
+    ],
+  );
 });
