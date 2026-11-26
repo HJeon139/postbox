@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.2 (2026-11-26)
+
+### Fixes
+
+- **menu:** the room form's queue button keeps one width as its count changes
+- **notices:** a notice shown whole under the pointer stays inside the window
+- **notices:** mark a sheet's notices with a class, not a selector on the body
+- **notices:** over a sheet one notice shows, the newest, on one line
+- **menu:** no row shows above a pinned heading row, and the pick stays under it
+- **uat:** the runner reads a covering notice in the measurement it already makes
+- **menu:** a notice over a sheet keeps clear of a list's controls
+- **menu:** every list's +, − and Edit sit in the row of its heading
+- **menu:** a room's members + and − sit in the row of the Members heading
+
 ## 4.52.1 (2026-11-26)
 
 ### Fixes
