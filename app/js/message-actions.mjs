@@ -24,9 +24,11 @@ function threadAction(it, ctx) {
     );
   }
   return h(
-    'button.btn.sm.ghost.reveal',
+    'button.btn.sm.ghost.reveal.i-thread',
     {
       type: 'button',
+      // Its icon is drawn by the button (workbench.css, .msg-actions [data-icon]): one element, not two (#168).
+      dataset: { icon: '' },
       onclick: () =>
         api(`/api/threads/${ctx.threadId}/items/${it.id}/topic`, {})
           .then((r) => {
@@ -38,7 +40,6 @@ function threadAction(it, ctx) {
           })
           .catch((e) => toast({ title: 'Couldn’t start a thread', text: e.message, level: 'blocking' })),
     },
-    icon('thread', 'i-sm'),
     'Reply in thread',
   );
 }
@@ -73,28 +74,30 @@ function sendAction(it, ctx) {
  */
 function copyAction(it, ctx) {
   let reset = 0;
-  const b = h(
-    'button.btn.sm.ghost.reveal',
-    {
-      type: 'button',
-      dataset: { copyLink: '' },
-      onclick: async () => {
-        clearTimeout(reset);
-        const link = itemLink(ctx.threadId, it.id);
-        try {
-          await navigator.clipboard.writeText(link);
-          say('Link to the message copied.');
-          b.textContent = 'Copied';
-        } catch {
-          toast({ title: 'Couldn’t copy the link', text: link });
-        }
-        reset = window.setTimeout(() => {
-          b.textContent = 'Copy link';
-        }, 2000);
-      },
+  // An icon, drawn by the button itself, so it fits the row at 375 px and costs one element (#1155). Its name says what
+  // it does, and what it did once pressed.
+  const b = h('button.btn.sm.ghost.reveal.i-link', {
+    type: 'button',
+    title: 'Copy link',
+    'aria-label': 'Copy link',
+    dataset: { copyLink: '', icon: '' },
+    onclick: async () => {
+      clearTimeout(reset);
+      const link = itemLink(ctx.threadId, it.id);
+      try {
+        await navigator.clipboard.writeText(link);
+        say('Link to the message copied.');
+        b.setAttribute('aria-label', 'Link copied');
+        b.classList.replace('i-link', 'i-check');
+      } catch {
+        toast({ title: 'Couldn’t copy the link', text: link });
+      }
+      reset = window.setTimeout(() => {
+        b.setAttribute('aria-label', 'Copy link');
+        b.classList.replace('i-check', 'i-link');
+      }, 2000);
     },
-    'Copy link',
-  );
+  });
   return b;
 }
 
@@ -106,13 +109,7 @@ export function messageActions(node, it, ctx) {
   const bar = h('div.msg-actions');
   if (ctx.kind === 'thread' || ctx.kind === 'room') bar.append(threadAction(it, ctx));
   else if ((ctx.kind === 'topic' || ctx.kind === 'side') && (it.kind === 'agent' || it.kind === 'user') && it.text) bar.append(sendAction(it, ctx));
-  // Made when the pointer or focus first comes to the message: one more element under every message cost a room of
-  // tables its element budget (#1155). First in the row, so the message’s last control stays its last, where Shift+Tab
-  // from the composer lands (#232), and Shift+Tab from the row’s first control reaches it.
-  const copy = () => {
-    if (!bar.querySelector('[data-copy-link]')) bar.prepend(copyAction(it, ctx));
-  };
-  node.addEventListener('pointerenter', copy, { once: true });
-  node.addEventListener('focusin', copy, { once: true });
+  // Last in the row, after the message’s other actions: the reactions keep the column’s left edge (#378).
+  bar.append(copyAction(it, ctx));
   node.append(reactTo(bar, node, it, ctx));
 }

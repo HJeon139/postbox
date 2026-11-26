@@ -83,17 +83,16 @@ test('#168 Copy link, by keyboard, copies the message’s address, and the addre
   const target = items.at(-2);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
-  // Copy link is made as focus comes to the message, first among its actions: Shift+Tab from the next one reaches it.
+  // Copy link is the last of the message’s actions: Tab from Reply in thread reaches it.
   const message = page.locator(`[data-key="${target.id}"]`);
-  await expect(message.getByRole('button', { name: 'Copy link', exact: true }), 'not made until it’s wanted').toHaveCount(0);
-  await message.locator('.msg-actions button').first().focus();
-  await page.keyboard.press('Shift+Tab');
+  await message.getByRole('button', { name: 'Reply in thread' }).focus();
+  await page.keyboard.press('Tab');
   const copy = message.getByRole('button', { name: 'Copy link', exact: true });
-  await expect(copy, 'reached by keyboard, first among the message’s actions').toBeFocused();
-  // Its name follows its text, which says Copied once it has: kept by a mark of its own here.
+  await expect(copy, 'reached by Tab from the message’s actions').toBeFocused();
+  // Its name says what it did once pressed: kept by a mark of its own here.
   await copy.evaluate((b) => b.setAttribute('data-test', 'copy'));
   await page.keyboard.press('Enter');
-  await expect(page.locator('[data-test="copy"]')).toHaveText('Copied');
+  await expect(page.locator('[data-test="copy"]')).toHaveAttribute('aria-label', 'Link copied');
   const link = await page.evaluate(() => navigator.clipboard.readText());
   expect(link).toBe(`${app.origin}/#/t/${t.id}?m=${target.id}`);
   await page.goto(`${app.origin}/#/t/${t.id}`);
