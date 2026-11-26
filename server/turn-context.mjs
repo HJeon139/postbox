@@ -178,7 +178,9 @@ function replyWords(rt, se0, turn, live) {
         total,
         summary: cutText(String(summary ?? ''), 20000),
       });
-      rt.sessions.update(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
+      // With no counts, the context’s next reading says where it stands (#425).
+      const counted = Number.isFinite(kept) && Number.isFinite(total) && total > 0;
+      rt.sessions.update(turn.sessionId, { compactions: n, ...(counted ? { ctx: Math.round((kept / total) * 100) } : {}) });
     },
     sources(list) {
       if (!live()) return;
