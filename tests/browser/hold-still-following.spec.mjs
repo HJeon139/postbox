@@ -98,8 +98,9 @@ test('#1653 following, a press that comes with its move holds the button through
 // takeHold leaves such a reply alone while reading, as it moves what’s around it once drawn (#1257), and it declined
 // the press’s hold too, so the view followed the end out from under the press. Here the reply before the block is
 // off screen above it, past the margin the browser keeps drawn, and skipped, as a tall block puts it.
-test('#1632 following, a press holds the button while the reply before its block is still at its estimate', async ({ page }) => {
-  const { t, tools, say } = room('Hold still: press beside an estimate');
+/** Opens a room whose last item is a choice, so tall that the reply before it is skipped, at its estimate. */
+async function besideAnEstimate(page, /** @type {string} */ title) {
+  const { t, tools, say } = room(title);
   for (let i = 1; i <= 20; i++) say(LONG(i));
   tools.show_block({ block: PICK(`pick-${t.id}`) });
   await open(page, t);
@@ -117,31 +118,60 @@ test('#1632 following, a press holds the button while the reply before its block
     return !!prev?.firstElementChild && !prev.firstElementChild.checkVisibility({ contentVisibilityAuto: true });
   });
   expect(skipped, 'the reply before the block is skipped, at its estimate').toBe(true);
-  const { moved, at, pressedAt } = await page.evaluate(() => {
+  await page.evaluate(installDraw);
+}
+
+/**
+ * Puts in the page what each case does inside its press or aim: the reply before the choice takes its real height as it
+ * draws, and the choice grows below its buttons. The page’s CSP refuses an inline script, so it’s set from an evaluate.
+ */
+function installDraw() {
+  /** @type {any} */ (window).pbDrawAboveGrowBelow = () => {
     const chip = /** @type {HTMLElement} */ (document.querySelector('[role="radio"][aria-checked]'));
-    const r = chip.getBoundingClientRect();
-    const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, pointerType: 'mouse', isPrimary: true };
-    chip.dispatchEvent(new PointerEvent('pointermove', at));
-    chip.dispatchEvent(new PointerEvent('pointerdown', at));
     const item = /** @type {HTMLElement} */ (chip.closest('.transcript > [data-key]'));
-    // The reply above takes its real height as it draws, and the block grows below the button: one pushes the button
-    // down, the other brings the end in.
     let prev = item.previousElementSibling;
     while (prev && !(prev instanceof HTMLElement && prev.dataset.key)) prev = prev.previousElementSibling;
     /** @type {HTMLElement} */ (prev).style.minHeight = '400px';
     prev?.dispatchEvent(new Event('contentvisibilityautostatechange'));
     item.append(Object.assign(document.createElement('div'), { className: 'pb-test-grow', style: 'height: 160px' }));
     item.dispatchEvent(new Event('contentvisibilityautostatechange'));
+  };
+}
+const topOfChip = (page) => page.evaluate(() => document.querySelector('[role="radio"][aria-checked]')?.getBoundingClientRect().top ?? NaN);
+
+test('#1632 following, a press holds the button while the reply before its block is still at its estimate', async ({ page }) => {
+  await besideAnEstimate(page, 'Hold still: press beside an estimate');
+  const { moved, at, pressedAt } = await page.evaluate(() => {
+    const chip = /** @type {HTMLElement} */ (document.querySelector('[role="radio"][aria-checked]'));
+    const r = chip.getBoundingClientRect();
+    const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, pointerType: 'mouse', isPrimary: true };
+    chip.dispatchEvent(new PointerEvent('pointermove', at));
+    chip.dispatchEvent(new PointerEvent('pointerdown', at));
+    // One pushes the button down, the other brings the end in.
+    /** @type {any} */ (window).pbDrawAboveGrowBelow();
     return { moved: chip.getBoundingClientRect().top - r.top, at, pressedAt: r.top };
   });
   expect(Math.abs(moved), `the button moved ${moved} px under the press`).toBeLessThan(1);
   await settled(page);
-  const held = await page.evaluate(() => document.querySelector('[role="radio"][aria-checked]')?.getBoundingClientRect().top ?? NaN);
-  expect(Math.abs(held - pressedAt), 'and still there once the page has drawn, while the press is held').toBeLessThan(1);
+  expect(Math.abs((await topOfChip(page)) - pressedAt), 'and still there once the page has drawn, while the press is held').toBeLessThan(1);
   await page.evaluate((at) => document.querySelector('[role="radio"][aria-checked]')?.dispatchEvent(new PointerEvent('pointerup', at)), at);
   await settled(page);
   const gap = await page.evaluate(() => Math.round(document.documentElement.scrollHeight - scrollY - innerHeight));
   expect(gap, 'at the end once let go').toBeLessThanOrEqual(2);
+});
+
+// The same for a pointer resting on a button, aimed: a click on its way holds the view too (#1326), and a reply at its
+// estimate beside it no longer stops that hold, so the view doesn’t follow the end out from under the pointer.
+test('#1632 following, a pointer resting on a button holds it while the reply before its block is still at its estimate', async ({ page }) => {
+  await besideAnEstimate(page, 'Hold still: aim beside an estimate');
+  const box = /** @type {{ x: number, y: number, width: number, height: number }} */ (await page.getByRole('radio', { name: 'The claims' }).boundingBox());
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await settled(page);
+  const aimedAt = await topOfChip(page);
+  await page.evaluate(() => /** @type {any} */ (window).pbDrawAboveGrowBelow());
+  await settled(page);
+  const moved = (await topOfChip(page)) - aimedAt;
+  expect(Math.abs(moved), `the button moved ${moved} px under the pointer`).toBeLessThan(1);
 });
 
 // The same with a real press and release, which do make a click (#1653’s symptom): the pointer rests on the button
