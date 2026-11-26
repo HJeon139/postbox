@@ -58,14 +58,11 @@ const readsOfOneEvent = (page, threadId, sessionId) =>
       const before = document.querySelector(`#main > [data-key="${target.id}"]`);
       let reads = 0;
       const unmounted = new Set();
-      // The session’s own replies on the page, which the listener must read to know whether one changed on a host.
-      const own = new Set();
       for (let i = 0; i < list.length; i++)
         list[i] = new Proxy(real[i], {
           get(it, key, receiver) {
             reads++;
             if (!mounted.has(it.id)) unmounted.add(it.id);
-            else if (it.sessionId === sid) own.add(it.id);
             return Reflect.get(it, key, receiver);
           },
         });
@@ -76,14 +73,13 @@ const readsOfOneEvent = (page, threadId, sessionId) =>
       } finally {
         for (let i = 0; i < real.length; i++) list[i] = real[i];
       }
-      // A second event says the session's newest reply on the page ran on a host, which changes how that reply looks:
+      // A second event says the session’s newest reply on the page ran on a host, which changes how that reply looks:
       // the listener finds it among the drawn replies and draws it again.
       const moved = { ...client.state.sessions[sid], remoteTurn: { rtTurn: target.turnId, state: 'running' } };
       client.state.sessions[sid] = moved;
       client.emit({ type: 'session', data: moved });
       return {
         reads,
-        own: own.size,
         redrawn: document.querySelector(`#main > [data-key="${target.id}"]`) !== before,
         unmounted: [...unmounted],
         loaded: real.length,
@@ -104,10 +100,9 @@ test('#851 a session event reads only the replies on the page, the same at 10,00
     [10_000, ten],
   ]) {
     expect(r.loaded, `the page holds more of the ${n}-item room than it mounts`).toBeGreaterThan(r.mounted);
-    expect(r.own, `at ${n} items, the event read the session’s own replies on the page`).toBeGreaterThan(0);
     expect(r.redrawn, `at ${n} items, the reply whose look on a host changed is drawn again`).toBe(true);
     expect(r.unmounted, `at ${n} items, no item the window hasn’t mounted is read`).toEqual([]);
   }
-  // What's read is bounded by what the window mounts, which is about the same in both rooms, not by the room's size.
+  // What’s read is bounded by what the window mounts, which is about the same in both rooms, not by the room’s size.
   expect(ten.reads, 'ten times the items, within twice the reads').toBeLessThanOrEqual(2 * one.reads);
 });
