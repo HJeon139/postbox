@@ -86,6 +86,8 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
   if (done && !anchors.size) pins.append(h('p.small.dim', 'No comments.'));
   // Open, the review always takes a comment on the whole app, the only way to comment on one that names no parts. The
   // button comes first, so the hint under it changes without moving it.
+  // An app mounted afresh hasn’t said what it names yet: what an earlier version named isn’t its hint.
+  if (!kept) hints.delete(b.appId);
   const hint = h('p.small.dim', { 'data-app-hint': b.appId }, hints.get(b.appId) ?? '');
   const onWhole = () => {
     startComment(d, WHOLE_APP);

@@ -28,7 +28,7 @@ test('#1726 commenting on an app in a review keeps the app as the person left it
   const thread = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title: 'Keep', personaIds: [arrange.persona(rt, 'researcher').id] });
   const tools = rt.toolsFor(arrange.agentIn(rt, thread.id).id);
   tools.show_app({ id: 'kept', title: 'Corpus summary', code: APP });
-  tools.show_block({ block: { id: 'rv-kept', type: 'review', version: 1, fallback: 'Review the app', format: 'app', appId: 'kept' } });
+  tools.show_block({ block: { id: 'rv-kept', type: 'review', version: 1, title: 'Corpus summary', fallback: 'Review the app', format: 'app', appId: 'kept' } });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   await expect.poll(() => rt.store.state.apps.kept.check.status, { timeout: 15_000 }).toBe('passed');
@@ -50,6 +50,7 @@ test('#1726 commenting on an app in a review keeps the app as the person left it
   });
   const same = async (what) => {
     await expect(block.locator('iframe.app-iframe[data-kept="yes"]'), `${what}: the same frame`).toHaveCount(1);
+    await expect(block.getByRole('group', { name: 'Corpus summary', exact: true }), `${what}: the block is still named by its title`).toHaveCount(1);
     await expect(frame.getByRole('textbox', { name: 'Filter' }), `${what}: what the person typed`).toHaveValue('poetry');
     await expect(block.locator('.rv-pins p'), `${what}: the hint for the parts the app named`).toHaveText(
       'Or click a highlighted part of the app to comment on it.',
@@ -73,4 +74,25 @@ test('#1726 commenting on an app in a review keeps the app as the person left it
   await same('a tag’s click');
   // The review still sends what was drafted.
   await expect(block.getByRole('button', { name: 'Submit review', exact: true })).toBeEnabled();
+});
+
+test('#1726 an app that isn’t drawn has no hint about its parts: what its frame named went with the frame', async ({ page }) => {
+  const { rt, store } = app;
+  const thread = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title: 'Hint', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, thread.id).id);
+  tools.show_app({ id: 'hinted', title: 'Corpus summary', code: APP });
+  tools.show_block({ block: { id: 'rv-hinted', type: 'review', version: 1, fallback: 'Review the app', format: 'app', appId: 'hinted' } });
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  const item = store.items(thread.id).find((i) => i.kind === 'block' && i.block.id === 'rv-hinted');
+  const block = page.locator(`#main [data-key="${item.id}"]`);
+  await expect(block.locator('.rv-pins p')).toHaveText('Or click a highlighted part of the app to comment on it.');
+  // The check holds the app back for its agent to fix: the review draws no app until it passes.
+  store.emit('app', {
+    ...store.state.apps.hinted,
+    check: { status: 'fixing', attempt: 1, problems: [{ code: 'text-too-small', message: 'Labels are drawn under 9 px.' }] },
+  });
+  await synced(page, app);
+  await expect(block.locator('iframe.app-iframe'), 'the app being fixed isn’t drawn').toHaveCount(0);
+  await expect(block.locator('.rv-pins p'), 'no hint about parts of an app that isn’t there').toHaveText('');
 });
