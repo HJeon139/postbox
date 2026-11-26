@@ -99,7 +99,22 @@ test('#1758 the count of unplaced calls stays on a trajectory when the agent’s
   assert.equal(t.extra.unplaced_calls, callsInStream(foreign.events).length);
 });
 
-test('#1758 a call’s result is what its stream says the model got, ahead of the stored output and the step’s text', () => {
+test('#1758 so does an agent with no reply anywhere, whose only trajectory is a block’s', () => {
+  const first = rec.events.find((e) => e.type === 'session' && e.data.handle === 'developer');
+  const idle = { ...first, seq: 0, data: { ...first.data, id: 'se_idle', threadId: 'th_elsewhere' } };
+  const noReplies = rec.events.filter((e) => !(e.type === 'item.add' && e.data.item.kind === 'agent' && e.data.item.handle === 'developer'));
+  const at = Math.max(...noReplies.map((e) => e.seq)) + 1;
+  const block = {
+    seq: at,
+    type: 'item.add',
+    data: { threadId: first.data.threadId, item: { id: 'it_block', at: 1795679517816, kind: 'block', sessionId: first.data.id, handle: 'developer' } },
+  };
+  const t = byHandle([idle, ...noReplies, block]).developer;
+  assert.ok(t, 'the block’s session has a trajectory');
+  assert.equal(t.extra.unplaced_calls, recorded('developer').length, 'none of its calls has a reply to go with');
+});
+
+test('#1758 a call’s result is what its stream says the model got, ahead of the stored output', () => {
   // The developer’s commands have stored outputs the ledger names; read back, each would be this text instead.
   const stored = trajectories(rec.events, { version: POSTBOX_VERSION, streams: rec.streams, blob: () => 'the stored output' });
   const developer = stored.find((t) => t.handle === 'developer')?.trajectory;

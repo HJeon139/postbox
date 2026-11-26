@@ -45,11 +45,11 @@ export function callsInStream(events) {
 
 /**
  * What a session’s recorded streams add to its replies: each call’s recorded name, input and result by its id, the
- * calls that made no step by the reply they go with, and, on the agent’s first session only, how many of its recorded
- * calls matched no reply in any of its sessions. A call two streams hold is read once.
+ * calls that made no step by the reply they go with, and, on the first of the agent’s sessions only, how many of its
+ * recorded calls matched no reply in any of its sessions. A call two streams hold is read once.
  * @param {{ handle: string, started?: number, events: any[] }[]} streams @param {string | null} handle
  * @param {Map<string, { id: string, at?: number, steps: Map<string, any> }[]>} sessions  each of the agent’s sessions’
- *   replies, in order, by session; the first is the one that counts what matched none
+ *   replies, in order, by session, each with a trajectory (agentSessions); the first counts what matched none
  * @param {string} sessionId  the session whose trajectory this is
  */
 export function recordedCalls(streams, handle, sessions, sessionId) {
@@ -63,9 +63,6 @@ export function recordedCalls(streams, handle, sessions, sessionId) {
   const seen = new Set();
   let unplaced = 0;
   let seq = 0;
-  // Calls that match no reply are counted once, on the agent’s first session with a reply, which has a trajectory: a
-  // session it joined and never replied in has none to carry the count.
-  const holder = [...sessions].find(([, replies]) => replies.length > 0)?.[0] ?? [...sessions.keys()][0];
   const mine = streams.filter((s) => s.handle === handle).sort((a, b) => (a.started ?? 0) - (b.started ?? 0));
   for (const [i, s] of mine.entries()) {
     const calls = callsInStream(s.events)
@@ -75,7 +72,7 @@ export function recordedCalls(streams, handle, sessions, sessionId) {
     const first = calls.find((c) => owner.has(c.id));
     const place = first ? owner.get(first.id) : placeByTime(sessions, s.started, mine[i + 1]?.started);
     if (!place) {
-      if (sessionId === holder) unplaced += calls.length;
+      if (sessionId === [...sessions.keys()][0]) unplaced += calls.length;
       continue;
     }
     if (place.session !== sessionId) continue;
@@ -134,5 +131,12 @@ export function shownSessions(f) {
 /** A session’s replies, in the order they were added. @param {{ sessions: Map<string, any>, order: { id: string }[], items: Map<string, any> }} f @param {string} sessionId */
 const repliesOf = (f, sessionId) => f.order.map(({ id }) => f.items.get(id)).filter((it) => it?.kind === 'agent' && it.sessionId === sessionId && it.steps);
 
-/** Each session of an agent’s handle, with its replies, in the order the sessions came. @param {{ sessions: Map<string, any>, order: { id: string }[], items: Map<string, any> }} f @param {string | null} handle */
-export const agentSessions = (f, handle) => new Map([...f.sessions].filter(([, se]) => se.handle === handle).map(([id]) => [id, repliesOf(f, id)]));
+/**
+ * Each session of an agent’s handle that has a trajectory, with its replies, in the order the sessions came: one the
+ * agent joined and showed nothing in has none, so it can’t be the first, which carries the count of calls that matched no reply.
+ * @param {{ sessions: Map<string, any>, order: { id: string }[], items: Map<string, any>, clocks: any[] }} f @param {string | null} handle
+ */
+export function agentSessions(f, handle) {
+  const shown = shownSessions(f);
+  return new Map([...f.sessions].filter(([id, se]) => se.handle === handle && shown.has(id)).map(([id]) => [id, repliesOf(f, id)]));
+}
