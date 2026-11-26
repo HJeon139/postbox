@@ -4,21 +4,21 @@
 // room open as it lands, or writing there, marks it read (`asksSeen`), and the need falls to whatever else waits. An
 // ask that names people is read only by one of them; one that names no one, by whoever reads.
 //
-// The session keeps its unread asks (`asked`), so a view reads them without reading a room’s items: a page says what
-// it has open every ten seconds, and a room can hold a million items.
+// The session keeps its newest unread asks (`asked`, ASKS.kept of them), so a view reads them without reading a room’s
+// items: a page says what it has open every ten seconds, and a room can hold a million items. An ask older than those
+// is read when it comes up as the session’s need, which each reading decides again, so none is left with nothing to
+// clear it.
 //
 // Nothing here tells an agent to mention anyone: it decides only what a mention of a person does. Functions take the
 // Runtime first, as waiting code does.
 
+import { ASKS } from '../shared/limits.mjs';
 import { parseMentions } from '../shared/text.mjs';
 import { releaseNeed } from './card-needs.mjs';
 import { copiedLine } from './copied-line.mjs';
 
 /** What a reply calls the person it answers, when it doesn’t name them. */
 const YOU = 'you';
-
-/** The unread asks a session keeps: the newest few, since only its last turns’ count as a need (card-needs.mjs). */
-const KEPT = 8;
 
 /**
  * The people a reply asks, by id: null when it asks no person. Those it names by user name, and for @you the people
@@ -50,7 +50,7 @@ const reads = (/** @type {string[]} */ asks, /** @type {string | null | undefine
 /** Writes a session’s unread asks, without the ones named, and with one more if given. */
 function keep(rt, /** @type {string} */ sessionId, /** @type {string[]} */ without, /** @type {any} */ more = null) {
   const was = rt.store.pending.session(sessionId)?.asked ?? [];
-  const next = [...was.filter((/** @type {any} */ a) => !without.includes(a.itemId)), ...(more ? [more] : [])].slice(-KEPT);
+  const next = [...was.filter((/** @type {any} */ a) => !without.includes(a.itemId)), ...(more ? [more] : [])].slice(-ASKS.kept);
   if (next.length || was.length) rt.sessions.update(sessionId, { asked: next.length ? next : undefined });
 }
 
@@ -99,17 +99,29 @@ const readMark = (/** @type {string[]} */ asks, /** @type {string[] | null} */ l
  * @param {any} rt @param {{ threadId: string, personId?: string }} read  `personId` absent for one Postbox can’t name
  */
 export function readAsks(rt, { threadId, personId }) {
-  for (const se of Object.values(rt.store.pending.sessions())) {
-    const mine = /** @type {any} */ (se.asked ?? []).filter((/** @type {any} */ a) => a.threadId === threadId && reads(a.for, personId));
-    if (!mine.length) continue;
-    for (const a of mine) {
+  for (const { id } of /** @type {any[]} */ (Object.values(rt.store.pending.sessions()))) {
+    for (let a = nextAsk(rt, id, threadId, personId); a; a = nextAsk(rt, id, threadId, personId)) {
       const item = rt.store.pending.item(threadId, a.itemId);
       const left = after(a.for, personId);
       rt.threads.patchItem(threadId, a.itemId, readMark(item?.asks ?? a.for, left));
-      keep(rt, /** @type {any} */ (se).id, [a.itemId], left ? { ...a, for: left } : null);
+      keep(rt, id, [a.itemId], left ? { ...a, for: left } : null);
       // The need is decided again: read by all it asked, it falls to whatever else waits; read by some, it is the
       // others’ from now on (needOf leaves out who has read it).
-      releaseNeed(rt, rt.store.pending.session(/** @type {any} */ (se).id), a.itemId);
+      releaseNeed(rt, rt.store.pending.session(id), a.itemId);
     }
   }
+}
+
+/**
+ * The next of a session’s asks that is `personId`’s to read in the thread: one it keeps, and past the ones it keeps
+ * (ASKS.kept), the one that is its need, which each reading decides again, so an ask too old to be kept is still read.
+ * @param {any} rt @param {string} sessionId @param {string} threadId @param {string | null | undefined} personId
+ */
+function nextAsk(rt, sessionId, threadId, personId) {
+  const se = rt.store.pending.session(sessionId);
+  const kept = (se?.asked ?? []).find((/** @type {any} */ a) => a.threadId === threadId && reads(a.for, personId));
+  if (kept) return kept;
+  const need = se?.needs;
+  if (need?.kind !== 'mention' || (need.threadId ?? se.threadId) !== threadId || !reads(need.for ?? [], personId)) return null;
+  return { itemId: need.itemId, threadId, for: need.for ?? [] };
 }
