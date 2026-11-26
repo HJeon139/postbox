@@ -18,15 +18,12 @@ import { CALL_KINDS, callsOf, questionsOf, WORK_KINDS } from './atif-calls.mjs';
 import { CLOCK_WORDS, clockScope, withClock } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { placePrompts, promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
-import { agentSessions, recordedCalls, withCalls } from './atif-streams.mjs';
+import { agentSessions, recordedCalls, shownSessions, withCalls } from './atif-streams.mjs';
 import { iso } from './atif-time.mjs';
 
 export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
 
 /** @typedef {{ seq: number, type: string, data: any }} Event */
-
-/** The items an agent session shows: each is one of its steps. */
-const OWN_KINDS = new Set(['agent', 'block', 'app']);
 
 /**
  * The events folded into what the trajectories read: each item as it ended, in the order it was added, each step of a
@@ -334,10 +331,7 @@ export function trajectoryOf(f, sessionId, { version, blob, streams }) {
  */
 export function trajectories(events, { version, live = [], prompts = [], sessionId, blob, streams = [] }) {
   const f = foldEvents(events, live, prompts);
-  // Every session that showed something: a reply, a block or an app, so one whose only output was a block has one too.
-  const ids = new Set([...f.items.values()].filter((it) => OWN_KINDS.has(it.kind) && it.sessionId).map((it) => it.sessionId));
-  for (const c of f.clocks) ids.add(c.data.sessionId);
-  return [...ids]
+  return [...shownSessions(f)]
     .filter((id) => !sessionId || id === sessionId)
     .map((id) => ({ sessionId: id, trajectory: trajectoryOf(f, id, { version, blob, streams }) }))
     .filter((x) => x.trajectory)
