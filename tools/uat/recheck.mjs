@@ -59,6 +59,8 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     codexStreams: readStreams(join(dir, 'streams', 'codex')),
     // The path the live run’s checks read commands against (#885: a temp folder since then), else where it’s kept.
     workspace: workspaceOf(dir, record),
+    // Where the run kept its workspace once it stopped (tools/uat/workspace.mjs, retainWorkspace): the files a check reads.
+    workspaceKept: join(dir, 'workspace'),
     sdkStreams: readStreams(join(dir, 'streams', 'sdk')),
     events: readHistory(dir),
     store: readStore(join(dir, 'data')),

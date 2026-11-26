@@ -75,6 +75,8 @@ test('a queued check is due 4 minutes on, says it runs until then, and passes on
   assert.match(nightly(dir, 'status'), /^NIGHTLY PASSED commit=[0-9a-f]+ tests=1$/);
   const work = nightlyWork({ workspace: dir });
   assert.ok(work.passed && work.passed.at >= queued.at);
+  // A recheck: the temp folder the run worked in is gone, and its kept copy has the record.
+  assert.deepEqual(nightlyWork({ workspace: join(dir, 'gone'), workspaceKept: dir }), work);
   assert.deepEqual(
     nightlyLog(dir).map((x) => x.did),
     ['queued', 'passed'],
