@@ -227,7 +227,7 @@ async function main() {
       facts.state = (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
       Object.assign(facts, readSpend(paths), { received: readReceived(paths.data, facts.received), store: readStore(paths.data) });
-      Object.assign(facts, { events: history.events(), live: history.live(), gaps: history.gaps() });
+      Object.assign(facts, { events: history.events(), live: history.live(), gaps: history.gaps(), until: Date.now() });
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
       Object.assign(facts.ui, await readUi(page));

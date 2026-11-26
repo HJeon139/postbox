@@ -2,8 +2,9 @@
 // that went idle while work was waiting). Read from a run’s event history (facts.events): sessions’ states with their
 // times, items as they’re added and answered, and each inbox’s entries, on whichever backend an agent runs.
 // Each stretch says what was waiting while it lasted, and what moved the room again:
-//   person      an ask was open: a block that asks, or whatever a session says it needs (a permission card, a wake
-//               request, a failed turn)
+//   person      a session said it needs the person, as “needs you” counts it: a block that asks from its last turn, a
+//               permission card, a wake request, a failed turn. A block left open from an earlier turn isn’t counted,
+//               as Postbox stops counting it once the person moves on (server/card-needs.mjs, #69)
 //   scheduled   an agent’s scheduled wake was pending
 //   nothing     the work wasn’t done, nobody was asked and nothing was scheduled: nothing would restart it
 //   done        the definition of done had been met
@@ -25,11 +26,8 @@ const BUSY = new Set(['think', 'tool', 'gen']);
  * first met, or null for each that never happened
  */
 
-/** What a block that asks waits on the person for, or null for an item that doesn’t ask. @param {any} it */
-function askOf(it) {
-  if (it.kind !== 'block' || !ASKING.has(it.block?.type)) return null;
-  return `@${it.handle}’s ${it.block.type} “${clip(it.block.title ?? it.block.prompt ?? '', 60)}”`;
-}
+/** How a block that asks reads in a stretch’s evidence. @param {any} it */
+const askOf = (it) => `@${it.handle}’s ${it.block.type} “${clip(it.block.title ?? it.block.prompt ?? '', 60)}”`;
 
 /** What moved the room when an item arrived while it was quiet. @param {any} it */
 function itemMove(it) {
@@ -53,11 +51,9 @@ const busy = (/** @type {any} */ r) => [...r.sessions.values()].some((se) => BUS
 /** Adds what waits right now to the open stretch: a stretch says everything that waited while it lasted. @param {any} r */
 function note(r) {
   if (!r.open) return;
-  for (const [id, what] of r.asks) r.open.person.set(id, what);
   for (const se of r.sessions.values()) {
     if (!se.needs) continue;
-    const key = se.needs.itemId ?? `needs:${se.handle}`;
-    if (!r.open.person.has(key)) r.open.person.set(key, `@${se.handle}’s ${se.needs.kind ?? 'ask'}`);
+    r.open.person.set(se.needs.itemId ?? `needs:${se.handle}`, r.asks.get(se.needs.itemId) ?? `@${se.handle}’s ${se.needs.kind ?? 'ask'}`);
   }
   for (const [id, w] of r.wakes) r.open.scheduled.set(id, w);
 }
@@ -99,25 +95,23 @@ function step(r, e, here) {
   note(r);
 }
 
-/** A new item: an ask or a scheduled wake to keep, the person’s request, and a quiet room moved. @param {any} r @param {any} it */
+/** A new item: a scheduled wake to keep, an ask’s words for the stretch that names it, and a quiet room moved. @param {any} r @param {any} it */
 function itemAdded(r, it) {
   // A scheduled wake’s item carries the time it’s due, not when it was asked for, so it moves no clock.
   if (it.kind === 'system' && it.variant === 'schedule') {
     r.wakes.set(it.id, `@${it.handle}’s wake due at ${clockOf(it.at)}`);
     return;
   }
-  const ask = askOf(it);
-  if (ask) r.asks.set(it.id, ask);
+  if (it.kind === 'block' && ASKING.has(it.block?.type)) r.asks.set(it.id, askOf(it));
   r.last = Math.max(r.last, it.at ?? 0);
   if (busy(r)) return;
   end(r, r.last, itemMove(it));
   r.open = { from: r.last, person: new Map(), scheduled: new Map() };
 }
 
-/** A changed item: an ask answered, a scheduled wake that ran or was canceled. @param {any} r @param {any} d */
+/** A changed item: a scheduled wake that ran or was canceled. @param {any} r @param {any} d */
 function itemPatched(r, d) {
   if (d.patch.status && d.patch.status !== 'pending') r.wakes.delete(d.id);
-  if (d.patch.answered === true) r.asks.delete(d.id);
 }
 
 export const clockOf = (/** @type {number} */ ms) => `${new Date(ms).toISOString().slice(11, 19)} UTC`;
@@ -137,8 +131,10 @@ function waitingIn(s, work) {
 
 /**
  * Every stretch in which no agent under test was in a turn and no item arrived, in order, with what was waiting and
- * what moved the room. The last may still be open when the records end: its length is to the last recorded time.
- * overdueMs is how long a “nothing” stretch went on past the timed step’s end, when the run recorded when it was due.
+ * what moved the room. The last may still be open when the records end: nothing happens in a quiet room, so its
+ * length runs to f.until, the last moment the run’s records cover (the runner’s clock as it reads the facts, or a
+ * finished run’s end), and is 0 for facts without one. overdueMs is how long a “nothing” stretch went on past the
+ * timed step’s end, when the step had been queued by then and the run recorded when it was due.
  * @param {any} f  @param {Work} [work]  read from the run’s workspace unless given
  * @returns {{ from: number, to: number, ms: number, open: boolean, waiting: 'person'|'scheduled'|'nothing'|'done'|'unknown', work: 'waiting'|'done'|'unknown', what: string[], movedBy: string|null, overdueMs: number|null }[]}
  */
@@ -155,7 +151,7 @@ export function quietStretches(f, work = nightlyWork(f)) {
     last: 0,
   };
   for (const e of f.events ?? []) step(r, e, here);
-  end(r, r.last, null);
+  end(r, Math.max(r.last, Number.isFinite(f.until) ? f.until : 0), null);
   const { queued } = work;
   return r.out.map((s) => {
     const state = workIn(s, work);

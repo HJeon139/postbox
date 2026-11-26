@@ -11,8 +11,19 @@ import { runChecks } from '../tools/uat/checks.mjs';
 import { handOffs, quietWhileWaiting } from '../tools/uat/idle-triggers.mjs';
 import { midTurnAsks } from '../tools/uat/mid-turn-asks.mjs';
 import { quietStretches } from '../tools/uat/quiet-stretches.mjs';
-import { ASK_UNCOUNTED_MS, IDLE_MIN_MS, idleFindings, lengthOf, QUIET_LISTED_MS, uncountedAskFindings } from '../tools/uat/room-checks-idle.mjs';
+import { runEnd, savedFacts } from '../tools/uat/recheck.mjs';
+import {
+  ASK_UNCOUNTED_MS,
+  IDLE_MIN_MS,
+  idleFindings,
+  lengthOf,
+  QUIET_LISTED_MS,
+  quietMeasure,
+  timedStepLine,
+  uncountedAskFindings,
+} from '../tools/uat/room-checks-idle.mjs';
 import { TRIGGERS } from '../tools/uat/triggers.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const { runs } = JSON.parse(readFileSync(new URL('./fixtures/uat/quiet-rooms.json', import.meta.url), 'utf8'));
 /** A run with no definition of done in its records. */
@@ -44,7 +55,7 @@ test('a room quiet with choices open reads as waiting on the person, names them,
   const [s] = long(quietStretches({ events: runs.needsnav.events }, NO_WORK));
   assert.equal(s.ms, 52_317);
   assert.equal(s.waiting, 'person');
-  assert.deepEqual(s.what, ['@critic’s choice “Storage format for a year of click logs”', '@researcher’s choice “Partition the year of click logs by…”']);
+  assert.deepEqual(s.what, ['@researcher’s choice “Partition the year of click logs by…”', '@critic’s choice “Storage format for a year of click logs”']);
   assert.equal(s.movedBy, 'the person’s answer');
 });
 
@@ -116,10 +127,25 @@ test('idle-work-waiting finds the stretch at a bar it passes, with its length an
   const work = { asked, queued: null, passed: null };
   const [x, ...rest] = idleFindings(f, { min: 100_000, work });
   assert.deepEqual(rest, []);
-  assert.equal(x.title, 'The room sat idle for 1 min 43 s with work waiting and nothing to restart it');
-  assert.match(x.evidence, /for 1 min 43 s from 03:39:33 UTC: work waiting, with nothing to restart it; moved by the person’s message\./);
+  assert.equal(x.title, 'The room sat idle for 1 min 43 s with work waiting, the timed step never queued and nothing to restart it');
+  assert.match(
+    x.evidence,
+    /for 1 min 43 s from 03:39:33 UTC: work waiting, with nothing to restart it; moved by the person’s message\. Nobody had queued the timed step/,
+  );
   assert.deepEqual(idleFindings(f, { min: 104_000, work }), [], 'a stretch under the bar is no finding');
+  assert.equal(IDLE_MIN_MS, 5 * 60_000);
   assert.deepEqual(idleFindings(f, { work }), [], `103 s is under the check’s own bar of ${lengthOf(IDLE_MIN_MS)}`);
+  // With a timed step queued, the bar counts from when it was due: here 79 s of the 103, the step due 60 s after a
+  // recorded shell result. Waiting a step out isn’t idling, and the finding says the step had been queued.
+  const { earlier } = runs.scifact.shell;
+  const timed = { ...work, queued: { at: earlier, due: earlier + 60_000 } };
+  const [late] = idleFindings(f, { min: 79_000, work: timed });
+  assert.equal(late.title, 'The room sat idle for 1 min 19 s after the timed step was due, with nothing to restart it');
+  assert.match(
+    late.evidence,
+    /1 min 19 s of it after the timed step was due; moved by the person’s message\. The timed step had been queued, and nothing told/,
+  );
+  assert.deepEqual(idleFindings(f, { min: 80_000, work: timed }), [], 'the 24 s before it was due don’t count');
   assert.deepEqual(idleFindings(f, { min: 100_000, work: { ...work, passed: { at: runs.scifact.shell.lastBeforeQuiet } } }), []);
   // Waiting on a scheduled wake or on the person is never this finding, however long: 157 s and 52 s here.
   assert.deepEqual(idleFindings({ events: runs.addressed.events }, { min: 1000, work: { asked: 0, queued: null, passed: null } }), []);
@@ -147,6 +173,52 @@ test('quiet-stretches lists the stretches of a minute or more as one measurement
   // needsnav’s longest is 52 s, and scifact’s 103 s has no definition of done to be judged by.
   assert.deepEqual(runChecks({ events: runs.needsnav.events, threads: [] }, { only: ['quiet-stretches'] }), []);
   assert.deepEqual(runChecks({ events: runs.scifact.events, threads: [] }, { only: ['quiet-stretches'] }), []);
+});
+
+test('the measurement says how long after the timed step was due the room knew it had passed, the number to compare runs by', () => {
+  const { earlier, lastBeforeQuiet } = runs.scifact.shell;
+  const f = { events: runs.scifact.events };
+  const asked = f.events.find((/** @type {any} */ e) => e.type === 'item.add' && e.data.item.kind === 'user').data.item.at;
+  // Queued and due at two recorded shell results’ times, and passed when the person’s next message came.
+  const queued = { at: earlier, due: lastBeforeQuiet };
+  const back = 1793936476438;
+  assert.equal(
+    timedStepLine({ asked, queued, passed: { at: back } }),
+    'The timed step was due at 03:39:23 UTC and first passed 1 min 53 s after that, at 03:41:16 UTC.',
+  );
+  assert.equal(timedStepLine({ asked, queued, passed: null }), 'The timed step was due at 03:39:23 UTC and hadn’t passed when the records end.');
+  assert.equal(timedStepLine({ asked, queued: null, passed: null }), '');
+  // A room with a timed step and no quiet minute still gets its line: three agents at work, the step’s times two of
+  // their recorded hand-offs’.
+  const [busy] = quietMeasure({ events: runs.holdstill.events }, { asked: 0, queued: { at: 1795459783677, due: 1795459789330 }, passed: null });
+  assert.equal(busy.title, 'The room was quiet for a minute or more 0 times');
+  assert.equal(busy.evidence, 'The timed step was due at 18:49:49 UTC and hadn’t passed when the records end.');
+  const [m] = quietMeasure(f, { asked, queued, passed: { at: back } });
+  assert.equal(
+    m.evidence,
+    '1 min 43 s from 03:39:33 UTC: work waiting, with nothing to restart it, 1 min 43 s of it after the timed step was due; moved by the person’s message. The timed step was due at 03:39:23 UTC and first passed 1 min 53 s after that, at 03:41:16 UTC.',
+  );
+});
+
+test('a room still quiet when the records end is quiet until the run’s own clock, not for no time at all', () => {
+  // The room before @critic’s wake came, read as the runner reads it mid-wait and as a run cut there would leave it.
+  const before = runs.addressed.events.filter((/** @type {any} */ e) => e.seq < 222);
+  const wakeAt = 1795471076170;
+  const open = quietStretches({ events: before, until: wakeAt }, NO_WORK).at(-1);
+  assert.deepEqual(
+    { ms: open?.ms, open: open?.open, waiting: open?.waiting, movedBy: open?.movedBy },
+    { ms: 156_640, open: true, waiting: 'scheduled', movedBy: null },
+  );
+  assert.equal(quietStretches({ events: before }, NO_WORK).at(-1)?.ms, 0, 'facts with no clock can’t say how long');
+  // A clock behind the last record doesn’t shorten what the records show.
+  assert.equal(quietStretches({ events: before, until: 1 }, NO_WORK).at(-1)?.ms, 0);
+  // A room cut while idle with work waiting is the finding, though nothing moved it…
+  const cut = runs.scifact.events.filter((/** @type {any} */ e) => e.seq < 692);
+  const asked = cut.find((/** @type {any} */ e) => e.type === 'item.add' && e.data.item.kind === 'user').data.item.at;
+  const [x] = idleFindings({ events: cut, until: 1793936476438 }, { min: 100_000, work: { asked, queued: null, passed: null } });
+  assert.match(x.evidence, /for 1 min 43 s from 03:39:33 UTC: work waiting, with nothing to restart it; still quiet when the records end\./);
+  // …but it isn’t yet a stretch that ended, which the phase’s trigger waits for.
+  assert.deepEqual(quietWhileWaiting({ events: before, until: wakeAt }, NO_WORK), []);
 });
 
 test('a stretch counts only the conversations under test', () => {
@@ -237,4 +309,17 @@ test('an ask shown mid-turn is timed from when it showed to when its session nam
   );
   // The turn ended 4.5 s after the form, on a closing line: not an ask shown while its agent went on working.
   assert.deepEqual(TRIGGERS['ask-shown-mid-turn'].run(f), []);
+});
+
+test('a recheck’s facts carry the run’s end as its clock, and the workspace the run kept', () => {
+  // The 25 November profile run: when it started (findings.json) and how long it took (run.json’s timing).
+  const saved = { started: 1795643147342 };
+  const record = { timing: { totalMs: 100_710 } };
+  assert.equal(runEnd(saved, record), 1795643248052);
+  assert.equal(runEnd(saved, null), null, 'a run from before timing was kept has no end to give');
+  assert.equal(runEnd({}, record), null);
+  const dir = tempDir('uat-idle-recheck-');
+  const facts = savedFacts(dir, { state: { threads: {} }, mainId: 't1', saved, logs: [], hostsRec: null, record });
+  assert.equal(facts.until, 1795643248052);
+  assert.equal(facts.workspaceKept, `${dir}/workspace`);
 });

@@ -1,8 +1,9 @@
 // What the idleroom scenario’s nightly check did, and when (#1746): tests/uat/e2e/fixtures/nightly/nightly.mjs keeps a
 // line each time it’s queued and each time it finishes, in the workspace’s .git folder, which the run keeps with the
-// workspace; a recheck reads the kept copy, since the folder the run worked in is gone by then. Read from there, not from an agent’s stream, so it’s the same on every backend and a command an agent
-// chained or piped still counts. The checks and triggers read it as when the timed step started and was due, and when
-// the scenario’s definition of done was first met (tools/uat/quiet-stretches.mjs).
+// workspace; a recheck reads the kept copy, since the folder the run worked in is gone by then. Read from there, not
+// from an agent’s stream, so it’s the same on every backend and a command an agent chained or piped still counts. The
+// checks and triggers read it as when the timed step started and was due, and when the scenario’s definition of done
+// was first met (tools/uat/quiet-stretches.mjs).
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
