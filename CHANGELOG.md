@@ -2,6 +2,37 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.51.0 (2026-11-26)
+
+### Features
+
+- **agents:** show an agent retrying after a provider's failure, without an alarm
+- **turns:** retry a turn its provider failed, and tell the waiting agents when retries run out
+- **failures:** classify a provider's passing error by its HTTP status
+
+### Fixes
+
+- **checks:** a table flagged with questions is still asked for, in one reply
+- **checks:** the lint turn says show the block only if it's for the person
+- **checks:** say a form or choice is for the person, and to @-mention an agent instead
+- **atif:** take a host turn's background output as its call's own from a snapshot
+- **atif:** give a background command a result from a data folder's snapshot too
+- **server:** let a response that's still going not hold Postbox's close
+- **server:** keep an idle connection open longer than clients pool one
+- **app:** a session event reads only the replies drawn on the page
+- **turns:** list a retried turn's Postbox writes before its own steps
+- **turns:** name the Postbox calls that wrote, as noteAnswer keeps them, in a retry's check
+- **turns:** a retried turn whose only work was a Postbox tool is told to check it
+- **atif:** give a background command the output its call ended with
+- **turns:** a refused auto-retry decides by its reply, and tells only a sent retry
+- **atif:** keep a background command's own text, and say when a stored output was cut
+- **atif:** give a call its whole stored output, not a step's capped text
+- **turns:** a refused auto-retry needs the person, and takes back its check line
+- **turns:** a provider-failed turn whose tries ran out needs the person
+- **turns:** retry a provider-failed turn that started tools, told to check what ran
+- **turns:** don't retry a turn the person moved past, or one that started a tool
+- **turns:** end an agent's wait to retry on any other failure, Dismiss or Stop
+
 ## 4.50.0 (2026-11-26)
 
 ### Features
