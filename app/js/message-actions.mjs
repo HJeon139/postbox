@@ -16,7 +16,7 @@ function threadAction(it, ctx) {
     const unread = topic.unread ?? 0;
     return h(
       'a.replies.i-thread',
-      { href: hrefOf(topic.id), dataset: { icon: '' } },
+      { href: hrefOf(topic.id), dataset: { glyph: '' } },
       it.replies ? plural(it.replies, 'reply', 'replies') : 'Thread',
       it.lastReplyAt ? h('span.dim', ` · last reply ${ago(it.lastReplyAt)}`) : null,
       unread ? h('span.badge', { 'aria-label': `${unread} new` }, String(unread)) : null,
@@ -26,8 +26,8 @@ function threadAction(it, ctx) {
     'button.btn.sm.ghost.reveal.i-thread',
     {
       type: 'button',
-      // Each action’s icon is drawn by the action (workbench.css, .msg-actions [data-icon]): one element, not two (#168).
-      dataset: { icon: '' },
+      // Each action’s icon is drawn by the action (workbench.css, .msg-actions [data-glyph]): one element, not two (#168).
+      dataset: { glyph: '' },
       onclick: () =>
         api(`/api/threads/${ctx.threadId}/items/${it.id}/topic`, {})
           .then((r) => {
@@ -45,12 +45,12 @@ function threadAction(it, ctx) {
 
 /** “Send to conversation” under a message in a topic or side thread (#128), or that it was sent. @param {any} it @param {any} ctx */
 function sendAction(it, ctx) {
-  if (it.sharedAt) return h('span.small.dim.i-check', { dataset: { icon: '' } }, ' Sent to the conversation');
+  if (it.sharedAt) return h('span.small.dim.i-check', { dataset: { glyph: '' } }, ' Sent to the conversation');
   return h(
     'button.btn.sm.ghost.reveal.i-right',
     {
       type: 'button',
-      dataset: { icon: '' },
+      dataset: { glyph: '' },
       // Once: the button waits for its answer, and the reply then shows it was sent (#93).
       onclick: (e) => {
         const b = e.currentTarget;
@@ -79,7 +79,7 @@ function copyAction(it, ctx) {
     type: 'button',
     title: 'Copy link',
     'aria-label': 'Copy link',
-    dataset: { copyLink: '', icon: '' },
+    dataset: { copyLink: '', glyph: '' },
     onclick: async () => {
       clearTimeout(reset);
       const link = itemLink(ctx.threadId, it.id);

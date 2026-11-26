@@ -135,3 +135,17 @@ test('#168 in forced colors, a message’s Copy link icon still shows', async ({
   expect(drawn.adjust, 'the icon keeps its own color').toBe('none');
   expect(drawn.background, 'in the system’s button text color, not Canvas').toBe(drawn.color);
 });
+
+test('#168 a message’s reactions keep their pictures beside its actions’ drawn icons', async ({ page }) => {
+  const { t, items } = longRoom(app, 'Address, reactions');
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const reaction = page.locator(`[data-key="${items.at(-2).id}"] .react-btn`).first();
+  await reaction.scrollIntoViewIfNeeded();
+  const drawn = await reaction.evaluate((b) => {
+    const s = getComputedStyle(b, '::before');
+    return { image: s.backgroundImage, width: s.width };
+  });
+  expect(drawn.image, 'its picture, not a drawn icon').toMatch(/reaction-/);
+  expect(drawn.width, 'at its own size, not an action icon’s 12 px').not.toBe('12px');
+});

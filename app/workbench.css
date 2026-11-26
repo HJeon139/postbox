@@ -969,11 +969,16 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .msg-actions { display: flex; align-items: center; gap: 8px; }
 .msg-actions .btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
 /* An action's icon drawn by the action, not by a span of its own: the actions under a message cost no more elements with
-   Copy link than without it (#168), within the page's element budget (#1155). The button's --m names its icon. */
-.msg-actions [data-icon]::before { content: ''; display: inline-block; width: 12px; height: 12px; flex: none; vertical-align: -1px;
+   Copy link than without it (#168), within the page's element budget (#1155). The element's --m names its icon. data-glyph, not data-icon, which the reactions use for their pictures. */
+.msg-actions [data-glyph]::before { content: ''; display: inline-block; width: 12px; height: 12px; flex: none; vertical-align: -1px;
   background: currentColor; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
 /* In forced colors a background is the system's Canvas, which hid the icon: it takes the text's forced color instead. */
-@media (forced-colors: active) { .msg-actions [data-icon]::before { forced-color-adjust: none; background: ButtonText; } }
+@media (forced-colors: active) {
+  .msg-actions [data-glyph]::before { forced-color-adjust: none; background: ButtonText; }
+  .msg-actions a[data-glyph]::before { background: LinkText; }
+  .msg-actions span[data-glyph]::before { background: CanvasText; }
+  .msg-actions [data-glyph]:disabled::before { background: GrayText; }
+}
 .turn.me .msg-actions { justify-content: flex-end; }
 .msg-actions .replies { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--accent); text-decoration: none;
   padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; }
