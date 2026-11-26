@@ -67,11 +67,11 @@ export function idleFindings(f, { min = IDLE_MIN_MS, work = nightlyWork(f) } = {
       const queued = s.overdueMs !== null;
       const how = queued
         ? 'after the timed step was due, with nothing to restart it'
-        : 'with work waiting, the timed step never queued and nothing to restart it';
+        : 'with work waiting, the timed step not yet queued and nothing to restart it';
       return {
         key: `idle-work-waiting:${s.from}`,
         title: `The room sat idle for ${lengthOf(idleFor(s))} ${how}`,
-        evidence: `No agent was in a turn and no item arrived for ${stretchLine(s)} ${queued ? 'The timed step had been queued, and nothing told the room it had finished.' : 'Nobody had queued the timed step: the work stopped before it.'} The definition of done wasn’t met, no ask was open and no wake was scheduled.`,
+        evidence: `No agent was in a turn and no item arrived for ${stretchLine(s)} ${queued ? 'The timed step had been queued, and nothing told the room it had finished.' : 'Nobody had queued the timed step yet: the work stopped before it.'} The definition of done wasn’t met, no ask was open and no wake was scheduled.`,
       };
     });
 }
@@ -112,9 +112,10 @@ export function quietMeasure(f, work = nightlyWork(f)) {
   const listed = quietStretches(f, work).filter((s) => s.ms >= QUIET_LISTED_MS && s.waiting !== 'unknown');
   const step = timedStepLine(work);
   if (!listed.length && !step) return [];
+  const times = listed.length === 1 ? 'once' : `${listed.length} times`;
   return [
     {
-      title: `The room was quiet for a minute or more ${listed.length === 1 ? 'once' : `${listed.length} times`}`,
+      title: listed.length ? `The room was quiet for a minute or more ${times}` : 'The timed step’s times',
       evidence: [...listed.map(stretchLine), step].filter(Boolean).join(' '),
       verdict: 'measurement',
       note: 'Not a defect: how long the room was quiet, what was waiting and what moved it, to compare runs.',

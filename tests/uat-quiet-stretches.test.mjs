@@ -116,10 +116,10 @@ test('idle-work-waiting finds the stretch at a bar it passes, with its length an
   const work = { asked, queued: null, passed: null };
   const [x, ...rest] = idleFindings(f, { min: 100_000, work });
   assert.deepEqual(rest, []);
-  assert.equal(x.title, 'The room sat idle for 1 min 43 s with work waiting, the timed step never queued and nothing to restart it');
+  assert.equal(x.title, 'The room sat idle for 1 min 43 s with work waiting, the timed step not yet queued and nothing to restart it');
   assert.match(
     x.evidence,
-    /for 1 min 43 s from 03:39:33 UTC: work waiting, with nothing to restart it; moved by the person’s message\. Nobody had queued the timed step/,
+    /for 1 min 43 s from 03:39:33 UTC: work waiting, with nothing to restart it; moved by the person’s message\. Nobody had queued the timed step yet/,
   );
   assert.deepEqual(idleFindings(f, { min: 104_000, work }), [], 'a stretch under the bar is no finding');
   assert.equal(IDLE_MIN_MS, 5 * 60_000);
@@ -180,7 +180,7 @@ test('the measurement says how long after the timed step was due the room knew i
   // A room with a timed step and no quiet minute still gets its line: three agents at work, the step’s times two of
   // their recorded hand-offs’.
   const [busy] = quietMeasure({ events: runs.holdstill.events }, { asked: 0, queued: { at: 1795459783677, due: 1795459789330 }, passed: null });
-  assert.equal(busy.title, 'The room was quiet for a minute or more 0 times');
+  assert.equal(busy.title, 'The timed step’s times');
   assert.equal(busy.evidence, 'The timed step was due at 18:49:49 UTC and hadn’t passed when the records end.');
   const [m] = quietMeasure(f, { asked, queued, passed: { at: back } });
   assert.equal(

@@ -22,13 +22,20 @@ export const CHECKS = withRemote([...ROOM_CHECKS, ...ASSET_STORE_CHECKS, ...VIEW
 export const runChecks = (facts, { only = null, checks = CHECKS } = {}) => runRoomChecks(facts, { only, checks });
 
 /**
- * Removes the check findings that say a check couldn’t vouch for the run (unverified rows), so the run’s last pass
- * decides them on its final facts: each describes the whole run, and the runner otherwise keeps the first of a key, as
- * an early step found it. O(findings). @param {Map<string, any>} findings
+ * The checks whose findings a step can read before they’ve settled: a quiet stretch still going on has no length or
+ * “moved by” yet, and the timed step may not have passed (tools/uat/room-checks-idle.mjs).
+ */
+const SETTLES_LAST = new Set(['idle-work-waiting', 'quiet-stretches']);
+
+/**
+ * Removes the check findings that say a check couldn’t vouch for the run (unverified rows), and those of a check that
+ * reads a stretch still going on, so the run’s last pass decides them on its final facts: each describes the whole
+ * run, and the runner otherwise keeps the first of a key, as an early step found it. O(findings).
+ * @param {Map<string, any>} findings
  */
 export function dropUnverified(findings) {
   for (const [key, f] of findings) {
-    if (f.source === 'check' && f.unverified) findings.delete(key);
+    if (f.source === 'check' && (f.unverified || SETTLES_LAST.has(f.check))) findings.delete(key);
   }
 }
 
