@@ -26,7 +26,8 @@ export async function attachClaudeSession(rt, { claudeSessionId, projectId, hand
   if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
   if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');
   const folder = sessionFolder(cs.cwd);
-  if (Object.values(rt.s.sessions).some((se) => se.backendState?.claudeSessionId === claudeSessionId))
+  // Pending: a session attached a moment ago, behind a held commit, is attached already (#623).
+  if (Object.values(rt.store.pending.sessions()).some((se) => se.backendState?.claudeSessionId === claudeSessionId))
     throw httpError(409, 'That session is already attached.');
   if (!rt.store.pending.project(projectId)) throw httpError(404, 'That project doesn’t exist.');
   const base =
@@ -88,7 +89,8 @@ export function stopMirrors(rt) {
 
 export function pollMirror(rt, sessionId) {
   const m = rt.mirrors.get(sessionId);
-  const se = rt.s.sessions[sessionId];
+  // Pending: a session attached behind a held commit is followed, and one deleted there stops its mirror (#623).
+  const se = rt.store.pending.session(sessionId);
   if (!m) return;
   if (!se) {
     clearInterval(m.timer);
