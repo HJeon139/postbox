@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { callsOf, RESULT_CHARS } from '../tools/atif-calls.mjs';
+import { agentTurns } from '../tools/atif-sessions.mjs';
 import { callsInStream, recordedCalls, withCalls } from '../tools/atif-streams.mjs';
 
 /** A stream’s line for a call, and for what it got back. */
@@ -75,4 +76,30 @@ test('#1758 one unplaced call is noted as one', () => {
   const { notes, extra } = withCalls({ notes: 'Scope.', extra: {} }, { streamed: true, unplaced: 1, turnsWithoutStream: 0 });
   assert.equal(notes, 'Scope. 1 of this agent’s recorded calls matched no reply in any of its conversations, so it isn’t in any trajectory.');
   assert.deepEqual(extra, { calls_from: 'recorded streams', unplaced_calls: 1 });
+});
+
+test('#1758 an agent’s turns are its own: by the entry’s handle, else its session’s, and never another agent’s', () => {
+  const work = new Map([
+    ['t1', { kind: 'turn', id: 't1', sessionId: 'A', handle: 'h', startedAt: 1, toolCalls: 2 }],
+    ['t2', { kind: 'turn', id: 't2', sessionId: 'A', startedAt: 2 }],
+    ['t3', { kind: 'turn', id: 't3', sessionId: 'B', handle: 'other', startedAt: 3, toolCalls: 1 }],
+  ]);
+  const sessions = new Map([
+    ['A', { handle: 'h' }],
+    ['B', { handle: 'other' }],
+  ]);
+  assert.deepEqual(agentTurns({ work, sessions }, 'h'), [
+    { id: 't1', sessionId: 'A', startedAt: 1, toolCalls: 2 },
+    { id: 't2', sessionId: 'A', startedAt: 2, toolCalls: 0 },
+  ]);
+});
+
+test('#1758 when a step’s reply names no turn, a call before that step goes with that reply, not the session’s first', () => {
+  const noTurn = (/** @type {string} */ id, /** @type {string} */ step) => ({ id, steps: new Map([[step, { id: step, label: step, tool: 'T' }]]) });
+  const sessions = new Map([['A', [noTurn('a1', 'x'), noTurn('a2', 'y')]]]);
+  const { unstepped } = recordedCalls([{ handle: 'h', started: 900, events: [use('u0'), use('y')] }], 'h', { sessions, turns }, 'A');
+  assert.deepEqual(
+    [...unstepped].map(([reply, calls]) => [reply, calls.map((c) => c.id)]),
+    [['a2', ['u0']]],
+  );
 });
