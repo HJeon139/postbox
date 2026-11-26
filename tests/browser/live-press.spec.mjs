@@ -60,11 +60,17 @@ test('#1616 a press held on “N earlier steps” while a step lands opens them,
     await hold(who, 1);
     step(emit, 'e41', 'make part-41');
     await hold(who, 2);
+    step(emit, 'e42', 'make part-42');
+    await hold(who, 3);
   });
   await running(page, ['stepper']);
   await pressAcrossRefill(page, page.locator('.live-steps details.earlier > summary'), 'stepper');
   await expect(page.locator('.live-steps details.earlier'), 'opened by the click').toHaveAttribute('open', '');
   await expect(page.locator('.live-steps li.step-full'), 'the held refill landed').toContainText('make part-41');
+  // The press is over, so the reply is let go: the next step lands without another press.
+  go('stepper');
+  await expect.poll(() => at('stepper')).toBe(3);
+  await expect(page.locator('.live-steps li.step-full'), 'a step after the press ended lands too').toContainText('make part-42');
   await finish(['stepper']);
 });
 
