@@ -1,0 +1,47 @@
+// #1750: the UAT tester names a choice's option as it reads it, and on 25 Nov it sent an option's label and its
+// description joined with “ — ”: “Mention it without a number — e.g. “compare against your category””. The chip draws
+// the two as separate spans (app/js/blocks.mjs, `span.chip-text` with the label and `span.chip-desc`), so its text has
+// no “ — ”, and the match found nothing. A stand-in page holds that chip and its neighbors, and the expression the driver
+// sends is run against it.
+
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { byOption } from '../tools/uat/selectors.mjs';
+
+/** A chip as blocks.mjs draws an option with a description: its textContent is the label's and the description's spans, back to back. */
+const chip = (label, description) => ({
+  textContent: description ? `${label}${description}` : label,
+  offsetParent: {},
+  getAttribute: () => null,
+  label,
+});
+
+const chips = [
+  chip('Mention it without a number', 'e.g. “compare against your category”'),
+  chip('Leave it out', 'only windowed figures appear'),
+  chip('Text only'),
+];
+
+/** Runs the driver's expression in a page whose item holds these chips, and returns the label of the one it found. */
+function found(expr) {
+  const doc = { querySelector: () => ({ querySelectorAll: () => chips }) };
+  const el = new Function('document', `return ${expr};`)(doc);
+  return el?.label ?? null;
+}
+
+const SEL = 'button.chip, [role=radio], [role=checkbox], label';
+const ITEM = `document.querySelector('[data-key="k"]')`;
+
+test('an option named as its label and description joined with “ — ” is found by its label', () => {
+  assert.equal(found(byOption(ITEM, SEL, 'Mention it without a number — e.g. “compare against your category”')), 'Mention it without a number');
+});
+
+test('an option named by its label alone, or by its whole text, is still found as before', () => {
+  assert.equal(found(byOption(ITEM, SEL, 'Mention it without a number')), 'Mention it without a number');
+  assert.equal(found(byOption(ITEM, SEL, 'text only')), 'Text only');
+  assert.equal(found(byOption(ITEM, SEL, 'Leave it outonly windowed figures appear')), 'Leave it out');
+});
+
+test('a name that matches no option still finds none, so the step fails as before', () => {
+  assert.equal(found(byOption(ITEM, SEL, 'Something else — entirely')), null);
+});

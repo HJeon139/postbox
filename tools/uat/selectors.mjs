@@ -13,3 +13,10 @@ export const byText = (scope, sel, text) =>
 // A message’s thread link (#720): its topic’s, by class, since it reads “Thread” only until the first reply and then
 // “1 reply · last reply …”; else “Reply in thread”, before it has a topic. Either opens the thread in the panel.
 export const THREAD_LINK = (key) => `(${ITEM(key)}?.querySelector('.msg-actions a.replies') ?? ${byText(ITEM(key), '.msg-actions button', 'Reply in thread')})`;
+// Matches a block's option as the tester names it (#1750). A chip draws its label and description as separate spans
+// (app/js/blocks.mjs), so its text joins them with nothing between, and a name the tester writes as “label — description”
+// matches nothing whole: then the part before the first “ — ” is matched, which is the label.
+export const byOption = (scope, sel, text) => {
+  const head = String(text).split(' — ')[0].trim();
+  return head && head !== String(text).trim() ? `(${byText(scope, sel, text)} ?? ${byText(scope, sel, head)})` : byText(scope, sel, text);
+};
