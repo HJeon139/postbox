@@ -1,7 +1,7 @@
 // The plugin Postbox puts in an Antigravity agent’s folder for a turn: its files, where it goes, and keeping it out of
 // git status.
 
-import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { agentSkillFiles } from './agent-plugin.mjs';
 import { HOOK_TIMEOUT_S } from './agy-hook.mjs';
@@ -37,6 +37,15 @@ export async function writeAgyPlugin(dir, files) {
     // The umask masks writeFile’s mode (077 leaves 0o400), so hooks.json is set to 0o444 after it’s written (#730).
     if (path === 'hooks.json') await makeReadOnly(file);
   }
+}
+
+/**
+ * Removes the plugin a turn wrote, and the folders above it, only if the plugin was all they held.
+ * @param {string} plugin
+ */
+export async function removeAgyPlugin(plugin) {
+  await rm(plugin, { recursive: true, force: true }).catch(() => {});
+  for (const dir of [dirname(plugin), dirname(dirname(plugin))]) await rmdir(dir).catch(() => {});
 }
 
 /** The files of Postbox’s skills a persona keeps on (#207), for the plugin’s skills/ folder. */

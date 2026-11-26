@@ -1,6 +1,7 @@
-// The work ledger’s git reading (#132): commits with their files, and where each file and commit stands now. Every git
-// command runs read-only, without git’s optional locks, so an agent’s own git never waits on Postbox. Moved from
-// server/ledger.mjs, whose Ledger keeps a method that delegates to each function here.
+// The work ledger’s git reading (#132): commits with their files, and where each file and commit stands now. Its git
+// commands run read-only, without git’s optional locks, so an agent’s own git never waits on Postbox; runGit, its
+// runner, also makes Antigravity agents’ worktrees (agent-worktree.mjs, #1709). Moved from server/ledger.mjs, whose
+// Ledger keeps a method that delegates to each function here.
 
 import { execFile } from 'node:child_process';
 import { dirname, relative, resolve, sep } from 'node:path';
@@ -23,9 +24,16 @@ const NO_COMMANDS = [
   ['core.hooksPath', '/dev/null'],
   ['diff.external', ''],
   ['log.showSignature', 'false'],
+  // No git started inside a repository nested in the folder, whose own config the folder’s writer controls.
+  ['diff.ignoreSubmodules', 'all'],
 ];
 /** The subcommands that can run a diff driver or a textconv, which these flags turn off. */
 const DIFFS = new Set(['show', 'log', 'diff']);
+/**
+ * The subcommands that read a nested repository’s state by starting git inside it. The flag, unlike the config above,
+ * wins over a `submodule.<name>.ignore` in the folder’s own .gitmodules.
+ */
+const SUBMODULE_READS = new Set(['status', 'diff']);
 
 /** One git process, as execFile runs it; tests pass a fake. */
 function gitOnce(exec, cwd, args, env, timeoutMs) {
@@ -69,7 +77,8 @@ export async function runGit(cwd, args, { timeoutMs = 10000, exec = execFile } =
     .flatMap((f) => ['clean', 'smudge', 'process'].map((k) => [`filter.${f}.${k}`, '']))
     .concat([...filters].map((f) => [`filter.${f}.required`, 'false']));
   const [sub, ...rest] = args;
-  const argv = DIFFS.has(sub) ? [sub, '--no-ext-diff', '--no-textconv', ...rest] : args;
+  const flags = [...(DIFFS.has(sub) ? ['--no-ext-diff', '--no-textconv'] : []), ...(SUBMODULE_READS.has(sub) ? ['--ignore-submodules=all'] : [])];
+  const argv = flags.length ? [sub, ...flags, ...rest] : args;
   return gitOnce(exec, cwd, argv, withConfig([...NO_COMMANDS, ...off]), timeoutMs);
 }
 
