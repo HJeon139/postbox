@@ -3,7 +3,7 @@
 // change. Run “node board.mjs help” for the commands.
 
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const HELP = `node board.mjs <command>
@@ -11,14 +11,15 @@ const HELP = `node board.mjs <command>
   clarify <story> "<acceptance>"   say what done means for a story
   split <story> "<a>" "<b>"        replace a story with two smaller ones
   order <story> <story> …          put the backlog in priority order
-  estimate <story> <points>        give your own estimate of a story; run it once for each estimator
+  estimate <story> <points>        give your own estimate of a story; each of the team runs it themselves
   plan <sprint> "<goal>" <id> …    start a sprint with a goal and the stories, and action items, it takes
-  claim <story> <who>              take a story of the current sprint as yours
+  claim <story> <who>              take a story of the current sprint as yours; run it yourself
   done <story>                     mark a story you took as finished
   demo <sprint>                    print the sprint’s stories and where each stands, to show the customer
   return <story> "<why>"           put back a story the customer didn’t accept
   action "<what to change>"        add a retrospective action item; prints its id (A1, A2…)
-  show                             print the board`;
+  show                             print the board
+BOARD.md is written by these commands. Change the board with them, not by editing the file.`;
 
 /** Where the board is kept: inside the repository’s one .git, so the working tree holds only BOARD.md. */
 function home() {
@@ -26,6 +27,9 @@ function home() {
   if (r.status !== 0) throw new Error('The board lives in this project’s git repository, and there isn’t one here.');
   return r.stdout.trim();
 }
+
+/** The repository’s top folder, where BOARD.md goes wherever the command was run from. */
+const top = () => spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).stdout.trim();
 
 const load = (/** @type {string} */ dir) =>
   existsSync(join(dir, 'board.json')) ? JSON.parse(readFileSync(join(dir, 'board.json'), 'utf8')) : { stories: [], actions: [], sprints: [] };
@@ -147,6 +151,20 @@ const COMMANDS = {
   show: (board) => ({ says: render(board) }),
 };
 
+/** How old a lock is before it’s one a killed command left behind: a change takes milliseconds. */
+const LEFT_BEHIND_MS = 10_000;
+
+/** Removes a lock a killed command left behind, and says whether it did. @param {string} lock */
+function leftBehind(lock) {
+  try {
+    if (Date.now() - statSync(lock).mtimeMs < LEFT_BEHIND_MS) return false;
+    rmdirSync(lock);
+    return true;
+  } catch {
+    return false; // released, or taken over, meanwhile
+  }
+}
+
 /** Holds the board for one change at a time: two of the team may run a command in the same moment. @param {string} dir */
 function hold(dir) {
   const lock = join(dir, 'board.lock');
@@ -154,7 +172,10 @@ function hold(dir) {
     try {
       mkdirSync(lock);
       return () => rmdirSync(lock);
-    } catch {
+    } catch (e) {
+      // Only a lock another command holds is worth waiting for: a folder the board can’t write to says so.
+      if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'EEXIST') throw e;
+      if (leftBehind(lock)) continue;
       if (tries > 200) throw new Error('The board is busy. Try again in a moment.');
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
     }
@@ -178,7 +199,7 @@ function change(dir, command, args) {
   const { says, did } = COMMANDS[command](board, args);
   if (did) {
     writeFileSync(join(dir, 'board.json'), JSON.stringify(board));
-    writeFileSync('BOARD.md', render(board));
+    writeFileSync(join(top(), 'BOARD.md'), render(board));
     appendFileSync(join(dir, 'board-log.jsonl'), `${JSON.stringify({ at: Date.now(), did: command, ...did })}\n`);
   }
   return says;
