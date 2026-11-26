@@ -37,11 +37,13 @@ const folderName = (v) => String(v).replace(/[^\w-]/g, '_');
 export const worktreesRootFor = (workRoot) => join(dirname(workRoot), 'worktrees');
 
 /**
- * The branch an agent’s worktree is on: its project’s and its own, so two projects in one repository don’t share one.
- * Handles and ids are letters, digits, - and _, which a branch name takes as they are.
- * @param {{ handle: string }} persona @param {{ id?: string }} project
+ * The branch an agent’s worktree is on: its project’s and its own, so two projects in one repository don’t share one,
+ * and by its id as well as its handle, so a new agent given a deleted one’s handle doesn’t collide with the branch
+ * the old worktree still holds. Handles and ids are letters, digits, - and _, which a branch name takes as they are.
+ * @param {{ id?: string, handle: string }} persona @param {{ id?: string }} project
  */
-export const branchFor = (persona, project) => `postbox/${folderName(project.id ?? 'project')}-${persona.handle}`;
+export const branchFor = (persona, project) =>
+  `postbox/${folderName(project.id ?? 'project')}-${persona.handle}${persona.id ? `-${folderName(persona.id)}` : ''}`;
 
 /** How long a worktree add may take: it checks out every file, which a large repository needs time for. */
 const ADD_TIMEOUT_MS = 5 * 60_000;
@@ -52,6 +54,14 @@ const defaultGit = (cwd, args) => runGit(cwd, args, gitTimeoutFor(args));
 
 /** Worktrees being made now, by folder, so two turns starting at once make one. @type {Map<string, Promise<{ dir: string } | { why: string }>>} */
 const making = new Map();
+/**
+ * The folder each agent’s worktree gave for a project’s folder, once made, so the next call (each turn, the
+ * permissions panel, each file opened, each `!`) checks only that it’s still whole, with no git run.
+ * @type {Map<string, { dir: string, folder: string }>}
+ */
+const known = new Map();
+/** The refusals already logged, by folder and reason, so one is logged once, not at every call. */
+const logged = new Set();
 
 /**
  * The folder an Antigravity agent works in: its own worktree of the project’s repository (above), else the folder
@@ -65,6 +75,9 @@ const making = new Map();
 export async function agentWorktree(persona, project, workRoot, { git = defaultGit, log = (l) => console.error(l) } = {}) {
   const shared = () => agentFolder(persona, project, workRoot);
   if (storedFolder(persona) || !project?.folder || !project.id) return shared();
+  const key = JSON.stringify([workRoot, project.id, project.folder, persona.id || persona.handle]);
+  const seen = known.get(key);
+  if (seen && (await stateOf(seen.dir)) === 'finished') return seen.folder;
   const top = await git(project.folder, ['rev-parse', '--show-toplevel', '--show-prefix']);
   if (top.code !== 0) return shared();
   // A repository with no commit yet would give an empty worktree, without the project’s files.
@@ -78,10 +91,17 @@ export async function agentWorktree(persona, project, workRoot, { git = defaultG
   const made = making.get(dir) ?? worktree(git, project.folder, dir, branchFor(persona, project));
   making.set(dir, made);
   const ready = await made.finally(() => making.get(dir) === made && making.delete(dir));
-  if ('dir' in ready) return prefix ? agentFolder({ ...persona, folder: join(ready.dir, prefix) }, project, workRoot) : ready.dir;
-  log(
-    `Postbox couldn’t make a worktree for @${persona.handle} in ${project.folder} (${ready.why}), so it works in the project’s folder and waits for other Antigravity turns there.`,
-  );
+  if ('dir' in ready) {
+    const folder = prefix ? await agentFolder({ ...persona, folder: join(ready.dir, prefix) }, project, workRoot) : ready.dir;
+    known.set(key, { dir: ready.dir, folder });
+    return folder;
+  }
+  if (!logged.has(`${dir}\n${ready.why}`)) {
+    logged.add(`${dir}\n${ready.why}`);
+    log(
+      `Postbox couldn’t make a worktree for @${persona.handle} in ${project.folder} (${ready.why}), so it works in the project’s folder and waits for other Antigravity turns there.`,
+    );
+  }
   return shared();
 }
 

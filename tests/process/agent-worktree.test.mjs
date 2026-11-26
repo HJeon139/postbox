@@ -41,7 +41,7 @@ test('#1709 two agents get two worktrees of the project, each on its own branch 
     [a, 'a'],
     [b, 'b'],
   ]) {
-    assert.equal(git(dir, ['rev-parse', '--abbrev-ref', 'HEAD']).trim(), branchFor({ handle }, p));
+    assert.equal(git(dir, ['rev-parse', '--abbrev-ref', 'HEAD']).trim(), branchFor({ id: `pe_${handle}`, handle }, p));
     assert.equal(git(dir, ['show', 'HEAD:README.md']), 'hello\n');
   }
   // As git lists them: by their real paths, which a temp folder’s link (macOS’s /var) changes.

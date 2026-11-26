@@ -81,11 +81,11 @@ test('#1709 two agents in one project’s repository each get a worktree of thei
       .map((c) => c.slice(1))
       .sort(),
     [
-      ['worktree', 'add', '-b', 'postbox/pr_AbCd1234-a', a],
-      ['worktree', 'add', '-b', 'postbox/pr_AbCd1234-b', b],
+      ['worktree', 'add', '-b', 'postbox/pr_AbCd1234-a-pe_Aaaa1111', a],
+      ['worktree', 'add', '-b', 'postbox/pr_AbCd1234-b-pe_Bbbb2222', b],
     ],
   );
-  assert.equal(branchFor(A, r.project), 'postbox/pr_AbCd1234-a', 'the project’s and the agent’s');
+  assert.equal(branchFor(A, r.project), 'postbox/pr_AbCd1234-a-pe_Aaaa1111', 'the project’s, the agent’s handle and its id');
   assert.ok(
     r.adds().every((c) => c[0] === r.project.folder),
     'made from the project’s repository',
@@ -118,9 +118,9 @@ test('#1709 an agent’s worktree is made once and kept: its next turn, and two 
 });
 
 test('#1709 an agent whose branch exists already gets a worktree on it, not a new branch', async (t) => {
-  const r = rig(t, { branches: ['postbox/pr_AbCd1234-a'] });
+  const r = rig(t, { branches: ['postbox/pr_AbCd1234-a-pe_Aaaa1111'] });
   const dir = await r.folderOf(A);
-  assert.deepEqual(r.adds()[0]?.slice(1), ['worktree', 'add', dir, 'postbox/pr_AbCd1234-a']);
+  assert.deepEqual(r.adds()[0]?.slice(1), ['worktree', 'add', dir, 'postbox/pr_AbCd1234-a-pe_Aaaa1111']);
 });
 
 test('#1709 a project folder below its repository’s top is the same folder within the worktree', async (t) => {
@@ -145,6 +145,31 @@ test('#1709 a worktree git refuses leaves the agent in the project’s folder, a
   assert.equal(await r.folderOf(A), r.project.folder);
   assert.equal(r.logs.length, 1);
   assert.match(r.logs[0], /couldn’t make a worktree for @a .*already checked out/);
+});
+
+test('#1709 a refusal is logged once for its folder, not at every call', async (t) => {
+  const r = rig(t, { refuse: true });
+  for (let i = 0; i < 3; i++) assert.equal(await r.folderOf(A), r.project.folder);
+  assert.equal(r.logs.length, 1);
+});
+
+test('#1709 once an agent’s worktree is made, its next calls run no git', async (t) => {
+  const r = rig(t);
+  await r.folderOf(A);
+  const before = r.calls.length;
+  for (let i = 0; i < 5; i++) assert.equal(await r.folderOf(A), r.wtOf(A));
+  assert.equal(r.calls.length, before, 'no git run on the ready worktree');
+});
+
+test('#1709 a new agent given a deleted agent’s handle gets its own branch, not the one the old worktree holds', async (t) => {
+  const r = rig(t);
+  const again = { id: 'pe_Cccc3333', handle: 'a' };
+  await r.folderOf(A);
+  await r.folderOf(again);
+  assert.deepEqual(
+    r.adds().map((c) => c[4]),
+    ['postbox/pr_AbCd1234-a-pe_Aaaa1111', 'postbox/pr_AbCd1234-a-pe_Cccc3333'],
+  );
 });
 
 test('#1709 a worktree folder deleted by hand has its own record removed before it’s made again, and nothing is pruned', async (t) => {
