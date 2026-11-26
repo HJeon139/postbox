@@ -118,10 +118,9 @@ export function takeHold(v) {
   if (!node || !item) return;
   // Following, only a click on its way holds: a press, or a control the pointer moved onto. It holds even beside a
   // reply at its estimate: without a hold the view follows the end out from under the pointer, and what that reply
-  // moves as it draws is what the hold puts back (#1632).
-  const clicking = v.stuck && (pressed() || (aimed() && !!node.closest(CONTROL)));
-  if (v.stuck && !clicking) return;
-  if (!clicking && settling(v, item)) return;
+  // moves as it draws is what the hold puts back (#1632). Reading, not beside one (#1257).
+  const clicking = pressed() || (aimed() && !!node.closest(CONTROL));
+  if (v.stuck ? !clicking : settling(v, item)) return;
   // Not one that isn’t laid out in its item, as an app full screen, fixed over the page: a scroll doesn’t move it.
   const r = node.getBoundingClientRect();
   const ir = itemBox(v, item);
