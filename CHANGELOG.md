@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.51.5 (2026-11-26)
+
+### Fixes
+
+- **text:** cut an app's title, intent and check problems whole too
+- **text:** cut an app version's summary whole, and test the host reply cuts
+
 ## 4.51.4 (2026-11-26)
 
 ### Fixes
