@@ -20,6 +20,7 @@ import { paintTree, subagentToggle } from './agent-tree.mjs';
 import { agentsHeaderButtons } from './agents-header.mjs';
 import { client, headerOf, sessionsOf } from './client.mjs';
 import { fill, h, syncList, timeOf } from './dom.mjs';
+import { needsAnother } from './needs-mine.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { hostLine, hostOf, turnLine } from './remote.mjs';
 import { ringFor } from './ring.mjs';
@@ -138,7 +139,8 @@ function paintRow(n, se, fresh = false) {
   // Where it runs, for an agent on a host, and how its turn there stands when that needs saying.
   const where = [hostLine(se), hostOf(se)?.short];
   const there = turnLine(se);
-  const state = stateWords(agentState(se, S()));
+  // What it needs of another person isn’t “you” to the one looking (#1742).
+  const state = needsAnother(se) ? 'waits on another person' : stateWords(agentState(se, S()));
   const sig = JSON.stringify([se.handle, f.mock, state, runs, joined, where, there]);
   paintTree(n, se, fresh);
   if (!fresh && n.dataset.sig === sig) return;

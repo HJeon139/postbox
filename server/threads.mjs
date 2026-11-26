@@ -45,7 +45,7 @@ export class Threads {
    * Starts a conversation in a project, with no agents yet: the facade’s createThread gives each its session.
    * @param {{ projectId: string, title: string, kind?: string, parentId?: string|null }} opts
    */
-  create({ projectId, title, kind = 'thread', parentId = null }) {
+  create({ projectId, title, kind = 'thread', parentId = null }, personId = undefined) {
     // Read pending: a project deleted behind a held commit takes no new conversation (#119).
     if (!this.store.pending.project(projectId)) throw httpError(404, 'That project doesn’t exist.');
     return this.put({
@@ -59,6 +59,8 @@ export class Threads {
       hops: 0,
       queue: [],
       createdAt: Date.now(),
+      // Who made it, until a person writes in it: whom its agents’ needs ring (#1742, Sessions’ needAt).
+      ...(personId ? { lastPerson: personId } : {}),
     });
   }
 

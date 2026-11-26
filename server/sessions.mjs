@@ -186,7 +186,19 @@ export class Sessions {
     const need = patch.needs;
     const where = need?.threadId ?? (patch.sideTurn ?? se.sideTurn)?.threadId ?? se.threadId;
     const at = need?.itemId ? itemOf(this.store.pending.items(where), need.itemId)?.at : undefined;
-    return { needsAt: at === undefined ? undefined : { itemId: need.itemId, at } };
+    return { needsAt: at === undefined ? undefined : { itemId: need.itemId, at }, needsFor: this.needFor(need, where) };
+  }
+
+  /**
+   * Who a need is for (#1742): the person who last wrote in its room, or who made it while no one has written. What
+   * needs a person (a block that asks, a card, a failed turn) is no agent’s to answer, so it rings one person, the
+   * nearest, with no record of who began a chain of wakes. No one is named while Postbox knows of no such person, and
+   * then everyone who looks is rung, as before there were people. @param {any} need @param {string} where  its thread
+   * @returns {string[] | undefined}
+   */
+  needFor(need, where) {
+    const who = need && this.store.pending.thread(this.threads.conversationToWrite(where))?.lastPerson;
+    return who ? [who] : undefined;
   }
 
   /** Context the agent reads at the start of its next turn, as a Postbox notice. @param {string} id @param {string} text */

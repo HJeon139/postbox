@@ -8,8 +8,12 @@ import { itemOf } from './item-index.mjs';
  */
 export const NEEDS_KINDS = ['block', 'failed', 'hop', 'permission', 'toolask', 'viewask'];
 
-/** @param {any} se */
-export const needsYouNow = (se) => !!se?.needs && NEEDS_KINDS.includes(se.needs.kind);
+/**
+ * Whether a session needs the one looking. `me` is their person id: a need that names people (`needsFor`, #1742) is
+ * theirs alone, and one that names no one is everyone’s. A reader with no viewer (the server, a check) passes none,
+ * and sees every need. @param {any} se @param {string} [me]
+ */
+export const needsYouNow = (se, me) => !!se?.needs && NEEDS_KINDS.includes(se.needs.kind) && (!me || !se.needsFor?.length || se.needsFor.includes(me));
 
 /**
  * The thread an agent’s ask is in: its side or topic thread when it asked there (#121), else where its turn runs.
@@ -39,12 +43,12 @@ export function waitedSince(state, se) {
 /**
  * The agents that need you, the one that has waited longest first. With `here` (a conversation’s id), that
  * conversation’s agents (its side and topic threads’ too) come first, then the rest.
- * @param {any} state  @param {any[]} sessions  @param {string|null} [here]
+ * @param {any} state  @param {any[]} sessions  @param {string|null} [here]  @param {string} [me]  the one looking
  */
-export function needsOrder(state, sessions, here = null) {
+export function needsOrder(state, sessions, here = null, me = undefined) {
   const at = new Map(sessions.map((se) => [se.id, waitedSince(state, se)]));
   const near = (se) => (here && conversationOf(state, whereNeeds(state, se)) === here ? 0 : 1);
-  return sessions.filter(needsYouNow).sort((a, b) => near(a) - near(b) || (at.get(a.id) ?? 0) - (at.get(b.id) ?? 0) || byCodeUnit(a.id, b.id));
+  return sessions.filter((se) => needsYouNow(se, me)).sort((a, b) => near(a) - near(b) || (at.get(a.id) ?? 0) - (at.get(b.id) ?? 0) || byCodeUnit(a.id, b.id));
 }
 
 /**
