@@ -30,13 +30,13 @@ export async function forget(d, c, m) {
   } catch (e) {
     // No memory folder at all: nothing of this persona’s is here.
     if (/** @type {any} */ (e).code === 'ENOENT') return void send(c, 'forgotten', { persona: m.persona });
-    return refuse('internal', `The daemon couldn’t read ${memory}: ${/** @type {any} */ (e).message}`);
+    return refuse('internal', `The daemon couldn’t read ${memory}: ${/** @type {any} */ (e).message}.`);
   }
   if (!kind.isDirectory()) return refuse('internal', `${memory} isn’t a folder, so the daemon removed nothing from it. Remove it on the host.`);
   try {
     await fsp.rm(`${memory}/${m.persona}`, { recursive: true, force: true });
   } catch (e) {
-    return refuse('internal', `The daemon couldn’t remove ${memory}/${m.persona}: ${/** @type {any} */ (e).message}`);
+    return refuse('internal', `The daemon couldn’t remove ${memory}/${m.persona}: ${/** @type {any} */ (e).message}.`);
   }
   d.log(`Removed the memory of a deleted agent (${m.persona}).`);
   await send(c, 'forgotten', { persona: m.persona });

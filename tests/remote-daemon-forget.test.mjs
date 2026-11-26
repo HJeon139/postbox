@@ -141,7 +141,8 @@ for (const [what, method] of [
     send('forget', { persona: 'pe_gone' });
     const refused = await msgs.next('error');
     assert.deepEqual([refused.re, refused.persona, refused.code], ['forget', 'pe_gone', 'internal']);
-    assert.match(refused.message, /permission denied/);
+    assert.match(refused.message, /permission denied\.$/, 'a sentence, so Postbox’s log line reads on');
+    assert.equal(existsSync(join(memory, 'pe_gone', 'pr_1', 'MEMORY.md')), true, 'nothing removed');
     assert.ok(
       logs.some((l) => l.includes('pe_gone') && l.includes('permission denied')),
       logs.join('\n'),
