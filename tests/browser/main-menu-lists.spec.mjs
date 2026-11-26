@@ -78,7 +78,7 @@ test('Rooms: the first row is picked, the arrow keys move the pick, the bar name
   await expect(dialog.getByLabel('Title')).toHaveValue(titles[1]);
   const members = dialog.getByRole('listbox', { name: `Members of ${titles[1]}` });
   await expect(members).toBeVisible();
-  await inHeadingRow(dialog, 'Members', members, [`Add an agent to ${titles[1]}`, /^Remove .* from /u]);
+  await inHeadingRow(dialog, 'Members', members, [`Add an agent to ${titles[1]}`, /^Remove .* from /u, /^Edit /u, /^\d+ messages? queued for /u]);
   for (const name of ['Save', `Delete ${titles[1]}…`]) await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
   // Back to the list, with the pick kept.
   await dialog.getByRole('button', { name: 'All rooms' }).click();
