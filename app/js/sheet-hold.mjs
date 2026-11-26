@@ -4,7 +4,7 @@
 // the pointer. So such a sheet keeps one height, the most the window gives it (fullHeight), and what comes late scrolls
 // inside its body, which holds still whatever is under the pointer when what’s above it changes (holdSheet).
 
-import { onPointerMoved, pointer } from './pointer-rest.mjs';
+import { onPointerMoved, onPointerPressed, pointer } from './pointer-rest.mjs';
 
 /** Where an element is under the body, child by child, to find its place again once the sheet is drawn anew. */
 function pathOf(/** @type {Element} */ body, /** @type {Element} */ n) {
@@ -69,8 +69,13 @@ export function holdSheet(dialog) {
     hold();
     take();
   });
+  // A quick press comes with its move, with no frame between: what it pressed is taken as it’s pressed, before what
+  // comes in that frame moves it (#1632, as the transcript does for #1653). Chromium’s scroll anchoring holds it too;
+  // Safari has none, so there only this does.
+  const unpressed = onPointerPressed(take);
   return () => {
     stop();
+    unpressed();
     sizes.disconnect();
     added.disconnect();
   };
