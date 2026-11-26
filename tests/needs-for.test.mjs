@@ -74,3 +74,19 @@ test('with no message yet, a need is for the person who made the room; a cleared
   );
   assert.equal(room.store.state.threads[forged.id].lastPerson, undefined);
 });
+
+test('a need raised in a topic thread is for the room’s last person, and a message written in a topic thread makes the room theirs', async () => {
+  const room = setup();
+  room.rt.sendMessage(room.t.id, { text: '@alpha from Robin' }, { id: 'pn_robin' });
+  await settle(room.rt);
+  const reply = room.store.state.items[room.t.id].find((/** @type {any} */ it) => it.kind === 'agent');
+  const topic = room.rt.startTopic(room.t.id, reply.id);
+  room.adapter.next.push(fail);
+  room.rt.sendMessage(topic.threadId, { text: 'From Sam, in the thread' }, { id: 'pn_sam' });
+  await settle(room.rt);
+  // The room keeps who last wrote, wherever in it they wrote; a topic thread keeps no one of its own.
+  assert.equal(room.store.state.threads[room.t.id].lastPerson, 'pn_sam');
+  assert.equal(room.store.state.threads[topic.threadId].lastPerson, undefined);
+  assert.equal(room.store.state.sessions[room.alpha.id].needs.threadId, topic.threadId);
+  assert.deepEqual(needs(room), ['failed', ['pn_sam']]);
+});
