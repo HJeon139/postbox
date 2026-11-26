@@ -141,7 +141,7 @@ test('a head where CodeQL never ran fails step 6, through A2’s check', async (
   const w = signed({ runs: NO_CODEQL });
   assert.equal(await signoff(['783'], w.d), EXIT.checks);
   assert.ok(w.lines.includes('missing: CodeQL (code scanning)'));
-  assert.match(line(w, /^✖ 6\./), /GitHub’s checks: fail/);
+  assert.match(line(w, /^✖ 6\./), /^✖ 6\. GitHub’s checks: fail, as the line above says$/);
 });
 
 test('a red required check fails step 6', async () => {

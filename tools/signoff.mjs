@@ -101,7 +101,7 @@ async function checks(d, ctx) {
   const code = signoffChecks(ctx.pr, { gh: d.gh, log: d.log });
   if (code === CHECKS_EXIT.pass) return { ok: true, note: 'every required check passed on GitHub, CodeQL included' };
   const what = Object.keys(CHECKS_EXIT).find((k) => CHECKS_EXIT[/** @type {keyof CHECKS_EXIT} */ (k)] === code);
-  return { ok: false, why: `GitHub’s checks: ${what}, as the line above says` };
+  return { ok: false, why: `${what}, as the line above says` };
 }
 
 const STEPS = /** @type {const} */ ([
