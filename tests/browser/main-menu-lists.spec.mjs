@@ -209,3 +209,24 @@ test('Personas and Projects: the bar is in the row of the list’s heading, and 
   const project = await projects.getByRole('option').first().locator('b').textContent();
   await inHeadingRow(dialog, 'Projects', projects, ['New project', `Delete project ${project}…`, `Edit ${project}`]);
 });
+
+test('a notice over the menu covers no control of a list: the stack starts in the sheet’s title row, clear of each heading’s row', async ({ page }) => {
+  const dialog = await menu(page, 'Personas');
+  // Two notices, each with a second line: more than one action leaves at once.
+  await page.evaluate(async () => {
+    const { toast } = await import('/app/js/ui.mjs');
+    for (const n of [1, 2]) toast({ title: `Added host-${n}.example.com`, text: 'Postbox connects when an agent runs there.' });
+  });
+  await expect(page.locator('.toast')).toHaveCount(2);
+  const clear = (/** @type {import('@playwright/test').Locator} */ control) =>
+    control.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      return el.contains(document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2));
+    });
+  expect(await clear(dialog.getByRole('button', { name: 'Close' })), 'Close').toBe(true);
+  for (const tab of ['Personas', 'Projects', 'Rooms', 'People']) {
+    await dialog.getByRole('tab', { name: tab }).click();
+    for (const control of await dialog.getByRole('toolbar').getByRole('button').all())
+      expect(await clear(control), `${tab}: ${await control.getAttribute('aria-label')}`).toBe(true);
+  }
+});

@@ -881,7 +881,9 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .menu.versions { max-width: min(420px, calc(100vw - 16px)); }
 .menu.versions .mi .grow, .menu.versions .mi .d { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.toasts { position: fixed; z-index: 60; right: 16px; top: 60px; display: flex; flex-direction: column; gap: 8px; width: 340px; }
+.toasts { position: fixed; z-index: 60; right: 16px; top: 60px; display: flex; flex-direction: column; gap: 8px; width: 340px; pointer-events: none; }
+/* The stack itself takes no click: the gaps between notices, which show what is under them, leave it clickable. */
+.toast { pointer-events: auto; }
 .toast { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; }
 .toast.plain { border-left-width: 1px; }
 .toast .t-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
@@ -1102,6 +1104,13 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 /* Toasts sit left of the right pane on wide screens, where it’s beside the conversation: pane-width.mjs sets
    --pane-aside on #toasts, a child of body, which no class on .app reaches (#1472). */
 @media (min-width: 768px) { .toasts { right: calc(var(--pane-aside, 0px) + 16px); } }
+/* Over a sheet, the stack starts in the sheet’s title row, between its title and its Close: a sheet’s list has its
+   controls at the right end of its heading’s row, where the stack was, and a notice there would take the click meant
+   for one of them. One or two notices clear every list’s controls; a third reaches the heading’s row, and is dismissed
+   or waited out. A narrow window keeps the stack under the top bar, above a sheet’s lists. */
+@media (min-width: 768px) {
+  body:has(> .backdrop:not(.anchored)) .toasts { top: 8px; right: calc(max(16px, (100vw - var(--dialog-w)) / 2) + 56px); }
+}
 .appframe .app-placeholder { border: 0; border-radius: 0; }
 
 /* ═════════ Live app additions (Stage 2) ═════════ */

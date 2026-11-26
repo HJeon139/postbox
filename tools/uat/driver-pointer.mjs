@@ -19,6 +19,7 @@ export function pointer(page, ev, runnerClick, input) {
    */
   async function clickAt(findExpr, what) {
     runnerClick();
+    await dismissNoticesOver(findExpr);
     const r = await ev(`(async () => {
       const el = ${findExpr};
       if (!el) return null;
@@ -35,6 +36,28 @@ export function pointer(page, ev, runnerClick, input) {
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
       await page.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 });
     await sleep(250);
+  }
+
+  /**
+   * A notice over what the runner is about to click is dismissed first, as a person does: the stack is at the top of
+   * a sheet, where a list’s controls are, and a notice stays eight seconds. Each is dismissed with its own button, by
+   * the pointer. @param {string} findExpr
+   */
+  async function dismissNoticesOver(findExpr) {
+    for (let i = 0; i < 3; i++) {
+      const dismiss = await ev(`(() => {
+        const el = ${findExpr};
+        if (!el) return null;
+        const at = el.getBoundingClientRect();
+        const over = document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2)?.closest('.toast');
+        const b = over?.querySelector('[aria-label="Dismiss"]')?.getBoundingClientRect();
+        return b ? { x: b.left + b.width / 2, y: b.top + b.height / 2 } : null;
+      })()`);
+      if (!dismiss) return;
+      for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
+        await page.send('Input.dispatchMouseEvent', { type, x: dismiss.x, y: dismiss.y, button: 'left', clickCount: 1 });
+      await sleep(120);
+    }
   }
 
   /**
