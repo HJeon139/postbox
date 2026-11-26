@@ -36,19 +36,18 @@ export function planBack(rt, turn, se, took) {
   // turn.named: a reply or an open_topic of this turn @-mentioned an agent, even one that couldn’t be woken, or it
   // reviewed an agent’s block, which hands off to its author.
   if (turn.endErr || turn.named || turn.summarizeTo) return null;
-  const wordsOnly = endedExchange(turn);
-  const had = wordsOnly ? wroteOnlyTo(rt, se, turn.threadId, turn.id) : [];
+  /** @type {string[]} */
+  const had = [];
   const conv = rt.threads.conversationToWrite(turn.threadId);
   const here = (/** @type {string} */ h) => rt.sessions.pendingIn(conv).some((/** @type {any} */ x) => x.handle === h && !x.retiredFork);
   // A turn that took no entries carries whom it goes back to: a host turn continued under a new ID goes back as the turn
   // it continues would have (#1538), and a retry of one that took none as the failed turn would have (#1541).
   const asked = turn.backTo ?? backTo(took);
-  const open = asked.filter((h) => h !== se.handle && here(h) && !endedByReaction(rt, se, took, h, turn));
+  const open = asked.filter((h) => h !== se.handle && here(h) && mayWake(rt, turn, se, took, h));
   if (!open.length) return null;
   // Text with words: a harness may stream only whitespace around a tool call, such as a reaction, which is no reply.
   const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text?.trim());
   if (!reply) return null;
-  if (wordsOnly) rt.threads.patchItem(turn.threadId, reply.id, { wordsOnly: open });
   return { reply, to: open.filter((h) => !had.includes(h)) };
 }
 
@@ -154,3 +153,22 @@ function onlyBounces(turn) {
  */
 const tookStep = (turn) =>
   (turn.steps ?? []).some((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said' && !turn.postboxSteps?.has(s.id));
+
+// PROTOTYPE, not for merge (#1591, the count rule): an exchange between two agents ends when K turns in a row between
+// that pair did no work. A turn that did work, or that something other than agents' messages woke, restarts the count.
+// A direct @-mention, a reaction and a reply going back are all just turns. The count is kept in memory here.
+const K = Number(process.env.PB_K ?? 4);
+const ROOM = process.env.PB_SCOPE === 'room';
+const streaks = new WeakMap();
+const mapOf = (rt) => streaks.get(rt) ?? streaks.set(rt, new Map()).get(rt);
+const pairKey = (threadId, a, b) => (ROOM ? threadId : `${threadId}|${[a, b].sort().join('|')}`);
+const restarts = (turn, took) => didWork(turn) || !took.length || took.some((e) => e.source !== 'mention' && e.source !== 'notice');
+/** How many turns in a row between this agent and that one did no work, this turn included. */
+export const streakWith = (rt, turn, se, took, h) => (restarts(turn, took) ? 0 : (mapOf(rt).get(pairKey(turn.threadId, se.handle, h)) ?? 0) + 1);
+/** Whether this turn's words may wake that agent: not once K turns in a row between them did no work. */
+export const mayWake = (rt, turn, se, took, h) => streakWith(rt, turn, se, took, h) < K;
+/** The turn ended: each pair it was part of (whom it answered, whom it woke) keeps its new count. */
+export function settleStreaks(rt, turn, se, took, others) {
+  const next = [...new Set(others)].filter((h) => h && h !== se.handle).map((h) => [pairKey(turn.threadId, se.handle, h), streakWith(rt, turn, se, took, h)]);
+  for (const [k, n] of next) mapOf(rt).set(k, n);
+}

@@ -6,7 +6,7 @@
 
 import { mentionEntries, wakeMentioned } from './mention-entries.mjs';
 import { takePending } from './message-queue.mjs';
-import { planBack, replyBack } from './reply-back.mjs';
+import { planBack, replyBack, settleStreaks } from './reply-back.mjs';
 import { entriesFirst } from './turns.mjs';
 
 /** Adds the inbox’s listeners to the runtime’s bus. @param {any} rt */
@@ -30,6 +30,7 @@ export function listenInbox(rt) {
     delivery.turnEnded(settle(turn));
     wakeMentioned(rt, turn);
     replyBack(rt, turn, se, back);
+    settleStreaks(rt, turn, se, took, [...took.filter((e) => e.source === 'mention').map((e) => e.from), ...(turn.mentioned ?? []), ...(back?.to ?? [])]);
     if (first) takePending(rt, se, turn, true);
   });
   // L4: the person’s messages that waited for it wait for them now (#1146), unless it resends on its own, and a wake

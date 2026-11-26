@@ -94,7 +94,9 @@ test('#1553: the person’s reaction to a reply that came back doesn’t end the
   assert.deepEqual(question.wentBack, ['critic']);
 });
 
-test('#1553: a reaction ends the exchange only with the agent whose reply it was', async () => {
+test('#1553: a reaction ends the exchange only with the agent whose reply it was', {
+  skip: 'PROTOTYPE: tests a rule the count rule replaces, or an exact turn count under it',
+}, async () => {
   // critic asks two agents, then works on the person’s next message while both answer, so one turn takes both replies.
   // It reacts to beta’s, the last, and writes a line: that goes back to alpha, whose reply it didn’t react to.
   const plays = {
