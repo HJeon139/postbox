@@ -12,7 +12,7 @@ Browser checks are Playwright specs in `tests/browser/`: see `tests/AGENTS.md`, 
 
 ## The sign-off
 
-`tools/signoff.mjs` (steps in `tools/signoff/`) and `tools/signoff-checks.mjs` are how a head is signed off (designs/developing.md, “Running the gate”, #845). Every effect of `tools/signoff.mjs` goes through the object `tools/signoff/deps.mjs` makes: commands, `gh`, the clock and timers, load, inodes and files. That way, `tests/signoff.test.mjs` and `tests/signoff-run-gate.test.mjs` drive every path with no real process. A new check comes with a test that fails without it. Every command runs through `exec` in `tools/signoff/wait.mjs`, which prints while it waits. It stays read-only towards GitHub.
+`tools/signoff.mjs` (steps in `tools/signoff/`) and `tools/signoff-checks.mjs` are how a head is signed off (designs/developing.md, “Running the gate”, #845). Every effect of `tools/signoff.mjs` goes through the object `tools/signoff/deps.mjs` makes: commands, `gh`, the clock and timers, load, inodes, files, signals and the exit. That way, `tests/signoff.test.mjs` and `tests/signoff-run-gate.test.mjs` drive every path with no real process. A new check comes with a test that fails without it. Every command runs through `exec` in `tools/signoff/wait.mjs`, which prints while it waits. It stays read-only towards GitHub.
 
 ## The UAT runner and the screenshot tools
 
