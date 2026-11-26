@@ -7,6 +7,7 @@ import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { INTENT_CHARS, LIMITS } from '../shared/limits.mjs';
 import { wordCount } from '../shared/text.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { awaited, settleUnchecked, settleWaits } from './app-check-wait.mjs';
 import { notYours } from './app-retire.mjs';
@@ -265,7 +266,7 @@ export function updateApp(apps, sessionId, turn, threadId, endSegment, { id, cod
       code,
       permissions: v.block.permissions ?? [],
       files: given.files ?? app.versions[app.current - 1].files ?? [],
-      summary: String(summary ?? '').slice(0, 300),
+      summary: cutText(String(summary ?? ''), 300),
       intent: intentOf(intent) || (app.versions[app.current - 1].intent ?? ''),
       at: Date.now(),
     },
