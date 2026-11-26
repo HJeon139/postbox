@@ -1,8 +1,9 @@
-// The idleroom scenario’s triggers (#1746; tools/uat/triggers.mjs has what a trigger is): the team handed work between
-// agents, the timed step was started, the room was then left quiet while the work waited, and an ask was shown while
-// its turn ran. Each says the run reached the situation, not how Postbox handled it: the checks say that
-// (tools/uat/room-checks-idle.mjs).
+// Triggers for a room that stops while work waits (#1746; tools/uat/triggers.mjs has what a trigger is): the team
+// handed work between agents, a timed step was started, the room was then left quiet while the work waited, and an
+// ask was shown while its turn ran. Each says the run reached the situation, not how Postbox handled it: the checks
+// say that (tools/uat/room-checks-idle.mjs). The sprint’s ceremonies have their own (tools/uat/sprint-triggers.mjs).
 
+import { workOf } from './board-log.mjs';
 import { midTurnAsks } from './mid-turn-asks.mjs';
 import { nightlyWork } from './nightly-log.mjs';
 import { clockOf, quietStretches } from './quiet-stretches.mjs';
@@ -40,7 +41,7 @@ export function handOffs(f) {
  * wake, or on nothing at all.
  * @param {any} f  @param {import('./quiet-stretches.mjs').Work} [work]
  */
-export function quietWhileWaiting(f, work = nightlyWork(f)) {
+export function quietWhileWaiting(f, work = workOf(f)) {
   return quietStretches(f, work)
     .filter((s) => !s.open && s.ms >= QUIET_LISTED_MS && s.work !== 'done' && (s.waiting === 'nothing' || s.waiting === 'scheduled'))
     .map((s) => ({ at: s.to, evidence: `Quiet for ${lengthOf(s.ms)} from ${clockOf(s.from)}, until ${s.movedBy}.` }));

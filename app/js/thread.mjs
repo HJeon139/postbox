@@ -967,7 +967,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     ['mcp', 'Its MCP servers: status, on or off', (se = target()) => openPermissions({ threadId, sessionId: se?.id, focus: 'mcp' })],
     ['compact', 'Summarize its context to make room', (se) => compact(se)],
     ['stop', 'Stop the agents that are working', (_se, named) => stopAll(named)],
-    ['delete', 'Delete its session in this conversation', (se = target()) => se && confirmDelete(se)],
+    ['delete', 'Remove it from this room, or delete the conversation if it’s alone', (se = target()) => se && confirmDelete(se)],
     // Its title is edited in the room’s form in the main menu (#1735).
     ['rename', 'Rename this conversation, in its settings', () => openRename(threadId)],
   ];
