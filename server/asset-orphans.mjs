@@ -24,6 +24,26 @@ function recountKept(state) {
   return kept;
 }
 
+/**
+ * The log’s lines for released hashes the rooms’ indexes and the recount disagree on (#691). Where the index says
+ * nothing keeps one and a version does, its file stays, still released, for the next load to decide again. Where the
+ * index keeps one no version does, its file stays and its release goes, as before, which loses no bytes; the line
+ * points at the drift.
+ * @param {Set<string>} released @param {Set<string>} kept  by the indexes @param {Map<string, string>} counted  by the recount
+ */
+function disagreements(released, kept, counted) {
+  const lines = [];
+  for (const sha of released) {
+    if (!kept.has(sha) && counted.has(sha))
+      lines.push(
+        `Postbox kept a released asset file, ${sha}: room ${counted.get(sha)}’s index says no version keeps it, but a version there does. It isn’t deleted.`,
+      );
+    else if (kept.has(sha) && !counted.has(sha))
+      lines.push(`Postbox kept a released asset file, ${sha}: a room’s index says a version keeps it, but no version does. It isn’t deleted.`);
+  }
+  return lines;
+}
+
 /** Every file in the asset folder, as { name, path }: a blob’s name is its hash, a draft’s more. @param {string} dir */
 async function filesIn(dir) {
   const entries = await readdir(dir).catch((e) => (e.code === 'ENOENT' ? [] : Promise.reject(e)));
@@ -66,13 +86,8 @@ export async function sweepAssets(store, blobs, { warn = console.warn } = {}) {
   const kept = keptHashes(store.state);
   const counted = recountKept(store.state);
   const released = new Set(Object.keys(store.state.assetReleases ?? {}));
-  // Deleting can't be undone: a released file goes only when the index and the recount agree nothing keeps it. Where
-  // they disagree, it stays, released, and the log says which, for the next load to decide again.
-  for (const sha of released)
-    if (!kept.has(sha) && counted.has(sha))
-      warn(
-        `Postbox kept a released asset file, ${sha}: room ${counted.get(sha)}’s index says no version keeps it, but a version there does. It isn’t deleted.`,
-      );
+  // Deleting can’t be undone: a released file goes only when the index and the recount agree nothing keeps it.
+  for (const line of disagreements(released, kept, counted)) warn(line);
   const toDelete = [...released].filter((sha) => !kept.has(sha) && !counted.has(sha));
   const gone = await Promise.all(toDelete.map((sha) => removed(blobs, sha, warn)));
   const deleted = toDelete.filter((_, i) => gone[i]);
@@ -81,7 +96,8 @@ export async function sweepAssets(store, blobs, { warn = console.warn } = {}) {
     const note = (e) => warn(`Postbox deleted released asset files but couldn’t record it: ${e.message}. The next start records it.`);
     await store.commit([{ type: 'asset.released', data: { hashes: done } }]).catch(note);
   }
-  const strays = (await filesIn(blobs.dir)).filter((f) => !kept.has(f.name) && !released.has(f.name));
+  const named = (/** @type {string} */ sha) => kept.has(sha) || counted.has(sha) || released.has(sha);
+  const strays = (await filesIn(blobs.dir)).filter((f) => !named(f.name));
   const sizes = await Promise.all(strays.map(async (f) => (await stat(f.path)).size));
   const unclaimed = { count: strays.length, bytes: sizes.reduce((sum, n) => sum + n, 0) };
   if (unclaimed.count) warn(unclaimedLine(unclaimed));
