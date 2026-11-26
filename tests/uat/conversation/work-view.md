@@ -4,7 +4,7 @@
 
 ![A turn’s line, under its last reply (the screenshot predates the list, #195)](../screenshots/work-chip.png)
 
-**Where:** The conversation’s right pane (`#/t/<id>?work`, or `#/t/<id>/side/<thread>?work` beside a thread), opened by **Work** in the top bar, the conversation’s ⋯ › Work, or the line on top of the list under a turn’s last reply (“4 files +15 −3 · 4 commands (1 failed) · 1 app · 23 s in all · $0.31”, the turn’s elapsed time said as such, #214), which opens it at that turn (`&turn=<id>`). Each row of that list opens it full screen at its item (`&full=work&at=<entry>`). A room asset or a changed file opens in the pane’s viewer (`&at=<asset or file>`, #1446), from its row in the pane or from a link in a reply. The full-screen icon in the pane’s head (the app frames’ own) shows the whole view over the window (`&full=work`). #138’s addresses, `#/t/<id>/work` and `/work/<turnId>`, open the pane.
+**Where:** The conversation’s right pane (`#/t/<id>?work`, or `#/t/<id>/side/<thread>?work` beside a thread), opened by **Work** in the top bar, or the line on top of the list under a turn’s last reply (“4 files +15 −3 · 4 commands (1 failed) · 1 app · 23 s in all · $0.31”, the turn’s elapsed time said as such, #214), which opens it at that turn (`&turn=<id>`). Each row of that list opens it full screen at its item (`&full=work&at=<entry>`). A room asset or a changed file opens in the pane’s viewer (`&at=<asset or file>`, #1446), from its row in the pane or from a link in a reply. The full-screen icon in the pane’s head (the app frames’ own) shows the whole view over the window (`&full=work`). #138’s addresses, `#/t/<id>/work` and `/work/<turnId>`, open the pane.
 
 ## Why it exists
 
@@ -75,4 +75,3 @@ The person directs agents that edit code, run commands, commit, push and file is
 
 - [Activity line](transcript/activity-line.md)
 - [Command item (!)](transcript/command-item.md)
-- [Conversation menu](../shell/top-bar/conversation-menu.md)

@@ -1,6 +1,6 @@
 // Menus fit the window (#36): an app’s version menu with 30 versions is no taller than the window, starts inside it,
 // scrolls, opens with the version shown in view, and clips each summary to one line; the shared menu’s other uses (the
-// composer’s +, which opens above its button, and the conversation’s ⋯) still open whole and inside a short window.
+// composer’s +, which opens above its button, and the places menu) still open whole and inside a short window.
 // Moved from tools/checks/menus.mjs (#303).
 
 import { expect, test } from '@playwright/test';
@@ -126,12 +126,13 @@ test('#36 the version menu opens with the version shown focused and in view, cur
   await expect(shown(page), 'v30 shown').toHaveText('Version 30');
 });
 
-test('#36 in a short window, the composer’s + menu (above its button) and ⋯ (below) open whole, inside it', async ({ page }) => {
+test('#36 in a short window, the composer’s + menu (above its button) and the places menu (below) open whole, inside it', async ({ page }) => {
   await open(page);
   await page.setViewportSize({ width: 1280, height: 420 });
+  // The room’s own button opens its form in the main menu, not a menu (#1735), so the places menu is the one that opens below.
   for (const [what, button] of [
     ['the + menu', page.getByRole('button', { name: 'Add a file, an agent or a command' })],
-    ['the ⋯ menu', page.locator('header.topbar').getByRole('button', { name: /^Actions for / })],
+    ['the places menu', page.locator('header.topbar #places-button')],
   ]) {
     await opensInside(page, button, what);
     // Short menus keep their height: nothing in them is squeezed.

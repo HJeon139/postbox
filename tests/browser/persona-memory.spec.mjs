@@ -1,7 +1,7 @@
 // #480: the persona sheet says, in one line under Backend, what each backend does with the agent’s memory: Claude Code
 // keeps its own, Codex’s is off, Kiro’s is off when isolated and yours with your setup, and Antigravity’s,
-// if it keeps any, is your sign-in’s. At 1280 and 375 px, from the conversation’s ⋯, where its agents are named at either
-// width. A host’s lines, and an older Claude Code’s, are the unit test’s (tests/agent-memory.test.mjs).
+// if it keeps any, is your sign-in’s. At 1280 and 375 px, from the room’s form in the main menu, where its agents are named at
+// either width. A host’s lines, and an older Claude Code’s, are the unit test’s (tests/agent-memory.test.mjs).
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -50,9 +50,12 @@ for (const [width, use] of /** @type {const} */ ([
         const t = rt.createThread({ projectId, title: `Memory ${n}`, personaIds: [p.id] });
         await page.goto(`${app.origin}/#/t/${t.id}`);
         await synced(page, app);
+        // The room’s form, then Edit on its one agent, which is the pick: its persona’s form in the same menu.
         await page.locator('header.topbar #conversation-actions').click();
-        await page.getByRole('menuitem', { name: new RegExp(`^${handle}\\b`) }).click();
         const sheet = page.getByRole('dialog', { name: 'Settings' });
+        await sheet.getByRole('button', { name: `Edit ${handle}`, exact: true }).click();
+        // As from the Personas list’s own Edit: on the form’s first field, never on a Tools chip a Space would flip.
+        await expect(page.locator('#pe-d'), 'focus is on the form’s first field').toBeFocused();
         await expect(sheet.locator('#pe-b-mem')).toHaveText(line);
         // Read with the backend, as its description is.
         await expect(sheet.locator('#pe-b')).toHaveAttribute('aria-describedby', 'pe-b-help pe-b-mem');

@@ -2,7 +2,7 @@
 // - each answer on a permission card (Always allow with its rule shown first, Edit, Don’t allow with a reason, a
 //   subagent’s prompt named) reaches the waiting tool call;
 // - a Codex MCP approval, a write outside Postbox with its draft (#112), and an ask for a tool that’s off (#104);
-// - the panel opens from the conversation’s ⋯ and from the persona editor, and shows the mode, the rules with their
+// - the panel opens from the room’s form in the main menu and from the persona editor, and shows the mode, the rules with their
 //   sources, the folders, the MCP servers and the effective view; adding a rule and changing the mode work;
 // - a write without the page’s token gets 403.
 // With a scripted Claude Code agent (no real turns) working in a temp folder, and a home of its own for user settings.
@@ -289,15 +289,16 @@ test('#104 an agent asks for a tool that’s off; the card says what turning it 
 
 // ── The panel ───────────────────────────────────────────────────────────────────────────
 
-/** Opens the permissions panel from the conversation’s ⋯. */
+/** Opens the permissions panel from the room’s form in the main menu, as the top bar’s room button leads to it. */
 async function openPanel(page) {
-  await page.locator('header.topbar button[aria-label^="Actions for"]').click();
-  await page.locator('.menu button.mi', { hasText: 'Permissions…' }).click();
+  // The room’s form in the main menu holds it (#1735): the top bar’s room button, then More › Permissions….
+  await page.locator('header.topbar #conversation-actions').click();
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Permissions…', exact: true }).click();
   await expect(page.locator('.dialog .perm-panel #perm-call'), 'the panel').toBeVisible();
-  return page.locator('.dialog');
+  return page.locator('.dialog').filter({ has: page.locator('.perm-panel') });
 }
 
-test('#66 the panel opens from ⋯ › Permissions… with rules with sources, folders, MCP servers and the effective view', async ({ page }) => {
+test('#66 the panel opens from the room’s form › Permissions… with rules with sources, folders, MCP servers and the effective view', async ({ page }) => {
   await open(page);
   const dialog = await openPanel(page);
   const all = await words(dialog);
@@ -363,11 +364,12 @@ test('#66 a folder added from the panel’s folder picker is listed for this con
   const dialog = await openPanel(page);
   await dialog.getByRole('button', { name: 'Add folder…' }).click();
   await page.locator('.dialog').getByRole('button', { name: 'Add data', exact: true }).click();
-  await expect(page.locator('.dialog', { hasText: 'Permissions' }).first(), 'the added folder').toContainText('From this conversation');
+  await expect(dialog, 'the added folder').toContainText('From this conversation');
   const se = arrange.agentIn(app.rt, thread.id);
   expect(app.store.state.sessions[se.id].addDirs).toEqual([join(work, 'data')]);
-  // Choosing closes only the picker, not the panel it was opened over.
-  await expect(page.locator('.backdrop')).toHaveCount(1);
+  // Choosing closes only the picker, not the panel it was opened over, which is itself over the room’s form.
+  await expect(page.locator('.backdrop')).toHaveCount(2);
+  await expect(dialog).toBeVisible();
 });
 
 test('#66 the persona editor opens the same panel', async ({ page }) => {
@@ -424,7 +426,10 @@ test.describe('at 375 px', () => {
   test('#66 the panel fits a narrow window (375 px) without scrolling sideways', async ({ page }) => {
     await open(page);
     await openPanel(page);
-    const over = await page.locator('.dialog').evaluate((d, w) => [d.scrollWidth - d.clientWidth, document.documentElement.scrollWidth - w], windowWidth(page));
+    const over = await page
+      .locator('.dialog')
+      .filter({ has: page.locator('.perm-panel') })
+      .evaluate((d, w) => [d.scrollWidth - d.clientWidth, document.documentElement.scrollWidth - w], windowWidth(page));
     expect(over, 'nothing overflows sideways').toEqual([0, 0]);
   });
 });
