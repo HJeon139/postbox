@@ -16,7 +16,8 @@ runs:
       id: apt
       shell: bash
       run: |
-        dir="$RUNNER_TEMP/apt-archives"
+        # Outside the runner’s home, which apt’s own _apt user can’t enter: there apt would fetch as root.
+        dir=/tmp/postbox-apt-archives
         mkdir -p "$dir/partial"
         printf '%s\n' \
           'APT::Keep-Downloaded-Packages "true";' \
