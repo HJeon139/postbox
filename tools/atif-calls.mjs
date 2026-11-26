@@ -188,8 +188,9 @@ function withUnstepped(tool_calls, results, unstepped, recorded) {
 /**
  * The tool calls, their results, the thoughts and the narration of one reply. A call's start time and exit code are its
  * ledger entry's; its output is its tool_result in the turn's recorded stream, else the store's blob the ledger names
- * (storedResult), else the step's text, which only a live frame carries, else a background job's output as the ledger
- * kept it (jobResult).
+ * (storedResult), else the step's text (its output, which only a live frame carries, or its note), else a background
+ * job's output as the ledger kept it (jobResult). The stream's comes first because it's what the model got: where Claude
+ * Code cut a long output, the result is the cut text, though the store may hold the whole output.
  * @param {any} it  the reply, with its steps @param {Map<string, any>} ledger  the work ledger’s calls, by tool call id
  * @param {Map<string, any[]>} [questions]  each AskUserQuestion call’s blocks, by its id
  * @param {(sha256: string) => string | null} [blob]  a stored blob's text, or null when it isn't there
