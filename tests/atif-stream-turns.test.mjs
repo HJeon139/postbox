@@ -195,3 +195,42 @@ test('#1758 with no ledger turns, a stream with no step goes by time only up to 
   );
   assert.equal(a.unplaced, 1);
 });
+
+test('#1758 by time, a reply at the stream’s start is its, a tie goes to the later turn, and two sessions’ replies are neither’s', () => {
+  const use = (/** @type {string} */ id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'T', input: {} }] } });
+  const unstepped = (/** @type {any} */ r) => [...r.unstepped].map(([at, calls]) => [at, calls.map((/** @type {any} */ c) => c.id)]);
+  // No ledger turns: a reply added the same millisecond the stream started is in its window.
+  const at = (/** @type {string} */ id, /** @type {number} */ ms) => ({ id, at: ms, steps: new Map() });
+  const one = recordedCalls([{ handle: 'h', started: 1000, events: [use('n')] }], 'h', { sessions: new Map([['A', [at('a1', 1000)]]]), turns: [] }, 'A');
+  assert.deepEqual(unstepped(one), [['a1', ['n']]]);
+  // Two sessions each have a reply in the window: the stream could be either’s, so it’s counted, not placed.
+  const both = new Map([
+    ['A', [at('a1', 1500)]],
+    ['B', [at('b1', 1600)]],
+  ]);
+  const two = recordedCalls([{ handle: 'h', started: 1000, events: [use('n')] }], 'h', { sessions: both, turns: [] }, 'A');
+  assert.deepEqual(unstepped(two), []);
+  assert.equal(two.unplaced, 1);
+  // With ledger turns, two that started the same millisecond: the later in the ledger is the stream’s.
+  const reply = (/** @type {string} */ id, /** @type {string} */ turnId) => ({ id, turnId, steps: new Map() });
+  const turns = [
+    { id: 't1', sessionId: 'A', startedAt: 1000, toolCalls: 1 },
+    { id: 't2', sessionId: 'A', startedAt: 1000, toolCalls: 1 },
+  ];
+  const tie = recordedCalls(
+    [{ handle: 'h', started: 1002, events: [use('n')] }],
+    'h',
+    { sessions: new Map([['A', [reply('a1', 't1'), reply('a2', 't2')]]]), turns },
+    'A',
+  );
+  assert.deepEqual(unstepped(tie), [['a2', ['n']]]);
+});
+
+test('#1758 a stream whose step’s reply names no turn still marks its turn as streamed', () => {
+  const use = (/** @type {string} */ id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'T', input: {} }] } });
+  const sessions = new Map([['A', [{ id: 'a1', steps: new Map([['x', {}]]) }]]]);
+  const turns = [{ id: 't1', sessionId: 'A', startedAt: 1000, toolCalls: 1 }];
+  const r = recordedCalls([{ handle: 'h', started: 1003, events: [use('x')] }], 'h', { sessions, turns }, 'A');
+  assert.equal(r.byId.has('x'), true);
+  assert.equal(r.turnsWithoutStream, 0);
+});

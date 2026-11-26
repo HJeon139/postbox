@@ -2,13 +2,14 @@
 // with POSTBOX_CLAUDE_RECORD keeps each Claude Code turn’s raw stream in streams/ (tools/uat/run-files.mjs,
 // readStreams): every tool_use with its input, and every tool_result. Postbox shows a call as a step only when it has
 // something to show, so a reaction or a deferred tool’s lookup made no step, and a trajectory built from steps alone
-// left it out. A stream is named by its agent’s handle and when its turn’s process started, which is just after the
-// work ledger’s entry for that turn started: so a stream is its agent’s latest turn that started at or before it did,
-// and that turn names the session and the replies its calls go with. A call with a step goes with its step’s reply,
-// and one with no step with the last call before it that has one, else with its turn’s first reply. A turn with no
-// stream, one made on another backend, say, is counted, as its calls that made no step aren’t in the trajectory. Only
-// Claude Code’s streams are read: the other backends record theirs in their own shapes (streams/kiro, agy, codex and
-// sdk).
+// left it out. A stream goes to a turn, which names the session and the replies its calls go with: the turn of its
+// first call that made a step, by that step’s reply; else, for a stream whose calls made none, its agent’s latest
+// work-ledger turn that started at or before it did, since a stream is named by when its turn’s process started, just
+// after the ledger’s entry for that turn. A run whose events have no ledger turns places such a stream by time instead.
+// A call with a step goes with its step’s reply, and one with no step with the last call before it that has one, else
+// with its turn’s first reply. A turn that called a tool and has no stream, one made on another backend, say, is
+// counted, as its calls that made no step aren’t in the trajectory. Only Claude Code’s streams are read: the other
+// backends record theirs in their own shapes (streams/kiro, agy, codex and sdk).
 
 /**
  * @typedef {{ id: string, name: string, input: any, result: string | null, isError: boolean, parent: string | null, seq: number }} StreamCall
@@ -132,12 +133,15 @@ export function recordedCalls(streams, handle, { sessions, turns }, sessionId) {
       .map((c) => ({ ...c, seq: seq++ }));
     for (const c of calls) seen.add(c.id);
     const place = placeOf(calls, owner, sessions, turns, s.started, mine[i + 1]?.started);
-    if (place?.turnId) streamed.add(place.turnId);
+    // A reply that names no turn still had one: the stream’s by time, so its turn isn’t counted as a gap.
+    const turnId = place?.turnId ?? (place ? turnOf(turns, s.started)?.id : null);
+    if (turnId) streamed.add(turnId);
     if (!place?.replies.length) {
       if (sessionId === [...sessions.keys()][0]) unplaced += calls.length;
     } else if (place.sessionId === sessionId) placeCalls(calls, place.replies, owner, sessionId, into);
   }
-  // A turn that called no tool has nothing a stream would add, so only one that did is a gap without its stream.
+  // A turn that called no tool has nothing a stream would add, so only one that did is a gap without its stream. The
+  // ledger writes toolCalls when a turn ends, so one still running when the recording stopped isn’t counted.
   const turnsWithoutStream = turns.filter((t) => t.sessionId === sessionId && (t.toolCalls ?? 0) > 0 && !streamed.has(t.id)).length;
   return { streamed: mine.length > 0, ...into, unplaced, turnsWithoutStream, ledgerTurns: turns.length > 0 };
 }
