@@ -2,6 +2,7 @@
 // whole view when the conversation’s agents do. main.mjs calls it from its live updates.
 
 import { client } from './client.mjs';
+import { needsMe } from './needs-mine.mjs';
 import { holdFocus } from './rerender-state.mjs';
 import { topbar } from './shell.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
@@ -9,7 +10,8 @@ import { refind } from './ui.mjs';
 
 const topSig = new Map();
 export function topbarChanged(se) {
-  const sig = `${se.needs?.kind}`;
+  // What it needs, and whether of the one looking: a need that becomes theirs changes the bar’s count (#1742).
+  const sig = `${se.needs?.kind}:${needsMe(se)}`;
   const changed = topSig.get(se.id) !== sig;
   topSig.set(se.id, sig);
   return changed;
