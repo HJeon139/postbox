@@ -120,9 +120,8 @@ function roomForm(
   return [
     ...formHead('All rooms', back, t.title),
     h('div.field', h('label.label', { for: 'rm-title' }, 'Title'), title),
-    sectionHead('Members'),
+    sectionHead('Members', members.bar),
     members.list,
-    members.bar,
     // Why − can be off, in words on the page: a title shows only under a pointer.
     h(
       'span.help',

@@ -44,7 +44,25 @@ test('Rooms: the first row is picked, the arrow keys move the pick, the bar name
   await expect(dialog.getByRole('button', { name: `Edit ${titles[1]}`, exact: true })).toBeVisible();
   await page.keyboard.press('Enter');
   await expect(dialog.getByLabel('Title')).toHaveValue(titles[1]);
-  await expect(dialog.getByRole('listbox', { name: `Members of ${titles[1]}` })).toBeVisible();
+  const members = dialog.getByRole('listbox', { name: `Members of ${titles[1]}` });
+  await expect(members).toBeVisible();
+  // The list’s + and − are in the row of its heading, above its rows, so what they act on reads beside them.
+  const boxOf = async (/** @type {import('@playwright/test').Locator} */ el) =>
+    /** @type {{ x: number, y: number, width: number, height: number }} */ (await el.boundingBox());
+  const [head, add, remove, list] = await Promise.all(
+    [
+      dialog.getByRole('heading', { name: 'Members', exact: true }),
+      dialog.getByRole('button', { name: `Add an agent to ${titles[1]}` }),
+      dialog.getByRole('button', { name: /^Remove .* from /u }),
+      members,
+    ].map(boxOf),
+  );
+  const middle = (/** @type {{ y: number, height: number }} */ b) => b.y + b.height / 2;
+  for (const sign of [add, remove]) {
+    expect(Math.abs(middle(sign) - middle(head))).toBeLessThan(sign.height / 2);
+    expect(sign.x).toBeGreaterThan(head.x + head.width);
+    expect(sign.y + sign.height).toBeLessThanOrEqual(list.y);
+  }
   for (const name of ['Save', `Delete ${titles[1]}…`]) await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
   // Back to the list, with the pick kept.
   await dialog.getByRole('button', { name: 'All rooms' }).click();

@@ -1,6 +1,7 @@
 // The one pattern for managing things (#1735, decided 23 November 2026): a list you pick a row in, each row with its
-// name and its facts, with one bar of controls under it as a macOS list has, + to add and − to remove what’s picked,
-// and one thing made or edited at a time in a form in the same sheet, whose actions are pinned under it. Personas,
+// name and its facts, with one bar of controls, + to add and − to remove what’s picked, and one thing made or edited at
+// a time in a form in the same sheet, whose actions are pinned under it. A list that fills its tab has its bar pinned
+// under the sheet; one inside a form has it in the row of its heading, so what the controls act on reads beside them. Personas,
 // projects, rooms and their members, people and hosts are all managed this way, from the main menu (openSettings in
 // app/js/sheets.mjs), and nowhere else: a ⋯ menu or a rail button only opens it.
 
@@ -17,7 +18,7 @@ import { h, icon } from './dom.mjs';
  * @param {{ label: string, rows: Row[], empty: string, at: Record<string, any>, name: string,
  *           controls: (picked: Row | null) => any[], open?: (picked: Row) => void, onPick?: (picked: Row) => void }} list
  *   onPick: when the pick moves to another row, for a list that shows its pick’s details under it
- * @returns {{ list: HTMLElement, bar: HTMLElement }}  the bar goes under the list, or in the sheet’s foot
+ * @returns {{ list: HTMLElement, bar: HTMLElement }}  the bar goes in the sheet’s foot, or beside the list’s heading (sectionHead)
  */
 export function pickList({ label, rows, empty, at, name, controls, open, onPick }) {
   const bar = h('div.list-bar', { role: 'toolbar', 'aria-label': `${label}: actions` });
@@ -110,8 +111,11 @@ export const formHead = (all, back, title) => [
   h('b', title),
 ];
 
-/** A section’s heading inside a form. @param {string} text */
-export const sectionHead = (text) => h('h3.label', { style: { margin: '8px 0 0' } }, text);
+/**
+ * A section’s heading inside a form, and in its row the bar of the list it heads, when it heads one.
+ * @param {string} text @param {HTMLElement} [bar]
+ */
+export const sectionHead = (text, bar) => h('div.section-head', h('h3.label', text), bar);
 
 /**
  * A sheet’s foot that its tabs fill: each hands its actions to setFoot, and with none the foot is hidden.

@@ -1194,6 +1194,10 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .pick-list li[aria-selected="true"] { background: var(--sunk); border-left-color: var(--accent); }
 .pick-list li:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .list-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
+/* A form’s section heading, with the bar of the list it heads at the end of its row. */
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 0; }
+.section-head > h3.label { margin: 0; }
+.section-head > .list-bar { width: auto; flex-wrap: nowrap; }
 .btn.sign { min-width: 30px; justify-content: center; font-size: 16px; line-height: 1; }
 /* A project’s row (#1497): its name, with its folder on a line of its own under it, so a long name (up to 80
    characters) never squeezes the folder; then where it pushes, beside them where there’s room for both (16em and
