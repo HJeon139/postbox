@@ -25,7 +25,8 @@ test('your message is stamped as yours and reads “You”, another person’s r
   await synced(page, app);
   expect(Object.keys(rt.store.state.people), 'no one is kept before anything is sent').toEqual([]);
   // A message from before senders were kept, or typed in a terminal, names none: yours after it shares its “You” line.
-  rt.sendMessage(t.id, { text: 'An older message' });
+  // Written as an item, with no turn: a reply to it could land between the two and give yours a line of its own.
+  rt.threads.addItem(t.id, { kind: 'user', text: 'An older message', attachments: [], to: [] });
   await expect(page.locator('#main .turn.me', { hasText: 'An older message' }).locator('.who b')).toHaveText('You');
   await page.locator('#composer-input').fill('Hello from the page');
   await page.keyboard.press('Enter');
@@ -39,7 +40,7 @@ test('your message is stamped as yours and reads “You”, another person’s r
   // Another person of this Postbox writes: their message has their name, on a line of its own.
   const people = new People({ store: rt.store });
   const sam = people.seen(people.of({ provider: 'oidc', issuer: 'https://idp.example', subject: 'u-2', username: 'sam', name: 'Sam Okafor' }));
-  rt.sendMessage(t.id, { text: 'Hello from Sam' }, sam.id);
+  rt.sendMessage(t.id, { text: 'Hello from Sam' }, { id: sam.id });
   const theirs = page.locator('#main .turn.me', { hasText: 'Hello from Sam' });
   await expect(theirs.locator('.who b')).toHaveText('Sam Okafor');
   // Sending isn’t saving: your profile still starts from your account’s name, and says agents aren’t told it.
