@@ -1,11 +1,12 @@
 // #416, option A (the person’s pick, 8 Nov): Antigravity’s Auto works like Run everything for the tools its persona
 // has. In Auto, a command runs when the persona has shell, a search or fetch when it has web.fetch, and an MCP tool
 // outside Postbox when it doesn’t publish. A publishing tool is refused in every mode for a persona that can’t publish
-// outside Postbox, as Claude Code’s --disallowedTools refuses it. Ask me, Accept edits, Antigravity’s own files and
-// edits in .git are unchanged.
+// outside Postbox, as Claude Code’s --disallowedTools refuses it. Ask me, Accept edits and Antigravity’s own files are
+// unchanged. #1710 (the person, 23 Nov): with shell, the read and edit tools follow the shell’s rule too, since a card
+// for what a command can do with no card protected nothing; .git edits ask only without shell.
 
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { decideAgyTool, runAgyHook } from '../server/adapters/agy-hook.mjs';
@@ -65,11 +66,11 @@ test('#416 in Auto, an MCP tool outside Postbox runs unless it publishes; a publ
   assert.equal(call(...mcp('slack', 'send_message'), { mode: 'ask', canPublish: true }).decision, 'ask', 'Ask me, may publish');
 });
 
-test('#416 what A keeps: Antigravity’s own files, .git edits, Ask me and Accept edits', () => {
+test('#416 what A keeps: Antigravity’s own files, .git edits without shell, Ask me and Accept edits', () => {
   const { ws, home, call } = workspace();
   assert.equal(call(...cmd(`echo x >> ${join(home, '.gemini', 'antigravity-cli', 'settings.json')}`), SHELL).decision, 'ask', 'PROTECTED_CMD’s card');
   assert.equal(call('write_to_file', { TargetFile: join(home, '.gemini', 'antigravity-cli', 'settings.json') }, SHELL).decision, 'deny');
-  assert.equal(call('write_to_file', { TargetFile: join(ws, '.git', 'config') }, SHELL).decision, 'ask');
+  assert.equal(call('write_to_file', { TargetFile: join(ws, '.git', 'config') }).decision, 'ask', '.git without shell');
   for (const mode of ['ask', 'acceptEdits']) assert.equal(call(...cmd('npm test'), { mode, tools: ['shell', 'web.fetch'] }).decision, 'ask', mode);
 });
 
@@ -87,4 +88,41 @@ test('#416 the hook reads the persona’s tools and whether it can publish from 
   const send = { name: 'call_mcp_tool', args: { ServerName: 'slack', ToolName: 'send_message', Arguments: {} } };
   assert.match((await run(send, base)).reason, /publish/);
   assert.deepEqual(await run(send, { ...base, POSTBOX_AGY_PUBLISH: '1' }), { decision: 'allow' });
+});
+
+test('#1710 in Auto with shell, a read or an edit anywhere runs as the shell’s command would, and Antigravity’s own files still don’t', () => {
+  const { ws, home, call } = workspace();
+  const settings = join(home, '.gemini', 'antigravity-cli', 'settings.json');
+  for (const [name, args] of [
+    ['read_file', { Path: join(home, 'notes.txt') }],
+    ['view_file', { AbsolutePath: '/etc/hosts' }],
+    ['list_dir', { DirectoryPath: home }],
+    ['grep_search', { SearchPath: join(home, 'src'), Query: 'x' }],
+    ['write_to_file', { TargetFile: join(home, 'out.txt') }],
+    ['replace_file_content', { TargetFile: join(ws, '.git', 'config') }],
+  ])
+    assert.equal(call(name, args, SHELL).decision, 'allow', `${name} with shell`);
+  // What a command naming them gets: a card for a read, a refusal for an edit.
+  assert.equal(call('read_file', { Path: settings }, SHELL).decision, 'ask', 'a read of agy’s settings');
+  assert.equal(call('write_to_file', { TargetFile: settings }, SHELL).decision, 'deny');
+  assert.equal(call('write_to_file', { TargetFile: join(ws, '.agents', 'plugins', 'postbox', 'hooks.json') }, SHELL).decision, 'deny');
+  // A call naming two paths, one of them agy’s: the one decides. And one with no path field it knows.
+  assert.equal(call('grep_search', { SearchPath: home, Path: settings, Query: 'x' }, SHELL).decision, 'ask', 'two paths, one agy’s');
+  assert.equal(call('read_file', { File: settings }, SHELL).decision, 'ask', 'no path field');
+  // Through a link into agy’s folder, and a .agents folder outside the agent’s: a command naming either gets a card.
+  mkdirSync(join(home, '.gemini', 'antigravity-cli'), { recursive: true });
+  symlinkSync(join(home, '.gemini', 'antigravity-cli'), join(home, 'agy-link'));
+  assert.equal(call('read_file', { Path: join(home, 'agy-link', 'settings.json') }, SHELL).decision, 'ask', 'a link into agy’s folder');
+  const other = join(home, 'other', '.agents', 'rules', 'x.md');
+  assert.equal(call('read_file', { Path: other }, SHELL).decision, 'ask', 'a .agents read outside');
+  assert.equal(call('write_to_file', { TargetFile: other }, SHELL).decision, 'ask', 'a .agents edit outside');
+  // Only the read and edit tools: a tool Postbox doesn’t know still asks, though it names a path.
+  assert.equal(call('delete_everything', { Path: join(home, 'notes.txt') }, SHELL).decision, 'ask', 'an unknown tool');
+  // Without shell the folder rule protects something, so it holds; and only Auto changes.
+  assert.equal(call('read_file', { Path: join(home, 'notes.txt') }).decision, 'ask', 'a read outside, no shell');
+  assert.equal(call('write_to_file', { TargetFile: join(home, 'out.txt') }).decision, 'ask', 'an edit outside, no shell');
+  for (const mode of ['ask', 'acceptEdits']) {
+    assert.equal(call('read_file', { Path: join(home, 'notes.txt') }, { mode, ...SHELL }).decision, 'ask', mode);
+    assert.equal(call('write_to_file', { TargetFile: join(home, 'out.txt') }, { mode, ...SHELL }).decision, 'ask', mode);
+  }
 });

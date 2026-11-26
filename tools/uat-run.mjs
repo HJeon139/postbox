@@ -227,7 +227,7 @@ async function main() {
       facts.state = (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
       Object.assign(facts, readSpend(paths), { received: readReceived(paths.data, facts.received), store: readStore(paths.data) });
-      Object.assign(facts, { events: history.events(), live: history.live(), gaps: history.gaps() });
+      Object.assign(facts, { events: history.events(), live: history.live(), gaps: history.gaps(), until: Date.now() });
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
       Object.assign(facts.ui, await readUi(page));
@@ -470,6 +470,15 @@ async function main() {
           const r = await d.agentPanel(handle, set);
           facts.probes.panels.push({ handle, set, left: r.left, at: Date.now() });
           actionResult = `@${handle}’s persona sheet said:\n${r.said}\n\nWhen Save was pressed it held, and then: ${JSON.stringify(r.left)}`;
+        } else if (a.type === 'members') {
+          const change = { add: a.add ? String(a.add).replace(/^@/, '') : undefined, remove: a.remove ? String(a.remove).replace(/^@/, '') : undefined };
+          const r = await d.changeMembers(change);
+          facts.probes.members.push({ ...change, ...r, at: Date.now() });
+          actionResult = `The room’s Members list now reads: ${r.members.join(', ')}`;
+        } else if (a.type === 'profile') {
+          const r = await d.saveProfile(a.fills ?? []);
+          facts.probes.profiles.push({ fills: a.fills ?? [], ...r, at: Date.now() });
+          actionResult = `When Save profile was pressed the fields held: ${JSON.stringify(r.held)}\n\nThe Profile tab then said agents are told:\n${r.told}`;
         } else if (a.type === 'pane') {
           const r = await d.openPane(a.open === 'thread' ? 'thread' : 'work', key);
           facts.probes.panes.push({ open: a.open, ...r });

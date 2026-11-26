@@ -97,6 +97,7 @@ const WRITE_ROUTES = {
     '/api/apps/ap_none/animating',
   ],
   'POST ^\\/api\\/schedules\\/([^/]+)\\/cancel$': ['/api/schedules/sc_none/cancel'],
+  'PUT /api/me': ['/api/me'],
   'PUT /api/settings': ['/api/settings'],
   'POST /api/demo/offline': ['/api/demo/offline'],
   'POST /api/demo/speed': ['/api/demo/speed'],

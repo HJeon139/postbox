@@ -8,7 +8,28 @@ import { tempDir } from './temp-dirs.mjs';
 /** The Codex tests’ work root, a temp folder of the test file’s: the adapter makes folders in it (#823). */
 export const CODEX_ROOT = tempDir('postbox-codex-test-');
 
-export function fakeAppServer(seen, { hold = false, error = null, then = 'complete', mcpServers = [], threadError = (_req) => null } = {}) {
+/** turn/start’s answer, then the turn’s end unless it holds. @param {any} child @param {any} req @param {any} o */
+function answerStart(child, req, { hold, error, then }) {
+  child.stdout.write(`${JSON.stringify({ id: req.id, result: { turn: { id: 'turn_fake', status: 'inProgress' } } })}\n`);
+  if (hold) return;
+  // A turn that fails: Codex reports why in an error notification, then ends the turn as failed, or exits.
+  if (error)
+    setImmediate(() => {
+      child.stdout.write(`${JSON.stringify({ method: 'error', params: { error: { message: error } } })}\n`);
+      if (then === 'complete') child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'failed' } } })}\n`);
+      else child.emit('close', 1);
+    });
+  else
+    setImmediate(() => {
+      child.stdout.write(`${JSON.stringify({ method: 'item/agentMessage/delta', params: { delta: 'reply' } })}\n`);
+      child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'completed' } } })}\n`);
+    });
+}
+
+export function fakeAppServer(
+  seen,
+  { hold = false, error = null, then = 'complete', mcpServers = [], threadError = (_req) => null, cut = (_req) => false, beforeStarted = null } = {},
+) {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
@@ -36,6 +57,11 @@ export function fakeAppServer(seen, { hold = false, error = null, then = 'comple
           })}\n`,
         );
       if (['thread/start', 'thread/resume', 'thread/fork'].includes(req.method)) {
+        // A host leaves out a line past its limit and says so (server/remote/process-receive.mjs's 'cut', #1705).
+        if (cut(req)) {
+          child.emit('cut', { offset: 0, next: 8_458_618 });
+          continue;
+        }
         const failure = threadError(req);
         if (failure) {
           child.stdout.write(`${JSON.stringify({ id: req.id, error: failure })}\n`);
@@ -45,21 +71,9 @@ export function fakeAppServer(seen, { hold = false, error = null, then = 'comple
         child.stdout.write(`${JSON.stringify({ id: req.id, result: { thread: { id } } })}\n`);
       }
       if (req.method === 'turn/start') {
-        child.stdout.write(`${JSON.stringify({ id: req.id, result: { turn: { id: 'turn_fake', status: 'inProgress' } } })}\n`);
-        if (hold) continue;
-        // A turn that fails: Codex reports why in an error notification, then ends the turn as failed, or exits.
-        if (error)
-          setImmediate(() => {
-            child.stdout.write(`${JSON.stringify({ method: 'error', params: { error: { message: error } } })}\n`);
-            if (then === 'complete')
-              child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'failed' } } })}\n`);
-            else child.emit('close', 1);
-          });
-        else
-          setImmediate(() => {
-            child.stdout.write(`${JSON.stringify({ method: 'item/agentMessage/delta', params: { delta: 'reply' } })}\n`);
-            child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'completed' } } })}\n`);
-          });
+        // What Codex sends before turn/start's answer, such as turn/started: the test calls `answer` when it's done.
+        if (beforeStarted) beforeStarted(child, () => answerStart(child, req, { hold, error, then }));
+        else answerStart(child, req, { hold, error, then });
       }
     }
   });

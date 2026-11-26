@@ -123,6 +123,8 @@ export const POSTBOX_CHANNELS = {
     check: (m) => fields(m, 'check', []),
     /** { harness }: list the models the host’s own CLI for that harness offers, answered by `listed`. */
     models: (m) => fields(m, 'models', ['harness']) || oneOf(m.harness, 'models.harness', HARNESSES),
+    /** { persona }: remove a deleted persona’s memory folder, ~/.postbox-remote/memory/<persona>, answered by `forgotten` (#491). */
+    forget: (m) => fields(m, 'forget', ['persona']) || id(m.persona, 'forget.persona'),
   },
 
   /** daemon → Postbox, over the SSH channel’s stdout. */
@@ -236,6 +238,8 @@ export const POSTBOX_CHANNELS = {
       (m.code === null ? '' : int(m.code, 'checked.code', 0, 255)) ||
       int(m.at, 'checked.at', 0, Number.MAX_SAFE_INTEGER) ||
       (m.ok === (m.code === 0) ? '' : 'checked.ok is true exactly when checked.code is 0.'),
+    /** { persona }: that persona’s memory folder is gone from the host, or was never there. */
+    forgotten: (m) => fields(m, 'forgotten', ['persona']) || id(m.persona, 'forgotten.persona'),
     /** { harness, models }: what the host’s CLI for that harness listed; none when it isn’t there or couldn’t list. */
     listed: (m) =>
       fields(m, 'listed', ['harness', 'models']) ||

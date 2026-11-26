@@ -74,7 +74,9 @@ export function settleOrphanTurns(rt) {
     const exiting = rt.exiting.has(se.id);
     const step = exiting ? 'Stopping' : 'Interrupted: Postbox couldn’t save changes';
     // Its need as a restart settles it (restart-sweep.mjs): a card answered or gone isn't kept, and one that waits is.
-    const settled = exiting ? { state: 'stopping' } : settledNeed(rt, se);
+    // Reset, its turn has ended, so a progress step it left running reads as stalled (#1715). One still exiting is
+    // stamped when its exit ends it (turnExited).
+    const settled = exiting ? { state: 'stopping' } : { ...settledNeed(rt, se), finishedAt: Date.now() };
     rt.sessions.update(se.id, { ...settled, subagents: [], currentStep: step, stopAsk: null });
     for (const it of rt.store.items(se.threadId))
       if (it.sessionId === se.id && it.status === 'streaming')

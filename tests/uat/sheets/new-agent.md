@@ -2,7 +2,7 @@
 
 ![New agent sheet](../screenshots/new-agent-sheet.png)
 
-**Where:** + › From a boilerplate, the Agents heading’s + › New agent…, the conversation’s ⋯ › Add an agent… › New agent…, or Settings › Personas, New agent or a “Start from a boilerplate” chip.
+**Where:** + › From a boilerplate, a room’s Members list’s + › New agent… (from the Agents heading’s button or the conversation’s ⋯ › Manage room and members…, #1735), or Settings › Personas, New agent or a “Start from a boilerplate” chip.
 
 ## Why it exists
 

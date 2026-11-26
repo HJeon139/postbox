@@ -9,6 +9,7 @@ import { afterEach, test } from 'node:test';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { assertNoServerFailures, captureServerLog } from './server-log.mjs';
 import { tempDir } from './temp-dirs.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 // Its Postbox runs in this process: a test fails on an error or a warning it logs (tests/server-log.mjs).
 captureServerLog();
@@ -32,7 +33,7 @@ test('a model list a harness gives after Postbox closed and its folder went is n
     return new Promise((r) => (answer = r));
   };
   const listing = call({ method: 'POST', path: '/api/backends/mock/models', body: {}, cookie });
-  for (let i = 0; i < 200 && !asked; i++) await new Promise((r) => setImmediate(r));
+  await untilTurns(() => asked > 0, 'the harness asked');
   assert.equal(asked, 1, 'the harness was asked');
   await app.close();
   rmSync(dir, { recursive: true, force: true });

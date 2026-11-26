@@ -44,6 +44,7 @@ Built on the integration branch, once the Work-pane PR landed. Each check has a 
 
 **Driver and tester actions** (`tools/uat/driver.mjs`, `tools/uat/tester.mjs`):
 - `agent_panel {target, backend?, model?, effort?, mode?, shell?}`: clicks the agent’s row in the Agents section, which opens its persona sheet, sets those and saves.
+- `profile {fills}`: opens Settings on your profile, writes each fill into the field with that label, saves, and closes it (#558).
 - `pane {open: 'work' | 'thread', item?}` and `fullscreen {pane}`, which closes it again with Escape. `thread_reply {text}` answers in the thread open in the pane.
 - `restore {file}`: in the full Work view, Restore or Remove, then confirm.
 - `fullscreen_draft {text}`: opens the thread full screen, types without sending, and leaves full screen, for the draft check.

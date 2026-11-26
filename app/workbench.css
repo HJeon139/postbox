@@ -340,6 +340,9 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .turn { display: flex; flex-direction: column; gap: 4px; position: relative; }
 .who { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); min-height: 20px; }
 .who b { color: var(--text); font-weight: 600; font-size: 13px; }
+/* The initials are drawn, not text: the button’s name stays “Settings”, which its words would have to match. */
+.me-icon::before { content: attr(data-initials); }
+.me-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-strong); color: var(--text); font-size: 10px; font-weight: 600; }
 /* What the agent is doing, beside its name while it works. */
 .who .who-state { font-size: 12px; color: var(--dim); }
 .who .who-state:empty { display: none; }
@@ -863,7 +866,8 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 /* ───────── Menus, popovers, toasts, dialogs, side panel ───────── */
 
 /* Never taller than the window: a long menu scrolls inside (#36), and its items keep their height. */
-.menu { position: absolute; z-index: 40; min-width: 240px; max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
+/* Above a dialog’s backdrop (50): a list’s + inside the main menu opens one over the sheet (#1735). */
+.menu { position: absolute; z-index: 55; min-width: 240px; max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
 .menu > * { flex-shrink: 0; }
 .menu .mi { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; color: var(--text); text-decoration: none; cursor: pointer; border: 1px solid transparent; }
 .menu .mi:hover, .menu .mi.active { border-color: var(--accent); background: var(--sunk); }
@@ -904,6 +908,9 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 /* A host’s name can have nothing to break at (a long single word): in the Hosts tab, its heading and every notice that
    names it break inside it rather than run out of the dialog (#1497). */
 .dialog .hosts { overflow-wrap: break-word; }
+.settings-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
+.dialog > .tabs { flex: none; }
+.dialog > .tabs + .d-body { padding-top: 14px; }
 .dialog .d-foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; background: var(--sunk); border-radius: 0 0 8px 8px; }
 .what-goes { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .what-goes li { display: flex; gap: 8px; align-items: flex-start; }
@@ -1176,12 +1183,19 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .tabs button:focus-visible { outline: 2px solid var(--accent); }
 .list-rows { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
 .list-rows li { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
-/* A persona’s row (#1497): its description takes the room, and its host gives way at the end, its whole name in its
-   title. On a phone, which has no hover, the host and the description each take a line of their own, under the name,
-   and the host wraps whole rather than giving way, so the row is never wider than the dialog. */
-.persona-row { flex-wrap: wrap; row-gap: 2px; }
-.persona-row > .grow { min-width: 0; flex: 1 1 12em; }
-.persona-row > .on-host { flex: 0 1 auto; min-width: 6em; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A row of a list in the main menu (#1497, #1735, app/js/manage-list.mjs): its name and its marks on one line, then
+   each fact (a persona’s host, its description) on a line of its own and whole, at every width. A description runs to
+   200 characters and a host’s name to 60, so neither shares a line with anything that would squeeze or cut it. */
+.manage-row { flex-wrap: wrap; row-gap: 2px; }
+.manage-row > .fact { order: 9; flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; }
+.manage-row > b { min-width: 0; overflow-wrap: anywhere; }
+/* A list you pick a row in (#1735, app/js/manage-list.mjs), with one bar of controls under it, as a macOS list has:
+   + and − first, then what else acts on the pick. The pick shows by its edge and its ground, never by color alone. */
+.pick-list li { cursor: default; padding-left: 10px; border-left: 3px solid transparent; }
+.pick-list li[aria-selected="true"] { background: var(--sunk); border-left-color: var(--accent); }
+.pick-list li:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.list-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
+.btn.sign { min-width: 30px; justify-content: center; font-size: 16px; line-height: 1; }
 /* A project’s row (#1497): its name, with its folder on a line of its own under it, so a long name (up to 80
    characters) never squeezes the folder; then where it pushes, beside them where there’s room for both (16em and
    22em), else on a line of its own. */
@@ -1190,10 +1204,6 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .project-row > .row-flex > b { min-width: 0; overflow-wrap: anywhere; }
 .project-row > .row-flex > .grow { flex-basis: 100%; }
 .project-row > .field { flex: 1 1 22em; }
-@media (max-width: 600px) {
-  .persona-row > .grow { order: 9; flex-basis: 100%; }
-  .persona-row > .on-host { order: 8; flex-basis: 100%; max-width: none; white-space: normal; overflow-wrap: anywhere; }
-}
 .empty-note { color: var(--dim); font-size: 13px; padding: 12px 0; }
 .outbox { display: flex; flex-direction: column; gap: 4px; }
 .menu button.mi { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; width: 100%; color: var(--text); }

@@ -201,6 +201,7 @@ const ADDED_SINCE = [
   'app.publish',
   'app.note',
   'app.notes.dropped',
+  'host.forget',
   'app.notes.read',
   'clock.started',
   'clock.paused',
@@ -209,6 +210,8 @@ const ADDED_SINCE = [
   'clock.restored',
   'clock.stopped',
   'clock.expired',
+  // A person and their profile (#558): put by id, as a persona is.
+  'person',
 ];
 
 test('the cases cover every type the switch knew, so a type of its time needs one', () => {

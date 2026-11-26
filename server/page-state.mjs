@@ -11,9 +11,9 @@ import { KNOWN_TOOLS } from './seed.mjs';
 
 /**
  * The answer to GET /api/state.
- * @param {{ store: any, rt: any, adapters: any, origin: string, demo: any, real: any, config: any, headers: any }} ctx
+ * @param {{ store: any, rt: any, adapters: any, origin: string, demo: any, real: any, config: any, headers: any, me?: any }} ctx
  */
-export function pageState({ store, rt, adapters, origin, demo, real, config, headers }) {
+export function pageState({ store, rt, adapters, origin, demo, real, config, headers, me = null }) {
   return {
     seq: store.state.seq,
     epoch: store.epoch, // the history the seq counts within; the stream request echoes it (server/live-streams.mjs)
@@ -27,6 +27,9 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, hea
     live: publicLive(liveSnapshots(rt)),
     config: {
       origin,
+      // Who is looking (#558), as the request gate resolved them: their record, or who their provider says they are
+      // while they’ve saved nothing. Their own, so all of it.
+      me,
       // Postbox’s tools, then those only real backends have (#5).
       knownTools: [...KNOWN_TOOLS, ...REAL_BACKEND_TOOLS],
       // The backends that run on this computer.

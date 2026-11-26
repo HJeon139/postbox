@@ -1,12 +1,15 @@
 // A blocking event from an agent: said aloud when its conversation is in view, else a toast that goes there.
 
 import { client, hrefOf } from './client.mjs';
+import { meId } from './needs-mine.mjs';
 import { ringFor } from './ring.mjs';
 import { navigate, route, say, toast } from './ui.mjs';
 
 /** @param {any} d */
 export function notify(d) {
   if (d.level !== 'blocking') return; // informational events are still badges, not toasts
+  // What an agent needs of another person rings that person, not this page (#1742).
+  if (d.for?.length && !d.for.includes(meId())) return;
   // In view: its conversation, or the side thread it’s in, open in the panel (#121).
   const r = route();
   if ((r.threadId === d.threadId || r.sideId === d.threadId) && document.visibilityState === 'visible') {

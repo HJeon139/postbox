@@ -7,7 +7,7 @@ import { heard } from './go-when-there.mjs';
 import { navigate, openDialog, route, say, toast } from './ui.mjs';
 
 const S = () => client.state;
-const LAST = 'This is the only project, and Postbox opens on one. Add another project, then delete this one.';
+export const LAST = 'This is the only project, and Postbox opens on one. Add another project, then delete this one.';
 
 /**
  * The project row’s Delete project… button. With one project it’s off: dimmed (workbench.css, .btn[aria-disabled]),

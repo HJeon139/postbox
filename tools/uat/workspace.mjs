@@ -7,6 +7,7 @@ import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs
 import { mkdir, mkdtemp, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
+import { FIXTURE_GIT } from '../fixture-person.mjs';
 import { seedFakeEnv } from './allowonce-triggers.mjs';
 import { seedFiles } from './fixtures.mjs';
 import { seedGitRemote } from './git-remote.mjs';
@@ -21,6 +22,10 @@ export function makeWorkspace(scenario, paths, dir) {
   // above it for one. It once lay inside the Postbox checkout, where they landed in Postbox’s history; it’s in a temp
   // folder of its own now (runPaths, #885).
   spawnSync('git', ['init', '-q', paths.workspace], { stdio: 'ignore' });
+  // Its git user is a fixture person’s, set in the repository itself, before any seed commits. An agent’s harness reads
+  // the git user as who it works for, so without it a run’s agents, transcripts and event log carry the name and email
+  // of whoever ran it (#558: the profile scenario’s agents named the runner before any profile was saved).
+  for (const [key, value] of Object.entries(FIXTURE_GIT)) spawnSync('git', ['-C', paths.workspace, 'config', `user.${key}`, value], { stdio: 'ignore' });
   if (scenario.seed === 'fake-env') seedFakeEnv(paths.workspace);
   if (scenario.seed === 'git-remote') seedGitRemote(paths.workspace, dir);
   if (scenario.files) seedFiles(paths.workspace, scenario.files);

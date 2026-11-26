@@ -65,8 +65,9 @@ test('#26 new agent: Space on a Tools checkbox keeps focus on it', async ({ page
   // From the conversation’s ⋯: the overview’s New agent went with it (#320).
   await open(page, `#/t/${threadNamed('Index planning').id}`);
   await actions(page).click();
-  await page.getByRole('menuitem', { name: /^Add an agent/ }).click();
-  // Its picker lists the agents not here, then New agent (#1620).
+  // The room’s members are in its form in the main menu (#1735): + there lists the agents not here, then New agent.
+  await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
+  await page.getByRole('button', { name: 'Add an agent to Index planning' }).click();
   await page.getByRole('menuitem', { name: /^New agent/ }).click();
   await expect(dialog(page)).toBeVisible();
   const box = page.locator('.d-body [role=checkbox]').nth(1);
@@ -109,17 +110,15 @@ test('#26 settings: Enter on the Projects tab keeps focus on it, and Escape retu
   await focusIs(page, 'button: Settings');
 });
 
-test('#26 ⋯ › Add an agent… › New agent… by keyboard, then Escape, returns focus to ⋯', async ({ page }) => {
+test('#26 ⋯ › Manage room and members… › + › New agent… by keyboard, then Escape, returns focus to ⋯', async ({ page }) => {
   await open(page, `#/t/${threadNamed('Index planning').id}`);
   await actions(page).focus();
   await page.keyboard.press('Enter');
-  await focusIs(page, 'menuitem: Rename…');
-  await page.keyboard.press('ArrowDown');
-  await focusIs(page, /^menuitem: Wake chain limit…/); // beside Rename…: the other setting of the room itself (#1035)
-  await page.keyboard.press('ArrowDown');
-  await focusIs(page, /^menuitem: Add an agent…/);
+  await focusIs(page, /^menuitem: Manage room and members…/);
   await page.keyboard.press('Enter');
-  // Its picker (#1620): the agents not here, then New agent, last, one ArrowUp away as the menu wraps.
+  // The Members list’s + (#1735) opens its picker (#1620): the agents not here, then New agent, last, one ArrowUp away.
+  await page.getByRole('button', { name: 'Add an agent to Index planning' }).focus();
+  await page.keyboard.press('Enter');
   await page.keyboard.press('ArrowUp');
   await focusIs(page, /^menuitem: New agent…/);
   await page.keyboard.press('Enter');
@@ -185,14 +184,16 @@ test('#29 a second click closes a menu even after its button repainted under it'
   }
 });
 
-test('#26 ⋯ › Rename… by keyboard returns focus to ⋯ after the top bar repaints with the new name', async ({ page }) => {
+test('#26 ⋯ › the room’s title by keyboard returns focus to ⋯ after the top bar repaints with the new name', async ({ page }) => {
   const t = threadNamed('Index the shelf');
   await open(page, `#/t/${t.id}`);
   await actions(page).focus();
   await page.keyboard.press('Enter');
-  await focusIs(page, 'menuitem: Rename…');
+  // The title is in the room’s form in the main menu (#1735), which opens with focus on it.
+  await focusIs(page, /^menuitem: Manage room and members…/);
   await page.keyboard.press('Enter');
   await expect(dialog(page)).toBeVisible();
+  await expect(dialog(page).getByLabel('Title')).toBeFocused();
   try {
     await page.keyboard.insertText(' (2)');
     await page.keyboard.press('Enter');

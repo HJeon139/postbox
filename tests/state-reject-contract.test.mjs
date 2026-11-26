@@ -43,6 +43,7 @@ export const VALID = {
   settings: { theme: 'dark' },
   project: { id: 'p', name: 'P' },
   persona: { id: 'pe', handle: 'pe' },
+  person: { id: 'pn', identity: { provider: 'unix', issuer: 'unix:fixture', subject: 'robin' }, username: 'robin', name: 'Robin Example', profile: {} },
   boilerplate: { id: 'b', text: 'B' },
   thread: { id: 't2', members: [] },
   session: { id: 'se2', threadId: 't', handle: 'two' },
@@ -68,6 +69,7 @@ export const VALID = {
   notify: { text: 'hi' },
   host: { id: 'h2', name: 'host two' },
   'host.status': { id: 'h', status: { state: 'connected' } },
+  'host.forget': { id: 'h', add: ['pe_1'], drop: ['pe_2'] },
   quota: { id: 'claude-code', backend: 'claude-code', host: null, status: 'ok', windows: [], seenAt: 1 },
   'turn.archive': {
     convId: 't',

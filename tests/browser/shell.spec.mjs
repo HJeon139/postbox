@@ -91,7 +91,7 @@ test('nothing archives a conversation by itself: Settings has no idle archiving 
   await open(page, `#/t/${threads[0].id}`);
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.locator('.dialog').getByRole('tab', { name: 'Projects' }).click();
-  await expect(page.locator('.dialog').getByText('The folder bounds the file picker')).toBeVisible();
+  await expect(page.locator('.dialog').getByRole('listbox', { name: 'Projects' })).toBeVisible();
   await expect(page.locator('.dialog').getByText(/Archive idle/)).toHaveCount(0);
 });
 

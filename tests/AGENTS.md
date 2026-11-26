@@ -34,4 +34,5 @@ Browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/
 ## UAT docs
 
 - Each UI change gets a doc under `tests/uat/`: why the component exists, what it should do, steps to reproduce, and what passes. Update the docs your change affects. Don’t refresh their screenshots (`tests/uat/screenshots/`, the one set that’s committed); the reviewing session does that (designs/developing.md, “Rules for every session”). The demo’s screenshots aren’t committed: see designs/developing.md, “Screenshots”.
+- A scenario’s `- persona:` line describes the person the tester plays, and its `- agents:` are the agents under test, from `tests/uat/e2e/personas.json`. No agent plays the person (`tests/uat/e2e/README.md`, “The person is whoever drives the page”).
 - The end-to-end scenarios live in `tests/uat/e2e/scenarios/`. A targeted scenario names the triggers each phase must cause (`tests/uat/e2e/README.md`).

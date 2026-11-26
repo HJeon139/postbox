@@ -45,7 +45,7 @@ On 13 November 2026:
 |---|---|---|
 | Agents work without the person | The person’s message started 103 of 1,240 turns; another agent started 745 | Principle 8 |
 | The person decides through blocks | 251 turns began with the person’s answer to a block | Principle 1 |
-| A reply doesn’t wake its waker, except when it @-mentions no one | 21 turns were a short acknowledgment with no work; since #1518 a reply that names no one goes back, every time since #1523, and an agent ends the exchange with a reaction instead of an acknowledgment | [#372](https://github.com/HJeon139/postbox/issues/372), [#1518](https://github.com/HJeon139/postbox/issues/1518), [#1523](https://github.com/HJeon139/postbox/issues/1523) |
+| A reply doesn’t wake its waker, except when it @-mentions no one | 21 turns were a short acknowledgment with no work; since #1518 a reply that names no one goes back, every time since #1523, and an agent ends the exchange with a reaction instead of an acknowledgment, or with its second reply in a row to the same agent that only writes (#1591) | [#372](https://github.com/HJeon139/postbox/issues/372), [#1518](https://github.com/HJeon139/postbox/issues/1518), [#1523](https://github.com/HJeon139/postbox/issues/1523) |
 | Waiting messages arrive together | 92 turns took several queued messages at once | [#374](https://github.com/HJeon139/postbox/issues/374) |
 | The prompt cache holds across turns | 67 of 8,301 requests over 100,000 tokens read under half from cache | [#515](https://github.com/HJeon139/postbox/issues/515) |
 | The catch-up doesn’t repeat itself | 6% of its lines had been given to that session before | [#484](https://github.com/HJeon139/postbox/issues/484), open again for a regression |

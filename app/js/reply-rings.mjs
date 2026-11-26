@@ -6,12 +6,12 @@
 
 import { client, itemIn } from './client.mjs';
 import { h } from './dom.mjs';
-import { restRing, ringFor, stateWord } from './ring.mjs';
+import { restRing, ringFor, stateWordOf } from './ring.mjs';
 import { latestReply } from './speaker-line.mjs';
 
 /** Puts the session’s state in words on a line that follows it, and empties the words on one that doesn’t. */
 function paintWord(el, se, follows) {
-  const text = follows && se.state !== 'idle' ? `· ${stateWord(se.state).toLowerCase()}` : '';
+  const text = follows && se.state !== 'idle' ? `· ${stateWordOf(se).toLowerCase()}` : '';
   if (el.textContent !== text) el.textContent = text;
   return el;
 }
@@ -32,8 +32,8 @@ export function replyLine(it, se, threadId) {
 }
 
 // The lines that follow each session, as drawn: at most one in each transcript showing it. A session event paints these
-// and nothing else, with no query over the page or a transcript (#564-b1). The latest reply changes only when an item
-// does. Then a line that no longer is the latest rests and leaves the list, and the transcript’s new latest line joins:
+// and nothing else, with no query over the page or a transcript (#564-b1). The latest reply changes when an item does,
+// and when the session starts or stops working or starts a new turn, which can hide a finished part (#1654). Then a line that no longer is the latest rests and leaves the list, and the transcript’s new latest line joins:
 // drawn later, as replyLine draws it, or already there, when the latest went back to an earlier reply (one replaced).
 // Its ring and words are held weakly (held-weakly.mjs): a line whose transcript has left the page, and isn’t kept to
 // show again, is let go of, not kept with its whole old page (#866).

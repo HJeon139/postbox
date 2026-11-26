@@ -12,7 +12,7 @@ import { CODEX_MEMORY_OFF } from './codex-memory.mjs';
 import { codexModels, findCodex } from './codex-models.mjs';
 import { CODEX_TOOL_RULES, codexWebSearchArgs, networkOn } from './codex-network.mjs';
 import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
-import { codexRefusal, openCodexThread } from './codex-thread.mjs';
+import { codexRefusal, failOnCutAnswer, openCodexThread } from './codex-thread.mjs';
 import { codexContextPercent } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
@@ -338,6 +338,7 @@ export class CodexAdapter {
       if (host?.rebuilding) host.replay(line, onLine, fail);
       else void onLine(line).catch(fail);
     });
+    failOnCutAnswer(child, pending, fail, () => !activeTurnId);
     child.on('error', (e) => {
       if (child.remote) endError ??= e;
       const err = new Error(

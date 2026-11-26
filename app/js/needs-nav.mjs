@@ -3,8 +3,9 @@
 // a rail row opens its conversation and an agent’s name its persona sheet, whether it needs you or not. Each opens the ask’s thread (the side panel for a side or topic
 // thread), waits for it to be drawn, then scrolls it into view, focuses it, and outlines it for a moment.
 
-import { conversationOf, needsOrder, needsYouNow, whereNeeds } from '/shared/needs.mjs';
+import { conversationOf, needsOrder, whereNeeds } from '/shared/needs.mjs';
 import { client, hrefOf, liveSessions } from './client.mjs';
+import { meId, needsMe } from './needs-mine.mjs';
 import { reach } from './open-threads.mjs';
 import { navigate, route, toast } from './ui.mjs';
 import { jumpTo } from './view-jump.mjs';
@@ -68,7 +69,7 @@ export function goToItem(itemId, threadId) {
 let last = null;
 /** Goes to what an agent needs: its ask’s thread, then the ask itself. */
 export function goToNeeds(se) {
-  if (!needsYouNow(se)) return;
+  if (!needsMe(se)) return;
   const where = whereNeeds(S(), se);
   last = { sessionId: se.id, where };
   if (here().at !== where) navigate(hrefOf(where));
@@ -81,13 +82,13 @@ export function goToNeeds(se) {
  */
 export function nextNeedsYou() {
   const at = here();
-  const all = needsOrder(S(), liveSessions());
+  const all = needsOrder(S(), liveSessions(), null, meId());
   if (!all.length) {
     toast({ title: 'Nothing needs you right now' });
     return;
   }
   const i = last && last.where === at.at ? all.findIndex((se) => se.id === last.sessionId) : -1;
-  goToNeeds(i >= 0 ? all[(i + 1) % all.length] : needsOrder(S(), all, at.conv)[0]);
+  goToNeeds(i >= 0 ? all[(i + 1) % all.length] : needsOrder(S(), all, at.conv, meId())[0]);
 }
 
 // One listener for every ring, ahead of what it’s in: a ring in a rail row’s link goes to the ask instead of the
@@ -98,7 +99,7 @@ document.addEventListener(
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     const ring = /** @type {Element} */ (e.target).closest?.('pb-ring[data-session]:not([state="rest"])');
     const se = ring ? S().sessions[/** @type {HTMLElement} */ (ring).dataset.session ?? ''] : null;
-    if (!needsYouNow(se)) return;
+    if (!needsMe(se)) return;
     e.preventDefault();
     e.stopPropagation();
     goToNeeds(se);

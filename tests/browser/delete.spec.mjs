@@ -30,7 +30,12 @@ test('deleting a conversation: the confirm says what goes and that it can’t be
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await page.getByRole('button', { name: `Actions for ${t.title}` }).click();
-  await page.getByRole('menuitem', { name: /Delete conversation/ }).click();
+  // Delete is in the room’s form in the main menu (#1735).
+  await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
+  await page
+    .getByRole('dialog', { name: 'Settings' })
+    .getByRole('button', { name: /^Delete .+…$/ })
+    .click();
   const ask = page.getByRole('alertdialog', { name: `Delete the conversation “${t.title}”?` });
   await expect.soft(ask).toContainText('This erases');
   await expect.soft(ask).toContainText('This can’t be undone.');
@@ -82,6 +87,32 @@ test('deleting a persona from its sheet takes it and its sessions at once, and t
   await expect.soft(page.locator('#toasts').getByRole('button', { name: /Undo/ }), 'no Undo').toHaveCount(0);
 });
 
+// #491: an agent on a host loses its memory there too: the confirm says it goes, and every host owes its removal,
+// which each is sent when Postbox next connects to it (server/remote/host-forget.mjs).
+test('deleting an agent that runs on a host says its memory there goes, and its host’s card shows it until removed', async ({ page }) => {
+  const { p } = withAgent('onhost');
+  const host = app.rt.addHost({ name: 'build-box.example' });
+  app.store.emit('persona', { ...app.rt.persona(p.id), remote: { hostId: host.id } });
+  await page.goto(`${app.origin}/`);
+  await synced(page, app);
+  await page.evaluate((pid) => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', pid)), p.id);
+  await page.getByRole('button', { name: 'Delete…' }).click();
+  const ask = page.getByRole('alertdialog', { name: 'Delete onhost?' });
+  const goes = ask.locator('.field', { hasText: 'This erases' });
+  await expect.soft(goes).toContainText('Its memory on hosts, each the next time Postbox connects there, once the host runs this version');
+  await expect.soft(ask.locator('.field', { hasText: 'This stays' })).not.toContainText('host');
+  await ask.getByRole('button', { name: 'Delete onhost' }).click();
+  await expect.poll(() => app.store.state.hostForgets?.[host.id]).toEqual([p.id]);
+  // The host’s card says its memory is still there until the host removes it.
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('hosts')));
+  const card = page.locator(`[data-status="${host.id}"]`);
+  await expect.soft(card).toContainText('Postbox still has to ask this host to remove any memory a deleted agent left here.');
+  app.store.emit('host.forget', { id: host.id, drop: [p.id] });
+  await expect.soft(card).not.toContainText('deleted agent');
+  app.store.emit('host', { id: host.id, removed: true });
+});
+
 // #1530: a dialog whose body scrolls takes focus there, so a keyboard can scroll it (axe’s scrollable-region-focusable),
 // and one that fits isn’t a stop to Tab through. Whether a given dialog scrolls depends on the window and the fonts
 // (macOS’s made the delete confirm’s scroll at 375 px, CI’s didn’t), so the body is made to scroll by capping its
@@ -92,7 +123,12 @@ test('a dialog body that scrolls can be focused to scroll by keyboard, and one t
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await page.getByRole('button', { name: `Actions for ${t.title}` }).click();
-  await page.getByRole('menuitem', { name: /Delete conversation/ }).click();
+  // Delete is in the room’s form in the main menu (#1735).
+  await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
+  await page
+    .getByRole('dialog', { name: 'Settings' })
+    .getByRole('button', { name: /^Delete .+…$/ })
+    .click();
   const body = page.getByRole('alertdialog').locator('.d-body');
   await expect(body).toBeVisible();
   const scrolls = () => body.evaluate((b) => b.scrollHeight > b.clientHeight);
@@ -123,7 +159,12 @@ test('a long project folder wraps in the delete confirm at 375 px, rather than w
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await page.getByRole('button', { name: `Actions for ${t.title}` }).click();
-  await page.getByRole('menuitem', { name: /Delete conversation/ }).click();
+  // Delete is in the room’s form in the main menu (#1735).
+  await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
+  await page
+    .getByRole('dialog', { name: 'Settings' })
+    .getByRole('button', { name: /^Delete .+…$/ })
+    .click();
   const body = page.getByRole('alertdialog').locator('.d-body');
   await expect(body).toContainText(folder.slice(0, 20));
   expect(await body.evaluate((b) => b.scrollWidth - b.clientWidth), 'nothing wider than the body').toBeLessThanOrEqual(0);

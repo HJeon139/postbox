@@ -31,9 +31,9 @@ export class Checks {
 
   // ── A finished turn ────────────────────────────────────────────────────────────────
 
-  /** The turn ended: its steps left running stall, then its problems go back in a lint turn, or a quiet lint turn leaves its line. @param {any} turn @param {any} se */
-  endTurn(turn, se) {
-    endChecks(this, turn, se);
+  /** The turn ended: its steps left running stall, then its problems go back in a lint turn, or a quiet lint turn leaves its line. @param {any} turn @param {any} se @param {any[]} [took]  the entries the turn took */
+  endTurn(turn, se, took = []) {
+    endChecks(this, turn, se, took);
   }
 
   /** A lint turn that wrote nothing shows as one line. @param {any} turn @param {any} se */

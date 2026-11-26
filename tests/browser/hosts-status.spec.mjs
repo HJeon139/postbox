@@ -119,9 +119,7 @@ async function forgetOnly(page) {
   fake.set(id, { state: 'not-installed' });
   await openHosts(page, app);
   await expect(card(page, NAME).locator('.status-tag')).toHaveText('Not installed');
-  await card(page, NAME)
-    .getByRole('button', { name: `Remove ${NAME}` })
-    .click();
+  await page.getByRole('button', { name: `Remove ${NAME}`, exact: true }).click();
   const confirm = page.getByRole('alertdialog', { name: `Remove ${NAME}?` });
   const says = 'with no token here, the confirm says Postbox only forgets the host';
   await expect
@@ -144,9 +142,7 @@ async function removeWaitsForInstall(page) {
     update: { version: '0.10.0', at: 1, outcome: 'started' },
   });
   await openHosts(page, app);
-  await card(page, NAME)
-    .getByRole('button', { name: `Remove ${NAME}` })
-    .click();
+  await page.getByRole('button', { name: `Remove ${NAME}`, exact: true }).click();
   const confirm = page.getByRole('alertdialog', { name: `Remove ${NAME}?` });
   await expect
     .soft(confirm, 'an install under way: Remove waits for it')
@@ -159,9 +155,7 @@ async function removeWaitsForInstall(page) {
   });
   // The page as it loads with that status: a click straight after the server’s change could still read the old one.
   await openHosts(page, app);
-  await card(page, NAME)
-    .getByRole('button', { name: `Remove ${NAME}` })
-    .click();
+  await page.getByRole('button', { name: `Remove ${NAME}`, exact: true }).click();
   await expect.soft(confirm, 'an install a crash cut off isn’t one to wait for').not.toContainText('Remove waits');
   await confirm.getByRole('button', { name: 'Cancel' }).click();
 }
@@ -199,9 +193,7 @@ for (const { width, use } of SIZES)
 
 /** @param {import('@playwright/test').Page} page @param {import('@playwright/test').Locator} confirm */
 async function removeAsks(page, confirm) {
-  await card(page, NAME)
-    .getByRole('button', { name: `Remove ${NAME}` })
-    .click();
+  await page.getByRole('button', { name: `Remove ${NAME}`, exact: true }).click();
   await expect(confirm, 'Remove asks first').toBeVisible();
   await expect
     .soft(confirm, 'saying it stops the daemon and its turns there and deletes ~/.postbox-remote, then forgets the host')
@@ -272,7 +264,7 @@ async function removed(page, id, confirm) {
   const order = fake.calls.filter((c) => c[1] === id && (c[0] === 'removeFromHost' || c[0] === 'forget')).map((c) => c[0]);
   expect.soft(order, 'removed there, and only then does the manager forget it').toEqual(['removeFromHost', 'removeFromHost', 'forget']);
   await expect(card(page, NAME), 'its card goes').toHaveCount(0);
-  const add = page.getByRole('region', { name: 'Add a host' }).getByRole('textbox', { name: 'SSH destination' });
-  await expect.soft(add, 'focus goes to Add a host, not the page’s body').toBeFocused();
+  const add = page.getByRole('button', { name: 'Add a host', exact: true });
+  await expect.soft(add, 'focus goes to the list’s +, not the page’s body').toBeFocused();
   await expect.soft(page.getByRole('dialog', { name: 'Settings' }).getByText('No hosts yet.'), 'and the tab says there are none').toBeVisible();
 }

@@ -6,6 +6,7 @@
 import { glimpseOf } from '../shared/text.mjs';
 import { stepDiff } from './step-diff.mjs';
 import { stepInput, stepOutput, stepTool } from './step-text.mjs';
+import { postboxTool } from './tool-gate.mjs';
 import { describeTool, QUIET } from './tool-labels.mjs';
 
 /** The calls that start a subagent. */
@@ -77,7 +78,9 @@ export class HarnessTools {
     this.st.tools.set(id, { name, label, own, input, patch, shown: stepInput(input, label), who, parent: by?.parent ?? null, started: this.now(), quiet });
     const diff = stepDiff(name, input, patch);
     this.st.tools.get(id).diff = diff.diff;
-    const step = { id, label, ...stepTool(name), state: 'running', ...byOf(by), ...inputOf(input, label), ...diff };
+    // One of Postbox’s own tools that shows as a step: whether it was work is the tool’s to say (tool-gate.mjs), not the step’s.
+    const ours = postboxTool(name) ? { postbox: true } : {};
+    const step = { id, label, ...stepTool(name), state: 'running', ...byOf(by), ...inputOf(input, label), ...diff, ...ours };
     if (!quiet) this.ctx.activity({ ...step, ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
     else if (!who) this.status({ state: 'tool', currentStep: label });
     if (SUBAGENT_TOOLS.has(name)) this.startSubagent(id, input, by);

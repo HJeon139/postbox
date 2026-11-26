@@ -16,6 +16,7 @@
 import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
+import { codeIn } from './confirm-code.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { pushConsequence, pushedMessage, pushOf, runPush } from './push-on-request.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
@@ -74,9 +75,6 @@ const squash = (s) =>
     .replace(/\s+/g, ' ')
     .trim();
 const wordsOf = (s) => norm(s).match(/[\p{L}\p{N}][\p{L}\p{N}'._/#-]*/gu) ?? [];
-
-/** The code in a confirm’s statement: each fenced block and each `inline` span, as written. */
-const codeIn = (statement) => [...String(statement ?? '').matchAll(/```[^\n]*\n([\s\S]*?)```|`([^`\n]+)`/g)].map((m) => m[1] ?? m[2]);
 
 /**
  * What the person asked for in this turn: the messages they typed that started it, and the confirm they confirmed, at

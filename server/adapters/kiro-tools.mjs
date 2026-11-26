@@ -16,13 +16,17 @@ export const KINDS = {
 /**
  * The tool a call stands for, in Claude Code’s naming where Postbox has words for it: an MCP tool is
  * mcp__<server>__<tool>, so Postbox’s own tools get the same labels and stay quiet. v3 names an MCP call in its
- * input (tool_id “postbox::show_block”) and _meta.kiro.serverName; v2 in _meta.kiro.toolName and mcpServerName.
+ * input (tool_id “postbox::show_block”) and _meta.kiro.serverName; v2 in _meta.kiro.toolName and mcpServerName. The
+ * CLI of 23 November 2026 names the server alone, and the tool only in the call’s title, “@postbox/react”: read as
+ * Kiro’s title, a reaction or a read showed as a step, and so as work its turn had to report (#1591).
  */
 export function toolOf(u) {
   const kiro = u?._meta?.kiro ?? {};
   const id = typeof u?.rawInput?.tool_id === 'string' ? /^([^:]+)::(.+)$/.exec(u.rawInput.tool_id) : null;
   const server = id?.[1] ?? kiro.serverName ?? kiro.mcpServerName ?? null;
-  const tool = id?.[2] ?? kiro.toolName ?? null;
+  // Only a title that names the call’s own server: another’s tool keeps Kiro’s words.
+  const titled = typeof u?.title === 'string' && server ? /^@([^/]+)\/(.+)$/.exec(u.title) : null;
+  const tool = id?.[2] ?? kiro.toolName ?? (titled && titled[1] === server ? titled[2] : null);
   if (server && tool) return { name: `mcp__${server}__${tool}`, input: id ? (u.rawInput.arguments ?? {}) : (u.rawInput ?? {}) };
   return asClaude(u?.kind, u?.rawInput ?? {});
 }

@@ -3,7 +3,7 @@
 import { factsText } from '/shared/agent-facts.mjs';
 import { factsOf, mockMarker } from './agent-facts.mjs';
 import { agentQueueMenuItem } from './agent-queue.mjs';
-import { stateWord } from './ring.mjs';
+import { stateWordOf } from './ring.mjs';
 
 export function agentMenuLines(sessions, openPersona, queueAnchor) {
   if (!sessions.length) return [];
@@ -15,7 +15,7 @@ export function agentMenuLines(sessions, openPersona, queueAnchor) {
         {
           label: [session.handle, mockMarker(session)],
           icon: 'agent',
-          desc: `${factsText(factsOf(session))} · ${stateWord(session.state).toLowerCase()}`,
+          desc: `${factsText(factsOf(session))} · ${stateWordOf(session).toLowerCase()}`,
           kbd: 'Edit',
           run: () => openPersona(session.personaId),
         },

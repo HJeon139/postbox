@@ -61,3 +61,63 @@ test('resuming an existing thread uses the persona version supplied by the runti
   assert.match(resumed.params.developerInstructions, /Use concise Markdown in every handoff\./);
   assert.doesNotMatch(resumed.params.developerInstructions, /Keep handoffs readable\./);
 });
+
+// A resume that returns the thread's whole history can outgrow a host's 8 MiB line, and then never answers (#1705).
+// Recorded with codex-cli 0.171.0.978: with excludeTurns the answer keeps its thread id and model, lists no turns, and
+// Codex sends no deprecationNotice for full-history hydration.
+test('resuming a thread asks Codex for no past turns, as a fork does', async () => {
+  const seen = [];
+  const adapter = new CodexAdapter({ spawnImpl: () => fakeAppServer(seen) });
+  await adapter.deliver({}, { kind: 'user', text: 'Continue.' }, context({ codexThreadId: 'thr_existing' }));
+  const resumed = seen.find((request) => request.method === 'thread/resume');
+  assert.equal(resumed.params.threadId, 'thr_existing');
+  assert.equal(resumed.params.excludeTurns, true, 'the resume answer must not carry the thread’s history');
+});
+
+// Before the fix the turn waited for that answer for good; the timeout makes that a failure, not a hung run.
+test('a resume answer the host had to leave out fails the turn, and stops the app-server holding the thread (#1705)', { timeout: 5000 }, async () => {
+  const seen = [];
+  let killed = false;
+  const adapter = new CodexAdapter({
+    spawnImpl: () => {
+      const child = fakeAppServer(seen, { cut: (r) => r.method === 'thread/resume' });
+      const kill = child.kill;
+      child.kill = (sig) => {
+        killed = true;
+        return kill(sig);
+      };
+      return child;
+    },
+  });
+  const turn = adapter.deliver({}, { kind: 'user', text: 'Continue.' }, context({ codexThreadId: 'thr_existing' }));
+  await assert.rejects(turn, /thread\/resume.*too long to send from the host/);
+  assert.equal(
+    seen.some((r) => r.method === 'turn/start'),
+    false,
+    'no turn starts on a thread it never opened',
+  );
+  assert.ok(killed, 'the app-server is stopped, so it no longer holds the thread');
+});
+
+// Once Codex says the turn started, a line the host left out is the turn's own output, which the host notes in the
+// conversation itself; it isn't an answer Postbox waits for, so the turn goes on (#1705, hydrant-critic's P3).
+test('a line the host leaves out after turn/started doesn’t fail the turn, even with turn/start’s answer still to come', { timeout: 5000 }, async () => {
+  const seen = [];
+  const adapter = new CodexAdapter({
+    spawnImpl: () =>
+      fakeAppServer(seen, {
+        beforeStarted: async (child, answer) => {
+          child.stdout.write(`${JSON.stringify({ method: 'turn/started', params: { turn: { id: 'turn_fake' } } })}\n`);
+          for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r)); // the adapter reads that line
+          // While turn/start's answer is still pending: a long command output the host had to leave out.
+          child.emit('cut', { offset: 0, next: 9_000_000 });
+          answer();
+        },
+      }),
+  });
+  await adapter.deliver({}, { kind: 'user', text: 'Continue.' }, context({ codexThreadId: 'thr_existing' }));
+  assert.ok(
+    seen.some((r) => r.method === 'turn/start'),
+    'the turn started, and ended as Codex completed it',
+  );
+});

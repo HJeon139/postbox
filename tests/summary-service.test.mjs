@@ -112,3 +112,21 @@ test('settleThread waits for nothing in a conversation’s own thread, and stopT
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(m.prompts.length, 0);
 });
+
+test('#1742 the summarizer reads who said a person’s message: “The person” with one person, the sender named with more', async () => {
+  const { store, summaries, timers } = rig();
+  const threads = new Threads({ store, bus: new Bus() });
+  const person = (/** @type {string} */ id, /** @type {string} */ username, profile = {}) =>
+    store.emit('person', { id, identity: { provider: 'unix', issuer: 'unix:fixture', subject: username }, username, name: username, profile });
+  person('pn_1', 'robin', { name: 'Robin' });
+  threads.addItem('th_t', { kind: 'user', text: 'Pages, please.', personId: 'pn_1' });
+  const one = model('Paging');
+  await summaries.summarizeThread('th_t', one.summarize);
+  assert.match(one.prompts[0], /@beta: Offsets win\.\n\nThe person: Pages, please\.\n<\/thread>$/);
+  person('pn_2', 'sam');
+  threads.addItem('th_t', { kind: 'user', text: 'Offsets are fine.', personId: 'pn_2' });
+  const two = model('Paging');
+  await summaries.summarizeThread('th_t', two.summarize);
+  assert.match(two.prompts[0], /The person Robin: Pages, please\.\n\nThe person sam: Offsets are fine\.\n<\/thread>$/);
+  assert.equal(timers.length, 0);
+});
