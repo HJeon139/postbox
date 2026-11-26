@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { tempDir } from '../temp-dirs.mjs';
 
@@ -19,7 +19,9 @@ function stepScript(name) {
   const lines = readFileSync(ACTION, 'utf8').split('\n');
   const at = lines.findIndex((l) => l.trim() === `- name: ${name}`);
   assert.ok(at >= 0, `the action has the step “${name}”`);
+  const next = lines.findIndex((l, i) => i > at && /^\s*- (name|uses):/.test(l));
   const run = lines.findIndex((l, i) => i > at && /^\s*run: \|$/.test(l));
+  assert.ok(run > at && (next < 0 || run < next), `“${name}” has a run: | block of its own`);
   const indent = lines[run].search(/\S/);
   const body = [];
   for (const l of lines.slice(run + 1)) {
@@ -39,9 +41,17 @@ function check(debs, index) {
   const bin = join(root, 'bin');
   mkdirSync(archives);
   mkdirSync(bin);
-  for (const [name, body] of Object.entries(debs)) writeFileSync(join(archives, name), body);
+  for (const [name, body] of Object.entries(debs)) {
+    mkdirSync(dirname(join(archives, name)), { recursive: true });
+    writeFileSync(join(archives, name), body);
+  }
   const show = Object.entries(index)
-    .map(([q, sums]) => `  ${JSON.stringify(q)}) printf '%s\\n' ${sums.map((s) => `'Package: x' 'SHA256: ${s}' ''`).join(' ')} ;;`)
+    // After the stanzas, a long description, as a large record has: written past the pipe’s buffer, it outlives a
+    // reader that stops at the first match.
+    .map(
+      ([q, sums]) =>
+        `  ${JSON.stringify(q)}) printf '%s\\n' ${sums.map((s) => `'Package: x' 'SHA256: ${s}' ''`).join(' ')}; sleep 0.2; head -c 200000 /dev/zero | tr '\\0' ' ' ;;`,
+    )
     .join('\n');
   const stubs = {
     sudo: '#!/bin/bash\nexec "$@"\n',
@@ -52,7 +62,11 @@ function check(debs, index) {
     writeFileSync(join(bin, name), body);
     chmodSync(join(bin, name), 0o755);
   }
-  execFileSync('bash', ['-c', stepScript(STEP)], { env: { ...process.env, ARCHIVES: archives, PATH: `${bin}:${process.env.PATH}` } });
+  // As the runner runs a composite action’s bash step: errexit and pipefail on.
+  execFileSync('bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', stepScript(STEP)], {
+    env: { ...process.env, ARCHIVES: archives, PATH: `${bin}:${process.env.PATH}` },
+    timeout: 30_000,
+  });
   return (/** @type {string} */ name) => existsSync(join(archives, name));
 }
 
@@ -69,6 +83,17 @@ test('#869 one that differs from the index, or that the index doesn’t list, is
   const kept = check({ 'libfoo_1.2-3ubuntu1_amd64.deb': 'fob', 'libgone_9_amd64.deb': 'gone' }, { 'libfoo=1.2-3ubuntu1': [sha('foo')] });
   assert.ok(!kept('libfoo_1.2-3ubuntu1_amd64.deb'), 'a package the index doesn’t vouch for is deleted');
   assert.ok(!kept('libgone_9_amd64.deb'), 'a version the index no longer lists is deleted');
+});
+
+test('#869 a package the index vouches for is kept when apt-cache goes on writing after the match', () => {
+  // Under pipefail, a grep -q that stops reading early leaves apt-cache to die of SIGPIPE, which would read as no match.
+  const kept = check({ 'libbig_1_amd64.deb': 'big' }, { 'libbig=1': [sha('big')] });
+  assert.ok(kept('libbig_1_amd64.deb'));
+});
+
+test('#869 a cache entry sha256sum can’t read is deleted and fetched again, not a failed job', () => {
+  const kept = check({ 'libdir_1_amd64.deb/inner': 'x' }, {});
+  assert.ok(!kept('libdir_1_amd64.deb'));
 });
 
 test('#869 an empty cache runs nothing, not even apt-get update', () => {

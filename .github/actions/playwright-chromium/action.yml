@@ -51,10 +51,14 @@ runs:
           rest=${base#*_}
           ver=${rest%_*}
           ver=${ver//"%3a"/:}
-          sum=$(sha256sum "$f" | cut -d' ' -f1)
-          if ! apt-cache show "$pkg=$ver" 2>/dev/null | grep -qx "SHA256: $sum"; then
+          # An entry sha256sum can’t read (a directory, a broken link) is no package: it goes too, so the job goes on.
+          sum=$(sha256sum "$f" 2>/dev/null | cut -d' ' -f1) || sum=
+          # The index is read whole before grep, so a grep that stops at its match can’t kill apt-cache with SIGPIPE,
+          # which pipefail would read as no match.
+          index=$(apt-cache show "$pkg=$ver" 2>/dev/null) || index=
+          if [ -z "$sum" ] || ! grep -qx "SHA256: $sum" <<<"$index"; then
             echo "Not in the index, fetched again: $base"
-            rm -f "$f"
+            rm -rf "$f"
           fi
         done
     - name: Install Playwright’s Chromium
@@ -71,5 +75,6 @@ runs:
       env:
         ARCHIVES: ${{ steps.apt.outputs.dir }}
       run: |
-        sudo apt-get autoclean -q
+        # Pruning is housekeeping: a failure keeps the old packages, never fails a job whose install passed.
+        sudo apt-get autoclean -q || echo "apt-get autoclean failed: the cache is saved unpruned."
         sudo chown -R "$(id -u):$(id -g)" "$ARCHIVES"
