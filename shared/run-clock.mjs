@@ -1,10 +1,10 @@
 // An agent’s run clock in the store’s reducer (their entries in EVENTS, shared/state.mjs): a budget the person sets for
 // one agent in one conversation, and how much of it the agent has used. Postbox’s server sets every time here, so an
 // agent on a host can’t move its clock; the agent reads it only in the line each of its turns carries (clockLine).
-// A clock is { sessionId, threadId, budgetMs, usedMs, since, state, startedAt, expiredAt, stopping }: usedMs is what it
-// used before `since`, when it last began counting, or null once it stops counting. Each event’s data carries `at`,
+// A clock is { sessionId, threadId, budgetMs, usedMs, since, state, startedAt, expiredAt, stopping }, and endedAt once
+// the person ends it: usedMs is what it used before `since`, when it last began counting, or null once it stops counting. Each event’s data carries `at`,
 // the server’s time it happened, since the store’s events have no time of their own.
-// `stopping` lists the turns that Postbox stopped, at a pause or the expiry, and that may still run: a turn on a host
+// `stopping` lists the turns that Postbox stopped, at a pause, the end or the expiry, and that may still run: a turn on a host
 // until the host confirms its stop (server/remote/turns-stops.mjs, askStop), as when the host can’t be reached, and a
 // turn on this computer until its CLI has exited, after up to its grace period (server/adapters/process-group.mjs). A paused clock counts on until each has stopped (clock.stopped), so a pause the agent works through is no
 // pause (#1526).

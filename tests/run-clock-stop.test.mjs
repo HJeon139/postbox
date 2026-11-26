@@ -1,5 +1,5 @@
 // #1749: a timed run ended early had only a pause, so it showed as paused, not ended, and a later resume started it
-// again. The person’s stop ends the clock for good: it records clock.ended, stops the agent’s turn as a pause does,
+// again. The person’s stop ends the clock for good: it records clock.ended, stops the agent’s turn as the person’s Stop does,
 // holds the agent as an expiry does, and refuses a later resume.
 
 import assert from 'node:assert/strict';
@@ -164,4 +164,15 @@ test('#1749 an end that comes after the expiry changes nothing: only a run still
   apply(s, 'clock.expired', { sessionId: 'se_1', elapsedMs: 60_000, budgetMs: 60_000, at: T0 + 60_000 });
   apply(s, 'clock.ended', { sessionId: 'se_1', elapsedMs: 70_000, budgetMs: 60_000, at: T0 + 70_000 });
   assert.deepEqual([s.clocks.se_1.state, s.clocks.se_1.usedMs], ['expired', 60_000]);
+});
+
+test('#1749 a host turn the end asked to stop is listed, and its confirmation doesn’t start the ended clock counting', () => {
+  const s = emptyState();
+  apply(s, 'clock.started', { sessionId: 'se_1', threadId: 'th_1', budgetMs: 60_000, at: T0 });
+  apply(s, 'clock.ended', { sessionId: 'se_1', elapsedMs: 12_000, budgetMs: 60_000, stopping: ['host-turn-1'], at: T0 + 12_000 });
+  assert.deepEqual(s.clocks.se_1.stopping, ['host-turn-1']);
+  apply(s, 'clock.stopped', { sessionId: 'se_1', turn: 'host-turn-1', at: T0 + 40_000 });
+  const c = s.clocks.se_1;
+  assert.deepEqual([c.stopping, c.state, c.usedMs, c.since], [[], 'ended', 12_000, null]);
+  assert.equal(clockElapsed(c, T0 + 90_000), 12_000, 'not counted while the host ran on');
 });

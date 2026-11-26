@@ -27,7 +27,7 @@ const clockOf = (rt, sessionId) => rt.store.pending.clock(sessionId);
 /**
  * The agent’s turns on a host that Postbox asked to stop and the host hasn’t confirmed, which may run on there: each
  * stop is kept on the session until the daemon confirms it (server/remote/turns-stops.mjs, askStop). Read after the
- * stop, so a clock’s pause or expiry records them (#1526). And a turn from before a restart that still runs on its host
+ * stop, so a clock’s pause, end or expiry records them (#1526). And a turn from before a restart that still runs on its host
  * as far as Postbox knows, not attached again yet: its attach is stopped (deliver), and its host’s confirmation ends
  * it here too. @param {any} rt @param {string} sessionId
  */
@@ -81,7 +81,7 @@ function refuseStart(rt, se, clock, budgetS) {
 
 /**
  * The person ends a timed run before its budget (#1749): the clock stops for good at what it had used, the agent’s turn
- * stops as a pause stops it, and no turn of it starts again, as after an expiry. A paused clock can be ended too.
+ * stops as the person’s Stop stops it, silently as a pause does, and no turn of it starts again, as after an expiry. A paused clock can be ended too.
  * @param {any} rt @param {any} se  the session, pending @param {any} clock  its clock, pending @param {() => number} now
  */
 function endClock(rt, se, clock, now) {
@@ -269,7 +269,7 @@ export function rearmClocks(rt, now = Date.now) {
 /**
  * A host turn attached again after a restart, for an agent its clock holds (server/turn-run.mjs): stopped as the clock
  * stops a turn, by its pause, its end or its expiry, now that its remote turn names its host turn. Its host’s confirmation ends
- * it in the clock’s `stopping` (unconfirmedStops listed it as the clock paused or expired). @param {any} rt @param {any} turn
+ * it in the clock’s `stopping` (unconfirmedStops listed it as the clock paused, ended or expired). @param {any} rt @param {any} turn
  */
 export function stopHeldTurn(rt, turn) {
   if (rt.turns.get(turn.sessionId) !== turn) return;

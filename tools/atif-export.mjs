@@ -65,8 +65,8 @@ const promptsIn = (dirs) => {
 
 /**
  * A data folder’s snapshot as events placed before the log’s: each session, each item as it ended, the work ledger’s
- * turns and calls, each inbox’s entries, and each clock as it stood: its start, its expiry if it expired, with
- * `voided` if its run was void (tools/atif-clock.mjs, clockVoid). @param {Record<string, any>} snap
+ * turns and calls, each inbox’s entries, and each clock as it stood: its start, its expiry if it expired or its end if the
+ * person ended it (#1749), with `voided` if its run was void (tools/atif-clock.mjs, clockVoid). @param {Record<string, any>} snap
  */
 function snapshotEvents(snap) {
   const out = [];
