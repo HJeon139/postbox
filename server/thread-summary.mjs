@@ -3,6 +3,7 @@
 // thread-catch-up.mjs.
 
 import { senderName } from '../shared/profile.mjs';
+import { claudeHere, claudeOnce } from './claude-once.mjs';
 import { clipText } from './helpers.mjs';
 import { SUMMARY_MODEL } from './summary-model.mjs';
 
@@ -28,34 +29,18 @@ const busyIn = (summaries, threadId) =>
   [...summaries.running.exiting.values()].some((x) => x.turn.threadId === threadId || x.held.some((h) => h.threadId === threadId));
 
 /**
- * The summarizer: the one a test sets (summaries.summarize), else Haiku through the Agent SDK when it’s registered here and one of
- * the conversation’s agents runs on Claude, so a conversation’s text goes to Claude only when it already does. Otherwise
- * there is none, and the line simply has no summary.
+ * The summarizer: the one a test sets (summaries.summarize), else Haiku through Claude Code’s CLI (server/claude-once.mjs)
+ * when Claude Code runs on this computer and one of the conversation’s agents runs on it, so a conversation’s text goes
+ * to Claude only when it already does. Otherwise there is none, and the line simply has no summary.
  * @param {import('./summary-service.mjs').Summaries} summaries @param {string} threadId
  * @returns {((prompt: string) => Promise<{ text: string, costUsd?: number|null } | null>) | null}
  */
 export function summarizerOf(summaries, threadId) {
   if (summaries.summarize !== undefined) return summaries.summarize;
-  const claude = summaries.sessions
-    .in(summaries.threads.lineage(threadId).at(-1))
-    .some((x) => ['claude-code', 'agent-sdk'].includes(summaries.personas.get(x.personaId)?.backend));
-  if (!claude || !summaries.adapters.names().includes('agent-sdk')) return null;
-  const sdk = summaries.adapters.get('agent-sdk').sdk;
-  return async (prompt) => {
-    /** @type {{ text: string, costUsd: number|null } | null} */
-    let out = null;
-    // A call that hangs is given up, so the next settle can try again.
-    const abortController = new AbortController();
-    const timer = setTimeout(() => abortController.abort(), SUMMARY_TIMEOUT_MS);
-    try {
-      const options = { model: SUMMARY_MODEL, maxTurns: 1, tools: [], settingSources: [], persistSession: false, abortController };
-      for await (const m of sdk.query({ prompt, options }))
-        if (m.type === 'result') out = m.subtype === 'success' ? { text: String(m.result ?? ''), costUsd: m.total_cost_usd ?? null } : null;
-    } finally {
-      clearTimeout(timer);
-    }
-    return out;
-  };
+  const claude = summaries.sessions.in(summaries.threads.lineage(threadId).at(-1)).some((x) => summaries.personas.get(x.personaId)?.backend === 'claude-code');
+  const bin = claude ? claudeHere(summaries.adapters) : null;
+  // A call that hangs is given up (claudeOnce), so the next settle can try again.
+  return bin ? (prompt) => claudeOnce(bin, prompt, { model: SUMMARY_MODEL, timeoutMs: SUMMARY_TIMEOUT_MS }) : null;
 }
 
 /** Clears every summary waiting to be written, as Postbox closes (server/runtime-close.mjs). @param {import('./summary-service.mjs').Summaries} summaries */

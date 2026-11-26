@@ -37,6 +37,7 @@ const PLACED = {
   'app-check-wait.mjs': 1, // a show_app or update_app reply that stops waiting for its app’s check: no store (#337)
   'ask-question.mjs': 1, // a question’s CARD_WAIT_MS, expireWait: gated (#521)
   'claude-mirror.mjs': 1, // the mirror’s poll of an attached session’s transcript: skips its tick while closed
+  'claude-once.mjs': 1, // ends a Haiku call through the claude CLI that took too long (a summary, the write check): no store
   'diagram-parse.mjs': 1, // ends a diagram parse that took too long, by ending its worker: no store (#731)
   'diagram-parse-worker.mjs': 2, // the timer functions the worker’s stand-in page hands Mermaid: another thread, no store (#731)
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
@@ -76,12 +77,11 @@ const PLACED = {
   'scheduled-wakes.mjs': 1, // armWake: cleared and re-armed at Retry; the start is held
   'shell-runs.mjs': 2, // a `!` command’s output flush (memory-only, I1); the shutdown’s Stop grace wait for commands: no store
   'shell.mjs': 1, // SIGKILL after a Stop’s grace: Stop is allowed while closed
-  'thread-summary.mjs': 5, // an abort; settleThread's quiet wait, through an injected setTimer as lint-delivery's, skips while closed
+  'thread-summary.mjs': 4, // settleThread's quiet wait, through an injected setTimer as lint-delivery's, skips while closed
   'turn-quota.mjs': 1, // a wake at a quota’s reset (#442): the turn it may start is held while the store is closed
   'turn-transient.mjs': 1, // a retry after a provider’s failure (#1713): a Retry the closed store refuses is caught, and the reply stays failed with Retry
   'turn-stop.mjs': 2, // the stop watchdog (turnExited defers); the shutdown’s Stop grace wait for turns
   'turn-work.mjs': 1, // a permission prompt’s wait for its call’s line (#353): memory only, no store
-  'write-intent.mjs': 1, // an abort: no store
   'archive-runtime.mjs': 2, // a yield between conversations, and the shutdown's ARCHIVE_STOP_MS bound on the passes (#305): no store
   'work-archive.mjs': 1, // a yield between archived turns, so held emits drain (#305): no store; the pass checks canWrite before each file
 };

@@ -16,6 +16,7 @@
 import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
+import { claudeHere, claudeOnce } from './claude-once.mjs';
 import { codeIn } from './confirm-code.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { pushConsequence, pushedMessage, pushOf, runPush } from './push-on-request.mjs';
@@ -113,28 +114,15 @@ const callText = (tool, input) =>
   tool === 'Bash' ? `Tool: Bash\nCommand:\n${String(input?.command ?? '')}` : `Tool: ${tool}\nInput:\n${JSON.stringify(input ?? {}, null, 2)}`;
 
 /**
- * The judge: one Haiku turn with no tools, no settings and no session, as the thread summarizer (thread-summary.mjs).
- * rt.judge replaces it in tests. Null when Postbox can’t run one (no Agent SDK). What it reads goes to Anthropic.
+ * The judge: one Haiku turn with no tools, no settings and no session, as the thread summarizer (thread-summary.mjs),
+ * through Claude Code’s CLI (server/claude-once.mjs). rt.judge replaces it in tests. Null when Postbox can’t run one
+ * (Claude Code isn’t on this computer). What it reads goes to Anthropic.
  * @param {any} rt @returns {((prompt: string) => Promise<{ text: string, costUsd?: number|null } | null>) | null}
  */
 export function judgeOf(rt) {
   if (rt.judge !== undefined) return rt.judge;
-  if (!rt.adapters.names().includes('agent-sdk')) return null;
-  const sdk = rt.adapters.get('agent-sdk').sdk;
-  return async (prompt) => {
-    /** @type {{ text: string, costUsd: number|null } | null} */
-    let out = null;
-    const abortController = new AbortController();
-    const timer = setTimeout(() => abortController.abort(), JUDGE_TIMEOUT_MS);
-    try {
-      const options = { model: SUMMARY_MODEL, maxTurns: 1, tools: [], settingSources: [], persistSession: false, abortController };
-      for await (const m of sdk.query({ prompt, options }))
-        if (m.type === 'result') out = m.subtype === 'success' ? { text: String(m.result ?? ''), costUsd: m.total_cost_usd ?? null } : null;
-    } finally {
-      clearTimeout(timer);
-    }
-    return out;
-  };
+  const bin = claudeHere(rt.adapters);
+  return bin ? (prompt) => claudeOnce(bin, prompt, { model: SUMMARY_MODEL, timeoutMs: JUDGE_TIMEOUT_MS }) : null;
 }
 
 /**

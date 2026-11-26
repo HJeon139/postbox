@@ -15,9 +15,9 @@ export class Summaries {
    *           sessions: { in: (threadId: string) => any[] }, personas: { get: (id: string) => any },
    *           running: { all: () => any[], exiting: Map<string, any>, closing: boolean },
    *           ledger: { convOf: (threadId: string) => string, entry: (conv: string, id: string) => any, patch: (conv: string, id: string, patch: any) => any },
-   *           adapters: { names: () => string[], get: (name: string) => any },
+   *           adapters: { names: () => string[], runsHere?: (name: string) => boolean, get: (name: string) => any },
    *           config: Record<string, any> & { setTimer?: Function, summaryDelayMs?: number } }} deps
-   *   ledger: the work ledger, which Work holds too. adapters: where the Agent SDK is found, for Haiku. config: the
+   *   ledger: the work ledger, which Work holds too. adapters: where Claude Code’s CLI is found, for Haiku. config: the
    *   server’s settings, where a test shortens the wait or gives its own timers.
    */
   constructor({ store, threads, sessions, personas, running, ledger, adapters, config }) {
