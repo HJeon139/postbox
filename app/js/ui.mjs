@@ -51,17 +51,19 @@ export function navigate(hash, { replace = false } = {}) {
 
 /**
  * A conversation’s address with its right pane: a thread (side), and its Work, scrolled to a turn, either view full
- * screen (full: 'work' or 'thread'; true means Work), or full-screen Work with one item open (at).
+ * screen (full: 'work' or 'thread'; true means Work), or full-screen Work with one item open (at), and a message to go
+ * to in the thread (item, m=, #168).
  * @param {string} threadId
- * @param {{ side?: string|null, work?: boolean, turn?: string|null, full?: boolean|string|null, at?: string|null }} [pane]
+ * @param {{ side?: string|null, work?: boolean, turn?: string|null, full?: boolean|string|null, at?: string|null, item?: string|null }} [pane]
  */
-export function paneHref(threadId, { side = null, work = false, turn = null, full = null, at = null } = {}) {
+export function paneHref(threadId, { side = null, work = false, turn = null, full = null, at = null, item = null } = {}) {
   const f = full === true ? 'work' : full || null;
   const q = [
     work || f === 'work' ? 'work' : '',
     turn ? `turn=${encodeURIComponent(turn)}` : '',
     f ? `full=${f}` : '',
     at ? `at=${encodeURIComponent(at)}` : '',
+    item ? `m=${encodeURIComponent(item)}` : '',
   ].filter(Boolean);
   return `#/t/${threadId}${side ? `/side/${side}` : ''}${q.length ? `?${q.join('&')}` : ''}`;
 }

@@ -72,12 +72,13 @@ function sendAction(it, ctx) {
  * new tab included, it lands on the message. @param {any} it @param {any} ctx
  */
 function copyAction(it, ctx) {
+  let reset = 0;
   const b = h(
     'button.btn.sm.ghost.reveal',
     {
       type: 'button',
-      'aria-label': 'Copy link to this message',
       onclick: async () => {
+        clearTimeout(reset);
         const link = itemLink(ctx.threadId, it.id);
         try {
           await navigator.clipboard.writeText(link);
@@ -86,7 +87,7 @@ function copyAction(it, ctx) {
         } catch {
           toast({ title: 'Couldn’t copy the link', text: link });
         }
-        setTimeout(() => {
+        reset = window.setTimeout(() => {
           b.textContent = 'Copy link';
         }, 2000);
       },

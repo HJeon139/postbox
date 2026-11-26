@@ -4,11 +4,11 @@
 // thread), waits for it to be drawn, then scrolls it into view, focuses it, and outlines it for a moment.
 
 import { conversationOf, needsOrder, whereNeeds } from '/shared/needs.mjs';
-import { client, liveSessions } from './client.mjs';
+import { client, itemIn, liveSessions } from './client.mjs';
 import { itemHref } from './item-address.mjs';
 import { meId, needsMe } from './needs-mine.mjs';
 import { reach } from './open-threads.mjs';
-import { navigate, route, toast } from './ui.mjs';
+import { navigate, paneHref, route, toast } from './ui.mjs';
 import { jumpTo } from './view-jump.mjs';
 import { mountFor } from './window-live.mjs';
 
@@ -73,26 +73,37 @@ export function goToItem(itemId, threadId) {
  * @param {string} itemId @param {string} threadId
  */
 function goToAddress(itemId, threadId) {
-  const to = itemHref(threadId, itemId);
+  const r = route();
+  // In the thread on screen, the pane stays as it is: Work, a turn, a full view.
+  const to =
+    r.view === 'thread' && (r.sideId ?? r.threadId) === threadId
+      ? paneHref(r.threadId, { side: r.sideId, work: r.work, turn: r.turn, full: r.full, at: r.at, item: itemId })
+      : itemHref(threadId, itemId);
   if (location.hash === to) return focusItem(itemId, threadId);
   navigate(to);
   return Promise.resolve(true);
 }
 
-let addressed = /** @type {string | null} */ (null);
+/** @type {{ conv: string, key: string } | null} the message last gone to by its address, in its conversation */
+let addressed = null;
 /**
- * Goes to the message the address names (m=, #168), once each time the address comes to name it: as the page loads
- * and as the address changes. One that isn’t in the thread opens the thread and says so.
+ * Goes to the message the address names (m=, #168), once each time the address comes to name a new one: as the page
+ * loads, as the address changes, and again after leaving its conversation. Back to an address within the conversation,
+ * as after closing Work, doesn’t pull the view back to it. One the thread doesn’t have opens the thread and says so.
  */
 export function focusAddressed() {
   const r = route();
-  const key = r.view === 'thread' && r.item ? location.hash : null;
-  if (key === addressed) return;
-  addressed = key;
-  if (!key || !r.item) return;
-  void focusItem(r.item, r.sideId ?? r.threadId).then(
-    (found) => found || toast({ title: 'That message isn’t here', text: 'It may have been deleted, or it’s in another conversation.' }),
-  );
+  if (r.view !== 'thread' || addressed?.conv !== r.threadId) addressed = null;
+  if (r.view !== 'thread' || !r.item) return;
+  const thread = r.sideId ?? r.threadId;
+  const key = `${thread}?m=${r.item}`;
+  if (addressed?.key === key) return;
+  addressed = { conv: r.threadId, key };
+  const item = r.item;
+  void focusItem(item, thread).then((found) => {
+    // Loaded but not drawn in time is a slow page, not a missing message.
+    if (!found && !itemIn(thread, item)) toast({ title: 'That message isn’t here', text: 'It may have been deleted, or it’s in another conversation.' });
+  });
 }
 
 let last = null;

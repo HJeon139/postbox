@@ -33,13 +33,13 @@ function sideRemembered(threadId) {
  */
 export function canonical(r, current = null) {
   if (r.view !== 'thread' || !client.state.threads[r.threadId]) return null;
-  // An address to a message opens what it names, and nothing remembered beside it (#168).
-  if (r.item) return null;
   if (r.oldWork) return paneHref(r.threadId, { work: true, turn: r.turn });
   const here = current?.view === 'thread' && current.threadId === r.threadId;
   if (r.sideId) rememberSide(r.threadId, r.sideId);
   else if (here) rememberSide(r.threadId, null);
   if (r.work) rememberWork(r.threadId, true);
+  // An address to a message opens what it names, and nothing remembered beside it (#168).
+  if (r.item) return null;
   // In a window with no room for the pane beside the conversation, coming back opens the conversation, not a view
   // over it (#197).
   if (!besideFits()) return null;
