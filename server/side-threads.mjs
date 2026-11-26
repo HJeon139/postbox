@@ -50,6 +50,7 @@ export function agentWake(
     retryId = undefined,
     bounce = false,
     backByName = false,
+    answers = false,
   } = {},
 ) {
   // Checked here, not in each tool, so no path that wakes from a turn gets around it (#225, #637). The turn is the one the
@@ -95,7 +96,7 @@ export function agentWake(
   // The woken agent answers from its session in the conversation (#110): the message is an entry in its inbox there,
   // which starts its turn now, or once its turn ends (designs/rooms-at-scale.md, “Delivery”).
   const waits = rt.running.busy(target.id);
-  rt.delivery.send(mentionEntry(target, at, it, from, retryId, { bounce, backByName }), { wake });
+  rt.delivery.send(mentionEntry(target, at, it, from, retryId, { bounce, backByName, answers }), { wake });
   // A card asking to wake it is stale once it’s woken now, or at the end of the waker’s turn under way (#439); one
   // woken once its own turn ends keeps the card the person may answer.
   if (!waits) retireStale(rt, at, target, `@${from.handle} woke it`);
@@ -107,7 +108,7 @@ export function agentWake(
  * The entry a mention makes in the woken agent’s inbox (delivery.mjs, Entry): the message it went out as, who wrote it,
  * and what kind of reply it is, if it is one.
  * @param {any} target  the woken agent’s session @param {string} at  the thread @param {any} it  the message
- * @param {any} from  the waker’s session @param {string | undefined} retryId @param {{ bounce: boolean, backByName: boolean }} kind
+ * @param {any} from  the waker’s session @param {string | undefined} retryId @param {{ bounce: boolean, backByName: boolean, answers: boolean }} kind
  */
 const mentionEntry = (target, at, it, from, retryId, kind) => ({
   sessionId: target.id,

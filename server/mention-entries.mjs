@@ -48,8 +48,10 @@ export function mentionEntries(rt, { threadId, item }) {
     if (turn.woken.includes(h)) continue;
     // A reply to that agent, by name: only its messages woke this turn, which did no work so far. Its entry says so,
     // since a reaction may end an exchange on a reply, and never on a request (reply-back.mjs, endedByReaction).
-    const backByName = backTo(took).includes(h) && !didWork(turn);
-    const opts = { replyIn, fromTurnId: turn.id, itemId: said, prose: true, wake: live, retryId: replayKey(turn, h), backByName };
+    const mine = took.filter((e) => e.source !== 'notice' && e.from === h);
+    const backByName = backTo(took).includes(h) && !didWork(turn) && mine.every((e) => e.bounce === true || e.backByName === true || e.answers === true);
+    const answers = backTo(took).includes(h) && !didWork(turn) && !backByName;
+    const opts = { replyIn, fromTurnId: turn.id, itemId: said, prose: true, wake: live, retryId: replayKey(turn, h), backByName, answers };
     const r = rt.agentWake(se.id, h, item.text, opts);
     if (r.itemId) said = r.itemId;
     if (r.ok || r.waiting) turn.mentioned = [...new Set([...(turn.mentioned ?? []), h])];
