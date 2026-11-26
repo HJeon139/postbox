@@ -124,3 +124,15 @@ test('#1709 a turn that changed nothing in its worktree makes no commit', async 
   await agy.turn('Just look.');
   assert.equal(git(dir, ['rev-parse', 'HEAD']), before);
 });
+
+test('#1709 the commit at a turn’s end runs no signing program from the repository’s config', async () => {
+  const { project: p, workRoot } = await project('signed');
+  // As a person who signs every commit: git would run gpg.program for this one.
+  git(p.folder, ['config', 'commit.gpgSign', 'true']);
+  git(p.folder, ['config', 'gpg.program', join(home, 'no-such-gpg')]);
+  const agy = agyOver(p, workRoot, 'signed', { writes: 'notes.md' });
+  const dir = await agy.folder();
+  await agy.turn('Write your notes.');
+  assert.equal(git(dir, ['status', '--porcelain']), '', 'committed, unsigned');
+  assert.equal(git(dir, ['log', '-1', '--format=%an']).trim(), '@gem');
+});

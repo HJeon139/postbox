@@ -280,7 +280,7 @@ export function worktreeNote(cwd, persona, project, workRoot) {
  * Commits what a turn left in an agent’s own worktree, on its branch, so its work reaches the person and the other
  * agents as a commit whether or not it could commit itself (#1709, the person’s decision of 26 November 2026: an agent
  * without Shell would otherwise need a card for every `git commit`). Through runGit, so the repository’s hooks don’t
- * run. The agent is its author, and Postbox its committer, for this commit only. Nothing for a turn in the project’s
+ * run, and unsigned. The agent is its author, and Postbox its committer, for this commit only. Nothing for a turn in the project’s
  * shared folder, or one that changed nothing. Returns whether it committed.
  * @param {string} cwd @param {{ handle: string }} persona
  * @param {{ folder?: string|null } | null | undefined} project @param {string} workRoot
@@ -291,7 +291,9 @@ export async function commitTurn(cwd, persona, project, workRoot, { git = defaul
   const changed = await git(cwd, ['status', '--porcelain']);
   if (changed.code !== 0 || !changed.stdout.trim()) return false;
   const added = await git(cwd, ['add', '-A']);
-  const identity = ['-c', 'user.name=Postbox', '-c', 'user.email=postbox@postbox.invalid'];
+  // Unsigned: signing would run gpg.program, a program from the repository’s or the person’s config, and could wait
+  // on a passphrase.
+  const identity = ['-c', 'user.name=Postbox', '-c', 'user.email=postbox@postbox.invalid', '-c', 'commit.gpgSign=false'];
   const author = `--author=@${persona.handle} <${persona.handle}@postbox.invalid>`;
   const made = added.code === 0 ? await git(cwd, [...identity, 'commit', '-q', author, '-m', `@${persona.handle}’s work at the end of a turn`]) : added;
   if (made.code === 0) return true;
