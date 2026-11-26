@@ -64,18 +64,25 @@ function turnOf(turns, started) {
 /**
  * Where a stream’s calls go: the turn of its first call that made a step, by that step’s reply, since a step names its
  * turn exactly; else, for a stream whose calls made none, its agent’s turn by time (turnOf). A recording with no work
- * ledger turns, from before the ledger kept them, still places a stream with a step this way. Null when it has no turn;
- * its replies can be none, as for a turn stopped before it replied. @param {StreamCall[]} calls @param {Map<string, { session: string, reply: string }>} owner
+ * ledger turns, from before the ledger kept them, places a stream with a step this way too, and one with none by the
+ * first reply after it started and before its agent’s next stream did (placeByTime). Null when it has no turn; its
+ * replies can be none, as for a turn stopped before it replied. @param {StreamCall[]} calls @param {Map<string, { session: string, reply: string }>} owner
  * @param {Map<string, Reply[]>} sessions @param {AgentTurn[]} turns @param {number | undefined} started
+ * @param {number | undefined} next  when the agent’s next stream started
  * @returns {{ sessionId: string, turnId: string | null, replies: Reply[] } | null}
  */
-function placeOf(calls, owner, sessions, turns, started) {
+function placeOf(calls, owner, sessions, turns, started, next) {
   const stepped = calls.map((c) => owner.get(c.id)).find(Boolean);
   if (stepped) {
     const replies = sessions.get(stepped.session) ?? [];
     const turnId = replies.find((it) => it.id === stepped.reply)?.turnId ?? null;
     const ofTurn = turnId ? replies.filter((it) => it.turnId === turnId) : replies.filter((it) => it.id === stepped.reply);
     return { sessionId: stepped.session, turnId, replies: ofTurn };
+  }
+  // A recording from before the ledger kept turns has nothing to match by but time.
+  if (!turns.length) {
+    const near = placeByTime(sessions, started, next);
+    return near ? { sessionId: near.session, turnId: null, replies: (sessions.get(near.session) ?? []).filter((it) => it.id === near.reply) } : null;
   }
   const turn = turnOf(turns, started);
   return turn ? { sessionId: turn.sessionId, turnId: turn.id, replies: (sessions.get(turn.sessionId) ?? []).filter((it) => it.turnId === turn.id) } : null;
@@ -119,12 +126,12 @@ export function recordedCalls(streams, handle, { sessions, turns }, sessionId) {
   let unplaced = 0;
   let seq = 0;
   const mine = streams.filter((s) => s.handle === handle).sort((a, b) => (a.started ?? 0) - (b.started ?? 0));
-  for (const s of mine) {
+  for (const [i, s] of mine.entries()) {
     const calls = callsInStream(s.events)
       .filter((c) => !seen.has(c.id))
       .map((c) => ({ ...c, seq: seq++ }));
     for (const c of calls) seen.add(c.id);
-    const place = placeOf(calls, owner, sessions, turns, s.started);
+    const place = placeOf(calls, owner, sessions, turns, s.started, mine[i + 1]?.started);
     if (place?.turnId) streamed.add(place.turnId);
     if (!place?.replies.length) {
       if (sessionId === [...sessions.keys()][0]) unplaced += calls.length;
@@ -143,7 +150,7 @@ export function recordedCalls(streams, handle, { sessions, turns }, sessionId) {
 function streamGaps({ unplaced, turnsWithoutStream: silent, ledgerTurns = true }) {
   const why = ledgerTurns
     ? 'matched no reply in any of its conversations'
-    : 'made no step, and the recording has no work ledger turns to match their streams to';
+    : 'matched no reply by time, and the recording has no work ledger turns to match their streams to';
   const notes = [
     unplaced ? ` ${unplaced} of this agent’s recorded calls ${why}, so ${unplaced === 1 ? 'it isn’t' : 'they aren’t'} in any trajectory.` : '',
     silent
@@ -151,6 +158,21 @@ function streamGaps({ unplaced, turnsWithoutStream: silent, ledgerTurns = true }
       : '',
   ];
   return { notes: notes.join(''), extra: { ...(unplaced ? { unplaced_calls: unplaced } : {}), ...(silent ? { turns_without_stream: silent } : {}) } };
+}
+
+/**
+ * The reply a stream with no stepped call goes with, in a recording with no ledger turns: the first one added at or
+ * after it started and before the next stream did, when exactly one of the agent’s sessions has one; else none, as the
+ * stream could be either’s. @param {Map<string, { id: string, at?: number }[]>} sessions
+ * @param {number | undefined} from @param {number | undefined} until
+ */
+function placeByTime(sessions, from, until = Number.POSITIVE_INFINITY) {
+  if (typeof from !== 'number') return null;
+  const found = [...sessions].flatMap(([session, replies]) => {
+    const reply = replies.find((it) => typeof it.at === 'number' && it.at >= from && it.at < until);
+    return reply ? [{ session, reply: reply.id }] : [];
+  });
+  return found.length === 1 ? found[0] : null;
 }
 
 /**

@@ -128,42 +128,27 @@ test('#1758 an agent whose streams another backend recorded, in streams/sdk/, ha
   assert.equal(critic.extra.calls_from, 'recorded streams');
 });
 
-test('#1758 a recording with no work ledger turns still places each stream with a step by that step’s reply', () => {
-  // Runs recorded before the ledger kept turns have none: a stream’s step still names its reply.
+test('#1758 a recording with no work ledger turns places its streams as before the ledger kept them', () => {
+  // Runs recorded before the ledger kept turns have none: a stream’s step still names its reply, and a stream whose
+  // calls made no step goes by time, so each call lands where the ledger’s turns put it.
   const noTurns = rec.events.filter((e) => !(e.type === 'work.add' && e.data.entry.kind === 'turn'));
   const before = byHandle();
   const after = byHandle(noTurns);
   for (const handle of ['developer', 'critic']) {
-    const stepped = callsOf(before[handle]).filter((/** @type {any} */ c) => c.extra.step !== 'none');
-    assert.deepEqual(
-      callsOf(after[handle])
-        .filter((/** @type {any} */ c) => c.extra.step !== 'none')
-        .map((/** @type {any} */ c) => c.tool_call_id),
-      stepped.map((/** @type {any} */ c) => c.tool_call_id),
-      `${handle}’s calls with a step`,
-    );
+    const replies = before[handle].steps.filter((/** @type {any} */ s) => s.extra?.item_id && s.tool_calls?.length);
+    assert.ok(replies.length > 1, `${handle} has replies with calls`);
+    for (const { extra } of replies) {
+      assert.deepEqual(callsOn(after[handle], extra.item_id), callsOn(before[handle], extra.item_id), `${handle} ${extra.item_id}`);
+    }
+    assert.equal(after[handle].extra.unplaced_calls, undefined, handle);
+    assert.equal(after[handle].extra.turns_without_stream, undefined, handle);
   }
-  // A call with no step in a stream that has a step still goes with its turn’s reply, as with the ledger’s turns.
-  const noStep = (/** @type {any} */ t) =>
-    callsOf(t)
-      .filter((/** @type {any} */ c) => c.extra.step === 'none')
-      .map((/** @type {any} */ c) => c.tool_call_id);
-  const inSteppedStreams = rec.streams
-    .filter((s) => s.handle === 'developer')
-    .map((s) =>
-      s.events.flatMap(
-        (/** @type {any} */ e) => e.message?.content?.filter((/** @type {any} */ p) => p.type === 'tool_use').map((/** @type {any} */ p) => p.id) ?? [],
-      ),
-    )
-    .filter((ids) => ids.some((id) => callsOf(before.developer).some((/** @type {any} */ c) => c.tool_call_id === id && c.extra.step !== 'none')));
-  const expected = inSteppedStreams.flat().filter((id) => noStep(before.developer).includes(id));
-  assert.ok(expected.length > 0, 'the fixture has such a call');
-  assert.deepEqual(noStep(after.developer), expected);
-  // A stream whose calls made no step has no turn to go with, and says why.
-  const unplaced = after.developer.extra.unplaced_calls;
-  assert.equal(unplaced, noStep(before.developer).length - expected.length, 'the react-only streams’ calls are counted');
-  assert.match(after.developer.notes, /made no step, and the recording has no work ledger turns to match their streams to/);
-  assert.equal(after.developer.extra.turns_without_stream, undefined);
+  // A stream that fits no reply by time is counted, with the reason the recording gives none better.
+  const late = { ...rec.streams.find((s) => s.handle === 'developer'), started: Number.MAX_SAFE_INTEGER };
+  const foreign = { ...late, events: late.events.map((e) => JSON.parse(JSON.stringify(e).replaceAll('toolu_', 'toolu_other_'))) };
+  const lost = byHandle(noTurns, [...rec.streams, foreign]).developer;
+  assert.ok(lost.extra.unplaced_calls > 0);
+  assert.match(lost.notes, /matched no reply by time, and the recording has no work ledger turns to match their streams to/);
 });
 
 test('#1758 a stream with a step goes to that step’s turn, even when two turns started at once, and never takes another session’s call', () => {
@@ -192,4 +177,21 @@ test('#1758 a stream with a step goes to that step’s turn, even when two turns
   );
   assert.equal(a.byId.has('y'), false, 'B’s step isn’t A’s');
   assert.equal(a.turnsWithoutStream, 1, 't2, not t1, which its step names');
+});
+
+test('#1758 with no ledger turns, a stream with no step goes by time only up to its agent’s next stream', () => {
+  const reply = (/** @type {string} */ id, /** @type {number} */ at) => ({ id, at, steps: new Map() });
+  const sessions = new Map([['A', [reply('a1', 2500)]]]);
+  const use = (/** @type {string} */ id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'T', input: {} }] } });
+  // The first stream’s window ends when the second starts, before the only reply: it isn’t that reply’s.
+  const streams = [
+    { handle: 'h', started: 1000, events: [use('early')] },
+    { handle: 'h', started: 2000, events: [use('late')] },
+  ];
+  const a = recordedCalls(streams, 'h', { sessions, turns: [] }, 'A');
+  assert.deepEqual(
+    [...a.unstepped].map(([at, calls]) => [at, calls.map((c) => c.id)]),
+    [['a1', ['late']]],
+  );
+  assert.equal(a.unplaced, 1);
 });
