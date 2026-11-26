@@ -97,7 +97,8 @@ function pointerOver(v) {
  * place (view-jump.mjs), nor at the end, where a window grown taller clamps the view short of the place its anchor
  * keeps to go back to (#837), nor while a reply in sight is laid out at an estimate, which moves what’s around it as it
  * draws (#1257): once it draws, the view holds its place again and takes the hold then (holdAnchor).
- * Following, only where a click would land: a control the pointer moved onto, or anything under a click started.
+ * Following, only where a click would land: a control the pointer moved onto, or anything under a click started,
+ * which a reply at its estimate doesn’t stop (#1632).
  * @param {View} v
  */
 export function takeHold(v) {
@@ -114,8 +115,12 @@ export function takeHold(v) {
     node = document.elementFromPoint(mid.x, mid.y);
   }
   const item = itemOf(v, node);
-  if (!node || !item || settling(v, item)) return;
-  if (v.stuck && !pressed() && !(aimed() && node.closest(CONTROL))) return;
+  if (!node || !item) return;
+  // Following, a press holds what it pressed even beside a reply at its estimate: without a hold the view follows the
+  // end out from under the press, and what that reply moves as it draws is what the hold puts back (#1632).
+  const pressing = v.stuck && pressed();
+  if (!pressing && settling(v, item)) return;
+  if (v.stuck && !pressing && !(aimed() && node.closest(CONTROL))) return;
   // Not one that isn’t laid out in its item, as an app full screen, fixed over the page: a scroll doesn’t move it.
   const r = node.getBoundingClientRect();
   const ir = itemBox(v, item);
