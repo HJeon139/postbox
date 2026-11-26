@@ -33,7 +33,8 @@ export function endTurn(rt, turn, err) {
   rt.bus.emit('turn.settled', { turn, err });
   // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
   rt.mirrors.get(turn.sessionId)?.tail.skipToEnd();
-  const se = rt.s.sessions[turn.sessionId];
+  // Pending: the session as held writes leave it decides the end's writes, its need and state among them (#623).
+  const se = rt.store.pending.session(turn.sessionId) ?? rt.s.sessions[turn.sessionId];
   if (!se) return;
   const items = rt.store.pending.items(turn.threadId);
   // A turn that ends with no reply is never posted as an empty message (#485, empty-reply.mjs): it fails, saying so.

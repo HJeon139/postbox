@@ -247,7 +247,7 @@ test('showBlock shows a block, and an app as a registered app; updateBlock withd
   );
 });
 
-test('an answer is read once its event starts a turn; an update over an unread answer is refused, waiting while its event is held', () => {
+test('an answer is read once its event starts a turn; an update over an unread answer held behind the turn is refused, with the answer', () => {
   const { store, threads, running, apps } = rig();
   const block = {
     id: 'q1',
@@ -272,7 +272,10 @@ test('an answer is read once its event starts a turn; an update over an unread a
   running.begin({ id: 'tu_1', sessionId: 'se_1', pending: [{ message: { blockItemId: it.id } }] });
   const waiting = apps.updateBlock('se_1', { block: { ...block, prompt: 'Pick again' } }, ctx(store));
   assert.equal(waiting.ok, false);
-  assert.match(waiting.message, /reaches you when this turn ends/);
+  assert.match(waiting.message, /It was waiting for this turn to end, and comes here instead, so that’s the whole answer\./);
+  // It reaches the agent once (#1810): it leaves the turn’s queue, and reads as read until an event starts a turn.
+  assert.deepEqual(running.turnOf('se_1').pending, []);
+  threads.patchItem('th_c', it.id, { answer: { ...store.item('th_c', it.id).answer, read: false } });
   apps.answerDelivered('th_c', { kind: 'event', blockItemId: it.id, event: { revision: 1 } });
   assert.equal(store.item('th_c', it.id).answer.read, true);
 });
