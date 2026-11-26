@@ -18,7 +18,8 @@ import { CALL_KINDS, callsOf, questionsOf, WORK_KINDS } from './atif-calls.mjs';
 import { CLOCK_WORDS, clockScope, withClock } from './atif-clock.mjs';
 import { finalMetrics, meter } from './atif-metrics.mjs';
 import { placePrompts, promptedTurns, promptSteps, scopeOf, unresolvedGuides } from './atif-prompts.mjs';
-import { agentSessions, recordedCalls, shownSessions, withCalls } from './atif-streams.mjs';
+import { agentSessions, shownSessions } from './atif-sessions.mjs';
+import { recordedCalls, withCalls } from './atif-streams.mjs';
 import { iso } from './atif-time.mjs';
 
 export { NOT_RECORDED, NOT_RECORDED_WITHOUT_PROMPTS } from './atif-prompts.mjs';
