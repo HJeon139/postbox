@@ -98,3 +98,34 @@ test('#1723 on a host, the Kiro home kept from edits is Postbox’s own for an I
   assert.equal(remoteKiroHome({ handle: 'kay', usesHostSetup: true }, '/srv/hostuser'), '/srv/hostuser/.kiro');
   assert.equal(remoteKiroHome({ handle: 'kay' }, undefined), null);
 });
+
+// The deny has to reach the agent file each turn runs with, here and on a host, and name the home as Kiro resolves it:
+// a Kiro home that is a link (a dotfiles folder, /tmp on macOS) is matched by its target.
+test('#1723 the turn’s agent file denies edits of its Kiro home, as given and as resolved, here and on a host', async () => {
+  const { mkdirSync, realpathSync, symlinkSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { KiroCliAdapter } = await import('../server/adapters/kiro-cli.mjs');
+  const { fakeCtx, fakeSpawn, fixture } = await import('./kiro-cli-fakes.mjs');
+  const { HOME, play, setup, startOf } = await import('./kiro-cli-remote-fixture.mjs');
+  const { tempDir } = await import('./temp-dirs.mjs');
+  const persona = { permissionMode: 'auto', tools: ['shell'] };
+  const homeDeny = (file) => file.permissions.rules.find((r) => r.capability === 'fs_write' && r.effect === 'deny' && !r.match[0].endsWith('/.kiro'))?.match;
+
+  const root = tempDir('pb-kiro-home-');
+  mkdirSync(join(root, 'real-home'));
+  symlinkSync(join(root, 'real-home'), join(root, 'home'));
+  const seen = [];
+  const spawnImpl = /** @type {any} */ (fakeSpawn([{ lines: fixture('first'), code: 0 }], seen));
+  const ctx = fakeCtx();
+  Object.assign(ctx.persona, persona);
+  const adapter = new KiroCliAdapter({ workRoot: join(root, 'work'), isolatedHome: join(root, 'home'), spawnImpl, env: {} });
+  await adapter.deliver({}, { kind: 'user', text: 'hi' }, ctx);
+  assert.deepEqual(homeDeny(seen[0].agentFile), [join(root, 'home'), realpathSync.native(join(root, 'real-home'))]);
+
+  const remote = await setup({ persona });
+  const turn = remote.adapter.deliver({}, { kind: 'user', text: 'hi' }, remote.ctx);
+  const start = await startOf(remote.d);
+  play(remote.d, start, 'first');
+  await turn;
+  assert.deepEqual(homeDeny(JSON.parse(start.agentFile.text)), [`${HOME}/.postbox-remote/kiro-home/kiro`]);
+});
