@@ -151,6 +151,15 @@ export class CodexAdapter {
     this.capabilities = { ...CODEX_CAPABILITIES, models: [...new Set([...models, AUTO_MODEL])] };
   }
   /**
+   * Why a command can’t run now, or null (agent-commands.mjs): /compact with no Codex thread has nothing to compact
+   * (#425). @param {string} line @param {any} state  the session’s saved state
+   */
+  refuses(line, state) {
+    return compacts({ slash: true, text: line }) && !state?.codexThreadId && !state?.fork?.threadId && !state?.forkFrom?.threadId
+      ? 'there’s nothing to compact yet: it has no Codex conversation.'
+      : null;
+  }
+  /**
    * The models its harness offers, for the model field (server/model-lists.mjs). Empty if it can’t list. listed: what
    * its CLI lists, by default this computer’s; for an agent on a host, the host’s (server/remote/hosts-models.mjs).
    * @param {() => Promise<string[]>} [listed]

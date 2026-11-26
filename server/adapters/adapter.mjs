@@ -19,7 +19,8 @@
 //   ctx.status({ state?, ctx?, subagents?, currentStep? })
 //                                           state: 'think' | 'gen' | 'tool'; ctx: % of context used;
 //                                           subagents: [{ name, state, ctx }]
-//   ctx.compaction({ kept, total, summary })  the agent's context was summarized
+//   ctx.compaction({ kept?, total?, summary })  the agent's context was summarized; kept and total only when its
+//                                           harness counts them (Codex doesn’t, #425)
 //   ctx.quota({ status, windows, seenAt? })  its backend’s quota usage (#442): status 'ok' | 'warning' | 'out';
 //                                           windows [{ name, used (0 to 1), resetsAt (epoch ms) | null }];
 //                                           seenAt: when it was read, if before now (epoch ms)

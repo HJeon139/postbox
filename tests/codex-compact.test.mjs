@@ -8,7 +8,11 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
+import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
+import { Runtime } from '../server/runtime.mjs';
+import { Store } from '../server/store.mjs';
+import * as arrange from './arrange.mjs';
 import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
 
 const RECORDED = readFileSync(new URL('fixtures/codex-app-server/compact.jsonl', import.meta.url), 'utf8')
@@ -32,8 +36,11 @@ function recordedServer(/** @type {any[]} */ seen) {
       seen.push(req);
       if (req.id === undefined) continue;
       const recorded = RECORDED.find((l) => l.id === answer[req.method]);
-      write(recorded ? { ...recorded, id: req.id } : { id: req.id, result: { data: [], nextCursor: null } });
+      const prompt = req.method === 'turn/start' ? { id: req.id, result: { turn: { id: 'turn-prompt', status: 'inProgress' } } } : null;
+      write(recorded ? { ...recorded, id: req.id } : (prompt ?? { id: req.id, result: { data: [], nextCursor: null } }));
       if (req.method === 'thread/compact/start') setImmediate(() => RECORDED.slice(answerAt + 1).forEach(write));
+      // A prompt turn, as before #425: it ends at once, so a regression fails on what was sent, not on a timeout.
+      if (req.method === 'turn/start') setImmediate(() => write({ method: 'turn/completed', params: { turn: { id: 'turn-prompt', status: 'completed' } } }));
     }
   });
   return child;
@@ -97,9 +104,35 @@ test('#425 /compact with words after it is still Codex’s compaction, and a per
   assert.ok(!typed.some((r) => r.method === 'thread/compact/start'));
 });
 
-test('#425 /compact on a Codex agent with no conversation yet says there’s nothing to compact, and starts nothing', async () => {
+test('#425 a /compact that still reaches a Codex turn with no conversation fails with the reason, and sends no compaction', async () => {
   const requests = /** @type {any[]} */ ([]);
   const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => recordedServer(requests) });
   await assert.rejects(adapter.deliver({}, { kind: 'user', text: '/compact', slash: true }, context({}).ctx), /nothing to compact yet/);
-  assert.ok(!requests.some((r) => ['thread/start', 'thread/compact/start', 'turn/start'].includes(r.method)));
+  assert.ok(!requests.some((r) => ['thread/start', 'thread/compact/start', 'turn/start'].includes(r.method)), 'no thread opened and no prompt sent');
+});
+
+test('#425 /compact for a Codex agent with no conversation yet is refused before anything is posted or started', () => {
+  const store = new Store(null);
+  const spawned = /** @type {any[]} */ ([]);
+  const codex = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: (/** @type {any} */ ...a) => spawned.push(a) && recordedServer([]) });
+  const rt = new Runtime({
+    store,
+    adapters: new AdapterRegistry().register(codex),
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
+  });
+  store.emit('project', { id: 'p1', name: 'P', folder: CODEX_ROOT });
+  const p = rt.createPersona({ handle: 'gpt', backend: 'codex' });
+  const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
+  const se = arrange.sessionsIn(rt, t.id)[0];
+  const before = store.items(t.id).length;
+  assert.throws(
+    () => rt.runAgentCommand(t.id, { sessionId: se.id, text: '/compact' }),
+    (e) => e.status === 422 && /nothing to compact yet/.test(e.message),
+  );
+  assert.equal(store.items(t.id).length, before, 'nothing posted');
+  assert.equal(rt.turns.size, 0, 'no turn');
+  assert.equal(spawned.length, 0, 'no Codex started');
+  // With a conversation, or for any other command, nothing is refused.
+  assert.equal(codex.refuses('/compact', { codexThreadId: 'thr-1' }), null);
+  assert.equal(codex.refuses('/review', {}), null);
 });
