@@ -156,6 +156,63 @@ test('#518 a dismissal elsewhere of revision 2 takes what revision 1’s answer 
   expect(r.now().answer.values.comments).toEqual([expect.objectContaining({ line: 7, text: 'Rank by date.' })]);
 });
 
+test('#518 an answer that failed leaves its comments as drafts after its revision is dismissed elsewhere', async ({ page }) => {
+  const r = await room(page, 'Failed, then dismissed');
+  allowPageError(page, /status of 422/);
+  await page.route(`**/api/threads/${r.t.id}/items/${r.item.id}/act`, (route) =>
+    route.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: 'That answer didn’t go through. Try again.' }) }),
+  );
+  await r.block.getByRole('radio', { name: 'Lines' }).click();
+  await comment(page, r.block, 3, 'Index the titles too.');
+  const refused = page.waitForResponse((res) => res.url().endsWith(`/items/${r.item.id}/act`) && res.status() === 422);
+  await submit(r.block).click();
+  await refused;
+  // Another page dismisses revision 1, and the agent revises: the comment never went, so it’s still the person’s.
+  app.rt.act(r.t.id, r.item.id, 'dismiss', {}, 1);
+  await expect.poll(() => r.now().answer?.read).toBe(true);
+  revise(r);
+  await expect(r.block.locator('.rv-receipt'), 'revision 2 is drawn').toBeVisible();
+  const drafted = r.block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
+  await expect(drafted.filter({ hasText: 'Index the titles too.' }), 'the comment that never went is a draft').toHaveCount(1);
+});
+
+test('#518 a second answer refused as already answered leaves what the first one sent out of the draft', async ({ page }) => {
+  const r = await room(page, 'Twice');
+  allowPageError(page, /status of 409/);
+  // Submit clicked twice: the first answer lands, its reply held; the second is refused, and its refusal comes back first.
+  const first = gate();
+  const second = gate();
+  const reply = gate();
+  let sent = 0;
+  await page.route(`**/api/threads/${r.t.id}/items/${r.item.id}/act`, async (route) => {
+    const mine = ++sent;
+    await (mine === 1 ? first : second).wait();
+    const response = await route.fetch();
+    if (mine === 1) await reply.wait();
+    await route.fulfill({ response });
+  });
+  await r.block.getByRole('radio', { name: 'Lines' }).click();
+  await comment(page, r.block, 3, 'Index the titles too.');
+  await submit(r.block).click();
+  await submit(r.block).click();
+  await expect.poll(() => sent, { message: 'both answers are on their way' }).toBe(2);
+  await away(page, app, r.projectId);
+  first.open();
+  await expect.poll(() => r.now().answer?.read).toBe(true);
+  const refused = page.waitForResponse((res) => res.url().endsWith(`/items/${r.item.id}/act`) && res.status() === 409);
+  second.open();
+  await refused;
+  revise(r);
+  await back(page, app, r.t.id);
+  await expect(r.block.locator('.rv-receipt'), 'revision 2 is drawn').toBeVisible();
+  const drafted = r.block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
+  await expect(drafted.filter({ hasText: 'Index the titles too.' }), 'what the first answer sent isn’t a draft').toHaveCount(0);
+  const settled = page.waitForResponse((res) => res.url().endsWith(`/items/${r.item.id}/act`) && res.ok());
+  reply.open();
+  await settled;
+  await expect(drafted.filter({ hasText: 'Index the titles too.' })).toHaveCount(0);
+});
+
 test('#518 an answer that fails leaves its comments as drafts, through a redraw while it was on its way and the next revision', async ({ page }) => {
   const r = await room(page, 'Failed');
   allowPageError(page, /status of 422/);

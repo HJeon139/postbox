@@ -102,7 +102,7 @@ async function submit(item, ctx, action, values, setError) {
   setError(null);
   const s = seen.get(item.id);
   const asked = s?.revision ?? item.revision ?? 1;
-  markSent(drafts.get(item.id), asked);
+  const sent = markSent(drafts.get(item.id), asked);
   try {
     await ctx.act(action, values, asked);
     // Revised while this answer was on its way: every revision draws from this one draft, so what the person started
@@ -112,7 +112,7 @@ async function submit(item, ctx, action, values, setError) {
     forgetReviewDraft(item.id);
     seen.delete(item.id);
   } catch (e) {
-    unmarkSent(drafts.get(item.id));
+    unmarkSent(drafts.get(item.id), sent);
     // A refusal for a revision the page hasn’t drawn yet says so; the new version, with its notice, replaces it as it arrives.
     setError(e.message, e.fieldErrors);
   }
