@@ -1,5 +1,5 @@
 // Where the mouse rests, for what holds still under it (#1326): the transcript’s view (view-hold.mjs) and an agent
-// sheet (sheet-hold.mjs). Each hears of a move, a press or a let-go once a frame; the view also hears of a press at once.
+// sheet (sheet-hold.mjs). Each hears of a move, a press or a let-go once a frame, and of a press at once too.
 
 // The mouse’s place in the window, whether it moved there since the last click (aimed), and whether a click has
 // started there: null outside the window, or when the last pointer was a finger, which rests nowhere. Inside an app’s
@@ -64,9 +64,10 @@ export function onPointerMoved(fn) {
 
 /**
  * Calls fn as the pointer presses, while what it pressed is still under it; returns how to stop. A quick click moves
- * and presses with no frame between, and the transcript can grow and follow its end before the next frame’s callbacks,
- * moving the button out from under the press so the release lands elsewhere and the click is lost (#1653). fn only
- * takes hold: anything that scrolls waits for the frame, as onPointerMoved’s does, so the press itself moves nothing.
+ * and presses with no frame between, and the transcript or a sheet can grow, and the transcript follow its end, before
+ * the next frame’s callbacks, moving the button out from under the press so the release lands elsewhere and the click
+ * is lost (#1653, #1632). fn only takes hold: anything that scrolls waits for the frame, as onPointerMoved’s does, so
+ * the press itself moves nothing.
  * @param {() => void} fn
  */
 export function onPointerPressed(fn) {
