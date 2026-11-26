@@ -32,10 +32,13 @@ function here() {
 export async function focusItem(itemId, threadId = null) {
   // With no conversation named, the one on screen: an item the page doesn’t hold elsewhere is in no view to jump in.
   const r = route();
-  await reach(threadId ?? (r.view === 'thread' ? r.threadId : null), itemId);
+  const thread = threadId ?? (r.view === 'thread' ? r.threadId : null);
+  const held = await reach(thread, itemId);
   // A window holding the item off the page mounts it first (window.mjs, #866).
   const find = () => mountFor(itemId ?? '') ?? document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
   let node = find();
+  // Its open thread loaded, and the server has no such item there: no frame will draw it, so it isn’t waited for (#168).
+  if (!node && !held && thread && client.open.has(thread)) return false;
   for (const end = Date.now() + 3000; !node && Date.now() < end; node = find()) await frame();
   if (!node) return false;
   // A transcript just mounted settles at its end on its first frame (thread.mjs, settle()).
@@ -47,7 +50,8 @@ export async function focusItem(itemId, threadId = null) {
   // its frame) would read as the view having stopped short of the end, and be held there, the item under the composer (#410).
   const scroller = node.parentElement?.parentElement;
   (scroller?.matches('.sp-body') ? scroller : window).dispatchEvent(new Event('scroll'));
-  const control = node.querySelector('button:not([disabled]), input, textarea, select');
+  // What it asks, if it asks: never the reactions and actions under every message, where Enter would react to it (#168).
+  const control = [...node.querySelectorAll('button:not([disabled]), input, textarea, select')].find((c) => !c.closest('.msg-actions'));
   if (!control && !node.hasAttribute('tabindex')) node.setAttribute('tabindex', '-1');
   (control ?? node).focus({ preventScroll: true });
   node.classList.remove('arrived');

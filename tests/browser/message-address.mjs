@@ -1,5 +1,5 @@
 // What the #168 specs share (message-address.spec.mjs and message-address-pane.spec.mjs): a long room, and whether a
-// message has been gone to. Moved from message-address.spec.mjs.
+// message has been gone to.
 
 import * as arrange from '../arrange.mjs';
 

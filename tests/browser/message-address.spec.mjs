@@ -25,6 +25,7 @@ test('#168 an m= address opened cold lands on the message in the main transcript
   await page.goto(`${app.origin}/#/t/${t.id}?m=${target.id}`);
   await synced(page, app);
   await expect.poll(() => landed(page, target.id), { message: 'in view and focused' }).toBe('landed');
+  expect(await page.evaluate(() => document.activeElement?.getAttribute('data-key')), 'focus on the message, not on a reaction under it').toBe(target.id);
   // And again after a reload.
   await page.reload();
   await synced(page, app);
@@ -68,6 +69,7 @@ test('#168 Copy link, by keyboard, copies the message’s address, and the addre
   await copy.evaluate((b) => b.setAttribute('data-test', 'copy'));
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-test="copy"]')).toHaveAttribute('aria-label', 'Link copied');
+  await expect(page.locator('#live'), 'a screen reader hears it').toHaveText('Link to the message copied.');
   await expect(page.locator('[data-test="copy"]'), 'its icon a check, for those who see it').toHaveClass(/\bi-check\b/);
   await expect(page.locator('[data-test="copy"]'), 'back to Copy link after a moment').toHaveAttribute('aria-label', 'Copy link', { timeout: 4000 });
   await expect(page.locator('[data-test="copy"]')).toHaveClass(/\bi-copy\b/);
@@ -101,7 +103,8 @@ test('#168 an address to a message the thread doesn’t have opens the thread an
   await page.goto(`${app.origin}/#/t/${t.id}?m=it_nothere`);
   await synced(page, app);
   await expect(page.locator('.transcript')).toHaveAttribute('data-thread', t.id);
-  await expect(page.getByText('That message isn’t here')).toBeVisible();
+  // Once the server has said the thread has no such message, with no wait for a frame that won’t draw it.
+  await expect(page.getByText('That message isn’t here')).toBeVisible({ timeout: 1500 });
 });
 
 test('#168 an address to a message in the conversation lands there, though a thread was left open beside it', async ({ page }) => {
@@ -193,4 +196,46 @@ test('#168 in forced colors, the replies link’s icon takes the link color, and
   expect(link.glyph, 'the link’s icon in the link color').toBe(link.text);
   const sent = await colorOf(page.locator(`.sidepanel [data-key="${reply.id}"] .msg-actions span[data-glyph]`));
   expect(sent.glyph, 'the sent note’s icon in the text color').not.toBe('rgba(0, 0, 0, 0)');
+});
+
+test('#168 Back to a message’s address from another conversation goes to the message again', async ({ page }) => {
+  const { t, items } = longRoom(app, 'Address, back again');
+  await page.goto(`${app.origin}/#/t/${t.id}?m=${items[3].id}`);
+  await synced(page, app);
+  await expect.poll(() => landed(page, items[3].id)).toBe('landed');
+  await page.keyboard.press('End');
+  await expect.poll(() => landed(page, items[3].id), { message: 'read on past it' }).toBe('not in view');
+  const away = longRoom(app, 'Address, elsewhere again').t;
+  await page.goto(`${app.origin}/#/t/${away.id}`);
+  await synced(page, app);
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`\\?m=${items[3].id}$`));
+  await expect.poll(() => landed(page, items[3].id), { message: 'on the message again' }).toBe('landed');
+});
+
+test('#168 Copy link that the clipboard refuses says so, with the link to copy by hand', async ({ page }) => {
+  const { t, items } = longRoom(app, 'Address, clipboard refused');
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = () => Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+  });
+  const target = items.at(-2);
+  await page.locator(`[data-key="${target.id}"]`).getByRole('button', { name: 'Copy link', exact: true }).click();
+  await expect(page.getByText('Couldn’t copy the link')).toBeVisible();
+  await expect(page.getByText(`${app.origin}/#/t/${t.id}?m=${target.id}`)).toBeVisible();
+});
+
+test('#168 an address to a message far from both ends loads only the range around it, and lands', async ({ page }) => {
+  const { rt } = app;
+  const { t, se } = longRoom(app, 'Address, far');
+  // Past the 200 the page loads from each end.
+  const far = [];
+  for (let i = 0; i < 500; i++) far.push(arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, handle: 'researcher', text: `Later ${i}.`, status: 'done' }));
+  const target = far[150];
+  await page.goto(`${app.origin}/#/t/${t.id}?m=${target.id}`);
+  await synced(page, app);
+  await expect.poll(() => landed(page, target.id), { message: 'in view and focused' }).toBe('landed');
+  const held = await page.evaluate(async (id) => (await import('/app/js/client.mjs')).client.state.items[id]?.length ?? 0, t.id);
+  expect(held, 'the range around it, not the whole room').toBeLessThan(560);
 });
