@@ -124,6 +124,7 @@ test('#1709 an agent in its own worktree runs read commands on the project’s f
   assert.equal(run(`cat ${notes}`), 'allow');
   assert.equal(run(`ls ${project.folder}`), 'allow');
   assert.equal(run(`grep plan ${notes}`), 'allow');
+  assert.equal(run(`find ${project.folder} -name notes.md`), 'allow');
   assert.notEqual(run(`rm ${notes}`), 'allow', 'a write there still asks');
   assert.notEqual(run(`touch ${join(project.folder, 'x')}`), 'allow');
   assert.notEqual(run(`git diff ${notes}`), 'allow', 'git keeps to its own folders');

@@ -154,7 +154,7 @@ test('#1709 a merge the agent left half done isn’t committed as resolved: the 
   const head = git(dir, ['rev-parse', 'HEAD']);
   /** @type {string[]} */
   const logs = [];
-  assert.equal(await commitTurn(dir, { handle: 'gem' }, p, workRoot, { log: (l) => logs.push(l) }), false);
+  assert.equal(await commitTurn(dir, { id: 'pe_a', handle: 'gem' }, p, workRoot, { log: (l) => logs.push(l) }), false);
   assert.equal(git(dir, ['rev-parse', 'HEAD']), head, 'nothing committed');
   assert.match(logs[0] ?? '', /a merge is in progress there/);
 });
@@ -182,7 +182,7 @@ test('#1709 a conflict that leaves no marker file, as a stash pop does, isn’t 
   const head = git(dir, ['rev-parse', 'HEAD']);
   /** @type {string[]} */
   const logs = [];
-  assert.equal(await commitTurn(dir, { handle: 'gem' }, p, workRoot, { log: (l) => logs.push(l) }), false);
+  assert.equal(await commitTurn(dir, { id: 'pe_a', handle: 'gem' }, p, workRoot, { log: (l) => logs.push(l) }), false);
   assert.equal(git(dir, ['rev-parse', 'HEAD']), head, 'nothing committed');
   assert.match(logs[0] ?? '', /a conflict is in progress there/);
 });

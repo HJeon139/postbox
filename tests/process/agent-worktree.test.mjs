@@ -163,13 +163,13 @@ test('#1709 Postbox never commits in the project’s own folder: only in an agen
   const { project: p, workRoot } = await project('own-folder');
   await writeFile(join(p.folder, 'person.md'), 'the person’s draft\n');
   const head = git(p.folder, ['rev-parse', 'HEAD']);
-  assert.equal(await commitTurn(p.folder, { handle: 'gem' }, p, workRoot), false);
+  assert.equal(await commitTurn(p.folder, { id: 'pe_a', handle: 'gem' }, p, workRoot), false);
   assert.equal(git(p.folder, ['rev-parse', 'HEAD']), head);
   assert.equal(git(p.folder, ['status', '--porcelain']), '?? person.md\n', 'the person’s work is left as it was');
   // In a worktree that changed nothing, nothing is committed and nothing is logged.
   const dir = await agentWorktree({ id: 'pe_a', handle: 'gem' }, p, workRoot);
   /** @type {string[]} */
   const logs = [];
-  assert.equal(await commitTurn(dir, { handle: 'gem' }, p, workRoot, { log: (l) => logs.push(l) }), false);
+  assert.equal(await commitTurn(dir, { id: 'pe_a', handle: 'gem' }, p, workRoot, { log: (l) => logs.push(l) }), false);
   assert.deepEqual(logs, []);
 });
