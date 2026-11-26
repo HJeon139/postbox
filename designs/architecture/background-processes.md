@@ -4,7 +4,7 @@ An agent whose background job is still running takes new messages right away. Th
 
 How, in one of two ways. Where a harness is shown to take a new message while its background work runs, its process stays alive and gets the message: that’s live input, and it comes first, for Claude Code on this computer. Where that isn’t proven, the turn ends when the model has replied, the job runs on, and its end wakes the agent that started it, once. Agents start background work their harness’s own way, with `run_in_background`, `&`, `nohup` or `tmux`, and Postbox adds no tool for it.
 
-**Where it stands:** proposed for [#1614](https://github.com/HJeon139/postbox/issues/1614), and nothing here is built. On `main` an agent is held busy for its background work on four of the five backends, as “The problem” lists. **What’s next:** the checks in “Checks before the first step is built”, then that step.
+**Where it stands:** proposed for [#1614](https://github.com/HJeon139/postbox/issues/1614), and nothing here is built. On `main` an agent is held busy for its background work on every backend but Codex, as “The problem” lists. **What’s next:** the checks in “Checks before the first step is built”, then that step.
 
 **How this document got here:**
 - An earlier draft added four Postbox tools and a launcher. On [#1615](https://github.com/HJeon139/postbox/pull/1615) the owner directed that Postbox integrate with each harness instead, because agents use their harness’s own way and fumble Postbox-specific mechanisms.
@@ -72,12 +72,13 @@ sequenceDiagram
 - **The adapter holds stdin open.** It starts the CLI with `--input-format stream-json`, writes the turn’s message as one user message, and doesn’t end stdin.
 - **A turn ends at its `result`, and the process doesn’t.** The turn ends through `endTurn` with no error (`server/turn-finish.mjs`), as a turn whose CLI closed does today: its reply is `done`, its @-mentions wake, it goes back to its wakers, and its lint and checks run. A result with `is_error` fails the turn. While `on_turn_end` lists anything still running, a shell job, a Monitor or a background subagent, the process is kept as the agent’s live execution, and the agent is free. This is the `background-wait` state of designs/508/delivery-routes.md, “Model turns and a live backend execution (A′)”, built on the `openExecution` seam that section proposes.
 - **A message while it waits** starts a turn the usual way, and the adapter writes it to the live process instead of starting a new one. One model turn runs at a time in a process: a message and a job’s end that arrive together go through one ordered queue for that process, as A′ requires.
+- **What a later turn in the same process carries.** The CLI’s arguments are fixed when it starts: the model, effort and permission mode, the guide, and the MCP URL with the first turn’s token (`server/adapters/claude-code.mjs`’s opening comment, `server/turn-context.mjs`). Postbox runs a tool call only with the token of the session’s running turn (`server/mcp.mjs`, #54), so a later turn’s Postbox tools would be refused as it stands. How a new turn’s authority reaches the live process, and what a change of model, effort or mode since it started does, aren’t designed here yet. Both are decided in the step’s own change, by designs/508/delivery-routes.md, “Caller sweep: one lifetime used for two facts”, and reviewed as a security change.
 - **A job’s end** is reported by the CLI itself, in a turn it starts (measured in #1614, and the third turn of the recorded run). Postbox opens a turn for it, and its reply is the agent’s like any other. That turn is the wake: Postbox sends none, the exit status is the harness’s own, and no resumed CLI calls the job stopped.
 - **When a result lists nothing still running,** Postbox closes stdin and the CLI exits, as it does today.
 - **No wait is left.** A background subagent and a Monitor live inside the process, and it stays alive, so neither holds the agent. Claude Code on this computer needs no 2 h bound.
 - **Stop.** Stopping a running turn is `main`’s Stop, with its question about the turn’s jobs. With no turn running, each job keeps its row and its own Stop, which reaches it under the live CLI as today (`stopJobUnder` in `server/adapters/process-group.mjs`).
 - **Shutdown and restart.** A clean shutdown stops the live process and its jobs, as it stops the waiting turn on `main`. But there the restart reopens that turn once as a resend (`server/turn-stop.mjs`, `server/delivery.mjs`), so the agent learns its job is gone. Here the turn has ended and the agent is idle, and nothing would start a turn. So an agent whose jobs a shutdown stopped is woken once after the start, and told which. Each merge to `main` is a release, so restarts are frequent.
-- **What the step adds.** No marker in the environment, no process matching, no tool, no protocol message, and no new item in the room. It adds the held-open stdin, the split between a turn’s end and its process’s, the one queue per process, and the wake after a shutdown.
+- **What the step adds.** No marker in the environment, no process matching, no tool, no protocol message, and no new item in the room. It adds the held-open stdin, a turn’s token and settings for a process that outlives the turn, the split between a turn’s end and its process’s, the one queue per process, and the wake after a shutdown.
 
 ### Checks before the first step is built
 
@@ -91,15 +92,15 @@ Each is a local run of a few turns with the real CLI, costs real usage, and is r
 | A message and a job’s end that arrive together | Two turns, one after the other, each with its own reply, and neither input lost | Not run. The recording names it as unexercised |
 | The same first check with a background subagent running, and with a Monitor | The message starts a turn, and the subagent or Monitor runs on. The recorded run had only a shell job | Not run |
 
-A check that fails changes the step in the same change that records it. If the step can’t be built, Claude Code on this computer takes “Ending the turn at the reply” instead.
+A check that fails changes the step in the same change that records it. If the step can’t be built, Claude Code on this computer takes “Ending the turn at the reply” instead, with a 2 h timer of Postbox’s own for the two waits in “When a turn still waits”, since the CLI here sets no bound.
 
 ## Ending the turn at the reply, where live input isn’t proven
 
-For a backend with no passing run of live input after a result: the Agent SDK until its check is run, and Claude Code on a host. The turn ends as a finished turn at its reply, and the CLI is stopped with its jobs kept.
+For a backend with no passing run of live input after a result, Claude Code on a host first. The turn ends as a finished turn at its reply, and the CLI is stopped with its jobs kept.
 
 ```mermaid
 sequenceDiagram
-  participant H as The CLI (the one the Agent SDK runs, or Claude Code on a host)
+  participant H as The Claude Code CLI
   participant S as Postbox
   participant J as The background job
   H->>J: run_in_background
@@ -116,7 +117,7 @@ sequenceDiagram
 ```
 
 - **When.** The reply’s `result` has arrived, and everything `on_turn_end` lists as still running is a shell job: a `run_in_background` Bash call, or one moved to the background at its timeout. With a background subagent or a Monitor running, see “When a turn still waits”.
-- **The turn ends as a finished turn, not a stopped one.** It ends through `endTurn` with no error, as in the first step: its reply is `done`, its @-mentions wake, it goes back to its wakers, its lint and checks run, a scheduled wake’s turn settles as done, and nothing reads “Stopped”. A result with `is_error` still fails the turn. So the adapter needs a way to end the CLI that isn’t the turn’s abort signal: today `done()` returns early on an aborted signal, before the result’s error is read (`claude-code.mjs`, and the same shape in `agent-sdk.mjs`). No stop is recorded and no stop reason is added.
+- **The turn ends as a finished turn, not a stopped one.** It ends through `endTurn` with no error, as in the first step: its reply is `done`, its @-mentions wake, it goes back to its wakers, its lint and checks run, a scheduled wake’s turn settles as done, and nothing reads “Stopped”. A result with `is_error` still fails the turn. So the adapter needs a way to end the CLI that isn’t the turn’s abort signal: today `done()` returns early on an aborted signal, before the result’s error is read (`claude-code.mjs`). No stop is recorded and no stop reason is added.
 - **Ending the CLI.** Only the process half of Send now is reused: `stopTurn`’s `keep`, with every listed job. It signals the CLI’s own group and no tool shell:
   - a job whose shell is found is kept in that shell’s group;
   - a job it can’t tell apart is kept with every unmatched shell, as Send now keeps it. So a gate that ran in the foreground, was fixed, and runs again in the background ends the turn like any other. Which shell is the job’s decides what its row is called and what its Stop reaches, never whether work is lost;
@@ -136,7 +137,6 @@ sequenceDiagram
   - the kind of each job. A Monitor is recorded as a job like any other today (`claude-stream.mjs`, `server/harness-tools.mjs`), so telling that everything listed is a shell job needs the job to carry its tool;
   - the wake at a kept job’s end, and after a shutdown or a start;
   - the counter-note’s words for this path.
-- **The Agent SDK’s 2-hour wait no longer covers shell jobs.** The turn ends at the result, so the SDK’s limit is never reached for them, and “Postbox waits up to 2 h for background work after a reply” (`stoppedAfterReply` in `sdk-background.mjs`) is said only of a subagent or a Monitor. The limit itself stays until the Agent SDK has live input, because without it the SDK stops a background subagent at 10 minutes (#1714).
 
 ### Checks before it’s built
 
@@ -144,12 +144,10 @@ None of these has been run.
 
 | Check | What a pass shows | Result |
 |---|---|---|
-| A new message after the result, through the Agent SDK’s streaming input (`Query.streamInput`), while a background job runs | The SDK takes it as a new turn, and the job runs on. Then the Agent SDK takes live input, as the first step, and not this section | Not run. Only input at a tool step’s boundary is recorded (`tests/fixtures/delivery-routes.md`, the backend table) |
 | The CLI is stopped after its `result`, while a `run_in_background` job runs | The job survives, and its output file keeps filling. Also what else sits under the CLI then, such as hooks or MCP servers, and whether any leads a process group of its own. #126’s recording stopped the CLI in the middle of a turn, not after a result | Not run |
 | The session’s next turn, after that stop | It resumes, with a task id in its history that no CLI will ever report. The check records what the resumed CLI says about that task (#249), and that the agent, given Postbox’s counter-note, doesn’t run the job again | Not run |
-| The Agent SDK’s run is ended after its `result` | Ending the run doesn’t itself stop the tasks, as reaching its limit does (#1714) | Not run |
 
-The first check is run first, since a pass makes the other three unnecessary for the Agent SDK. Until it’s run, and until its step lands either way, the Agent SDK keeps today’s wait and its 2 h bound. If the second or fourth fails, this section isn’t built for that backend as written, and this document says what was seen.
+If either fails, this section isn’t built as written, and this document says what was seen.
 
 ## When a turn still waits
 
@@ -161,7 +159,7 @@ A wait that costs the agent its messages needs a real risk, and says what it pro
 | A background subagent is still running | The subagent runs inside the CLI’s own process, with no process of its own to keep. Ending the CLI ends it, and its work is lost, as the two review rounds of #1714 were | Live input for that backend |
 | A Monitor is still running | A Monitor’s lines reach the model only through the CLI that started it. Its script would survive the CLI, but nothing would read it, so the watch the agent asked for would be silently gone | Live input for that backend |
 
-Both of the last two are bounded at 2 h (`QUIET.backgroundMax`), which the Agent SDK and hosts have today, and those are the backends this applies to. Past it the turn is stopped, and the agent is told what was stopped, as `sdk-background.mjs` tells it today. The bound protects against an agent deaf for good behind work inside its CLI that hung. The person’s Send now still ends such a wait at any moment.
+Both of the last two are bounded at 2 h (`QUIET.backgroundMax`), which a turn on a host has today (#847), and a host is where this applies. Past it the turn is stopped as hung, naming the task, as `server/remote/turns-background.mjs` does today. The bound protects against an agent deaf for good behind work inside its CLI that hung. The person’s Send now still ends such a wait at any moment.
 
 Nothing else waits. In particular, a turn never waits because Postbox couldn’t tell which process is a job’s.
 
@@ -172,11 +170,12 @@ Each step is its own change, with its own checks, and lands in this order. The o
 | Order | Backend | Its step | Until it lands | The bound until then | After it |
 |---|---|---|---|---|---|
 | 1 | Claude Code, this computer | Live input | Today’s wait | None | No wait after a reply |
-| 2 | Agent SDK | Live input if its streaming-input check passes. Otherwise ending the turn at the reply | Today’s wait | 2 h | No wait after a reply, or free behind shell jobs with a subagent or a Monitor holding it at most 2 h |
-| 3 | Claude Code on a host | Ending the turn at the reply, kept by the daemon. Live input isn’t proven on a host: the daemon has no channel that sends input to a running harness (`tests/fixtures/delivery-routes.md`, the backend table) | Today’s wait | 2 h (#847) | Free behind shell jobs. A subagent or a Monitor: at most 2 h |
-| 4 | Kiro and Antigravity, here and on a host | Ending the turn at the CLI’s exit | Today’s wait for an unredirected `cmd &`. A redirected job already frees the agent, with no wake | None on this computer. Not verified on a host: see “The problem” | Free at the reply, with a wake |
-| 5 | Codex, here and on a host | Keeping background work at the turn’s end | No message waits behind a background job, since none survives the turn: the guide says to run the command in the foreground, and a message waits for that call | The command’s run | Background work is kept, with a wake |
-| 6 | Live input for a backend above that ends its turn at the reply, once it’s proven there | Live input | The two waits in “When a turn still waits” | 2 h | No wait after a reply |
+| 2 | Claude Code on a host | Ending the turn at the reply, kept by the daemon. Live input isn’t proven on a host: the daemon has no channel that sends input to a running harness (`tests/fixtures/delivery-routes.md`, the backend table) | Today’s wait | 2 h (#847) | Free behind shell jobs. A subagent or a Monitor: at most 2 h |
+| 3 | Kiro and Antigravity, here and on a host | Ending the turn at the CLI’s exit | Today’s wait for an unredirected `cmd &`. A redirected job already frees the agent, with no wake | None on this computer. Not verified on a host: see “The problem” | Free at the reply, with a wake |
+| 4 | Codex, here and on a host | Keeping background work at the turn’s end | No message waits behind a background job, since none survives the turn: the guide says to run the command in the foreground, and a message waits for that call | The command’s run | Background work is kept, with a wake |
+| 5 | Live input for a backend above that ends its turn at the reply, once it’s proven there | Live input | The two waits in “When a turn still waits” | 2 h | No wait after a reply |
+
+The Agent SDK gets no step: the owner decided on 26 November 2026 to remove that backend ([#1831](https://github.com/HJeon139/postbox/issues/1831)), so no work is planned for it here. While it’s on `main` it keeps today’s wait and its 2 h bound (#1801).
 
 Kiro and Codex run on hosts today, and Antigravity doesn’t yet (`server/adapters/adapter.mjs`, the `remote` capability). Each gets its step on a host in the same change as on this computer, and Antigravity’s host step comes with its host support.
 
@@ -242,10 +241,10 @@ Its live check: does the app-server end a turn while a backgrounded child runs, 
 
 The first step’s design is the native fix on any harness that can take a message while its background work runs: nothing is stopped, subagents and Monitors are covered, the harness reports each task’s end itself, and no wake from Postbox is needed.
 
-designs/508/delivery-routes.md, “Model turns and a live backend execution (A′)”, names the state `background-wait`; its “Caller sweep: one lifetime used for two facts” makes it “eligible only through proven live input”. So a backend gets it only with a passing run of its own after a result. Today that’s the Claude Code CLI on this computer alone: the Agent SDK’s streaming input is recorded only at a tool step’s boundary, Codex’s `turn/steer` only at a turn’s start, Kiro and Antigravity have no input route recorded, and every route on a host is unverified (`tests/fixtures/delivery-routes.md`, the backend table). Where it’s proven and built for a backend:
+designs/508/delivery-routes.md, “Model turns and a live backend execution (A′)”, names the state `background-wait`; its “Caller sweep: one lifetime used for two facts” makes it “eligible only through proven live input”. So a backend gets it only with a passing run of its own after a result. Today that’s the Claude Code CLI on this computer alone: Codex’s `turn/steer` is recorded only at a turn’s start, Kiro and Antigravity have no input route recorded, and every route on a host is unverified (`tests/fixtures/delivery-routes.md`, the backend table). Where it’s proven and built for a backend:
 - the backend takes live input in place of ending the turn at the reply;
 - the waits in “When a turn still waits” go, for that backend;
-- #1801’s limit goes: `backgroundWaitEnv` and `stoppedAfterReply` (`sdk-background.mjs`) for the Agent SDK, and the 2 h bound on a host’s waiting turn for Claude Code there.
+- the 2 h bound on a host’s waiting turn goes, for Claude Code there.
 
 ## What the room shows
 
@@ -276,12 +275,13 @@ The first step, live input for Claude Code on this computer:
   - A result that lists nothing still running closes stdin, and the CLI exits.
   - The same with a background subagent, and with a Monitor: the agent is free.
   - An agent whose jobs a clean shutdown stopped is woken once after the start.
+  - A Postbox tool call in the second turn of a process runs, and one that carries an ended turn’s token is refused.
 - **`tests/process/`, with real processes:** Stop of a running turn reaches the live process and its shells, and a job’s own Stop reaches it while no turn runs.
 - **Unit tests:** the one queue per process, and the agent’s state words.
 - **A browser spec** for “job running: …” on a free agent, run plain and with `POSTBOX_STREAM_LAG=300`.
 
 Ending the turn at the reply:
-- **The room outcome, through the normal turn path,** with recorded Agent SDK and Claude Code streams.
+- **The room outcome, through the normal turn path,** with recorded Claude Code streams.
   - A turn whose result lists only shell jobs ends at its `result`, and its reply is `done`, not stopped.
   - An @-mention in that reply wakes its agent, and the turn goes back to its wakers.
   - A result with `is_error` still fails the turn.
