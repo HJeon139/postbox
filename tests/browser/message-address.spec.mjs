@@ -157,7 +157,7 @@ test('#168 Back to a message’s address after opening Work doesn’t pull the v
   await page.goto(`${app.origin}/#/t/${t.id}?m=${items[3].id}`);
   await synced(page, app);
   await expect.poll(() => landed(page, items[3].id)).toBe('landed');
-  // Read on, down to the end, then open Work and close it with Back.
+  // Read on, down to the end, then follow a link within the conversation, here to Work, and come back with Back.
   await page.keyboard.press('End');
   await expect.poll(() => landed(page, items[3].id), { message: 'read on past it' }).toBe('not in view');
   await page.evaluate((id) => {
@@ -166,8 +166,9 @@ test('#168 Back to a message’s address after opening Work doesn’t pull the v
   await expect(page).toHaveURL(new RegExp(`#/t/${t.id}\\?work$`));
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`\\?m=${items[3].id}$`));
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-  expect(await landed(page, items[3].id), 'still where you read').toBe('not in view');
+  // Going to a message waits for it to be loaded and drawn: a second is longer than that takes here.
+  const until = Date.now() + 1000;
+  while (Date.now() < until) expect(await landed(page, items[3].id), 'still where you read').toBe('not in view');
 });
 
 test('#168 a thread closed by going to a message in its conversation isn’t opened again on coming back', async ({ page }) => {
@@ -184,4 +185,45 @@ test('#168 a thread closed by going to a message in its conversation isn’t ope
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await expect(page, 'the conversation alone, with no thread opened again').toHaveURL(new RegExp(`#/t/${t.id}$`));
+});
+
+test('#168 going to the same ask again after opening Work goes to it again', async ({ page }) => {
+  const { rt } = app;
+  const { t, se, items } = longRoom('Address, again');
+  const ask = items[5];
+  // Only this agent needs you, so ⌃J pressed again comes back to it rather than moving on to another.
+  for (const other of Object.values(rt.store.state.sessions)) if (other.needs) arrange.setSession(rt, other.id, { state: 'idle', needs: null });
+  arrange.setSession(rt, se.id, { state: 'needs', needs: { kind: 'block', itemId: ask.id, text: 'Pick one' } });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
+  await page.keyboard.press('Control+j');
+  await expect.poll(() => landed(page, ask.id), { message: 'on the ask' }).toBe('landed');
+  await page.locator('#work-button').click();
+  await expect(page).toHaveURL(/\?work$/);
+  await page.keyboard.press('End');
+  await expect.poll(() => landed(page, ask.id), { message: 'read on past it' }).toBe('not in view');
+  await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
+  await page.keyboard.press('Control+j');
+  await expect(page).toHaveURL(new RegExp(`\\?work&m=${ask.id}$`));
+  await expect.poll(() => landed(page, ask.id), { message: 'on the ask again' }).toBe('landed');
+});
+
+test('#168 going to a message in a topic thread of the conversation on screen keeps Work open', async ({ page }) => {
+  const { rt } = app;
+  const { t, se, items } = longRoom('Address, ask in a thread');
+  const topic = rt.startTopic(t.id, items.at(-1).id).threadId;
+  const ask = arrange.post(rt, topic, { kind: 'agent', sessionId: se.id, handle: 'researcher', text: 'Which one?', status: 'done' });
+  await page.goto(`${app.origin}/#/t/${t.id}?work`);
+  await synced(page, app);
+  // As the open asks list goes to an ask in a thread (open-asks.mjs).
+  await page.evaluate(
+    async ([itemId, threadId]) => {
+      const { goToItem } = await import('/app/js/needs-nav.mjs');
+      await goToItem(itemId, threadId);
+    },
+    [ask.id, topic],
+  );
+  await expect(page, 'the thread opens beside the conversation, Work kept').toHaveURL(new RegExp(`#/t/${t.id}/side/${topic}\\?work&m=${ask.id}$`));
+  await expect.poll(() => landed(page, ask.id), { message: 'on the ask' }).toBe('landed');
 });

@@ -67,29 +67,32 @@ export function goToItem(itemId, threadId) {
   return goToAddress(itemId, threadId);
 }
 
+/** @type {{ conv: string, key: string } | null} the message last gone to by its address, in its conversation */
+let addressed = null;
+
 /**
- * Goes to a message by its address (#168): a new address goes on the history, so Back returns, and the page goes to
- * the message as the address comes in (focusAddressed); an address already open goes to it again.
+ * Goes to a message by its address (#168): the address goes on the history, so Back returns, and this goes to the
+ * message itself, every time it’s asked, a second time after a pane change too. In the conversation on screen, the
+ * pane stays as it is: Work, a turn, a full view.
  * @param {string} itemId @param {string} threadId
  */
 function goToAddress(itemId, threadId) {
   const r = route();
-  // In the thread on screen, the pane stays as it is: Work, a turn, a full view.
-  const to =
-    r.view === 'thread' && (r.sideId ?? r.threadId) === threadId
-      ? paneHref(r.threadId, { side: r.sideId, work: r.work, turn: r.turn, full: r.full, at: r.at, item: itemId })
-      : itemHref(threadId, itemId);
-  if (location.hash === to) return focusItem(itemId, threadId);
+  const conv = conversationOf(S(), threadId);
+  const side = threadId === conv ? null : threadId;
+  const pane = { work: r.work, turn: r.turn, full: r.full, at: r.at };
+  const to = r.view === 'thread' && r.threadId === conv ? paneHref(conv, { ...pane, side, item: itemId }) : itemHref(threadId, itemId);
+  // The address is this one’s: focusAddressed, as it comes in, doesn’t go to it a second time.
+  addressed = { conv, key: `${threadId}?m=${itemId}` };
   navigate(to);
-  return Promise.resolve(true);
+  return focusItem(itemId, threadId);
 }
 
-/** @type {{ conv: string, key: string } | null} the message last gone to by its address, in its conversation */
-let addressed = null;
 /**
- * Goes to the message the address names (m=, #168), once each time the address comes to name a new one: as the page
- * loads, as the address changes, and again after leaving its conversation. Back to an address within the conversation,
- * as after closing Work, doesn’t pull the view back to it. One the thread doesn’t have opens the thread and says so.
+ * Goes to the message an address the page didn’t make names (m=, #168): as the page loads, and as Back, forward or a
+ * pasted address changes it, once per message in a conversation, so Back to an address within it, as after a link to
+ * Work, doesn’t pull the view back to the message. Going to it on purpose is goToAddress’s. One the thread doesn’t
+ * have opens the thread and says so.
  */
 export function focusAddressed() {
   const r = route();
