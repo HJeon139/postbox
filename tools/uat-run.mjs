@@ -67,6 +67,7 @@ import { gitInfo, mainCheckout, runRecord, runsRoot, writeJsonAtomic } from './u
 import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { midTurnAnswerer, staleNoter } from './uat/stale-notes.mjs';
+import { stalledFinding } from './uat/stall.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
 import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
@@ -263,12 +264,14 @@ async function main() {
     };
 
     // What needs the person that a wait between steps has seen: it hands back to the tester once for each (#289), and
-    // again after an action that was held or failed, which leaves the tester a refusal to read (#1760).
+    // again after an action that was held or failed, which leaves the tester a refusal to read (#1760). A wait that
+    // leaves the tester without a step for STALL_MS while a turn is open is a finding of the run’s own.
     const told = new Set();
+    const onStall = (evidence) => findings.set(`stalled:${timeline.length}`, stalledFinding(evidence, timeline.length));
     const stopped = () => Boolean(budget.stopped || bound.stopped);
     const settle = (handBack = false) =>
       timing.time('agents', () =>
-        settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, again: actionError !== null, log, stopped }),
+        settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, again: actionError !== null, log, stopped, onStall }),
       );
 
     const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });

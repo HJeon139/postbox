@@ -2,6 +2,7 @@
 
 import { js, sleep } from '../browser.mjs';
 import { waitingOnYou } from './checks.mjs';
+import { stallWatch } from './stall.mjs';
 
 /** The longest the tester’s wait action waits: five minutes. */
 export const WAIT_MAX_S = 300;
@@ -65,10 +66,11 @@ function dueAsks(asks, { told, since, working, again }) {
  * while an agent still works once something needs the person that the tester hasn’t had: Stop’s question about a
  * background job, which keeps the turn running until it’s answered (#126), or a block that asks and has waited
  * BLOCK_GRACE_MS. The tester gets it then, rather than when the turn ends (#289), once for each (dueAsks), and again
- * after an action of its own that was held or failed (`again`, #1760).
+ * after an action of its own that was held or failed (`again`, #1760). A turn open for STALL_MS of the wait is said
+ * once, to the log and to `onStall` (tools/uat/stall.mjs).
  * stopped: whether the run’s bound or budget has stopped it. Then an app being checked holds no wait: the turn that
  * would fix it may be one the run stopped (#1664).
- * @param {{ api: any, d: any, threadsUnderTest: any, facts: any, midTurnChecks: any, opt: any, told?: Set<string>, handBack?: boolean, again?: boolean, stopped?: () => boolean, log?: (line: string) => void }} ctx
+ * @param {{ api: any, d: any, threadsUnderTest: any, facts: any, midTurnChecks: any, opt: any, told?: Set<string>, handBack?: boolean, again?: boolean, stopped?: () => boolean, log?: (line: string) => void, onStall?: (evidence: string) => void }} ctx
  */
 export async function settle({
   api,
@@ -82,10 +84,12 @@ export async function settle({
   again = false,
   stopped = () => false,
   log = () => {},
+  onStall = () => {},
 }) {
   const end = Date.now() + Number(opt['turn-timeout']) * 1000;
   let calm = 0;
   const since = new Map();
+  const stall = stallWatch({ on: handBack, log, onStall });
   while (Date.now() < end) {
     await sleep(1500);
     const st = (await api('/api/state')).state;
@@ -108,6 +112,7 @@ export async function settle({
       );
       return null;
     }
+    stall(working, asks);
     if (working.length) await midTurnChecks(st);
     calm = working.length || (checking && !stopped()) ? 0 : calm + 1;
     if (calm >= 2) return null;
