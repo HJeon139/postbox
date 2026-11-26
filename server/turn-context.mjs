@@ -268,7 +268,7 @@ function reportCallbacks(rt, turn, live) {
         // Each with what it was asked, its step now, its latest narration and the subagent that started it (#73).
         allowed.subagents = patch.subagents.slice(0, 12).map((x) => ({
           ...(typeof x.id === 'string' && x.id ? { id: x.id.slice(0, 100) } : {}),
-          name: String(x.name).slice(0, 40),
+          name: cutText(String(x.name), 40),
           state: x.state,
           ctx: Number.isFinite(x.ctx) ? Math.max(0, Math.min(100, x.ctx)) : null, // null: unknown (#189)
           doing: x.doing ? cutText(String(x.doing), 120) : '',

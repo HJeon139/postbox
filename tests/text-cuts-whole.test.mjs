@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { questionBlocks } from '../server/ask-question.mjs';
 import { liveFields } from '../server/live-buffer.mjs';
+import { MAX_REASON } from '../server/permission-edit.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { draftOf, whereOf } from '../server/write-guard.mjs';
@@ -150,7 +151,7 @@ test('#1686 a permission card’s detail and the person’s reason for not allow
   void r.rt.requestPermission(r.se.id, { tool: 'Bash', summary: 'Run it again', detail: 'ls' });
   for (let i = 0; i < 100 && r.items('permission').length < 2; i++) await new Promise((ok) => setTimeout(ok, 5));
   const asked = r.items('permission').at(-1);
-  r.rt.resolvePermission(r.t.id, asked.id, 'deny', { reason: across(400) });
+  r.rt.resolvePermission(r.t.id, asked.id, 'deny', { reason: across(MAX_REASON) });
   release();
   await busy;
   whole(r.items('voice').find((i) => /Didn’t allow/.test(i.text))?.text, 'the reason');
@@ -164,12 +165,12 @@ test('#1686 a proposed agent’s description, a write’s destination, and a sub
     ctx.status({
       state: 'tool',
       currentStep: across(200),
-      subagents: [{ id: 'a1', name: 'helper', state: 'run', doing: across(120), asked: across(120), said: across(200) }],
+      subagents: [{ id: 'a1', name: across(40), state: 'run', doing: across(120), asked: across(120), said: across(200) }],
     });
     return structuredClone(liveFields(r.rt, r.rt.turns.get(r.se.id)));
   });
   whole(se?.currentStep, 'the current step');
-  for (const k of ['doing', 'asked', 'said']) whole(se?.subagents?.[0]?.[k], `a subagent’s ${k}`);
+  for (const k of ['name', 'doing', 'asked', 'said']) whole(se?.subagents?.[0]?.[k], `a subagent’s ${k}`);
   const proposal = r.items('proposal')[0];
   whole(proposal?.proposal?.description, 'the proposal’s description');
   const where = whereOf('mcp__claude_ai_Notion__notion-create-pages', { folder: across(120), content: 'x' });
