@@ -14,7 +14,7 @@ import { fill, h } from './dom.mjs';
 import { confirmRemove } from './hosts-confirm.mjs';
 import { editor, editorActions, openEditor, syncKeepUpdated } from './hosts-editor.mjs';
 import { paintStatus, statusLine, statusView } from './hosts-status.mjs';
-import { barSign, formHead, pickList } from './manage-list.mjs';
+import { barSign, formHead, listHead, pickList } from './manage-list.mjs';
 import { keepFocus, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -127,11 +127,13 @@ const view = (p) => {
     controls: (r) => hostBar(p, r && S().hosts?.[r.key]),
   });
   const picked = all.find((x) => x.id === p.picked.host) ?? all[0];
-  // While a host is edited, the foot holds its Save and Cancel; else the list’s bar.
-  if (picked && p.editing === picked.id) p.setFoot(...editorActions(p, picked));
-  else p.setFoot(bar);
+  // While a host is edited, the foot holds its Save and Cancel, and the list’s bar is away until the edit ends.
+  const editing = Boolean(picked && p.editing === picked.id);
+  if (editing) p.setFoot(...editorActions(p, picked));
+  else p.setFoot();
   return [
     h('p.small.dim', 'Agents can run on another computer you reach with ssh, while Postbox stays here. Pick a host for an agent in its settings.'),
+    listHead('Hosts', editing ? null : bar, { pinned: true }),
     list,
     picked ? hostCard(p, picked) : null,
   ];

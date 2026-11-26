@@ -815,7 +815,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
             openChainLimit,
             chainLimitDesc,
           }),
-        people: () => peopleTab(go, setFoot, at),
+        people: () => peopleTab(go, at),
         hosts: () => [hostsPanel(setFoot)],
         connect,
       }[cur](),
@@ -834,10 +834,10 @@ export function openSettings(tab = 'appearance', personaId = null) {
       personaId = id;
       paint();
     };
-    const rows = personasList({ at, paint, edit, setFoot, openNewAgent, closeSettings: () => dlg.close() });
+    const rows = personasList({ at, paint, edit, openNewAgent, closeSettings: () => dlg.close() });
     return [
       boilerplateRow({ openNewAgent, closeSettings: () => dlg.close() }),
-      rows,
+      ...rows,
       h('p.small.dim', 'An edit applies from each agent’s next turn, in every conversation it’s in. A turn that’s running keeps what it started with.'),
     ];
   };

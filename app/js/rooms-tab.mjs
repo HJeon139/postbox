@@ -5,7 +5,7 @@ import { mockMarker } from './agent-facts.mjs';
 import { api, client, sessionsOf } from './client.mjs';
 import { h } from './dom.mjs';
 import { heard } from './go-when-there.mjs';
-import { barAction, barSign, formHead, pickList, sectionHead } from './manage-list.mjs';
+import { barAction, barSign, formHead, listHead, pickList, sectionHead } from './manage-list.mjs';
 import { called, me, people } from './profile-tab.mjs';
 import { navigate, openMenu, route, toast } from './ui.mjs';
 
@@ -78,8 +78,7 @@ export function roomsTab(paint, setFoot, at, sheets) {
         ),
     ],
   });
-  setFoot(bar);
-  return [list];
+  return [listHead('Rooms', bar, { pinned: true }), list];
 }
 
 /** A room’s form: its title, who is in it, and the agents that could be. */
@@ -120,7 +119,7 @@ function roomForm(
   return [
     ...formHead('All rooms', back, t.title),
     h('div.field', h('label.label', { for: 'rm-title' }, 'Title'), title),
-    sectionHead('Members', members.bar),
+    listHead('Members', members.bar),
     members.list,
     // Why − can be off, in words on the page: a title shows only under a pointer.
     h(

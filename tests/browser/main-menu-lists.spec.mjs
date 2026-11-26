@@ -1,5 +1,5 @@
 // The main menu’s lists (#1735, app/js/manage-list.mjs): Rooms and People are managed as every kind is, in a list you
-// pick a row in, with one bar under it whose + and − act on the pick, and one form at a time.
+// pick a row in, with one bar in the row of its heading whose + and − act on the pick, and one form at a time.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -25,6 +25,29 @@ async function menu(page, tab) {
   return dialog;
 }
 
+/**
+ * A list’s controls are in the row of its heading, right of it, above its rows, and end at the list’s right edge: what
+ * they act on reads beside them. In a sheet too narrow for them beside the heading they wrap under it, still at the right.
+ * @param {import('@playwright/test').Locator} dialog @param {string} heading @param {import('@playwright/test').Locator} list
+ * @param {(string | RegExp)[]} names  the controls, in order
+ */
+async function inHeadingRow(dialog, heading, list, names) {
+  const boxOf = async (/** @type {import('@playwright/test').Locator} */ el) =>
+    /** @type {{ x: number, y: number, width: number, height: number }} */ (await el.boundingBox());
+  const head = await boxOf(dialog.getByRole('heading', { name: heading, exact: true }));
+  const rows = await boxOf(list);
+  const signs = [];
+  for (const name of names) signs.push(await boxOf(dialog.getByRole('button', { name, exact: typeof name === 'string' })));
+  const middle = (/** @type {{ y: number, height: number }} */ b) => b.y + b.height / 2;
+  for (const sign of signs) {
+    expect(Math.abs(middle(sign) - middle(head)), `${heading}: on the heading’s row`).toBeLessThan(sign.height / 2);
+    expect(sign.x, `${heading}: right of the heading`).toBeGreaterThan(head.x + head.width);
+    expect(sign.y + sign.height, `${heading}: above the rows`).toBeLessThanOrEqual(rows.y);
+  }
+  const last = /** @type {{ x: number, width: number }} */ (signs.at(-1));
+  expect(Math.abs(last.x + last.width - (rows.x + rows.width)), `${heading}: ends at the list’s right edge`).toBeLessThan(2);
+}
+
 test('Rooms: the first row is picked, the arrow keys move the pick, the bar names it, and Enter opens its form', async ({ page }) => {
   const dialog = await menu(page, 'Rooms');
   const rows = dialog.getByRole('listbox', { name: 'Rooms and conversations' }).getByRole('option');
@@ -37,6 +60,12 @@ test('Rooms: the first row is picked, the arrow keys move the pick, the bar name
   // Every control of the list is in view at once: + and −, then what else acts on the pick.
   for (const name of ['New room', `Delete ${titles[0]}…`, `Edit ${titles[0]}`, `Open ${titles[0]}`])
     await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
+  await inHeadingRow(dialog, 'Rooms', dialog.getByRole('listbox', { name: 'Rooms and conversations' }), [
+    'New room',
+    `Delete ${titles[0]}…`,
+    `Edit ${titles[0]}`,
+    `Open ${titles[0]}`,
+  ]);
   await rows.first().focus();
   await page.keyboard.press('ArrowDown');
   await expect(rows.nth(1)).toHaveAttribute('aria-selected', 'true');
@@ -46,23 +75,7 @@ test('Rooms: the first row is picked, the arrow keys move the pick, the bar name
   await expect(dialog.getByLabel('Title')).toHaveValue(titles[1]);
   const members = dialog.getByRole('listbox', { name: `Members of ${titles[1]}` });
   await expect(members).toBeVisible();
-  // The list’s + and − are in the row of its heading, above its rows, so what they act on reads beside them.
-  const boxOf = async (/** @type {import('@playwright/test').Locator} */ el) =>
-    /** @type {{ x: number, y: number, width: number, height: number }} */ (await el.boundingBox());
-  const [head, add, remove, list] = await Promise.all(
-    [
-      dialog.getByRole('heading', { name: 'Members', exact: true }),
-      dialog.getByRole('button', { name: `Add an agent to ${titles[1]}` }),
-      dialog.getByRole('button', { name: /^Remove .* from /u }),
-      members,
-    ].map(boxOf),
-  );
-  const middle = (/** @type {{ y: number, height: number }} */ b) => b.y + b.height / 2;
-  for (const sign of [add, remove]) {
-    expect(Math.abs(middle(sign) - middle(head))).toBeLessThan(sign.height / 2);
-    expect(sign.x).toBeGreaterThan(head.x + head.width);
-    expect(sign.y + sign.height).toBeLessThanOrEqual(list.y);
-  }
+  await inHeadingRow(dialog, 'Members', members, [`Add an agent to ${titles[1]}`, /^Remove .* from /u]);
   for (const name of ['Save', `Delete ${titles[1]}…`]) await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
   // Back to the list, with the pick kept.
   await dialog.getByRole('button', { name: 'All rooms' }).click();
@@ -74,6 +87,7 @@ test('People: + and − are in view and off, saying why, and Edit goes to your o
   const rows = dialog.getByRole('listbox', { name: 'People' }).getByRole('option');
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText('you');
+  await inHeadingRow(dialog, 'People', dialog.getByRole('listbox', { name: 'People' }), ['Add a person', /^Remove /u, 'Edit your profile']);
   for (const name of ['Add a person', /^Remove /]) {
     const sign = dialog.getByRole('button', { name });
     await expect(sign).toHaveAttribute('aria-disabled', 'true');
@@ -109,6 +123,7 @@ test('Hosts: the pick’s status shows under the list, − and Edit name it, + s
   await expect(dialog.getByRole('region', { name: first, exact: true })).toHaveCount(0);
   for (const name of ['Add a host', `Remove ${second}`, `Edit settings for ${second}`])
     await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
+  await inHeadingRow(dialog, 'Hosts', dialog.getByRole('listbox', { name: 'Hosts' }), ['Add a host', `Remove ${second}`, `Edit settings for ${second}`]);
   // Edit: the settings open in its card, with Save and Cancel pinned under the sheet in the bar’s place.
   await dialog.getByRole('button', { name: `Edit settings for ${second}`, exact: true }).click();
   for (const name of ['Save', 'Cancel']) await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
@@ -177,4 +192,20 @@ test('Rooms: Save from the list stays in the menu, − asks over it and Cancel r
   await dialog.getByRole('button', { name: 'New room', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'New room' })).toBeVisible();
+});
+
+test('Personas and Projects: the bar is in the row of the list’s heading, and stays in view as the rows scroll', async ({ page }) => {
+  // More agents than the sheet shows at once, so the list scrolls.
+  for (let i = 0; i < 14; i++) app.rt.createPersona({ handle: `extra-${i}`, description: 'One more agent, to make the list long.' });
+  const dialog = await menu(page, 'Personas');
+  const personas = dialog.getByRole('listbox', { name: 'Personas' });
+  const first = await personas.getByRole('option').first().locator('b').textContent();
+  await inHeadingRow(dialog, 'Personas', personas, ['New agent', `Delete ${first}…`, `Edit ${first}`, `Retire ${first}`]);
+  await personas.getByRole('option').last().scrollIntoViewIfNeeded();
+  await expect(personas.getByRole('option').first()).not.toBeInViewport();
+  for (const name of ['New agent', `Edit ${first}`]) await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
+  await dialog.getByRole('tab', { name: 'Projects' }).click();
+  const projects = dialog.getByRole('listbox', { name: 'Projects' });
+  const project = await projects.getByRole('option').first().locator('b').textContent();
+  await inHeadingRow(dialog, 'Projects', projects, ['New project', `Delete project ${project}…`, `Edit ${project}`]);
 });
