@@ -3,7 +3,7 @@
 // change. Run “node board.mjs help” for the commands.
 
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const HELP = `node board.mjs <command>
@@ -147,9 +147,33 @@ const COMMANDS = {
   show: (board) => ({ says: render(board) }),
 };
 
+/** Holds the board for one change at a time: two of the team may run a command in the same moment. @param {string} dir */
+function hold(dir) {
+  const lock = join(dir, 'board.lock');
+  for (let tries = 0; ; tries++) {
+    try {
+      mkdirSync(lock);
+      return () => rmdirSync(lock);
+    } catch {
+      if (tries > 200) throw new Error('The board is busy. Try again in a moment.');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+}
+
 function main([command, ...args]) {
   if (!Object.hasOwn(COMMANDS, command ?? '')) return HELP;
   const dir = home();
+  const free = hold(dir);
+  try {
+    return change(dir, command, args);
+  } finally {
+    free();
+  }
+}
+
+/** Runs one command on the board, and writes what it changed. @param {string} dir @param {string} command @param {string[]} args */
+function change(dir, command, args) {
   const board = load(dir);
   const { says, did } = COMMANDS[command](board, args);
   if (did) {

@@ -6,7 +6,7 @@
 // command it runs; whoRan itself is tested on that run’s real ledger (tests/uat-standup.test.mjs).
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -81,6 +81,16 @@ test('the board refuses what it can’t do, says why, and records nothing of it'
     ['add'],
   );
   assert.match(readFileSync(join(r.dir, 'BOARD.md'), 'utf8'), /\| S1 \| lowercase \| {2}\| {2}\| {2}\| backlog \|/);
+});
+
+test('six of the team adding a story in the same moment each get one: no change to the board is lost', async () => {
+  const r = room();
+  const add = (/** @type {number} */ n) =>
+    new Promise((done) => spawn(process.execPath, ['board.mjs', 'add', `story ${n}`], { cwd: r.dir, timeout: 30_000 }).on('close', done));
+  assert.deepEqual(await Promise.all([1, 2, 3, 4, 5, 6].map(add)), [0, 0, 0, 0, 0, 0]);
+  const added = boardLog({ workspace: r.dir }).map((x) => x.story);
+  assert.deepEqual([...added].sort(), ['S1', 'S2', 'S3', 'S4', 'S5', 'S6']);
+  assert.equal(readFileSync(join(r.dir, 'BOARD.md'), 'utf8').match(/\| story \d \|/g)?.length, 6);
 });
 
 test('two sprints through the real board leave every ceremony in its record, and each trigger reads its own', () => {
