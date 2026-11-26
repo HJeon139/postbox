@@ -46,3 +46,31 @@ test('a reply that uses a term its turn defined while a commit is held has no te
   assert.deepEqual(problems, [], 'the term the turn defined is known');
   await env.close();
 });
+
+test('a term published before the hold stays in the pending glossary beside one defined behind it', async () => {
+  const h = await heldStore();
+  const env = await setup(async () => {}, h.store);
+  h.store.emit('glossary', { threadId: env.t.id, entry: { ...ZORBLAX, key: 'quux', term: 'Quux' } });
+  await h.store.flush();
+  h.hold();
+  const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync;
+  h.store.emit('glossary', { threadId: env.t.id, entry: ZORBLAX });
+  assert.deepEqual(Object.keys(h.store.pending.glossary(env.t.id)).sort(), ['quux', 'zorblax'], 'the published term and the held one');
+  h.release();
+  await commit;
+  await h.store.flush();
+  await h.store.close();
+});
+
+test('define_term in a topic opened while a commit is held says so when the conversation’s definition is held too (#1819, define_term’s note)', async () => {
+  const env = await roomWhileHeld();
+  const root = env.rt.threads.addItem(env.t.id, { kind: 'agent', sessionId: env.se.id, handle: 'researcher', text: 'The numbers.', status: 'done' });
+  await env.rt.toolsFor(env.se.id).open_topic({ itemId: root.id, message: 'A closer look.' });
+  const topicId = Object.values(env.store.pending.threads()).find((x) => x.kind === 'topic')?.id;
+  assert.equal(env.store.state.threads[topicId], undefined, 'the topic is held, not published');
+  env.store.emit('glossary', { threadId: env.t.id, entry: ZORBLAX });
+  const out = await env.rt.toolsFor(env.se.id, { id: 'tu_x', threadId: topicId }).define_term({ term: 'Zorblax', definition: 'Here, a stricter ranking.' });
+  assert.match(out.message, /over the conversation’s definition/, JSON.stringify(out));
+  await env.close();
+});
