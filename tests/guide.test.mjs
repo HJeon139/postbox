@@ -88,7 +88,7 @@ test('the guide stays short: agents follow defaults more than prose', () => {
 });
 
 test('#1684 the guide tells an agent an app’s animation loop stops at rest, with fixed-size history, before it ships one', () => {
-  assert.match(guideText(), /Let animation loops stop at rest; keep history fixed-size\./);
+  assert.match(guideText(), /Stop loops when nothing moves; cap their history\./);
 });
 
 test('#1478 the guide names postbox.publish, so agents learn an app can share its data, and read_app reads it', () => {
