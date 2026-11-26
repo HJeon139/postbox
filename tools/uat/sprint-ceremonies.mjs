@@ -50,19 +50,19 @@ function beforeSprint(f, log) {
 /**
  * The stories the customer sent back, with when the board showed it: put back with `return` after their answer to a
  * demo, or simply taken again by a later sprint’s plan after it, which is what “take it back into the next sprint”
- * also reads as.
+ * also reads as. Taken again counts for a story that was done when they answered: one left unfinished and carried
+ * over is the team’s, and nobody sent it back.
  * @param {any} f @param {any[]} log @returns {{ story: string, at: number, how: string }[]}
  */
 function sentBack(f, log) {
-  const answered = demos(f, log).filter((d) => d.answer);
-  const first = answered[0]?.answer.at ?? Number.POSITIVE_INFINITY;
+  const first = demos(f, log).find((d) => d.answer)?.answer.at ?? Number.POSITIVE_INFINITY;
+  const shown = boardAt(log, first).stories;
   const out = [];
   for (const x of log.filter((y) => y.at > first)) {
     if (x.did === 'return') out.push({ story: x.story, at: x.at, how: 'went back to the backlog' });
     if (x.did !== 'plan') continue;
-    const before = new Set(log.filter((y) => y.did === 'plan' && y.at < first).flatMap((y) => y.items));
     for (const id of x.items)
-      if (before.has(id) && !out.some((b) => b.story === id)) out.push({ story: id, at: x.at, how: `was taken again into sprint ${x.sprint}` });
+      if (shown.get(id)?.done && !out.some((b) => b.story === id)) out.push({ story: id, at: x.at, how: `was taken again into sprint ${x.sprint}` });
   }
   return out;
 }
@@ -75,7 +75,7 @@ function sprints(f, log) {
     const backlog = boardAt(log, p.at).stories.size;
     const taken = p.items.filter((/** @type {string} */ id) => id.startsWith('S'));
     const actions = p.items.filter((/** @type {string} */ id) => id.startsWith('A'));
-    const back = taken.filter((/** @type {string} */ id) => sentBack(f, log).some((b) => b.story === id));
+    const back = taken.filter((/** @type {string} */ id) => sentBack(f, log).some((b) => b.story === id && b.at <= p.at));
     const takers = ranBy(
       f,
       log.filter((x) => x.did === 'claim' && x.at > p.at && x.at < until),

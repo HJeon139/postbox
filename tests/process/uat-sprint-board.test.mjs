@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, utimesSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { boardLog } from '../../tools/uat/board-log.mjs';
@@ -43,6 +43,12 @@ test('a lock a killed command left behind is taken over, a fresh one is waited f
   const old = new Date(Date.now() - 60_000);
   utimesSync(lock, old, old);
   assert.deepEqual(r.as('alpha', 'add', 'untitled'), { said: 'S2: untitled', code: 0 });
+  // A folder the board can’t write to isn’t “busy”: the command says what stopped it, at once.
+  chmodSync(join(r.dir, '.git'), 0o555);
+  const refused = r.as('alpha', 'add', 'a command');
+  chmodSync(join(r.dir, '.git'), 0o755);
+  assert.match(refused.said, /^Not done: EACCES: permission denied, mkdir/);
+  assert.equal(refused.code, 1);
   // Wherever in the repository the command runs, there is one BOARD.md, at its top.
   mkdirSync(join(r.dir, 'src'));
   spawnSync(process.execPath, ['../board.mjs', 'add', 'digits'], { cwd: join(r.dir, 'src'), timeout: 30_000 });

@@ -214,4 +214,16 @@ test('a story the customer sent back counts when a later sprint simply takes it 
   const again = sprintOne();
   again.as('alpha', 'plan', '2', 'the same again', 'S1', 'S4');
   assert.equal(TRIGGERS['story-sent-back'].run(again.facts()).length, 0);
+  // A story left unfinished and carried over isn’t one the customer sent back.
+  const carried = sprintOne();
+  carried.as('developer', 'done', 'S1');
+  carried.as('alpha', 'demo', '1');
+  carried.says('Demo: accepted, except the first story.');
+  carried.as('alpha', 'action', 'smaller stories');
+  carried.as('alpha', 'plan', '2', 'finish what we started', 'S2', 'S4', 'A1');
+  assert.equal(TRIGGERS['story-sent-back'].run(carried.facts()).length, 0);
+  assert.equal(TRIGGERS['next-sprint-took-actions'].run(carried.facts()).length, 0);
+  // Nor does a story put back after a sprint was planned count for that plan.
+  carried.as('alpha', 'return', 'S4', 'too big after all');
+  assert.equal(TRIGGERS['next-sprint-took-actions'].run(carried.facts()).length, 0);
 });
