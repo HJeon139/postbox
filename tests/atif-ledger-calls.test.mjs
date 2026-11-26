@@ -223,4 +223,11 @@ test('#1757 from a snapshot, with no live frames: a command’s stored output is
     { live: rec.live, blob: theBlob },
   );
   assert.deepEqual(live.observation.results, [{ source_call_id: command.toolUseId, content: 'high' }]);
+  // A background job that printed nothing reads as empty after its note, not as a call with no result (#1752).
+  const silent = callIn(
+    asSnapshot((entry) => ({ ...entry, endedInBackground: true, output: { size: 0 } })),
+    { live: [], blob: () => null },
+  );
+  const [quiet] = silent.observation.results;
+  assert.ok(quiet?.content.startsWith('[the command ran in the background'), JSON.stringify(silent.observation.results));
 });

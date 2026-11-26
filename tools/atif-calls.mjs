@@ -94,10 +94,7 @@ const shown = (s) => s.output ?? s.detail;
  * @param {any} w  the call's ledger entry @param {(sha256: string) => string | null} blob
  */
 function storedResult(w, blob) {
-  const out = w?.endedInBackground ? w.callOutput : w?.output;
-  // A call that printed nothing: the ledger keeps no blob for it, and an empty result says so (#1752).
-  if (out?.size === 0) return '';
-  return outputResult(out, blob, '');
+  return outputResult(w?.endedInBackground ? w.callOutput : w?.output, blob, '');
 }
 
 /**
@@ -116,6 +113,8 @@ function jobResult(w, blob) {
 
 /** A stored output as a result, after `note`, or null when it doesn't read back. @param {any} out @param {(sha256: string) => string | null} blob @param {string} note */
 function outputResult(out, blob, note) {
+  // Output that was empty: the ledger keeps no blob for it, and an empty result says so (#1752), after its note.
+  if (out?.size === 0) return note ? resultContent(note) : '';
   if (typeof out?.size === 'number' && out.size > RESULT_READ_BYTES) return `${note}[output too large to read: ${out.size.toLocaleString('en-US')} bytes]`;
   const text = typeof out?.sha256 === 'string' ? blob(out.sha256) : null;
   if (typeof text !== 'string') return null;
@@ -187,7 +186,7 @@ function withUnstepped(tool_calls, results, unstepped, recorded) {
 /**
  * The tool calls, their results, the thoughts and the narration of one reply. A call's start time and exit code are its
  * ledger entry's; its output is its tool_result in the turn's recorded stream, else the store's blob the ledger names,
- * else what a live frame showed (storedResult).
+ * else what a live frame showed (storedResult), else a background job's output as the ledger kept it (jobResult).
  * @param {any} it  the reply, with its steps @param {Map<string, any>} ledger  the work ledger’s calls, by tool call id
  * @param {Map<string, any[]>} [questions]  each AskUserQuestion call’s blocks, by its id
  * @param {(sha256: string) => string | null} [blob]  a stored blob's text, or null when it isn't there
