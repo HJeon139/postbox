@@ -11,6 +11,8 @@ import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { claudeArgs } from '../server/adapters/claude-code-args.mjs';
 import { checkoutSteering, withSteering } from '../server/adapters/steering.mjs';
+import { remoteCtx, starts } from './claude-code-remote-fixture.mjs';
+import { createFakeDaemon, fixtureLines } from './fake-daemon.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** A clone with a store in data/: its AGENTS.md, a workspace, a project in data/, and its own steering there. */
@@ -32,6 +34,9 @@ test('#319 an agent in the data folder inside a clone is kept from the checkout�
     const out = checkoutSteering(folder, data);
     assert.ok(out.includes(join(checkout, 'AGENTS.md')), folder);
     assert.ok(out.includes(join(checkout, '.claude', 'AGENTS.md')), folder);
+    // And what Claude Code loads beside it, should a developer add one to their clone.
+    for (const f of ['CLAUDE.md', 'CLAUDE.local.md', join('.claude', 'CLAUDE.md'), join('.claude', 'rules', '**')])
+      assert.ok(out.includes(join(checkout, f)), `${f} in ${folder}`);
     assert.ok(!out.some((p) => p.startsWith(`${data}/`) || p === join(data, 'AGENTS.md')), `nothing in the data folder: ${out}`);
     // Each by the checkout’s path as given, or through its links (a temp folder’s, on macOS).
     assert.ok(
@@ -139,4 +144,15 @@ test('#319 so does an Agent SDK turn', async () => {
   };
   await assert.rejects(new AgentSdkAdapter({ sdk, workRoot: join(data, 'workspaces') }).deliver({}, { kind: 'user', text: 'Hi' }, ctxFor()));
   assert.ok(options?.settings?.claudeMdExcludes?.includes(join(checkout, 'AGENTS.md')), JSON.stringify(options?.settings));
+});
+
+test('#319 a turn on a host is given none: its folder is the host’s, and this computer’s paths never cross', async () => {
+  const { data } = clone();
+  const d = createFakeDaemon({ lines: fixtureLines('block') });
+  // A host folder spelled as this computer’s data folder: it still names no file here.
+  const ctx = remoteCtx(d, { remote: { folder: join(data, 'workspaces', 'dev') } });
+  await new ClaudeCodeAdapter({ bin: 'claude', workRoot: join(data, 'workspaces') }).deliver({}, { kind: 'user', text: 'Hi' }, ctx);
+  const [start] = starts(d);
+  const settings = JSON.parse(start.argv[start.argv.indexOf('--settings') + 1]);
+  assert.equal(settings.claudeMdExcludes, undefined, JSON.stringify(settings));
 });

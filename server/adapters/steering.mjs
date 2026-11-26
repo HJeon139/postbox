@@ -4,14 +4,18 @@
 // every AGENTS.md from its folder up to the filesystem root, so such an agent started with Postbox’s developer rules.
 // Only the files from the checkout, the Postbox repository the data folder is in, down to the data folder’s parent are kept
 // from it: one in the data folder or in the agent’s own folder is the person’s, and a project whose folder is the
-// checkout itself, someone developing Postbox, isn’t under the data folder and keeps them. Claude Code’s claudeMdExcludes applies to AGENTS.md too
+// checkout itself, someone developing Postbox, isn’t under the data folder and keeps them. Claude Code’s claudeMdExcludes applies to AGENTS.md too, and the
+// checkout’s CLAUDE.md files, which none ship today, go with it
 // (tools/uat/steering.mjs does the same for a UAT run’s workspaces, #316).
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 
-/** The steering files Claude Code reads from a folder: AGENTS.md, in it and in its .claude folder. */
-const STEERING = ['AGENTS.md', join('.claude', 'AGENTS.md')];
+/**
+ * The steering files Claude Code reads from a folder as project memory: AGENTS.md and CLAUDE.md, in it and in its
+ * .claude folder, CLAUDE.local.md, and the rules in .claude/rules (a glob: claudeMdExcludes matches with picomatch).
+ */
+const STEERING = ['AGENTS.md', 'CLAUDE.md', 'CLAUDE.local.md', join('.claude', 'AGENTS.md'), join('.claude', 'CLAUDE.md'), join('.claude', 'rules', '**')];
 
 /** Whether `inner` is `outer` or a folder inside it. @param {string} inner @param {string} outer */
 const within = (inner, outer) => {
