@@ -20,9 +20,8 @@
 // in Auto can’t change without a card (agy-hook.mjs), so its config can’t name a program git would run (core.fsmonitor,
 // diff.external, gpg.program). No MCP tool outside Postbox is approved here: what one does can’t be read from its name.
 
-import { lstatSync } from 'node:fs';
-import { join } from 'node:path';
 import { splitCommand } from '../../shared/command-chains.mjs';
+import { ownGitDir } from './agy-git-dir.mjs';
 import { leadsInto, readingsOf, realReadings } from './agy-paths.mjs';
 import { isPublishingTool } from './setup.mjs';
 
@@ -216,15 +215,6 @@ function findOk(args, ok) {
   return true;
 }
 
-/** Whether the agent’s folder has a real .git folder, so git reads no config the agent could have written. */
-function realGitDir(cwd) {
-  try {
-    return lstatSync(join(cwd, '.git')).isDirectory();
-  } catch {
-    return false; // no .git: git would look elsewhere, so it asks
-  }
-}
-
 /** Whether one command, as words, is a routine one (see the top of this file). @param {string[]} w @param {any} where */
 function routineWords(w, where) {
   const [cmd, ...args] = w;
@@ -234,7 +224,8 @@ function routineWords(w, where) {
   if (Object.hasOwn(READS, cmd)) return optionsOk(args, READS[cmd], read);
   if (Object.hasOwn(WRITES, cmd)) return optionsOk(args, WRITES[cmd], write);
   if (cmd === 'gh') return GH_COMMANDS.has(`${args[0]} ${args[1]}`) && optionsOk(args.slice(2), GH, read);
-  if (cmd === 'git') return Object.hasOwn(GIT, args[0]) && realGitDir(where.cwd) && optionsOk(args.slice(1), GIT[args[0]], args[0] === 'add' ? write : read);
+  if (cmd === 'git')
+    return Object.hasOwn(GIT, args[0]) && ownGitDir(where.cwd, where.roots) && optionsOk(args.slice(1), GIT[args[0]], args[0] === 'add' ? write : read);
   return false;
 }
 

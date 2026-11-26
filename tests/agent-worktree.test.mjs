@@ -6,12 +6,12 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { agentWorktree, branchFor, sharedFolder, worktreesRootFor } from '../server/adapters/agent-worktree.mjs';
+import { agentWorktree, branchFor, gitTimeoutFor, sharedFolder, worktreesRootFor } from '../server/adapters/agent-worktree.mjs';
 import { AntigravityCliAdapter, FolderQueue } from '../server/adapters/antigravity-cli.mjs';
 
 const ok = (stdout = '') => ({ code: 0, stdout, stderr: '' });
@@ -180,4 +180,40 @@ test('#1709 the Antigravity adapter puts each agent in its own worktree', async 
   const adapter = new AntigravityCliAdapter({ bin: 'agy', workRoot: r.workRoot, git: fakeGit({ top: r.project.folder }).git });
   assert.equal(await adapter.folderFor(A, r.project), r.wtOf(A));
   assert.equal(await adapter.folderFor(B, r.project), r.wtOf(B));
+});
+
+test('#1709 a worktree add git stops partway leaves no folder behind, and the log gives git’s reason', async (t) => {
+  const r = rig(t);
+  /** @type {string[]} */
+  const logs = [];
+  const { git } = fakeGit({ top: r.project.folder });
+  const half = async (/** @type {string} */ cwd, /** @type {string[]} */ given) => {
+    const args = given[0] === '-c' ? given.slice(2) : given;
+    if (args[0] === 'worktree' && args[1] === 'add') {
+      mkdirSync(args[2] === '-b' ? args[4] : args[2], { recursive: true });
+      return { code: 128, stdout: '', stderr: "Preparing worktree (new branch 'x')\nfatal: could not create work tree dir\n" };
+    }
+    return git(cwd, given);
+  };
+  assert.equal(await agentWorktree(A, r.project, r.workRoot, { git: half, log: (l) => logs.push(l) }), r.project.folder);
+  assert.equal(existsSync(r.wtOf(A)), false, 'the half-made folder is gone, so the next add can make it');
+  assert.match(logs[0], /\(fatal: could not create work tree dir\)/);
+  assert.equal(await r.folderOf(A), r.wtOf(A), 'the next turn gets its worktree');
+});
+
+test('#1709 a worktree add fetches no submodules, and has time for a large checkout', async (t) => {
+  /** @type {string[][]} */
+  const given = [];
+  const r = rig(t);
+  const { git } = fakeGit({ top: r.project.folder });
+  await agentWorktree(A, r.project, r.workRoot, {
+    git: async (cwd, args) => {
+      given.push(args);
+      return git(cwd, args);
+    },
+  });
+  const add = given.find((a) => a.includes('add'));
+  assert.deepEqual(add?.slice(0, 2), ['-c', 'submodule.recurse=false']);
+  assert.deepEqual(gitTimeoutFor(add ?? []), { timeoutMs: 5 * 60_000 });
+  assert.deepEqual(gitTimeoutFor(['rev-parse', 'HEAD']), {});
 });

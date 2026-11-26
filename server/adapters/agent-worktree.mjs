@@ -21,7 +21,7 @@
 // conversations, and every turn in a folder that isn’t in git.
 
 import { createHash } from 'node:crypto';
-import { access, mkdir } from 'node:fs/promises';
+import { access, mkdir, rm } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { storedFolder } from '../folder-path.mjs';
 import { runGit } from '../ledger-git.mjs';
@@ -44,8 +44,10 @@ export const branchFor = (persona, project) => `postbox/${folderName(project.id 
 
 /** How long a worktree add may take: it checks out every file, which a large repository needs time for. */
 const ADD_TIMEOUT_MS = 5 * 60_000;
+/** How long git may take for these arguments: a worktree add gets ADD_TIMEOUT_MS, anything else runGit’s own. @param {string[]} args */
+export const gitTimeoutFor = (args) => (args.includes('worktree') && args.includes('add') ? { timeoutMs: ADD_TIMEOUT_MS } : {});
 /** git as Postbox runs it (ledger-git.mjs): an argument array, the repository’s hooks and filters off. @type {Git} */
-const defaultGit = (cwd, args) => runGit(cwd, args, args.includes('add') ? { timeoutMs: ADD_TIMEOUT_MS } : {});
+const defaultGit = (cwd, args) => runGit(cwd, args, gitTimeoutFor(args));
 
 /** Worktrees being made now, by folder, so two turns starting at once make one. @type {Map<string, Promise<{ dir: string } | { why: string }>>} */
 const making = new Map();
@@ -104,7 +106,18 @@ async function worktree(git, repo, dir, branch) {
   const add = ['-c', 'submodule.recurse=false', 'worktree', 'add'];
   const added = await git(repo, has ? [...add, dir, branch] : [...add, '-b', branch, dir]);
   if (added.code === 0) return { dir };
-  return { why: added.stderr.trim().split('\n')[0]?.slice(0, 200) || `git exited with ${added.code}` };
+  // A stopped or refused add can leave its folder half made, which the next add refuses as existing: it goes, unless
+  // it’s a worktree after all. It’s Postbox’s own folder, under the data folder.
+  if (
+    !(await access(join(dir, '.git')).then(
+      () => true,
+      () => false,
+    ))
+  )
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  const lines = added.stderr.trim().split('\n');
+  // Git prints progress before its reason, which starts `fatal:`.
+  return { why: (lines.find((l) => l.startsWith('fatal:')) ?? lines[0])?.slice(0, 200) || `git exited with ${added.code}` };
 }
 
 /**
