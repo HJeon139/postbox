@@ -143,6 +143,8 @@ test('#168 going to an ask in the conversation on screen keeps Work open, and ad
   const { rt } = app;
   const { t, se, items } = longRoom('Address, Work open');
   const ask = items[5];
+  // Only this agent needs you, so ⌃J goes to it, not to one an earlier test left waiting.
+  for (const other of Object.values(rt.store.state.sessions)) if (other.needs) arrange.setSession(rt, other.id, { state: 'idle', needs: null });
   arrange.setSession(rt, se.id, { state: 'needs', needs: { kind: 'block', itemId: ask.id, text: 'Pick one' } });
   await page.goto(`${app.origin}/#/t/${t.id}?work`);
   await synced(page, app);
@@ -272,4 +274,20 @@ test('#168 going to an ask keeps the item open in Work beside the thread', async
     [items[5].id, t.id],
   );
   await expect(page, 'Work and its open item kept').toHaveURL(new RegExp(`#/t/${t.id}\\?work&at=as_open&m=${items[5].id}$`));
+});
+
+test('#168 going to a message in the conversation with another thread full screen keeps Work’s open item', async ({ page }) => {
+  const { t, se, items } = longRoom('Address, thread full screen');
+  const topic = app.rt.startTopic(t.id, items.at(-1).id).threadId;
+  arrange.post(app.rt, topic, { kind: 'agent', sessionId: se.id, handle: 'researcher', text: 'In the thread.', status: 'done' });
+  await page.goto(`${app.origin}/#/t/${t.id}/side/${topic}?work&full=thread&at=as_open`);
+  await synced(page, app);
+  await page.evaluate(
+    async ([itemId, threadId]) => {
+      const { goToItem } = await import('/app/js/needs-nav.mjs');
+      await goToItem(itemId, threadId);
+    },
+    [items[5].id, t.id],
+  );
+  await expect(page, 'the thread’s full view goes; Work and its item stay').toHaveURL(new RegExp(`#/t/${t.id}\\?work&at=as_open&m=${items[5].id}$`));
 });

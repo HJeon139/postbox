@@ -83,7 +83,7 @@ function goToAddress(itemId, threadId) {
   // A full view stays only if it’s this thread’s: full-screen Work, or another thread, would cover the message.
   const full = r.full === 'thread' && r.sideId === side ? r.full : null;
   // An item open in Work beside the thread stays; one open in full-screen Work goes with it.
-  const pane = { work: r.work, turn: r.turn, full, at: full === r.full ? r.at : null };
+  const pane = { work: r.work, turn: r.turn, full, at: r.full === 'work' ? null : r.at };
   const to = r.view === 'thread' && r.threadId === conv ? paneHref(conv, { ...pane, side, item: itemId }) : itemHref(threadId, itemId);
   // The address is this one’s: focusAddressed, as it comes in, doesn’t go to it a second time.
   addressed = { conv, key: `${threadId}?m=${itemId}` };
