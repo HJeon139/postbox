@@ -14,8 +14,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { withQuota } from '../harness-failure.mjs';
-import { withAskRules } from '../permission-rules.mjs';
-import { liveControl, MODES } from './agent-sdk-live.mjs';
+import { liveControl } from './agent-sdk-live.mjs';
 import { sdkModels } from './claude-models.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, memoryRootFor } from './folder.mjs';
@@ -23,20 +22,11 @@ import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { recordOnce } from './prompt-sent.mjs';
 import { listCommands } from './sdk-commands.mjs';
+import { sdkOptions } from './sdk-options.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
-import {
-  deniedTools,
-  effortOf,
-  fromContext,
-  HOST_SOURCES,
-  ISOLATED_SOURCES,
-  modelOf,
-  postboxServer,
-  recorderFor,
-  settingsFor,
-  setupOf,
-  writeRules,
-} from './setup.mjs';
+import { effortOf, fromContext, recorderFor } from './setup.mjs';
+
+export { sdkOptions };
 
 /** Loads the SDK, or returns null when it isn’t installed. */
 export async function loadAgentSdk() {
@@ -46,72 +36,6 @@ export async function loadAgentSdk() {
   } catch {
     return null;
   }
-}
-
-/** The query() options for one turn. Pure apart from the callbacks, so the tests can check them. */
-/**
- * @param {{ persona: any, cwd: string, addDirs?: string[], sessionId: string, resume: boolean, mcpUrl: string, guide: string,
- *           abortController: AbortController, canUseTool?: Function, fork?: any, allowOnce?: string[],
- *           rules?: { allow?: string[], ask?: string[], deny?: string[] }, memoryDir?: string|null, plugins?: string[] }} turn
- *   rules: the ones the person made for this conversation only (#66), passed every turn. memoryDir: the persona’s own (#208).
- *   plugins: plugin folders to load, Postbox’s own (agent-plugin.mjs).
- */
-export function sdkOptions({
-  persona,
-  cwd,
-  addDirs = [],
-  sessionId,
-  resume,
-  mcpUrl,
-  guide,
-  abortController,
-  canUseTool,
-  fork = null,
-  allowOnce = [],
-  rules = {},
-  memoryDir = null,
-  plugins = [],
-}) {
-  const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
-  const setup = setupOf(persona);
-  const denied = [...deniedTools(persona), ...(rules.deny ?? [])];
-  const allowed = [...allowOnce, ...(rules.allow ?? [])];
-  return {
-    cwd,
-    additionalDirectories: addDirs,
-    // Both always passed, as for the CLI: left out, your own settings would decide (#60).
-    model: modelOf(persona),
-    effort: effortOf(persona),
-    // A topic thread’s first turn forks the conversation’s session at the message it branched from.
-    ...(fork
-      ? { resume: fork.sdkSessionId ?? fork.claudeSessionId, forkSession: true, ...(fork.uuid ? { resumeSessionAt: fork.uuid } : {}) }
-      : resume
-        ? { resume: sessionId }
-        : { sessionId }),
-    includePartialMessages: true,
-    // Postbox’s server, next to your own; an Isolated persona loads Postbox’s only.
-    mcpServers: postboxServer(mcpUrl),
-    ...(setup.usesHostSetup ? {} : { strictMcpConfig: true }),
-    // No allowedTools rule for Postbox’s tools: one would shadow canUseTool, which allows them itself. Only
-    // rules the person allowed once, after a refusal, and those for this conversation (#66), go here.
-    ...(allowed.length ? { allowedTools: allowed } : {}),
-    // As for the CLI: the person’s setup (or the project’s only, when Isolated), the default output style, no MCP
-    // servers the persona turned off, and none of the tools it may not use (server/adapters/setup.mjs).
-    // A ticked tool is never an allow rule: the permission mode still decides.
-    settingSources: [...(setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES)],
-    // The persona’s own memory folder (#208); writes outside Postbox ask first (#112), through canUseTool, so the card shows the draft.
-    settings: withAskRules(settingsFor(persona, memoryDir), [...writeRules(persona), ...(rules.ask ?? [])]),
-    ...(denied.length ? { disallowedTools: denied } : {}),
-    // Readable thinking, and subagents’ own messages, so Postbox can show what the agent is on.
-    thinking: { type: 'adaptive', display: 'summarized' },
-    forwardSubagentText: true,
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: guide },
-    // Postbox’s skills, beside the person’s own.
-    plugins: plugins.map((path) => ({ type: /** @type {const} */ ('local'), path })),
-    permissionMode: MODES[mode],
-    ...(mode === 'bypass' ? { allowDangerouslySkipPermissions: true } : { canUseTool }),
-    abortController,
-  };
 }
 
 /** Where a forked session starts: the branch point’s checkpoint, or the latest point of the session it forks. */
