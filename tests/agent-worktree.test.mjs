@@ -34,7 +34,7 @@ function fakeGit({ top, repo = true, prefix = '', branches = [], refuse = false 
     if (sub === 'rev-parse' && a1 === '--show-toplevel')
       return repo ? ok(`${top}\n${prefix}\n`) : { code: 128, stdout: '', stderr: 'fatal: not a git repository' };
     if (sub === 'rev-parse' && a2 === '--quiet') return args[3] === 'HEAD' || branches.includes(args[3].replace('refs/heads/', '')) ? ok('abc\n') : no();
-    if (sub === 'worktree' && a1 === 'prune') return ok();
+    if (sub === 'worktree' && a1 === 'remove') return ok();
     if (sub === 'worktree' && a1 === 'add') {
       if (refuse) return { code: 128, stdout: '', stderr: "fatal: 'postbox/x-a' is already checked out at '/elsewhere'\n" };
       const dir = a2 === '-b' ? args[4] : a2;
@@ -147,14 +147,14 @@ test('#1709 a worktree git refuses leaves the agent in the project’s folder, a
   assert.match(r.logs[0], /couldn’t make a worktree for @a .*already checked out/);
 });
 
-test('#1709 a worktree folder deleted by hand is pruned before it’s made again', async (t) => {
+test('#1709 a worktree folder deleted by hand has its own record removed before it’s made again, and nothing is pruned', async (t) => {
   const r = rig(t);
   await r.folderOf(A);
   await rm(r.wtOf(A), { recursive: true, force: true });
   await r.folderOf(A);
   assert.deepEqual(
     r.calls.filter((c) => c[1] === 'worktree').map((c) => c[2]),
-    ['prune', 'add', 'prune', 'add'],
+    ['remove', 'add', 'remove', 'add'],
   );
 });
 
@@ -257,7 +257,7 @@ test('#1709 an add git stopped after making the worktree’s .git is removed thr
   };
   assert.equal(await agentWorktree(A, r.project, r.workRoot, { git: stopped, log: () => {} }), r.project.folder);
   assert.deepEqual(
-    calls.find((c) => c[1] === 'remove'),
+    calls.findLast((c) => c[1] === 'remove'),
     ['worktree', 'remove', '--force', '--force', r.wtOf(A)],
   );
   assert.equal(existsSync(r.wtOf(A)), false, 'nothing half made is left');

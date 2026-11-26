@@ -111,6 +111,19 @@ test('#1709 a locked worktree whose folder someone moved keeps its lock, and git
   assert.equal(git(moved, ['status', '--porcelain']), '?? draft.md\n', 'git still works in the moved folder');
 });
 
+test('#1709 making an agent’s worktree keeps the person’s own worktree whose folder is away, and remakes its own deleted one', async () => {
+  const { project: p, workRoot } = await project('away');
+  const mine = join(home, 'away', 'mine');
+  git(p.folder, ['worktree', 'add', '-q', '-b', 'mine', mine]);
+  // As a drive that isn’t mounted: `git worktree prune` would forget it, and git would no longer work there.
+  await rename(mine, `${mine}.away`);
+  const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
+  await rm(dir, { recursive: true, force: true });
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot), dir, 'its own deleted worktree is made again');
+  await rename(`${mine}.away`, mine);
+  assert.equal(git(mine, ['status', '--porcelain']), '', 'git still works in the person’s worktree');
+});
+
 test('#1709 git’s record of a worktree still being made, its folder since deleted, is cleared so the next turn makes it', async () => {
   const { project: p, workRoot } = await project('stopped-hard');
   const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);

@@ -100,8 +100,10 @@ async function worktree(git, repo, dir, branch) {
   if (state === 'unfinished') await removeWorktree(git, repo, dir);
   const there = state !== 'unfinished' && (await exists(dir));
   await mkdir(dirname(dir), { recursive: true });
-  // A worktree whose folder was deleted is still registered, and git refuses to add one there until it’s pruned.
-  await git(repo, ['worktree', 'prune']);
+  // A worktree whose folder was deleted is still registered, and git refuses to add one there until its record goes.
+  // Only this one’s goes: `worktree prune` would forget every worktree of the repository whose folder is missing, such
+  // as the person’s own on a drive that isn’t mounted (#766). Git keeps a record someone locked.
+  if (!(await exists(dir))) await git(repo, ['worktree', 'remove', '--force', dir]);
   const has = (await git(repo, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0;
   // Submodules aren't fetched: that could reach the network with the repository's own ssh command.
   const add = ['-c', 'submodule.recurse=false', 'worktree', 'add'];
