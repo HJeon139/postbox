@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.51.4 (2026-11-26)
+
+### Fixes
+
+- **store:** read sessions as written where the read decides a write
+- **store:** read a held topic's glossary through its conversation, as written
+- **store:** read threads as written where the read decides a write
+
 ## 4.51.3 (2026-11-26)
 
 ### Fixes
