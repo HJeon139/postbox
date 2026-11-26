@@ -1,7 +1,8 @@
-// #1686, part 3: the last cuts of read text that could end inside a character. #1685 routed the host’s replies through
-// cutText, but its call sites had no test of their own: a host call’s reply cut to replyChars, the reply kept for the
-// daemon’s repeats (KEPT_REPLY_CHARS), and the refusal a queued call’s agent is told at its next turn. An app
-// version’s summary is cut the same way. Each case puts an emoji across its site’s cut.
+// #1686, part 3: the last of the sites the issue lists; other raw cuts of read text remain outside its list. #1685
+// routed the host’s replies through cutText, but its call sites had no test of their own: a host call’s reply cut to
+// replyChars, the reply kept for the daemon’s repeats (KEPT_REPLY_CHARS), and the refusal a queued call’s agent is told
+// at its next turn. An app version’s summary, a new version’s title, the agent’s intent and a check problem’s message
+// are cut the same way. Each case puts an emoji across its site’s cut.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
