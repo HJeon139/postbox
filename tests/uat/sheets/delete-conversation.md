@@ -2,7 +2,7 @@
 
 ![Delete conversation](../screenshots/delete-conversation-sheet.png)
 
-**Where:** Conversation menu › Manage room and members… › Delete…; Settings › Rooms, a row picked, then −; or `/delete` in the composer (#1735). From the main menu the confirm opens over it: Cancel returns to where you were in it, and it closes once the conversation is gone.
+**Where:** The room’s Manage button (the gear after its title) › Delete…; Settings › Rooms, a row picked, then −; or `/delete` in the composer (#1735). From the main menu the confirm opens over it: Cancel returns to where you were in it, and it closes once the conversation is gone.
 
 ## Why it exists
 
@@ -19,7 +19,7 @@ Deleting must say what goes and what stays, once, before it happens. Delete is j
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. Delete a conversation.
 
-3. Make a folder with a long name and no space or hyphen in it, such as `mkdir "/tmp/$(printf 'a%.0s' {1..120})"`, add it as a project under Settings › Projects, and start a conversation in it. Narrow the window to about 375 px wide, and open its Delete… (⋯ › Manage room and members… › Delete…).
+3. Make a folder with a long name and no space or hyphen in it, such as `mkdir "/tmp/$(printf 'a%.0s' {1..120})"`, add it as a project under Settings › Projects, and start a conversation in it. Narrow the window to about 375 px wide, and open its Delete… (the gear after its title, then Delete…).
 4. With the confirm still open, make the window short (about 400 px), so its body scrolls. Press Tab until the focus ring is on the body, then press the down arrow.
 5. Make the window tall again, close the confirm, open it again, and press Tab from the close button.
 

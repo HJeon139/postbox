@@ -169,6 +169,14 @@ test('#1757 a stored output the ledger kept only the end of says so; one too lar
   assert.equal(big.tool_calls[0].extra.display_output, 'high', 'the live text is still what the conversation showed');
 });
 
+test('#1752 a command that printed nothing has an empty result, not none, so it reads apart from a missing one', () => {
+  const step = callIn(
+    withEnded((p) => ({ ...p, output: { size: 0 } })),
+    { live: [], blob: () => null },
+  );
+  assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: '' }]);
+});
+
 /**
  * The events as a data folder's snapshot replays the call: its ledger entry once, as a work.add holding its last state
  * (tools/atif-export.mjs), with no patches. @param {(entry: any) => any} last
@@ -215,4 +223,16 @@ test('#1757 from a snapshot, with no live frames: a command’s stored output is
     { live: rec.live, blob: theBlob },
   );
   assert.deepEqual(live.observation.results, [{ source_call_id: command.toolUseId, content: 'high' }]);
+  // A background job that printed nothing reads as empty after its note, not as a call with no result (#1752).
+  const silent = callIn(
+    asSnapshot((entry) => ({ ...entry, endedInBackground: true, output: { size: 0 } })),
+    { live: [], blob: () => null },
+  );
+  assert.deepEqual(silent.observation?.results, [
+    {
+      source_call_id: command.toolUseId,
+      content:
+        '[the command ran in the background: this is what the work ledger kept once its job ended, which can be the job’s output, not what the call returned]\n',
+    },
+  ]);
 });

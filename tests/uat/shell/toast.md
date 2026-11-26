@@ -11,7 +11,7 @@ Confirms what just happened and offers a next step (Restore, Go) without a dialo
 ## Expected functionality
 
 - Appears in the Notifications region for permission requests and other blocking events from other conversations. A delete has no toast and no Undo: its confirm said what goes.
-- Notices share one top-right stack of at most three, newest first; on a narrow screen it spans the available width.
+- Notices share one top-right stack of at most three, newest first; on a narrow screen it spans the available width. While a sheet is open, at every width, one notice shows, the newest, on one line each for its title and its text, in the sheet’s title row between its title and Close: no notice covers a tab or a control of the sheet. Under the pointer it shows its words whole, and may cover what is under it while it does; it never runs off the window: its words scroll inside it, and its Dismiss stays where the pointer is. An older notice shows again if the sheet closes while it lasts. A notice is temporary: what must be found later is a message or a “needs you”. The gaps between notices take no click.
 - Has an action button when one applies; disappears on its own; is announced to screen readers.
 
 ## Steps to reproduce

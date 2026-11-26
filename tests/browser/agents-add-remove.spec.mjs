@@ -1,6 +1,6 @@
 // #1620, #1735: a room’s members are added and removed in one place, the Members list of the room’s form in the main
 // menu, whose + adds an agent the person has in one pick and whose − removes the one picked, as a list’s + and − do in
-// macOS. The Agents header’s button and the conversation’s ⋯ only go there.
+// macOS. The Agents header’s button and the top bar’s room button only go there.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -40,13 +40,10 @@ const handlesIn = (t) =>
     .map((x) => x.handle)
     .sort();
 
-/** The room’s form, opened from the Agents header, and its Members list’s controls. */
+/** The room’s form, opened from the Agents header or from the top bar’s room button, and its Members list’s controls. */
 async function members(page, t, from = 'header') {
   if (from === 'header') await page.locator('.rail section.agents-sec').getByRole('button', { name: 'Manage this conversation’s members' }).click();
-  else {
-    await page.locator('header.topbar #conversation-actions').click();
-    await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
-  }
+  else await page.locator('header.topbar #conversation-actions').click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
   const list = settings.getByRole('listbox', { name: `Members of ${t.title}` });
   await expect(list).toBeVisible();
@@ -153,10 +150,9 @@ test.describe('at 1280 px, a remove that races another', () => {
 test.describe('at 375 px', () => {
   test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
 
-  test('#1620 where the sidebar is hidden, the conversation’s menu goes to the same Members list, which adds and removes', async ({ page }) => {
+  test('#1620 where the sidebar is hidden, the top bar’s room button goes to the same Members list, which adds and removes', async ({ page }) => {
     const t = await opened(page);
-    const { row, plus, minus } = await members(page, t, 'menu');
-    // The menu itself adds and removes no one.
+    const { list, row, plus, minus } = await members(page, t, 'top bar');
     await plus.click();
     await page
       .getByRole('menu', { name: 'Add an agent' })
@@ -172,7 +168,9 @@ test.describe('at 375 px', () => {
     await expect.poll(() => handlesIn(t)).toEqual(['librarian']);
     await expect(minus, 'one agent left: − is off').toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('Escape');
+    // The room’s button has no menu of its own: it opens this form again, where every control is.
     await page.locator('header.topbar #conversation-actions').click();
-    await expect(page.getByRole('menuitem', { name: /^(Add an agent|Remove an agent|Rename|Delete)/ }), 'the menu has no control of its own').toHaveCount(0);
+    await expect(list).toBeVisible();
+    await expect(page.getByRole('menu'), 'no menu opens').toHaveCount(0);
   });
 });
