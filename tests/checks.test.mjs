@@ -97,8 +97,8 @@ test('#63 a reply that showed the block, explains in prose, or was asked for in 
 test('#63 the lint turn asks for the block, and needs no reply', () => {
   const text = formatLint(lintMessage(blockProblems(UNBLOCK)));
   assert.match(text, /Your reply should have been a block:\n- It ends with options in a list\. If they’re for the person, offer them as a choice block/);
-  assert.match(text, /Show that block now with show_block, built from what you wrote\./);
-  assert.match(text, /No reply is needed/);
+  assert.match(text, /If they’re for the person, show that block now with show_block, built from what you wrote\./);
+  assert.match(text, /no reply is needed/i);
   assert.doesNotMatch(text, /reply with a corrected version/);
 });
 

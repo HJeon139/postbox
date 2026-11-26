@@ -91,7 +91,12 @@ export function formatLint(message, { folded = false } = {}) {
   if (reply.length) todo.push('If the person needs the part it affected, reply with a corrected version, briefly.');
   const shape = of('reply').filter((p) => SHOULD_BE_BLOCK.has(p.code));
   if (shape.length) parts.push(`Your reply should have been a block:\n${lines(shape)}`);
-  if (shape.length) todo.push('Show that block now with show_block, built from what you wrote.');
+  const maybeAgents = shape.some((p) => MAYBE_AGENTS.has(p.code));
+  if (shape.length && !maybeAgents) todo.push('Show that block now with show_block, built from what you wrote.');
+  if (maybeAgents)
+    todo.push(
+      'If they’re for the person, show that block now with show_block, built from what you wrote. If they’re for another agent, show no block: only the person answers one. Reply once instead, @-mentioning that agent, with the same words.',
+    );
   const apps = groups('app');
   for (const ps of apps) parts.push(`Your app “${ps[0].scope.title ?? ps[0].scope.id}” (id ${ps[0].scope.id}) is shown, with these warnings:\n${lines(ps)}`);
   if (apps.length) todo.push('Fix each app with update_app.');
@@ -99,7 +104,8 @@ export function formatLint(message, { folded = false } = {}) {
   for (const ps of blocks) parts.push(`Your block “${ps[0].scope.title ?? ps[0].scope.id}” (id ${ps[0].scope.id}):\n${lines(ps)}`);
   // Folded into another turn: it sits after that turn’s request and the room’s facts (formatMessage), so it points up.
   if (folded) return `[Postbox] Postbox checked your last reply, and found what to fix along with the request above.\n\n${[...parts, ...todo].join('\n\n')}`;
-  if (!diagrams.length && !reply.length) todo.push('No reply is needed: once you’ve made the changes, end your turn without writing anything.');
+  if (!diagrams.length && !reply.length)
+    todo.push(`${maybeAgents ? 'Otherwise no' : 'No'} reply is needed: once you’ve made the changes, end your turn without writing anything.`);
   return `[Postbox] ${[...parts, ...todo].join('\n\n')}`;
 }
 
@@ -109,9 +115,9 @@ const SHOULD_BE_BLOCK = new Set(['options-in-prose', 'questions-in-prose', 'draf
 // Asking the person to pick: “pick one:”, “which do you…”, “would you rather…”. Not “we should pick one each”.
 const PICK = /\b(?:pick|choose) one\s*[:?]|\bwhich (?:one|option|do you|would you)\b|\bwould you (?:rather|prefer)\b|\bor should I\b/i;
 const DRAFT = /\b(?:draft|review|approve|looks? (?:good|right)|feedback|any changes)\b/i;
-// A reply that names an agent without the @ isn’t addressed to it (#1695 skips only a mention), so the nudge says a
-// block is for the person, and what to do when another agent is to answer (#1721).
-const FOR_AGENT = 'If they’re for another agent, @-mention it in your reply instead: only the person answers a block.';
+// Questions and options may be another agent’s to answer: a reply that names it without the @ isn’t addressed to it
+// (#1695 skips only a mention), so the lint turn says a block is for the person, and what to do for an agent (#1721).
+const MAYBE_AGENTS = new Set(['questions-in-prose', 'options-in-prose']);
 
 /**
  * A reply that should have been a block (#63): it ends with options or questions in prose, hands over a long draft,
@@ -142,13 +148,13 @@ export function blockProblems(text, shown = [], asked = '', { toAgent = false } 
   if (!asks && questions >= 3)
     out.push({
       code: 'questions-in-prose',
-      message: `It ends with ${questions} questions in prose. If they’re for the person, ask them in a form block, one field per question. ${FOR_AGENT}`,
+      message: `It ends with ${questions} questions in prose. If they’re for the person, ask them in a form block, one field per question.`,
       scope: reply,
     });
   else if (!asks && ((numbered >= 2 && (questions >= 1 || pick)) || (bullets >= 2 && pick)))
     out.push({
       code: 'options-in-prose',
-      message: `It ends with options in a list. If they’re for the person, offer them as a choice block, so the person picks one with a click. ${FOR_AGENT}`,
+      message: `It ends with options in a list. If they’re for the person, offer them as a choice block, so the person picks one with a click.`,
       scope: reply,
     });
   else if (!asks && prose.length >= 40 && DRAFT.test([...prose.slice(0, 3), ...prose.slice(-3)].join('\n')))

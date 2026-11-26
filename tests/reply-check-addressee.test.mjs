@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { blockProblems } from '../server/checks.mjs';
+import { blockProblems, formatLint, lintMessage } from '../server/checks.mjs';
 import { settle, setup } from './blocks-fixture.mjs';
 
 // The reported reply's shape: a review request, then four questions for the reviewer. The words are ours.
@@ -36,15 +36,23 @@ test('#1721 a reply whose questions are for an agent it @-mentions gets no form 
   );
 });
 
-test('#1721 the form nudge says it’s for the person, and to @-mention an agent the questions are for', () => {
+test('#1721 the lint turn for questions says the form is for the person, and an agent’s are asked with an @-mention', () => {
   const [p] = blockProblems(review('critic'));
   assert.equal(p.code, 'questions-in-prose');
   assert.match(p.message, /If they’re for the person, ask them in a form block/);
-  assert.match(p.message, /If they’re for another agent, @-mention it in your reply instead: only the person answers a block\./);
+  const text = formatLint(lintMessage([p]));
+  assert.match(text, /If they’re for the person, show that block now with show_block/);
+  assert.match(text, /If they’re for another agent, show no block: only the person answers one\. Reply once instead, @-mentioning that agent/);
+  assert.doesNotMatch(text, /^Show that block now/m, 'no plain order to show the block');
+  assert.match(text, /Otherwise no reply is needed/);
 });
 
-test('#1721 the choice nudge says the same of options another agent is to pick from', () => {
-  const [p] = blockProblems('Two ways to fix it:\n1. Drop the hold\n2. Keep the report\n\nWhich do you want?');
-  assert.equal(p.code, 'options-in-prose');
-  assert.match(p.message, /If they’re for another agent, @-mention it in your reply instead: only the person answers a block\./);
+test('#1721 options are treated the same; a long draft still just asks for its review block', () => {
+  const options = formatLint(lintMessage(blockProblems('Two ways to fix it:\n1. Drop the hold\n2. Keep the report\n\nWhich do you want?')));
+  assert.match(options, /If they’re for the person, offer them as a choice block/);
+  assert.match(options, /If they’re for another agent, show no block/);
+  const draft = Array.from({ length: 45 }, (_, i) => `Line ${i} of the draft.`).join('\n') + '\nPlease review.';
+  const text = formatLint(lintMessage(blockProblems(draft)));
+  assert.match(text, /^Show that block now with show_block/m);
+  assert.match(text, /^No reply is needed/m);
 });
