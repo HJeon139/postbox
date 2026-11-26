@@ -80,6 +80,10 @@ test('Biome at each commit runs in a temporary worktree at that commit, never in
     COMMITS,
   );
   assert.equal(ran(w, /^git worktree add/).length, ran(w, /^git worktree remove/).length, 'each worktree is removed');
+  // git worktree add writes only into the new folder; every git call that changes a checkout runs in that folder.
+  const changesTree = ran(w, /^git (checkout|switch|restore|reset|merge |rebase|cherry-pick|revert|am|apply|stash|clean|pull)\b/);
+  assert.ok(changesTree.length, 'the steps check out commits');
+  for (const c of changesTree) assert.match(c.o.cwd, /^\/tmp\/pb-signoff-/, `${c.argv.join(' ')} ran in ${c.o.cwd}`);
   // The project lints run Biome from node_modules, which a new worktree lacks.
   assert.deepEqual(w.links[0], ['/repo/node_modules', `${biome[0].o.cwd}/node_modules`]);
 });
