@@ -43,7 +43,7 @@ export function planBack(rt, turn, se, took) {
   // A turn that took no entries carries whom it goes back to: a host turn continued under a new ID goes back as the turn
   // it continues would have (#1538), and a retry of one that took none as the failed turn would have (#1541).
   const asked = turn.backTo ?? backTo(took);
-  const open = asked.filter((h) => h !== se.handle && here(h) && !endedByReaction(rt, se, took, h, turn.startedAt));
+  const open = asked.filter((h) => h !== se.handle && here(h) && !endedByReaction(rt, se, took, h, turn));
   if (!open.length) return null;
   // Text with words: a harness may stream only whitespace around a tool call, such as a reaction, which is no reply.
   const reply = rt.store.pending.items(turn.threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text?.trim());
@@ -91,21 +91,30 @@ export function wroteOnlyTo(rt, se, threadId, turnId = null) {
 }
 
 /**
- * Whether the agent ended its exchange with this one by a reaction (#1553): everything from it that woke this turn is a
- * reply that came back on its own, and the agent reacted to it. Its words, if it wrote any, then post without waking
- * it again. In two UAT runs of 21 November 2026, agents reacted ✅ and also wrote “Acknowledged.”, and each
- * acknowledgment went back, up to hop 262. Only a reply that came back counts: a direct @-mention is a request, and a
- * 👍 on it may come before the report, so a batch with one from that agent still goes back. Only a reaction made since
- * this turn began counts: one from a failed attempt the person retried doesn’t stop the Retry’s answer (critic’s review
- * of PR #1557).
+ * Whether the agent ended its exchange with this one by a reaction (#1553): it reacted to everything from that agent
+ * that woke this turn, and the turn did no work. Its words, if it wrote any, then post without waking that agent,
+ * neither by going back nor by naming it (mention-entries.mjs). In two UAT runs of 21 November 2026, agents reacted ✅
+ * and also wrote “Acknowledged.”, and each acknowledgment went back, up to hop 262.
+ *
+ * A direct @-mention counts as a reply that came back does (#1591). Until 26 November 2026 it didn’t, since a 👍 on a
+ * request may come before the report. In the first paid runs after PR #1724, two agents named each other in every
+ * closing line (“I reacted ✅ to @critic’s closing message and haven’t replied”), so every wake was a direct @-mention
+ * and no reaction ended anything: 14 closing turns after one approval. What tells the report from the closing line is
+ * the work: in the stored runs, all 98 turns that reacted to a direct @-mention and did no work were closing lines or
+ * acknowledgments, and the 3 that did work were reviews. So a turn that did work goes back and wakes whom it names,
+ * whatever it reacted to, which also delivers a report after a 👍 on a reply that came back.
+ *
+ * Only a reaction made since this turn began counts: one from a failed attempt the person retried doesn’t stop the
+ * Retry’s answer (critic’s review of PR #1557). A message from that agent the turn didn’t react to keeps the exchange
+ * open, and a host turn continued under a new ID took no entries, so nothing ends there.
  * @param {any} rt @param {any} se  the agent @param {any[]} took  the entries the turn took @param {string} handle
- * @param {number} since  when this turn began
+ * @param {any} turn  the turn: when it began, and what it did
  */
-export function endedByReaction(rt, se, took, handle, since) {
+export function endedByReaction(rt, se, took, handle, turn) {
   const from = took.filter((e) => e.source !== 'notice' && e.from === handle);
   const reacted = (/** @type {any} */ e) =>
-    (rt.store.pending.item(e.threadId, e.itemId)?.reactions ?? []).some((/** @type {any} */ r) => r.by === se.id && r.at >= since);
-  return from.length > 0 && from.every((e) => e.source === 'mention' && e.bounce === true && reacted(e));
+    (rt.store.pending.item(e.threadId, e.itemId)?.reactions ?? []).some((/** @type {any} */ r) => r.by === se.id && r.at >= turn.startedAt);
+  return from.length > 0 && from.every((e) => e.source === 'mention' && reacted(e)) && !didWork(turn);
 }
 
 /**
@@ -120,7 +129,13 @@ export function endedByReaction(rt, se, took, handle, since) {
  * needed: the first was the person asking, and the second may have done its work before it was cut off.
  * @param {any} turn
  */
-export const endedExchange = (turn) => !turn.asked?.message?.retry && !turn.origin && !turn.backTo && onlyBounces(turn) && !tookStep(turn) && !turn.acted;
+export const endedExchange = (turn) => !turn.asked?.message?.retry && !turn.origin && !turn.backTo && onlyBounces(turn) && !didWork(turn);
+
+/**
+ * Whether a turn did work of its own, so far: a step, or a call to one of Postbox’s tools that acted (tool-gate.mjs,
+ * isOwnWork). Reading the room and reacting are neither. @param {any} turn
+ */
+const didWork = (turn) => tookStep(turn) || turn.acted === true;
 
 /** Whether the entries a turn took were replies going back and Postbox’s notices, with one reply at least. @param {any} turn */
 function onlyBounces(turn) {

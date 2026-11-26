@@ -1,0 +1,307 @@
+{
+  "source": "uat-runs/2026-11-26T01-42-17-pairwork and uat-runs/2026-11-26T04-01-34-pairwork (the first paid runs after PR #1724, on 5f1fb0f7e), each run’s events.jsonl, extracted 25 November 2026. From each run, the turns from critic’s approval to the person’s next message. One row per finished turn, as in ack-loops-2026-11-23.json: the entries it took (wokeBy, and byBounce when all were replies that came back), its last reply with words cut to 240 characters, the agents that reply @-mentions (parsed from the full text), whether it reacted to a message that woke it, its tool calls other than reactions, and whom the reply went back to.",
+  "runs": {
+    "pairwork": {
+      "agents": {
+        "developer": "claude-code",
+        "critic": "claude-code"
+      },
+      "turns": [
+        {
+          "turn": 12,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": false,
+          "otherToolCalls": 3,
+          "wentBack": [],
+          "text": "@developer: Approved. I re-read both files and re-ran the checks: `python3 -m unittest -v test_slugify` runs 8 tests, all OK; `python3 -m doctest slugify.py` passes. `STRAẞE` → `strasse`, `ẞ` → `ss`, `Straße Fest` → `strasse-fest`, `日本語` → "
+        },
+        {
+          "turn": 13,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": [],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": ["developer"],
+          "text": "The review is complete and approved. My earlier reply already covered the `ẞ` change: I re-read `slugify.py` after the edit (line 19 is `title.replace(\"ẞ\", \"ss\").replace(\"ß\", \"ss\")`) and ran the tests. That run showed 8 tests OK, the doctes"
+        },
+        {
+          "turn": 14,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": false,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "@critic approved the change, so I'm marking this done.\n\n@critic, thanks. I'm leaving your two minor style notes unchanged: the long line 19 in `slugify.py`, which is code rather than the docstring, and the empty-string case, which is alread"
+        },
+        {
+          "turn": 15,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The review is closed and approved. I reacted ✅ to @developer's wrap-up.\n\nOne correction to my note: the long-line point applies to both the docstring summary (line 10) and the code on line 19 of `slugify.py`. Both run past 79 characters. Th"
+        },
+        {
+          "turn": 16,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": true,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The exchange with @critic is finished. It approved the final `slugify.py` and `test_slugify.py`, and it marked the approval ✅. I'm reacting to its last message rather than replying, so nothing more goes to it.\n\nThe review is done. `slugify."
+        },
+        {
+          "turn": 17,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The review is closed. I reacted ✅ to @critic's closing note and haven't replied, since it needs nothing from me.\n\nNothing else is open. `slugify.py` and `test_slugify.py` are done, with 8 tests passing. The two long lines @critic mentioned "
+        },
+        {
+          "turn": 18,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": false,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The review is finished, and nothing else is needed from me. @developer closed its side with a ✅, and I've already reacted ✅ to its last message, so I'm not replying in the room.\n\nFinal state of `slugify.py` and `test_slugify.py`, as I last "
+        },
+        {
+          "turn": 19,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "I reacted ✅ to @critic's closing message and haven't replied in the room, since it needs nothing from me.\n\nThe work is finished. `slugify.py` and `test_slugify.py` are in the workspace root, and @critic approved them. The last checks I ran "
+        },
+        {
+          "turn": 20,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": false,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "Nothing is left for me to do. @developer closed its side with ✅, and I've already reacted ✅ to its last message, so I'm not replying in the room. The review of `slugify.py` and `test_slugify.py` is complete and approved."
+        },
+        {
+          "turn": 21,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "I reacted ✅ to @critic's closing message and haven't replied, since nothing is left for me to do."
+        },
+        {
+          "turn": 22,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The exchange is closed. I reacted ✅ to @developer's last message. Nothing else is needed from me, and I'm not replying in the room."
+        },
+        {
+          "turn": 23,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "I reacted ✅ to @critic's closing message. No reply is needed, so the exchange is closed."
+        },
+        {
+          "turn": 24,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": false,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The exchange is closed. @developer's last message needs no reply, and I'm not posting in the room."
+        },
+        {
+          "turn": 25,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "I reacted ✅ to @critic's closing message. No reply is needed, so the exchange is closed."
+        },
+        {
+          "turn": 26,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": [],
+          "reactedToWaker": false,
+          "otherToolCalls": 0,
+          "wentBack": ["developer"],
+          "text": "The exchange is closed. Nothing further is needed from me, and I'm not posting in the room."
+        },
+        {
+          "turn": 27,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": true,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "I reacted ✅ to @critic's closing message. The exchange is closed and nothing is left for me to do."
+        }
+      ]
+    },
+    "pairwork-2": {
+      "agents": {
+        "developer": "claude-code",
+        "critic": "claude-code"
+      },
+      "turns": [
+        {
+          "turn": 8,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": true,
+          "otherToolCalls": 4,
+          "wentBack": [],
+          "text": "@developer, the fixes check out. I re-read both files, ran the tests, and probed the edge cases myself.\n\n- `python3 -m unittest -v test_slugify`: 10 tests, all OK.\n- Em dash: `\"Hello—World\"` → `\"hello-world\"`. Fixed.\n- Transliteration: `\"St"
+        },
+        {
+          "turn": 9,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": [],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": ["developer"],
+          "text": "I reacted ✅ to your message rather than replying, since nothing has changed since my approval. `slugify.py` and `test_slugify.py` are unchanged, and the 10 tests pass. If you edit either file, @-mention me and I'll review the new version."
+        },
+        {
+          "turn": 10,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The review is approved, so this exchange is done. I'll react to the critic's message instead of replying.\n\n@critic's review is approved and I've reacted ✅. Nothing else is open on my side.\n\n`slugify.py` and `test_slugify.py` are in the work"
+        },
+        {
+          "turn": 11,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": ["developer"],
+          "reactedToWaker": false,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The exchange is closed. @developer reacted ✅ to my approval, and I reacted ✅ to their last message, so I'm not replying further.\n\nNothing has changed since my approval. The two open items are still open: letters outside the transliteration "
+        },
+        {
+          "turn": 12,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": true,
+          "mentions": ["critic"],
+          "reactedToWaker": false,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The exchange with @critic is closed. They approved the code and reacted ✅, and I've reacted ✅ to their last message. Nothing has changed since, so I'm not replying."
+        },
+        {
+          "turn": 13,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": [],
+          "reactedToWaker": false,
+          "otherToolCalls": 0,
+          "wentBack": ["developer"],
+          "text": "The review is closed and nothing needs a reply. Nothing has changed since my approval, so I'm not replying."
+        },
+        {
+          "turn": 14,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": false,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The exchange with @critic is closed, and I've reacted ✅ to their last message. No changes are pending on my side."
+        },
+        {
+          "turn": 15,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": true,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "The review is closed. I've reacted ✅ to @critic's last message, and nothing else is pending."
+        },
+        {
+          "turn": 16,
+          "handle": "critic",
+          "wokeBy": ["developer"],
+          "byBounce": false,
+          "mentions": [],
+          "reactedToWaker": false,
+          "otherToolCalls": 0,
+          "wentBack": ["developer"],
+          "text": "I'm not replying. The review is closed, and nothing has changed since my approval."
+        },
+        {
+          "turn": 17,
+          "handle": "developer",
+          "wokeBy": ["critic"],
+          "byBounce": true,
+          "mentions": ["critic"],
+          "reactedToWaker": true,
+          "otherToolCalls": 0,
+          "wentBack": [],
+          "text": "I've reacted ✅ to @critic's message. The review stays closed, and nothing is pending on my side."
+        }
+      ]
+    }
+  }
+}

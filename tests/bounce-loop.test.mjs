@@ -58,22 +58,22 @@ test('#1553: control: a review that goes back by itself still reaches the agent 
   );
 });
 
-test('#1553: a 👍 on a direct request doesn’t stop the report that follows from going back', async () => {
-  // Only a reply that came back counts: a reaction to a request may come before the work it asks for.
+test('#1553: a 👍 on a direct request doesn’t stop the report of the work that follows from going back', async () => {
+  // A reaction to a request may come before the work it asks for: a turn that did work goes back, whatever it reacted to.
   const plays = {
     alpha: [
       { text: '@critic please review wordcount.py.', react: false },
       { text: '', react: false },
     ],
-    critic: [{ text: 'Reviewed: whitespace-only input prints 0, and a missing file exits 1.', react: true }],
+    critic: [{ text: 'Reviewed: whitespace-only input prints 0, and a missing file exits 1.', react: true, step: true }],
   };
   const { store, rt, adapter, t } = room(plays);
   rt.sendMessage(t.id, { text: '@alpha ask critic for a review' });
   await settle(rt);
   const report = store.items(t.id).find((i) => i.kind === 'agent' && i.text?.startsWith('Reviewed:'));
   assert.deepEqual(report.wentBack, ['alpha']);
-  // And a turn a request woke isn’t told a reaction ends it.
-  assert.doesNotMatch(adapter.calls.find((c) => c.handle === 'critic').text, /If the exchange is done/);
+  // And a turn a request woke is told when a reaction ends it: not after work (#1591).
+  assert.match(adapter.calls.find((c) => c.handle === 'critic').text, /react to the message: then, unless you do work this turn, /);
 });
 
 test('#1553: the person’s reaction to a reply that came back doesn’t end the agents’ exchange', async () => {
@@ -120,11 +120,19 @@ test('#1553: a request from the same agent in the same batch still gets its answ
   const back = { source: 'mention', from: 'alpha', bounce: true, threadId: 't', itemId: 'r1' };
   const asked = { source: 'mention', from: 'alpha', threadId: 't', itemId: 'q1' };
   const note = { source: 'notice', text: 'Postbox’s note' };
-  assert.equal(endedByReaction(rt, se, [back, note], 'alpha', 0), true, 'a reacted reply alone ends it');
-  assert.equal(endedByReaction(rt, se, [back, asked], 'alpha', 0), false, 'with a request beside it, it goes back');
-  assert.equal(endedByReaction(rt, se, [{ ...back, itemId: 'q1' }], 'alpha', 0), false, 'a reply not reacted to goes back');
-  assert.equal(endedByReaction(rt, se, [back], 'beta', 0), false, 'nothing from beta, so nothing ends with beta');
-  assert.equal(endedByReaction(rt, se, [back], 'alpha', 20), false, 'a reaction from before this turn began doesn’t count');
+  const turn = { startedAt: 0, steps: [] };
+  assert.equal(endedByReaction(rt, se, [back, note], 'alpha', turn), true, 'a reacted reply alone ends it');
+  assert.equal(endedByReaction(rt, se, [back, asked], 'alpha', turn), false, 'with a request it didn’t react to beside it, it goes back');
+  assert.equal(endedByReaction(rt, se, [{ ...back, itemId: 'q1' }], 'alpha', turn), false, 'a reply not reacted to goes back');
+  assert.equal(endedByReaction(rt, se, [back], 'beta', turn), false, 'nothing from beta, so nothing ends with beta');
+  assert.equal(endedByReaction(rt, se, [back], 'alpha', { ...turn, startedAt: 20 }), false, 'a reaction from before this turn began doesn’t count');
+  // #1591: a direct @-mention it reacted to ends it as well, unless the turn did work: a step, or a tool of Postbox’s that acted.
+  const direct = { ...asked, itemId: 'r1' };
+  assert.equal(endedByReaction(rt, se, [direct], 'alpha', turn), true, 'a reacted request, and no work');
+  assert.equal(endedByReaction(rt, se, [direct], 'alpha', { ...turn, steps: [{ id: 's1' }] }), false, 'a step is work');
+  assert.equal(endedByReaction(rt, se, [direct], 'alpha', { ...turn, acted: true }), false, 'so is a block shown');
+  assert.equal(endedByReaction(rt, se, [back], 'alpha', { ...turn, steps: [{ id: 's1' }] }), false, 'after a reply that came back, too');
+  assert.equal(endedByReaction(rt, se, [direct], 'alpha', { ...turn, steps: [{ id: 's1', kind: 'thought' }] }), true, 'a thought is no work');
 });
 
 test('#1553: a reaction from a failed attempt doesn’t stop the Retry’s answer going back', async () => {
@@ -145,6 +153,6 @@ test('#1553: a reaction from a failed attempt doesn’t stop the Retry’s answe
   assert.deepEqual(question?.wentBack, ['critic']);
   // The Retry still owes a reply (#1543), so its first line offers the reaction only (integrator’s review of PR #1557).
   const retried = adapter.calls.filter((c) => c.handle === 'alpha').at(-1).text;
-  assert.match(retried, /If the exchange is done, react to the reply/);
+  assert.match(retried, /If the exchange is done, react to the message/);
   assert.doesNotMatch(retried, /end without writing anything/);
 });

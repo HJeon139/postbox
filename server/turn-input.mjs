@@ -107,11 +107,12 @@ function replyGoes(entries, wroteOnly) {
   const to = backTo(entries);
   if (!to.length) return '.';
   const goes = ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.`;
+  // A reaction ends an exchange, after a direct @-mention as after a reply that came back, unless the turn does work
+  // (reply-back.mjs, endedByReaction): told to every turn an agent woke, so a closing line needn’t say it and name it.
+  const react = 'If the exchange is done, react to the message: then, unless you do work this turn, nothing you write wakes its sender, even by name.';
   const asked = entries.filter((e) => e.source !== 'notice');
-  if (!asked.every((e) => e.bounce === true)) return goes;
-  const react = 'If the exchange is done, react to the reply: then nothing you write this turn wakes its sender, even by name.';
   // A Retry’s entries carry whom its failed reply woke, as retryMarks (turns.mjs) reads them.
-  if (entries.some((e) => Array.isArray(e.woken))) return `${goes} ${react}`;
+  if (!asked.every((e) => e.bounce === true) || entries.some((e) => Array.isArray(e.woken))) return `${goes} ${react}`;
   const end = `${react} You can also end without writing anything.`;
   // Per exchange: only the agents its last reply in words went to. The others get this one as any reply.
   const names = (/** @type {string[]} */ hs) => hs.map((h) => `@${h}`).join(' and ');

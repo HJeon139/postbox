@@ -28,7 +28,7 @@ test('entries waiting in other threads are counted, and the conversation and a r
   const one = turnInput({ entries: [mention], thread: { id: 'th_1', kind: 'chat' }, read, waitingElsewhere: 1 });
   assert.match(
     one,
-    /^\[Postbox\] 1 message for you in this conversation\. Your reply posts there and goes back to @critic\. @-mention another agent to hand off to them instead\. 1 more waits in another thread, and starts your next turn\./,
+    /^\[Postbox\] 1 message for you in this conversation\. Your reply posts there and goes back to @critic\. @-mention another agent to hand off to them instead\. If the exchange is done, react to the message: then, unless you do work this turn, nothing you write wakes its sender, even by name\. 1 more waits in another thread, and starts your next turn\./,
   );
   const two = turnInput({ entries: [person], thread: { id: 'th_1', kind: 'room' }, read, waitingElsewhere: 2 });
   assert.match(two, /for you in this room\. Your reply posts there\. 2 more wait in other threads, and start your next turn\./);

@@ -8,8 +8,11 @@ import { Store } from '../server/store.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const runsOf = (file) => JSON.parse(readFileSync(new URL(`fixtures/uat/${file}`, import.meta.url), 'utf8')).runs;
-/** The runs of 21 November (#1553), and the batch 9–10 UAT’s of 23 November (#1591), whose rows also say what woke each turn. */
-const RUNS = { ...runsOf('bounce-loops-2026-11-21.json'), ...runsOf('ack-loops-2026-11-23.json') };
+/**
+ * The runs of 21 November (#1553), the batch 9–10 UAT’s of 23 November (#1591), whose rows also say what woke each
+ * turn, and the two pairwork runs of 26 November, the first paid runs after PR #1724.
+ */
+const RUNS = { ...runsOf('bounce-loops-2026-11-21.json'), ...runsOf('ack-loops-2026-11-23.json'), ...runsOf('mention-loops-2026-11-26.json') };
 const DIR = tempDir('pb-bounce-loop-');
 /** The room’s chain limit for these tests: past it a wake waits on a card, which ends the run. */
 export const LIMIT = 40;
@@ -25,6 +28,15 @@ export const playsFrom = (run, handle, from) =>
 export const playsWith = (run, handle, other, first = null) =>
   RUNS[run].turns
     .filter((t) => t.handle === handle && (t.turn === first || (t.turn > (first ?? 0) && t.wokeBy.join() === other)))
+    .map((t) => ({ text: t.text, react: t.reactedToWaker, step: t.otherToolCalls > 0 }));
+
+/**
+ * One agent’s recorded replies to the other’s @-mentions alone, from a turn on: its turns that a direct @-mention woke,
+ * not a reply that came back. Two agents that name each other every time wake each other this way only.
+ */
+export const playsMentioned = (run, handle, from) =>
+  RUNS[run].turns
+    .filter((t) => t.handle === handle && t.turn >= from && !t.byBounce && t.wokeBy.every((w) => w !== 'person'))
     .map((t) => ({ text: t.text, react: t.reactedToWaker, step: t.otherToolCalls > 0 }));
 
 /** An adapter that plays each agent’s replies in order, repeating its last once they run out, as the runs did. */

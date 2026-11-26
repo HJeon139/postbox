@@ -35,10 +35,11 @@ export function mentionEntries(rt, { threadId, item }) {
   let said = item.id;
   for (const h of parseMentions(item.text, rt.personas.handles(), copiedLine(rt, se))) {
     if (h.toLowerCase() === se.handle.toLowerCase()) continue;
-    // The turn reacted to this agent’s reply that came back, which ended their exchange (#1553), so naming it in
-    // the words that follow is no request (#1591): “I reacted ✅ to @critic’s acknowledgment.” woke critic 20 times in
-    // one UAT run of 23 November 2026. A reaction made after these words settled comes too late to hold the wake.
-    if (endedByReaction(rt, se, rt.delivery.takenBy(se.id, turn.id), h, turn.startedAt)) continue;
+    // The turn reacted to what this agent sent it, and did no work: that ended their exchange (#1553), so naming it
+    // in the words that follow is no request (#1591). “I reacted ✅ to @critic’s closing message and haven’t replied”
+    // woke critic about every four seconds in the paid runs of 26 November 2026. A reaction made after these words
+    // settled comes too late to hold the wake.
+    if (endedByReaction(rt, se, rt.delivery.takenBy(se.id, turn.id), h, turn)) continue;
     // It named an agent, so it doesn’t go back to the one that woke it (reply-back.mjs), whether or not this wakes it.
     turn.named = true;
     // And a reply of its own named one, which open_topic and a review don’t set: the reply-form checks read it (#1695).

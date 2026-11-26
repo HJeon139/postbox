@@ -20,9 +20,11 @@ test('#1591: an agent that reacts, then names the agent it reacted to, doesn’t
   rt.sendMessage(t.id, { text: '@researcher quote Postbox’s refusal of your stale write word for word' });
   await settle(rt);
   assert.ok(!heldOnCard(store, t), `the exchange ended before the room’s limit: ${turnsOf(adapter)}`);
-  assert.equal(turnsOf(adapter), 'researcher critic researcher');
+  // Since the paid runs of 26 November it ends a turn sooner: critic reacted ✅ to researcher’s @-mention and did no
+  // work, so its “Acknowledged.” goes back to no one, and researcher’s line is never written.
+  assert.equal(turnsOf(adapter), 'researcher critic');
   const last = replies(store, t).at(-1);
-  assert.equal(last.text, "I reacted ✅ to @critic's message. The plan stays at v2.", 'the line still posts');
+  assert.match(last.text, /^Acknowledged\. The refusal names version 2/, 'the line still posts');
   assert.equal(last.wentBack, undefined);
 });
 
@@ -34,8 +36,8 @@ test('#1591: the same loop between two of three agents ends on the reaction (hol
   rt.sendMessage(t.id, { text: '@developer show a small app' });
   await settle(rt);
   assert.ok(!heldOnCard(store, t), `the exchange ended before the room’s limit: ${turnsOf(adapter)}`);
-  // Two direct mentions each way, which are requests as far as Postbox can tell; then the reply that came back, and the reaction.
-  assert.equal(turnsOf(adapter), 'developer researcher developer researcher developer');
+  // developer names researcher, researcher names developer back, and developer reacts ✅ and names researcher: no wake.
+  assert.equal(turnsOf(adapter), 'developer researcher developer');
 });
 
 test('#1591: after a reaction to one agent’s reply, an @-mention of another agent still hands off', async () => {
@@ -53,8 +55,9 @@ test('#1591: after a reaction to one agent’s reply, an @-mention of another ag
   );
 });
 
-test('#1591: a 👍 on a direct request doesn’t stop a question to the agent that asked', async () => {
-  // Only a reaction to a reply that came back ends an exchange: critic was asked, so its mention of alpha is an answer.
+test('#1591: a 👍 on a request, then only words to the agent that asked, wakes no one, and the turn was told so', async () => {
+  // The rule’s cost, since the paid runs of 26 November: a reaction in a turn that does no work ends the exchange, after
+  // a direct @-mention too. In the stored runs all 98 such turns were closing lines; a question needs no reaction.
   const plays = {
     alpha: [{ text: '@critic please review wordcount.py.' }, { text: 'The one in src/.' }],
     critic: [{ text: '@alpha which wordcount.py, the one in src/ or in tools/?', react: true }, { text: '' }],
@@ -62,10 +65,8 @@ test('#1591: a 👍 on a direct request doesn’t stop a question to the agent t
   const { rt, adapter, t } = room(plays);
   rt.sendMessage(t.id, { text: '@alpha ask critic for a review' });
   await settle(rt);
-  assert.ok(
-    adapter.calls.some((c) => c.handle === 'alpha' && c.text.includes('which wordcount.py')),
-    turnsOf(adapter),
-  );
+  assert.equal(turnsOf(adapter), 'alpha critic');
+  assert.match(adapter.calls[1].text, /react to the message: then, unless you do work this turn, nothing you write wakes its sender, even by name\./);
 });
 
 test('#1591: agents that write “I’m ending without a reply” end at the second such line in a row (holdstill)', async () => {
@@ -97,10 +98,16 @@ test('#1591: an agent is told when its next reply that only writes will wake no 
   rt.sendMessage(t.id, { text: '@researcher write a long reply on how word counts differ between tools' });
   await settle(rt);
   const [asked, back, again] = [adapter.calls[1].text, adapter.calls[2].text, adapter.calls[4].text];
-  assert.match(asked, /Your reply posts there and goes back to @researcher\. @-mention another agent to hand off to them instead\.\n/);
+  assert.match(
+    asked,
+    /Your reply posts there and goes back to @researcher\. @-mention another agent to hand off to them instead\. If the exchange is done, react to the message: /,
+  );
   // Its first reply after one came back goes back as any does, and a reaction or nothing at all ends the exchange.
   assert.match(back, /Your reply posts there and goes back to @critic\. @-mention another agent to hand off to them instead\. If the exchange is done, /);
-  assert.match(back, /react to the reply: then nothing you write this turn wakes its sender, even by name\. You can also end without writing anything\.\n/);
+  assert.match(
+    back,
+    /react to the message: then, unless you do work this turn, nothing you write wakes its sender, even by name\. You can also end without writing anything\.\n/,
+  );
   assert.match(again, /Your reply posts there\. Your last reply to @critic only wrote, so this one goes back to @critic only if you do work this turn /);
   assert.match(
     again,
