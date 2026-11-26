@@ -124,6 +124,12 @@ test('#1632 following, a press holds the button while the reply before its block
     chip.dispatchEvent(new PointerEvent('pointermove', at));
     chip.dispatchEvent(new PointerEvent('pointerdown', at));
     const item = /** @type {HTMLElement} */ (chip.closest('.transcript > [data-key]'));
+    // The reply above takes its real height as it draws, and the block grows below the button: one pushes the button
+    // down, the other brings the end in.
+    let prev = item.previousElementSibling;
+    while (prev && !(prev instanceof HTMLElement && prev.dataset.key)) prev = prev.previousElementSibling;
+    /** @type {HTMLElement} */ (prev).style.minHeight = '400px';
+    prev?.dispatchEvent(new Event('contentvisibilityautostatechange'));
     item.append(Object.assign(document.createElement('div'), { className: 'pb-test-grow', style: 'height: 160px' }));
     item.dispatchEvent(new Event('contentvisibilityautostatechange'));
     return { moved: chip.getBoundingClientRect().top - r.top, at, pressedAt: r.top };
@@ -133,6 +139,9 @@ test('#1632 following, a press holds the button while the reply before its block
   const held = await page.evaluate(() => document.querySelector('[role="radio"][aria-checked]')?.getBoundingClientRect().top ?? NaN);
   expect(Math.abs(held - pressedAt), 'and still there once the page has drawn, while the press is held').toBeLessThan(1);
   await page.evaluate((at) => document.querySelector('[role="radio"][aria-checked]')?.dispatchEvent(new PointerEvent('pointerup', at)), at);
+  await settled(page);
+  const gap = await page.evaluate(() => Math.round(document.documentElement.scrollHeight - scrollY - innerHeight));
+  expect(gap, 'at the end once let go').toBeLessThanOrEqual(2);
 });
 
 // The same with a real press and release, which do make a click (#1653’s symptom): the pointer rests on the button
