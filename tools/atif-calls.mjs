@@ -75,6 +75,12 @@ const argumentsSource = (w, args, asked) => {
   return w.kind === 'read' ? 'work ledger, target as displayed' : 'work ledger';
 };
 
+/**
+ * What a call's recorded stream says of it beyond its input: that its result was an error, and the call a subagent
+ * made it under. @param {any} heard  its call in the stream, if any
+ */
+const streamExtra = (heard) => ({ ...(heard?.isError ? { result_is_error: true } : {}), ...(heard?.parent ? { parent_tool_call_id: heard.parent } : {}) });
+
 /** What a step showed of a call's output, cut: its output's last 400 characters, else its note. @param {any} s */
 const shown = (s) => s.output ?? s.detail;
 
@@ -99,6 +105,67 @@ function storedResult(w, blob) {
 }
 
 /**
+ * One step's call: its name and arguments from the step, the ledger, its question blocks or its recorded stream, and
+ * in extra what else is known of it. @param {any} s  the step @param {any} w  its ledger entry
+ * @param {Map<string, any[]>} questions @param {any} heard  its call in the turn's recorded stream, if any
+ */
+function stepCall(s, w, questions, heard) {
+  const name = (typeof s.tool === 'string' && s.tool ? s.tool : ledgerName(w)) ?? (heard?.name || null);
+  const asked = !w && questions.has(s.id);
+  const kept = asked ? questionArguments(questions.get(s.id)) : ledgerArguments(w);
+  // The ledger keeps no input for some calls, a Write’s among them: the turn’s recorded stream has it (#1752).
+  const streamed = kept ? null : (heard?.input ?? null);
+  const args = kept ?? streamed;
+  return {
+    tool_call_id: s.id,
+    function_name: name ?? 'unknown',
+    arguments: args ?? {},
+    extra: {
+      label: s.label,
+      state: s.state ?? null,
+      ...(typeof s.ms === 'number' ? { ms: s.ms } : {}),
+      ...(iso(w?.at) ? { started_at: iso(w.at) } : {}),
+      ...(typeof w?.exit === 'number' ? { exit: w.exit } : {}),
+      ...(s.kind ? { kind: s.kind } : {}),
+      ...(name ? {} : { function_name: 'not recorded' }),
+      arguments_source: streamed ? 'recorded stream' : argumentsSource(w, args, asked),
+      // What the conversation showed of its input and output, cut, and its step's note (a failure's reason, a
+      // subagent's summary, a status): only live frames carry the first two.
+      ...(typeof s.input === 'string' ? { display_input: s.input } : {}),
+      ...(typeof s.output === 'string' ? { display_output: s.output } : {}),
+      ...(typeof s.detail === 'string' ? { display_detail: s.detail } : {}),
+      ...(w?.endedInBackground ? { ended_in_background: true } : {}),
+      ...streamExtra(heard),
+    },
+  };
+}
+
+/**
+ * Adds a reply's calls that made no step, as its turn's recorded stream has them, with their results; then puts every
+ * call in the order the turn made it, when the stream recorded each one (#1758).
+ * @param {any[]} tool_calls @param {any[]} results @param {any[]} unstepped
+ * @param {ReturnType<typeof import('./atif-streams.mjs').recordedCalls> | null} recorded
+ */
+function withUnstepped(tool_calls, results, unstepped, recorded) {
+  for (const c of unstepped) {
+    tool_calls.push({
+      tool_call_id: c.id,
+      function_name: c.name || 'unknown',
+      arguments: c.input,
+      extra: { arguments_source: 'recorded stream', step: 'none', ...streamExtra(c) },
+    });
+    if (typeof c.result === 'string') results.push({ source_call_id: c.id, content: resultContent(c.result) });
+  }
+  // In the order the turn made them, as its stream recorded it, when it recorded every one (#1758).
+  const seqOf = (/** @type {string} */ id) => recorded?.byId.get(id)?.seq;
+  if (unstepped.length && tool_calls.every((c) => typeof seqOf(c.tool_call_id) === 'number')) {
+    tool_calls.sort((a, b) => /** @type {number} */ (seqOf(a.tool_call_id)) - /** @type {number} */ (seqOf(b.tool_call_id)));
+    const at = new Map(tool_calls.map((c, i) => [c.tool_call_id, i]));
+    results.sort((a, b) => (at.get(a.source_call_id) ?? 0) - (at.get(b.source_call_id) ?? 0));
+  }
+}
+
+/**
  * The tool calls, their results, the thoughts and the narration of one reply. A call's start time and exit code are its
  * ledger entry's; its output is its tool_result in the turn's recorded stream, else the store's blob the ledger names,
  * else what a live frame showed (storedResult).
@@ -114,52 +181,14 @@ export function callsOf(it, ledger, questions = new Map(), blob = () => null, re
   const narration = steps.filter((s) => s.kind === 'said').map((s) => ({ step_id: s.id, text: s.detail ?? s.label, ...(s.who ? { who: s.who } : {}) }));
   const calls = steps.filter((s) => s.kind !== 'thought' && s.kind !== 'said');
   /** @type {any[]} a step's call, or one its turn's stream has that made no step */
-  const tool_calls = calls.map((s) => {
-    const w = ledger.get(s.id);
-    const name = typeof s.tool === 'string' && s.tool ? s.tool : ledgerName(w);
-    const asked = !w && questions.has(s.id);
-    const kept = asked ? questionArguments(questions.get(s.id)) : ledgerArguments(w);
-    // The ledger keeps no input for some calls, a Write’s among them: the turn’s recorded stream has it (#1752).
-    const streamed = kept ? null : (recorded?.byId.get(s.id)?.input ?? null);
-    const args = kept ?? streamed;
-    return {
-      tool_call_id: s.id,
-      function_name: name ?? 'unknown',
-      arguments: args ?? {},
-      extra: {
-        label: s.label,
-        state: s.state ?? null,
-        ...(typeof s.ms === 'number' ? { ms: s.ms } : {}),
-        ...(iso(w?.at) ? { started_at: iso(w.at) } : {}),
-        ...(typeof w?.exit === 'number' ? { exit: w.exit } : {}),
-        ...(s.kind ? { kind: s.kind } : {}),
-        ...(name ? {} : { function_name: 'not recorded' }),
-        arguments_source: streamed ? 'recorded stream' : argumentsSource(w, args, asked),
-        // What the conversation showed of its input and output, cut, and its step's note (a failure's reason, a
-        // subagent's summary, a status): only live frames carry the first two.
-        ...(typeof s.input === 'string' ? { display_input: s.input } : {}),
-        ...(typeof s.output === 'string' ? { display_output: s.output } : {}),
-        ...(typeof s.detail === 'string' ? { display_detail: s.detail } : {}),
-        ...(w?.endedInBackground ? { ended_in_background: true } : {}),
-      },
-    };
-  });
+  const tool_calls = calls.map((s) => stepCall(s, ledger.get(s.id), questions, recorded?.byId.get(s.id)));
   const results = calls.flatMap((s) => {
     // What the model got back, as its turn’s stream recorded it, is the result first (#1758).
     const got = recorded?.byId.get(s.id)?.result;
     const content = (typeof got === 'string' ? resultContent(got) : null) ?? storedResult(ledger.get(s.id), blob) ?? shown(s);
     return typeof content === 'string' ? [{ source_call_id: s.id, content }] : [];
   });
-  const unstepped = recorded?.unstepped.get(it.id) ?? [];
-  for (const c of unstepped) {
-    tool_calls.push({
-      tool_call_id: c.id,
-      function_name: c.name || 'unknown',
-      arguments: c.input,
-      extra: { arguments_source: 'recorded stream', step: 'none' },
-    });
-    if (typeof c.result === 'string') results.push({ source_call_id: c.id, content: resultContent(c.result) });
-  }
+  withUnstepped(tool_calls, results, recorded?.unstepped.get(it.id) ?? [], recorded);
   return { tool_calls, results, thoughts, narration };
 }
 

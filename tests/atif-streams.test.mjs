@@ -3,12 +3,17 @@
 // and Claude Code streams (tests/fixtures/atif/uat-pairwork.md).
 
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { trajectories } from '../tools/atif.mjs';
-import { POSTBOX_VERSION, readRecording } from '../tools/atif-export.mjs';
-import { callsInStream } from '../tools/atif-streams.mjs';
+import { callsOf as callsOfReply } from '../tools/atif-calls.mjs';
+import { POSTBOX_VERSION, readRecording, writeTrajectories } from '../tools/atif-export.mjs';
+import { callsInStream, recordedCalls } from '../tools/atif-streams.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-const rec = readRecording(new URL('fixtures/atif/uat-pairwork/', import.meta.url).pathname);
+const DIR = new URL('fixtures/atif/uat-pairwork/', import.meta.url).pathname;
+const rec = readRecording(DIR);
 /** Each handle’s trajectory from these events and streams. */
 const byHandle = (events = rec.events, streams = rec.streams) =>
   Object.fromEntries(trajectories(events, { version: POSTBOX_VERSION, streams }).map((t) => [t.handle, t.trajectory]));
@@ -96,4 +101,130 @@ test('#1752 a call the ledger kept no input for takes it from its turn’s strea
   // Without the streams, such a call has none, and says so.
   const bare = callsOf(byHandle(noReads, []).critic).filter((/** @type {any} */ c) => c.function_name === 'Read');
   assert.ok(bare.every((/** @type {any} */ c) => c.extra.arguments_source === 'not recorded' && Object.keys(c.arguments).length === 0));
+});
+
+test('#1758 the export reads the streams from a run’s folder and from its events file alike, and writes them out', () => {
+  const fromFile = readRecording(join(DIR, 'events.jsonl'));
+  assert.equal(fromFile.streams?.length, 9);
+  const out = tempDir('pb-atif-streams-');
+  const written = writeTrajectories(out, rec);
+  assert.equal(written.length, 2);
+  const counts = Object.fromEntries(
+    readdirSync(out).map((f) => {
+      const t = JSON.parse(readFileSync(join(out, f), 'utf8'));
+      return [t.agent.extra.handle, callsOf(t).length];
+    }),
+  );
+  assert.deepEqual(counts, { developer: 9, critic: 8 });
+});
+
+test('#1758 a reply’s calls keep the order its turn made them in, stepped or not', () => {
+  const first = byHandle().developer.steps.find((/** @type {any} */ s) => s.tool_calls?.some((/** @type {any} */ c) => c.tool_call_id.endsWith('RV7rz9')));
+  assert.deepEqual(
+    first.tool_calls.map((/** @type {any} */ c) => c.tool_call_id.slice(-6)),
+    ['RV7rz9', 'dXx5MW', 'aEpAyS'],
+  );
+  assert.deepEqual(
+    first.observation.results.map((/** @type {any} */ r) => r.source_call_id.slice(-6)),
+    ['RV7rz9', 'dXx5MW', 'aEpAyS'],
+  );
+});
+
+test('#1758 a call with no tool name on its step or in the ledger takes its stream’s name', () => {
+  const nameless = rec.events
+    .filter((e) => !(e.type === 'work.add' && e.data.entry.kind === 'read'))
+    .map((e) => JSON.parse(JSON.stringify(e).replaceAll('"tool":"Read",', '').replaceAll(',"tool":"Read"', '')));
+  const reads = callsOf(byHandle(nameless).critic).filter((/** @type {any} */ c) => c.extra.arguments_source === 'recorded stream' && c.extra.step !== 'none');
+  assert.equal(reads.length, 6);
+  assert.ok(reads.every((/** @type {any} */ c) => c.function_name === 'Read' && !c.extra.function_name));
+});
+
+test('#1758 a result that isn’t all text names its other parts, and an error or a subagent’s call says so', () => {
+  const [call] = callsInStream([
+    {
+      type: 'assistant',
+      parent_tool_use_id: 'toolu_parent',
+      message: { content: [{ type: 'tool_use', id: 'toolu_a', name: 'Read', input: { file_path: 'shot.png' } }] },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_a',
+            is_error: true,
+            content: [
+              { type: 'image', source: {} },
+              { type: 'text', text: 'done' },
+            ],
+          },
+        ],
+      },
+    },
+  ]);
+  assert.equal(call.result, '[image]\ndone');
+  assert.equal(call.isError, true);
+  assert.equal(call.parent, 'toolu_parent');
+  const [only] = callsInStream([
+    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'toolu_b', name: 'Read', input: {} }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_b', content: [{ type: 'image' }] }] } },
+  ]);
+  assert.equal(only.result, '[image]', 'an image alone is a result, not none');
+});
+
+test('#1758 one agent in two sessions: a stream goes to the session whose steps it shares, and a call-less one by time only when one session fits', () => {
+  /** @param {string} id @param {number} at @param {string[]} steps */
+  const reply = (id, at, steps) => ({ id, at, steps: new Map(steps.map((s) => [s, {}])) });
+  const sessions = new Map([
+    ['A', [reply('a1', 960, ['x', 'x3'])]],
+    ['B', [reply('b1', 1010, ['y', 'y3'])]],
+  ]);
+  const use = (/** @type {string} */ id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'T', input: {} }] } });
+  const streams = [
+    { handle: 'h', started: 900, events: [use('y'), use('y2')] },
+    { handle: 'h', started: 950, events: [use('x'), use('x2')] },
+    // The same calls again, as a stray process’s stream can hold them: read once.
+    { handle: 'h', started: 951, events: [use('x'), use('x2')] },
+    // Both sessions have a reply in this one’s time: it could be either’s, so it’s counted, once, not placed.
+    { handle: 'h', started: 955, events: [use('z')] },
+    // A’s call first, then one of B’s steps: B’s stays B’s.
+    { handle: 'h', started: 2000, events: [use('x3'), use('y3')] },
+  ];
+  const a = recordedCalls(streams, 'h', sessions, 'A');
+  const b = recordedCalls(streams, 'h', sessions, 'B');
+  assert.deepEqual([...a.byId.keys()].sort(), ['x', 'x2', 'x3']);
+  assert.deepEqual([...b.byId.keys()].sort(), ['y', 'y2']);
+  assert.deepEqual(
+    [...a.unstepped.values()].flat().map((c) => c.id),
+    ['x2'],
+  );
+  assert.deepEqual(
+    [...b.unstepped.values()].flat().map((c) => c.id),
+    ['y2'],
+  );
+  assert.deepEqual([a.unplaced, b.unplaced], [1, 0], 'counted on the agent’s first session only');
+});
+
+test('#1758 a call’s result that its stream marks an error says so in its extra', () => {
+  const step = { id: 'x', label: 'Read shot.png', tool: 'Read', state: 'failed' };
+  const it = { id: 'a1', at: 960, steps: new Map([['x', step]]) };
+  const recorded = recordedCalls(
+    [
+      {
+        handle: 'h',
+        started: 900,
+        events: [
+          { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'x', name: 'Read', input: {} }] } },
+          { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'x', is_error: true, content: 'no such file' }] } },
+        ],
+      },
+    ],
+    'h',
+    new Map([['A', [it]]]),
+    'A',
+  );
+  const { tool_calls, results } = callsOfReply(it, new Map(), new Map(), () => null, recorded);
+  assert.equal(tool_calls[0].extra.result_is_error, true);
+  assert.deepEqual(results, [{ source_call_id: 'x', content: 'no such file' }]);
 });

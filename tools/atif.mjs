@@ -252,8 +252,10 @@ function carry(ctx, entry, what) {
 /**
  * The context one session’s steps are built in.
  * @param {ReturnType<typeof foldEvents>} f @param {string} sessionId @param {(sha256: string) => string | null} [blob]
+ * @param {{ handle: string, started?: number, events: any[] }[]} [streams]  the turns’ recorded streams (tools/atif-streams.mjs)
  */
 function contextOf(f, sessionId, blob = () => null, streams = []) {
+  const handle = f.sessions.get(sessionId)?.handle ?? null;
   const turns = new Map([...f.work.values()].filter((w) => w.kind === 'turn' && w.sessionId === sessionId).map((w) => [w.id, w]));
   // Its own calls only: a tool call's id is its backend's, so another session's call can carry the same one.
   const calls = new Map([...f.work.values()].filter((w) => CALL_KINDS.has(w.kind) && w.toolUseId && w.sessionId === sessionId).map((w) => [w.toolUseId, w]));
@@ -272,12 +274,15 @@ function contextOf(f, sessionId, blob = () => null, streams = []) {
     models: f.models.get(sessionId) ?? [],
     meter: meter(turns),
     blob,
-    recorded: recordedCalls(streams, f.sessions.get(sessionId)?.handle ?? null, repliesOf(f, sessionId)),
+    recorded: recordedCalls(streams, handle, agentSessions(f, handle), sessionId),
   };
 }
 
 /** A session’s replies, in the order they were added. @param {ReturnType<typeof foldEvents>} f @param {string} sessionId */
 const repliesOf = (f, sessionId) => f.order.map(({ id }) => f.items.get(id)).filter((it) => it?.kind === 'agent' && it.sessionId === sessionId && it.steps);
+
+/** Each session of an agent’s handle, with its replies, in the order the sessions came. @param {ReturnType<typeof foldEvents>} f @param {string | null} handle */
+const agentSessions = (f, handle) => new Map([...f.sessions].filter(([, se]) => se.handle === handle).map(([id]) => [id, repliesOf(f, id)]));
 
 /**
  * One agent session’s trajectory, or null when the events give it no step.

@@ -107,7 +107,7 @@ export const SNAPSHOT_LOSES = Object.freeze([
 
 /**
  * The events and live frames of a recording, and a note on what they leave out.
- * @param {string} path @returns {{ events: any[], live: any[], prompts: any[], notes: string|null, gaps?: { after: number, at: number }[], partial?: { reconstructed_before_event: number, lost: readonly string[] } }}
+ * @param {string} path @returns {{ events: any[], live: any[], prompts: any[], notes: string|null, gaps?: { after: number, at: number }[], streams?: { handle: string, started?: number, events: any[] }[], partial?: { reconstructed_before_event: number, lost: readonly string[] } }}
  */
 export function readRecording(path) {
   if (!statSync(path).isDirectory()) {
@@ -117,6 +117,8 @@ export function readRecording(path) {
       live: linesIn(join(beside, 'live.jsonl')),
       prompts: promptsIn([beside, join(beside, 'data')]),
       blob: blobsIn([beside, join(beside, 'data')]),
+      // A run’s events file has its streams beside it, as its folder does (#1758).
+      streams: readStreams(join(beside, 'streams')),
       notes: null,
     };
   }
@@ -140,7 +142,7 @@ export function readRecording(path) {
 
 /**
  * The run’s trajectories, written to a folder: one file per agent session.
- * @param {string} out @param {{ events: any[], live?: any[], prompts?: any[], notes?: string|null, gaps?: { after: number, at: number }[] }} rec @param {{ sessionId?: string, handle?: string }} [only]
+ * @param {string} out @param {{ events: any[], live?: any[], prompts?: any[], notes?: string|null, gaps?: { after: number, at: number }[], streams?: { handle: string, started?: number, events: any[] }[] }} rec @param {{ sessionId?: string, handle?: string }} [only]
  * @returns {string[]} the files written
  */
 export function writeTrajectories(out, rec, only = {}) {
