@@ -68,3 +68,21 @@ test('#1680 a persona freed while another’s removal is being sent goes on that
   assert.deepEqual(sent, ['pe_free', 'pe_held'], 'each once, on the one connection');
   assert.equal(store.state.hostForgets.ho_a, undefined);
 });
+
+test('#1680 a link that closes mid-send leaves the held persona held and sends the other once, with no loop', async () => {
+  const { store, manager, hosts } = forgetRig({ answer: () => null });
+  hosts.hostTurns = { stoppingPersonas: () => ['pe_held'], onStopEnded: () => {} };
+  watchForgets(hosts);
+  store.emit('host.forget', { id: 'ho_a', add: ['pe_held', 'pe_free'] });
+  const l = manager.links.get('ho_a');
+  l.connected = false;
+  l.emit('state');
+  await answered();
+  await answered();
+  assert.deepEqual(
+    l.sent.map((/** @type {any} */ m) => m.persona),
+    ['pe_free'],
+    'sent once; the held one isn’t a reason to send again',
+  );
+  assert.deepEqual(store.state.hostForgets.ho_a, ['pe_held', 'pe_free'], 'both still owed');
+});
