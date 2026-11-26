@@ -166,3 +166,13 @@ test('#1810 a correction the person sent since still comes: only the answer itse
     'the correction reaches the next turn; the answer, given in the refusal, doesn’t',
   );
 });
+
+test('#1810 a long answer held behind the running turn stays in its queue, and comes whole when the turn ends', async () => {
+  const long = Array.from({ length: 5 }, (_, i) => ({ line: 1, text: `${i} ${'x'.repeat(3500)}` }));
+  const f = await answeredMidTurn({
+    comments: long,
+    during: ({ rt, se }) => startFromEntries(rt, se.id),
+  });
+  assert.match(f.replies[0].message, /It reaches you whole when this turn ends/);
+  assert.equal(answersGiven(f.adapter, f.item.id).length, 1, 'the queued turn gets it, whole, once');
+});
