@@ -4,44 +4,49 @@ An agent whose background job is still running takes new messages right away. Th
 
 How: the turn ends when the model has replied, the job runs on, and its end wakes the agent that started it, once. Agents start background work their harness’s own way, with `run_in_background`, `&`, `nohup` or `tmux`, and Postbox adds no tool for it.
 
-**Where it stands:** proposed for [#1614](https://github.com/HJeon139/postbox/issues/1614), and nothing here is built. On `main` an agent is held busy for its background work on four of the five backends, as “The problem” lists. **What’s next:** the four live checks in “The first step”, then that step.
+**Where it stands:** proposed for [#1614](https://github.com/HJeon139/postbox/issues/1614), and nothing here is built. On `main` an agent is held busy for its background work on four of the five backends, as “The problem” lists. **What’s next:** the owner’s decision on which step comes first for Claude Code on this computer, since live input has one passing run there (“Live checks before it’s built”). Then that step’s remaining checks, and the step.
 
 **How this document got here:**
 - An earlier draft added four Postbox tools and a launcher. On [#1615](https://github.com/HJeon139/postbox/pull/1615) the owner directed that Postbox integrate with each harness instead, because agents use their harness’s own way and fumble Postbox-specific mechanisms.
-- The draft after that ended a turn early only when every task bound to exactly one process group under strict rules, and otherwise kept the wait. A review on 26 November 2026 found that it left agents busy in the usual cases, such as a gate run in the foreground, fixed, then run again in the background. It also carried work that doesn’t stop the pile-up, which is now under “Later, not part of #1614”.
-- The owner then stated the rule in the room: “the purpose of background jobs is to free up the agent to take new messages while the job is running in the background”, and holding the agent busy “must be removed”.
+- The draft after that ended a turn early only when every task bound to exactly one process group under strict rules, and otherwise kept the wait. A review on 26 November 2026, summarized in [#1824](https://github.com/HJeon139/postbox/pull/1824), found that it left agents busy in the usual cases, such as a gate run in the foreground, fixed, then run again in the background. It also carried work that doesn’t stop the pile-up, which is now under “Later, not part of #1614”.
+- The owner then stated the rule in the room, as #1824 quotes it: “the purpose of background jobs is to free up the agent to take new messages while the job is running in the background”, and holding the agent busy “must be removed”.
+- The probe figures below that cite #1615’s review (456 ms and 3,004 ms, status 141, 4.7 to 4.9 ms) are in that pull request’s record. No fixture in the repo holds them, and they weren’t measured again for this rewrite.
 
 ## The problem
 
-Postbox ends a turn only when the harness’s process closes (`child.on('close', settle)` in `server/adapters/claude-code.mjs`, `kiro-cli.mjs` and `antigravity-cli.mjs`). Until then `Running.busy()` stays true, `Delivery.ready()` (`server/delivery.mjs`) returns false, and every message to the agent waits in its inbox.
+Postbox ends a turn only when the harness’s process closes (the `child.on('close', …)` handler in `server/adapters/claude-code.mjs`, `kiro-cli.mjs` and `antigravity-cli.mjs`). Until then `Running.busy()` stays true, `Delivery.ready()` (`server/delivery.mjs`) returns false, and every message to the agent waits in its inbox.
 
 | Backend | What holds the agent after its reply, on `main` | The longest a message waits |
 |---|---|---|
 | Claude Code, this computer | The CLI stays alive until its background tasks end, then reports them in a turn of its own | The job’s whole run. Postbox sets no bound |
 | Agent SDK | The same wait, inside the SDK | 2 h (`QUIET.backgroundMax` in `shared/limits.mjs`, passed by `server/adapters/sdk-background.mjs`, #1801). Then the SDK stops the work |
 | Claude Code, on a host | The same wait, on the host | 2 h. Then the turn is stopped as hung (#847, `server/remote/turns-background.mjs`) |
-| Kiro and Antigravity | An unredirected `cmd &` holds the CLI’s pipes, so `close` comes only when `cmd` ends | The job’s whole run. No bound |
+| Kiro and Antigravity, this computer | An unredirected `cmd &` holds the CLI’s pipes, so `close` comes only when `cmd` ends | The job’s whole run. No bound |
+| Kiro, on a host | Not verified. The host’s runner ends the harness at `exit`, not `close` (`server/remote/host/runner-turn.mjs`), so the held-`close` wait probably doesn’t exist there | Not verified. A quiet turn on a host with no running step is stopped as hung after the host’s `stallTimeout`, 15 minutes by default (`shared/remote-settings.mjs`, `server/remote/turns-resume.mjs`) |
 | Codex | Nothing: the turn ends at the reply. But Postbox kills the turn’s process group then (`stopTurn` in `server/adapters/codex.mjs`), so background work dies, and the guide tells Codex agents to wait in the foreground (`TURN_ENDS` in `server/adapters/guide.mjs`) | The command’s whole run, as a foreground call |
 
 The evidence:
 - **Measured with the real CLI in #1614:** a Claude Code reply with no background command exited at 7.6 s. The same reply after `sleep 90` with `run_in_background` exited at 98.2 s.
-- **In the room on 21 and 22 November 2026:** agents’ messages waited 26 to 167 minutes behind their own background gates and CI watches (#1614).
+- **In the room on 21 and 22 November 2026:** agents’ messages waited 26 to 167 minutes behind their own background gates and CI watches (#1614). The record doesn’t say how many of those watches were shell jobs and how many were Monitors or background subagents, which the first step doesn’t free. That split decides how much stop-and-keep frees, and isn’t known.
 - **The Agent SDK’s limit** ([#1714](https://github.com/HJeon139/postbox/issues/1714)): after the last result the SDK waits for background work only up to `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`, 10 minutes by default, and then stops that work. Two review rounds run as background subagents were lost that way on 22 November 2026. #1801 raised the limit to 2 h, which saved the work and lengthened the wait.
 - **Kiro and Antigravity:** Node fires `close` only once the child’s stdio streams have closed. A probe of a fake harness that ran an unredirected `cmd &` measured `exit` at 456 ms and `close` at 3,004 ms (during #1615’s review). With `cmd > log 2>&1 &`, `close` follows `exit`, and `cmd` runs on with no wake.
 
 ## What `main` already has
 
-The first step is built from these, and adds no new mechanism.
+The first step is built from these. What it adds to them is listed under “What the step adds”.
 - **Recognizing a task.** Claude Code’s `run_in_background` calls, timed-out calls moved to the background, Monitors and background subagents are recognized from the stream (`server/adapters/claude-stream.mjs`). Each command is recorded as a job with its task id, command and output file (`server/harness-events.mjs`). At the turn’s result, `on_turn_end` lists the jobs and the subagents still running. The Agent SDK streams the same messages.
-- **Keeping a job.** Send now stops the CLI with `jobs: 'keep'` (`stopForSendNow` in `server/message-queue.mjs`). `stopTurn`’s `keep` (`server/adapters/process-group.mjs`) sends the CLI SIGKILL at once, since its SIGINT handler would stop the jobs. It finds each job’s tool shell by its command, and keeps that shell’s process group. It’s lenient: a job it can’t tell apart is kept with every unmatched shell, so it’s never killed (#164).
+- **Keeping a job.** Send now stops the CLI with `jobs: 'keep'` (`stopForSendNow` in `server/message-queue.mjs`). `stopTurn`’s `keep` (`server/adapters/process-group.mjs`) sends the CLI SIGKILL at once, since its SIGINT handler would stop the jobs. It finds each job’s tool shell by its command, and keeps that shell’s process group. It’s lenient: a job it can’t tell apart is kept with every unmatched shell, so it’s never killed (#164). Once every job is found, it sends SIGKILL to every other tool shell, since in the middle of a turn those are foreground calls.
+- **What Send now’s keep records.** It’s reachable only through `rt.stop(…, { jobs: 'keep' })`, which aborts the turn and records a stop (`server/turn-stop.mjs`, `server/stop-record.mjs`): the reply reads “Stopped”, its @-mentions wake no one (`server/mention-entries.mjs`), no `turn.ended` is raised, and the agent’s next turn is told the person stopped its last one (`server/job-records.mjs`). That’s right for a stop, and none of it is reused here.
+- **What a resumed CLI says.** Claude Code, resumed, marks a background command it has no end for as stopped, and says so to the agent (#249). Postbox’s note at the next turn corrects it (`job-records.mjs`).
 - **What the kill does to a job,** recorded with `ps` on Claude Code 2.1.296 for #126 (`process-group.mjs`’s opening comment): after SIGKILL to the CLI, its tool shells live on with init as their parent, and a background job keeps writing to its output file.
 - **Seeing a job end.** A 5-second poll of the kept jobs’ process groups sees each one end (`server/kept-jobs.mjs`, #129, #164). The agent is told at its next turn, with the output file’s path (`endJob` in `server/job-records.mjs`). Nothing wakes it.
+- **The agent’s state.** With a kept job and no turn, an agent already reads “waiting on a job: …” (`shared/agent-state.mjs`), after Send now or a Stop that kept jobs.
 - **In the room.** Each kept job is listed under its reply with its own Stop (designs/intent.md, “Decisions and why”, the row that begins “Stop reaches every process of the turn”).
 - **On a host.** The daemon records a turn’s tool shells’ groups and matches them by their members’ start times (`server/remote/host/daemon-kill.mjs`). `stopTurn` on a host ignores `keep`, so Send now keeps no jobs there today.
 
 ## The first step: Claude Code and the Agent SDK on this computer
 
-This is where the pile-up was measured, and both backends already have every piece.
+This is where the pile-up was measured. The step is stop-and-keep: the turn ends as a finished turn at its reply, and the CLI is stopped with its jobs kept. Whether it or live input is built first for Claude Code here is open: see “Live checks before it’s built”.
 
 ```mermaid
 sequenceDiagram
@@ -50,8 +55,9 @@ sequenceDiagram
   participant J as The background job
   H->>J: run_in_background
   H-->>S: the reply’s result. Only shell jobs still run
-  S->>H: ends the CLI the way Send now does, keeping every tool shell
-  Note over S: The turn has ended. Running.busy() is false, and messages arrive
+  S->>S: ends the turn as finished: the reply is done, and its mentions wake
+  S->>H: SIGKILL to the CLI’s group, keeping every tool shell
+  Note over S: Running.busy() is false, and messages arrive
   loop every 5 s, while a kept job exists
     S->>J: is its process group still there?
   end
@@ -61,32 +67,50 @@ sequenceDiagram
 ```
 
 - **When.** The reply’s `result` has arrived, and everything `on_turn_end` lists as still running is a shell job: a `run_in_background` Bash call, or one moved to the background at its timeout. With a background subagent or a Monitor running, see “When a turn still waits”.
-- **Ending the turn.** Postbox stops the CLI through the path Send now already uses, with every listed job to keep. It signals the CLI’s own group and no tool shell:
+- **The turn ends as a finished turn, not a stopped one.** It ends through `endTurn` with no error (`server/turn-finish.mjs`), as a turn whose CLI closed by itself does: its reply is `done`, its @-mentions wake, it goes back to its wakers, its lint and checks run, a scheduled wake’s turn settles as done, and nothing reads “Stopped”. A result with `is_error` still fails the turn. So the adapter needs a way to end the CLI that isn’t the turn’s abort signal: today `done()` returns early on an aborted signal, before the result’s error is read (`claude-code.mjs`). No stop is recorded and no stop reason is added.
+- **Ending the CLI.** Only the process half of Send now is reused: `stopTurn`’s `keep`, with every listed job. It signals the CLI’s own group and no tool shell:
   - a job whose shell is found is kept in that shell’s group;
   - a job it can’t tell apart is kept with every unmatched shell, as Send now keeps it. So a gate that ran in the foreground, was fixed, and runs again in the background ends the turn like any other. Which shell is the job’s decides what its row is called and what its Stop reaches, never whether work is lost;
   - a listed job with no shell left has already ended, and its end and wake are recorded at once;
-  - no shell is killed. At the result no foreground call is left to stop, so a shell that matches no job is left running, as `main` leaves a process its harness never reported.
-- **The wake.** When the kept-jobs poll sees a job’s group gone, Postbox records the end and one wake in one commit, sent the way a scheduled wake is (`server/scheduled-wakes.mjs`). It carries the text the agent is told today: the job’s id, its command and its output file’s path. The agent reads the file with its own tools.
+  - no shell is killed. At the result no foreground call is left to stop, so a shell that matches no job is left running, with no row and no Stop. That’s a change to `stopTurn` for this caller alone: Send now in the middle of a turn keeps killing the other shells.
+- **The note at the next turn.** Every job kept at a reply gets Postbox’s counter-note, since the resumed CLI will say the job was stopped, and an agent that believes it runs the job again. Today’s two variants both name a stop, which would be false here. This path’s words: “Your background job … is still running: your turn ended at your reply, and the job runs on. If your CLI says it was stopped, that’s only because the process that started it has ended: it wasn’t stopped. Its output is in …. You’re woken when it ends.” The wake carries the same correction.
+- **The wake.** When the kept-jobs poll sees a job’s group gone, Postbox records the end and one wake in one commit, sent the way a scheduled wake is delivered (`server/scheduled-wakes.mjs`). It’s an inbox entry with no schedule line and no Cancel, and it doesn’t count toward the agent’s 20 scheduled wakes. It carries the text the agent is told today: the job’s id, its command and its output file’s path. The agent reads the file with its own tools.
   - It goes only to the agent that started the job, counts as no hop, and raises no “needs you”.
   - A restart between seeing the end and sending the wake sends it once.
   - A job the person stopped wakes no one. The agent hears of it at its next turn, as today.
+  - A job Postbox stopped at a clean shutdown, or recorded as stopped at a start after a crash, wakes its agent once after the start, and says which: see “Shutdown and restart” below.
   - Send now’s kept jobs wake their agent the same way, since they’re the same record.
-- **What it doesn’t add.** No marker in the environment, no strict binding, no output tail read by Postbox, no new item in the room, no tool, and no protocol message.
-- **Shutdown and restart stay as on `main`.** A clean shutdown stops kept jobs (`stopKeptJobs` in `server/kept-jobs.mjs`, called from `server/turn-stop.mjs`), and a start after a crash records them as stopped, saying they may still run (`server/job-records.mjs`). Neither costs anything `main` has: there a shutdown stops the waiting turn, and its jobs with it.
+- **Shutdown and restart.** A clean shutdown stops kept jobs (`stopKeptJobs` in `server/kept-jobs.mjs`, called from `server/turn-stop.mjs`), and a start after a crash records them as stopped, saying they may still run (`expireStaleJobs` in `server/job-records.mjs`). That stays. But on `main` a shutdown stops the waiting turn without settling what it took, and the restart reopens it once as a resend (`turn-stop.mjs`, `server/delivery.mjs`), so the agent gets a turn and learns its job is gone. After this step the agent is idle with a kept job, and nothing would start that turn, while its guide says it’s woken when the job ends. Each merge to `main` is a release, so restarts are frequent. So a job that a shutdown or a start ended wakes its agent once after the start.
+- **What the step adds.** Not a marker in the environment, strict binding, an output tail read by Postbox, a new item in the room, a tool or a protocol message. It does add these, none of which `main` has:
+  - a finished end for a turn whose CLI Postbox ends, above;
+  - `stopTurn`’s keep without the kill of unmatched shells, for this caller;
+  - the kind of each job. A Monitor is recorded as a job like any other today (`claude-stream.mjs`, `server/harness-tools.mjs`), so telling that everything listed is a shell job needs the job to carry its tool;
+  - the wake at a kept job’s end, and after a shutdown or a start;
+  - the counter-note’s words for this path;
+  - a 2 h timer for Claude Code on this computer, with its stop and its note: see “When a turn still waits”. The SDK’s limit doesn’t bind the CLI (`sdk-background.mjs`’s opening comment), so Postbox needs its own.
 - **The Agent SDK’s 2-hour wait no longer covers shell jobs.** The turn ends at the result, so the SDK’s limit is never reached for them, and “Postbox waits up to 2 h for background work after a reply” (`stoppedAfterReply` in `sdk-background.mjs`) is said only of a subagent or a Monitor. The limit itself stays until “Live input”, because without it the SDK stops a background subagent at 10 minutes (#1714).
 
 ### Live checks before it’s built
 
-None of these has been run. Each is a local run of a few turns with the real CLI, costs real usage, and is recorded here with its date, the CLI’s version and its fixture when it’s run.
+The first three haven’t been run. The fourth has one passing run for the Claude Code CLI and none for the Agent SDK. Each is a local run of a few turns with the real CLI, costs real usage, and is recorded here with its date, the CLI’s version and its fixture when it’s run.
 
 | Check | What a pass shows | Result |
 |---|---|---|
 | The CLI is stopped after its `result`, while a `run_in_background` job runs | The job survives, and its output file keeps filling. Also what else sits under the CLI then, such as hooks or MCP servers, and whether any leads a process group of its own. #126’s recording stopped the CLI in the middle of a turn, not after a result | Not run |
-| The session’s next turn, after that stop | It resumes cleanly, with a task id in its history that no CLI will ever report | Not run |
+| The session’s next turn, after that stop | It resumes, with a task id in its history that no CLI will ever report. The check records what the resumed CLI says about that task (#249), and that the agent, given Postbox’s counter-note, doesn’t run the job again | Not run |
 | The Agent SDK’s run is ended after its `result` | Ending the run doesn’t itself stop the tasks, as reaching its limit does (#1714) | Not run |
-| A new message during the wait, through the SDK’s streaming input, and through `claude -p --input-format stream-json` with stdin held open | The CLI takes it as a new turn while the job runs on. This is the fully native fix: see “Live input” | Not run |
+| A new message during the wait, through `claude -p --input-format stream-json` with stdin held open | The CLI takes it as a new turn while the job runs on. This is the fully native fix: see “Live input” | **Passed once** (n=1, existence only), Claude Code 2.1.296: a message written to stdin 1 s after the result started a new turn in 46 ms, with its first token at 1,379 ms, while a `sleep 10` ran on. The job’s end then started a third turn, and the CLI exited 0. `tests/fixtures/delivery-routes.md`, “Claim 3”, with `tests/fixtures/delivery-routes/scenarioa-prime-framing1-plain-postresult.jsonl`, `scenarioa-prime-framing2-attributed-postresult.jsonl`, `scenarioa-prime-control-noinject.jsonl` and `timing-manifest.json` |
+| The same, through the Agent SDK’s streaming input after a result | The same | Not run. Only input at a tool step’s boundary is recorded (`tests/fixtures/delivery-routes.md`, the backend table) |
 
-If the fourth check passes for a backend, that backend takes “Live input” as its step, and stop-and-keep stays as the fallback wherever it doesn’t. If the first or third fails, the step isn’t built for that backend as written, and this document says what was seen.
+If the first or third fails, stop-and-keep isn’t built for that backend as written, and this document says what was seen.
+
+**Open, for the owner: which step is first for Claude Code on this computer.** The passing run shows the CLI can take a message while its job runs. It isn’t a build yet. What the recording says still stands between it and one (`tests/fixtures/delivery-routes.md`, “Claim 3”, “Scope & Limitations”):
+- the adapter ends stdin with the prompt today (`child.stdin.end`, `server/adapters/claude-code.mjs`);
+- the stream-json parity checks: `--resume`, `--session-id`, forks, slash commands, attachments, images and permission prompts;
+- a message and a task notification that arrive together, which is unexercised;
+- A′’s `openExecution` seam, proposed and not implemented (designs/508/delivery-routes.md, “Model turns and a live backend execution (A′)”).
+
+Live input first stops nothing, covers subagents and Monitors, needs no wake from Postbox, and has no resumed CLI calling a job stopped. Stop-and-keep first needs none of the four items above, and leaves the two waits in “When a turn still waits”. The order table below shows stop-and-keep first and is corrected with the decision. The Agent SDK, hosts, Kiro, Antigravity and Codex have no passing run of live input after a result, so their steps don’t wait on this.
 
 ## When a turn still waits
 
@@ -110,9 +134,9 @@ Each step is its own change, with its own live check, and lands in this order. T
 |---|---|---|---|---|
 | 1 | Claude Code and the Agent SDK, this computer | Today’s wait | None for Claude Code, 2 h for the Agent SDK | Free at the reply. A subagent or a Monitor: at most 2 h |
 | 2 | Claude Code on a host | Today’s wait | 2 h (#847) | The same as step 1 |
-| 3 | Kiro and Antigravity, here and on a host | Today’s wait for an unredirected `cmd &`. A redirected job already frees the agent, with no wake | None. The guide line in “The guide and intent.md” goes out with step 1 | Free at the reply, with a wake |
-| 4 | Codex, here and on a host | No message waits. Background work dies with the turn, and the guide says to run it in the foreground | The command’s run | Background work is kept, with a wake |
-| 5 | Live input, per backend, where its check passes | The waits in “When a turn still waits” | 2 h | No wait after a reply |
+| 3 | Kiro and Antigravity, here and on a host | Today’s wait for an unredirected `cmd &`. A redirected job already frees the agent, with no wake | None on this computer. Not verified on a host: see “The problem” | Free at the reply, with a wake |
+| 4 | Codex, here and on a host | No message waits behind a background job, since none survives the turn: the guide says to run the command in the foreground, and a message waits for that call | The command’s run | Background work is kept, with a wake |
+| 5 | Live input, per backend, where its check passes. For Claude Code on this computer its place is the open decision above | The waits in “When a turn still waits” | 2 h | No wait after a reply |
 
 Kiro and Codex run on hosts today, and Antigravity doesn’t yet (`server/adapters/adapter.mjs`, the `remote` capability). Each gets its step on a host in the same change as on this computer, and Antigravity’s host step comes with its host support.
 
@@ -123,6 +147,8 @@ A turn on a host waits up to 2 h today, and Send now keeps nothing there. The st
 - **The daemon’s stop gains `keep`** (`daemon-kill.mjs`): SIGKILL to the runner’s group at once, and the tool shells’ groups it already records are kept, each matched by its members’ start times as today.
 - **The daemon polls its kept groups** and stores each job’s end in its own data folder, never in the workspace, while the laptop sleeps or the link is down.
 - **Send now on a host keeps jobs too,** since it’s the same stop.
+- **Kiro’s step on a host runs in the daemon:** it reads the runner’s group after the harness’s `exit`, and again 1 s later, as “Kiro and Antigravity” says.
+- **Codex’s step on a host runs in the daemon too:** the signals by pid, each checked against its start time, as “Codex” says.
 
 ```mermaid
 sequenceDiagram
@@ -146,7 +172,7 @@ sequenceDiagram
 
 The protocol messages: `jobs.kept` and `jobs.ended` (daemon to laptop, live), `jobs.list` (daemon to laptop on reconnect), `jobs.stop` and `jobs.ack` (laptop to daemon). A daemon from before this change doesn’t list `jobs` in its welcome, and with one the laptop keeps today’s wait and its 2 h bound. That follows the welcome-field pattern `claudeChecks` uses (`server/adapters/claude-code-remote.mjs`, and remote-hosts.md, “Postbox and the daemon”). While a host is disconnected its jobs read as last seen at a time, never as an alarm.
 
-Its live check: the first step’s first two checks, run on a host, and a job that ends while the laptop is disconnected.
+Its live check: the first step’s first two checks, run on a host, and a job that ends while the laptop is disconnected. For Kiro on a host: what a turn does today while an unredirected `cmd &` runs, and Kiro’s own check. For Codex on a host: Codex’s own check.
 
 ### Kiro and Antigravity
 
@@ -176,7 +202,7 @@ Its live check: does the app-server end a turn while a backgrounded child runs, 
 
 The fully native fix keeps the CLI alive and hands it the new message as a new turn while its background work runs on. Then nothing is stopped: subagents and Monitors are covered, the harness reports each task’s end and exit status itself, and no wake from Postbox is needed for that backend.
 
-Its design is designs/508/delivery-routes.md, “Model turns and a live backend execution (A′)”, which names this state `background-wait` and admits input there “only through proven live input”. Its proof is the fourth check in “Live checks before it’s built”. Where that passes for a backend:
+Its design is designs/508/delivery-routes.md, “Model turns and a live backend execution (A′)”, which names this state `background-wait`; its “Caller sweep: one lifetime used for two facts” makes it “eligible only through proven live input”. Its proof is the fourth and fifth checks in “Live checks before it’s built”, and for the Claude Code CLI it has one passing run, with what still stands between that and a build listed there. Where it’s proven and built for a backend:
 - the backend takes live input in place of stop-and-keep;
 - the waits in “When a turn still waits” go, for that backend;
 - #1801’s limit goes: `backgroundWaitEnv` and `stoppedAfterReply` (`sdk-background.mjs`) for the Agent SDK, and the 2 h bound on a host’s waiting turn for Claude Code there.
@@ -185,9 +211,9 @@ Where it doesn’t pass, or for a harness with no such input, the steps above st
 
 ## What the room shows
 
-The first step adds no surface. A kept job already has its row under its reply, with its Stop, and shows its end there.
+The first step adds no surface. A kept job already has its row under its reply, with its Stop, and shows its end there. The wake is an inbox entry like any other.
 
-One line changes, because it would be wrong. An agent with a kept job and no turn reads “waiting on a job: …” today (`jobOf` in `shared/agent-state.mjs`, `stateWords` in `app/js/agents.mjs`). Once that agent is free, it isn’t waiting on anything, and a person or an agent who reads “waiting” would hold their message back. The state reads “job running: …” from the step that frees the agent. A turn still held by a subagent or a Monitor keeps its running step, “Waiting for a background subagent”, which is true of it.
+One line changes, because it’s wrong. An agent with a kept job and no turn reads “waiting on a job: …” (`jobOf` in `shared/agent-state.mjs`, `stateWords` in `app/js/agents.mjs`). That state is reached only when no turn runs, so it’s already said of a free agent on `main`, after Send now or a Stop that kept jobs. The agent isn’t waiting on anything, and a person or an agent who reads “waiting” would hold their message back. The state reads “job running: …” on every backend, in the first step’s change, which also updates the two docs that name the state: designs/rooms-at-scale.md, “Live state: what each agent is doing”, and designs/architecture/services.md, “Delivery and Turns, built as the inbox”. A turn still held by a subagent or a Monitor keeps its running step, “Waiting for a background subagent” or “Waiting for a background job”, which is true of it.
 
 Stopping a job:
 - **The person** stops any listed job with its row’s Stop.
@@ -203,15 +229,20 @@ Stopping a job:
 
 The first step:
 - **The room outcome, through the normal turn path,** with recorded Claude Code and Agent SDK streams. #1614’s recorded stream, where the message waits, is the baseline, and the test fails on `main`.
-  - A turn whose result lists only shell jobs ends at its `result`.
+  - A turn whose result lists only shell jobs ends at its `result`, and its reply is `done`, not stopped.
+  - An @-mention in that reply wakes its agent, and the turn goes back to its wakers.
+  - A result with `is_error` still fails the turn.
+  - The agent’s next turn is told its job runs on, and not that anyone stopped its turn.
   - A room message reaches the agent while the job runs.
   - The job’s end wakes the agent exactly once, including with a restart between seeing the end and sending the wake.
+  - A job stopped by a clean shutdown, and one recorded as stopped at a start, each wake their agent once after the start.
   - A turn whose result lists a background subagent or a Monitor doesn’t end early, and is stopped at 2 h with the agent told.
 - **`tests/process/`, with real processes:**
   - the same command run in the foreground earlier in the turn, then in the background: the turn ends, and the job survives;
   - two background jobs with the same command: both survive, and each wakes once;
-  - a listed job that has already exited: its end and wake are recorded at once.
-- **Unit tests:** the wake counts as no hop and raises no “needs you”; a job the person stopped wakes no one; the agent’s state words.
+  - a listed job that has already exited: its end and wake are recorded at once;
+  - Send now in the middle of a turn still kills the turn’s foreground shells.
+- **Unit tests:** the wake counts as no hop, raises no “needs you”, and doesn’t count toward the 20 scheduled wakes; a job the person stopped wakes no one; the agent’s state words.
 - **A browser spec** for “job running: …” on a free agent, run plain and with `POSTBOX_STREAM_LAG=300`.
 
 Each later step adds its own, on the same pattern:
@@ -221,9 +252,9 @@ Each later step adds its own, on the same pattern:
 
 ## Later, not part of #1614
 
-None of these stops messages piling up behind a background job, so none is part of #1614 or blocks a step above. Each needs its own evidence and its own issue before it’s built, and the earlier draft’s detail for each is in this file’s history.
+None of these stops messages piling up behind a background job, so none is part of #1614 or blocks a step above. Each needs its own evidence and its own issue before it’s built, and the earlier draft’s detail for each is in this file at [f749d8aed](https://github.com/HJeon139/postbox/blob/f749d8aed2c3ec4062b19a5ee9e6dcc683f8439a/designs/architecture/background-processes.md).
 
-- **Whose process is this?** ([#1606](https://github.com/HJeon139/postbox/issues/1606)). Processes that escape a harness’s group, after `setsid` or as the orphan of a tool shell that led its own group, belong to no session Postbox can name. The earlier draft marked every harness process with `POSTBOX_SESSION` and `POSTBOX_TURN` in its environment and scanned for them (`ps -E` on macOS, where Apple’s own binaries hide their environment; `/proc/<pid>/environ` on Linux). That is #1606’s design to make. Until then such a process is what it is on `main`: untracked, with no wake.
+- **Whose process is this?** ([#1606](https://github.com/HJeon139/postbox/issues/1606)). Processes that escape a harness’s group, after `setsid` or as the orphan of a tool shell that led its own group, belong to no session Postbox can name. The earlier draft marked every harness process with `POSTBOX_SESSION` and `POSTBOX_TURN` in its environment and scanned for them (`ps -E` on macOS, where Apple’s own binaries hide their environment; `/proc/<pid>/environ` on Linux). That is #1606’s design to make. Until then such a process is what it is on `main`: untracked, with no wake. The first step adds one small source of these: a tool shell that matches no listed job is left running at the reply, where on `main` the live CLI still owns it.
 - **Processes Postbox can see but can’t stop or wake for.** The earlier draft showed them in the room as “informational”. A row nobody can act on isn’t added (AGENTS.md, “No unactionable alarms”).
 - **Telling one job’s shell from another’s exactly.** The strict rules (one matching shell, started inside its call, no other call with the same command) would sharpen a job’s label and its Stop. They never decide whether a turn ends. Worth building only if the lenient keep is seen to stop the wrong job.
 - **An output tail in the wake.** Postbox reading a job’s output file needs the checks that keep it from reading a file the agent’s Read rules deny. The wake names the file, and the agent reads it.
