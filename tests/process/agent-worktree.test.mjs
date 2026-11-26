@@ -51,6 +51,19 @@ test('#1709 a repository with no commit yet leaves the agent in the project’s 
   assert.equal(git(folder, ['worktree', 'list', '--porcelain']).match(/^worktree /gm)?.length, 1, 'no worktree made');
 });
 
+test('#1709 a project whose repository has submodules leaves the agent in the project’s folder', async () => {
+  const { project: lib } = await project('sub-lib');
+  const { project: p, workRoot } = await project('sub-super');
+  git(p.folder, ['-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', lib.folder, 'lib']);
+  git(p.folder, ['commit', '-q', '-m', 'a submodule']);
+  /** @type {string[]} */
+  const logs = [];
+  // A worktree would hold lib/ empty, and the turn-end commit leaves a worktree with a repository in its index alone.
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: (l) => logs.push(l) }), p.folder);
+  assert.equal(git(p.folder, ['worktree', 'list', '--porcelain']).match(/^worktree /gm)?.length, 1, 'no worktree made');
+  assert.deepEqual(logs, []);
+});
+
 test('#1709 a worktree git didn’t finish making, as when Postbox stopped mid-add, is removed and made again', async () => {
   const { project: p, workRoot } = await project('unfinished');
   const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);

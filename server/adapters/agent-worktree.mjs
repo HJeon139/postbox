@@ -16,7 +16,7 @@
 // nothing the repository’s config names.
 //
 // Everywhere else the folder is as it was (folder.mjs’s agentFolder): an agent with its own folder, a project with no
-// folder, one not in a git repository, or one with no commit yet. So is a worktree git refuses (a branch checked out
+// folder, one not in a git repository, one with no commit yet, or one whose repository has submodules. So is a worktree git refuses (a branch checked out
 // elsewhere), and the server log says why. Turns in one folder still take turns there: one agent’s turns in two
 // conversations, and every turn in a folder that isn’t in git.
 
@@ -84,6 +84,9 @@ export async function agentWorktree(persona, project, workRoot, { git = defaultG
   if (top.code !== 0) return shared();
   // A repository with no commit yet would give an empty worktree, without the project’s files.
   if ((await git(project.folder, ['rev-parse', '--verify', '--quiet', 'HEAD'])).code !== 0) return shared();
+  // One with submodules keeps the project’s folder too: a worktree holds them empty, and the turn-end commit leaves a
+  // worktree with a repository in its index uncommitted (agent-worktree-commit.mjs), so the work would stay there unseen.
+  if ((await git(project.folder, ['rev-parse', '--verify', '--quiet', 'HEAD:.gitmodules'])).code === 0) return shared();
   const [repo = '', line = ''] = top.stdout.split('\n');
   // Where the project’s folder sits below the repository’s top, as git prints it: `apps/web/`, or empty.
   const prefix = line.trim().replace(/\/+$/, '');
