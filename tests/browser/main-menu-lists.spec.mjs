@@ -34,6 +34,9 @@ async function menu(page, tab) {
 async function inHeadingRow(dialog, heading, list, names) {
   const boxOf = async (/** @type {import('@playwright/test').Locator} */ el) =>
     /** @type {{ x: number, y: number, width: number, height: number }} */ (await el.boundingBox());
+  // Said in five seconds when the heading isn’t there, and measured once the page holds still.
+  await expect(dialog.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+  await settled(dialog.page());
   const head = await boxOf(dialog.getByRole('heading', { name: heading, exact: true }));
   const rows = await boxOf(list);
   const signs = [];
@@ -124,10 +127,15 @@ test('Hosts: the pick’s status shows under the list, − and Edit name it, + s
   for (const name of ['Add a host', `Remove ${second}`, `Edit settings for ${second}`])
     await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
   await inHeadingRow(dialog, 'Hosts', dialog.getByRole('listbox', { name: 'Hosts' }), ['Add a host', `Remove ${second}`, `Edit settings for ${second}`]);
-  // Edit: the settings open in its card, with Save and Cancel pinned under the sheet in the bar’s place.
+  // Edit: the settings open in its card, with Save and Cancel pinned under the sheet, and the bar away.
+  await settled(page);
+  const headHeight = async () => /** @type {{ height: number }} */ (await dialog.locator('.section-head.pinned').boundingBox()).height;
+  const withBar = await headHeight();
   await dialog.getByRole('button', { name: `Edit settings for ${second}`, exact: true }).click();
   for (const name of ['Save', 'Cancel']) await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
   await expect(dialog.getByRole('button', { name: 'Add a host', exact: true })).toHaveCount(0);
+  await settled(page);
+  expect(await headHeight(), 'the heading’s row keeps its height while the bar is away, so the rows don’t move').toBe(withBar);
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(dialog.getByRole('button', { name: `Edit settings for ${second}`, exact: true })).toBeFocused();
   // Another host picked closes an editor left open, without saving, and picking this one again doesn’t bring it back.
@@ -204,20 +212,37 @@ test('Personas and Projects: the bar is in the row of the list’s heading, and 
   await personas.getByRole('option').last().scrollIntoViewIfNeeded();
   await expect(personas.getByRole('option').first()).not.toBeInViewport();
   for (const name of ['New agent', `Edit ${first}`]) await expect(dialog.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
+  // No row shows above the pinned row, and the arrow keys never move the pick behind it.
+  await settled(page);
+  const boxOf = async (/** @type {import('@playwright/test').Locator} */ el) => /** @type {{ y: number, height: number }} */ (await el.boundingBox());
+  const head = await boxOf(dialog.locator('.section-head.pinned'));
+  expect.soft(head.y - (await boxOf(dialog.locator('.d-body'))).y, 'the pinned row reaches the top of the sheet’s body').toBeLessThan(1);
+  await personas.getByRole('option').last().focus();
+  for (let i = 0; i < 17; i++) {
+    await page.keyboard.press('ArrowUp');
+    await settled(page);
+    const pick = await boxOf(personas.getByRole('option', { selected: true }));
+    expect.soft(pick.y, `the pick is under the pinned row, ${i + 1} up from the end`).toBeGreaterThanOrEqual(head.y + head.height - 1);
+  }
+  // Every list that fills its tab keeps its heading’s row in view as it scrolls.
+  for (const tab of ['Personas', 'Projects', 'Rooms', 'People', 'Hosts']) {
+    await dialog.getByRole('tab', { name: tab }).click();
+    await expect(dialog.getByRole('heading', { name: tab, exact: true }).locator('..'), `${tab}’s heading row`).toHaveCSS('position', 'sticky');
+  }
   await dialog.getByRole('tab', { name: 'Projects' }).click();
   const projects = dialog.getByRole('listbox', { name: 'Projects' });
   const project = await projects.getByRole('option').first().locator('b').textContent();
   await inHeadingRow(dialog, 'Projects', projects, ['New project', `Delete project ${project}…`, `Edit ${project}`]);
 });
 
-test('a notice over the menu covers no control of a list: the stack starts in the sheet’s title row, clear of each heading’s row', async ({ page }) => {
+test('one notice over the menu covers no control of a list: the stack starts in the sheet’s title row, clear of each heading’s row', async ({ page }) => {
   const dialog = await menu(page, 'Personas');
-  // Two notices, each with a second line: more than one action leaves at once.
+  // One notice, with a second line. A second and a third reach further down: that is not settled, and not held here.
   await page.evaluate(async () => {
     const { toast } = await import('/app/js/ui.mjs');
-    for (const n of [1, 2]) toast({ title: `Added host-${n}.example.com`, text: 'Postbox connects when an agent runs there.' });
+    toast({ title: 'Added host.example.com', text: 'Postbox connects when an agent runs there.' });
   });
-  await expect(page.locator('.toast')).toHaveCount(2);
+  await expect(page.locator('.toast')).toHaveCount(1);
   const clear = (/** @type {import('@playwright/test').Locator} */ control) =>
     control.evaluate((el) => {
       const b = el.getBoundingClientRect();
@@ -229,4 +254,6 @@ test('a notice over the menu covers no control of a list: the stack starts in th
     for (const control of await dialog.getByRole('toolbar').getByRole('button').all())
       expect(await clear(control), `${tab}: ${await control.getAttribute('aria-label')}`).toBe(true);
   }
+  // The notice is still up: it goes by itself after eight seconds, and no control is under an empty stack.
+  await expect(page.locator('.toast')).toHaveCount(1);
 });

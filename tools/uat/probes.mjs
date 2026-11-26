@@ -43,13 +43,19 @@ export const newProbes = () => ({
 
 /**
  * Records an input into probes.inputs, stamped with the step it’s in and when; a shot that moved the person’s view is
- * logged too. A click target that moved (kind 'target-moved') goes to probes.targetMoved instead, and is logged.
- * @param {{ inputs: any[], targetMoved?: any[] }} probes  @param {() => number} stepNow  @param {(line: string) => void} log
+ * logged too. A click target that moved (kind 'target-moved') goes to probes.targetMoved instead, and is logged; so does
+ * a notice the runner dismissed because it covered what it was about to click ('notice-dismissed'), to probes.noticesDismissed.
+ * @param {{ inputs: any[], targetMoved?: any[], noticesDismissed?: any[] }} probes  @param {() => number} stepNow  @param {(line: string) => void} log
  */
 export const recordInput = (probes, stepNow, log) => (/** @type {any} */ entry) => {
   if (entry.kind === 'target-moved') {
     /** @type {any} */ ((probes.targetMoved ??= [])).push({ step: stepNow(), at: Date.now(), ...entry });
     log(`${entry.what} moved between the runner aiming and clicking: ${JSON.stringify(entry.from)} → ${JSON.stringify(entry.to)}`);
+    return;
+  }
+  if (entry.kind === 'notice-dismissed') {
+    /** @type {any} */ ((probes.noticesDismissed ??= [])).push({ step: stepNow(), at: Date.now(), ...entry });
+    log(`a notice covered ${entry.what}, so the runner dismissed it first: “${entry.said}”`);
     return;
   }
   probes.inputs.push({ step: stepNow(), at: Date.now(), ...entry });
