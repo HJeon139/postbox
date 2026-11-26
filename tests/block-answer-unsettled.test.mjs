@@ -1,8 +1,10 @@
 // The answers update_block’s refusal leaves to come at the turn’s end, as before #1810 (server/block-unread.mjs,
-// unreadAnswer): one whose agent works on a host, which never reads the refusal in its call.
+// unreadAnswer): one whose agent works on a host, which never reads the refusal in its call, and a confirm’s, whose turn
+// lets the command it shows run without a card.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { onTool } from '../server/remote/turns-tools.mjs';
+import { requestOf } from '../server/write-intent.mjs';
 import { answeredMidTurn, answersGiven, COMMENTS } from './block-answer-midturn-fixture.mjs';
 
 /**
@@ -50,4 +52,40 @@ test('#1810 on a host, the answer isn’t settled by a refusal its agent never r
     COMMENTS.map((x) => x.text),
   );
   assert.equal(f.adapter.calls.length, f.calls + 1);
+});
+
+const confirm = {
+  id: 'run-tests',
+  type: 'confirm',
+  version: 1,
+  fallback: 'Run the tests?',
+  statement: 'Run `npm test` in the project folder?',
+  confirmLabel: 'Run them',
+};
+
+test('#1810 a confirm’s answer isn’t settled by the refusal: it starts its turn, which began with the person confirming', async () => {
+  /** @type {any} */
+  let request;
+  const read = [];
+  const f = await answeredMidTurn({
+    block: confirm,
+    revised: { ...confirm, statement: 'Run `npm test` again?' },
+    act: ['confirm', {}],
+    update: (c, block, g) => {
+      const r = c.tools.update_block({ block });
+      read.push(g.store.item(g.t.id, g.item.id).answer.read);
+      return r;
+    },
+    // The turn that follows: what write-intent.mjs reads as the person’s request.
+    during: ({ rt, se, adapter }) =>
+      adapter.next.push(async (c) => {
+        request = requestOf(rt, rt.turns.get(se.id));
+        c.text('ok');
+      }),
+  });
+  assert.equal(f.replies[0].ok, false);
+  assert.match(f.replies[0].message, /It reaches you whole when this turn ends: read it, then update\.$/);
+  assert.deepEqual(read, [false, false], 'unread until its turn starts');
+  assert.equal(answersGiven(f.adapter, f.item.id).length, 1);
+  assert.deepEqual(request?.confirmed, [{ label: 'Run them', statement: confirm.statement }]);
 });

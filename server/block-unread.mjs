@@ -28,8 +28,9 @@ export function unreadAnswer(apps, sessionId, threadId, it, outcome = false) {
   const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
   // Only an answer the refusal can give whole is settled: past the cut, it still comes whole at the turn’s end. A host
   // turn’s update_block is queued, so its agent never reads this reply in the call (shared/remote-protocol-constants.mjs,
-  // TOOL_ROUTES): its answer comes at the turn’s end too.
-  const settles = full.length <= CATCH_UP_CHARS && !apps.running.turnOf(sessionId)?.remote;
+  // TOOL_ROUTES): its answer comes at the turn’s end too. So does a confirm’s, whose own turn is what lets the command it
+  // shows run without a card (write-intent.mjs, requestOf).
+  const settles = full.length <= CATCH_UP_CHARS && !apps.running.turnOf(sessionId)?.remote && it.block.type !== 'confirm';
   const waited = stillWaits(apps, sessionId, it);
   if (waited && !settles) return { ok: false, message: `${said} It reaches you whole when this turn ends: read it, ${then}.` };
   if (waited) settleWaiting(apps, sessionId, it);
