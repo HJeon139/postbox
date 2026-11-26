@@ -199,3 +199,18 @@ async function removeWorktree(git, repo, dir) {
  */
 export const sharedFolder = (cwd, project, workRoot) =>
   resolve(cwd).startsWith(`${resolve(worktreesRootFor(workRoot))}${sep}`) ? null : (project?.folder ?? null);
+
+/**
+ * The folders a turn in cwd gets besides cwd: those it may work in (agy’s --add-dir: the project’s shared folder, unless
+ * it’s in its own worktree, and any the person added), and the files and folders it may read with no card (the turn’s
+ * attached files, and, in its own worktree, the project’s folder, as before it had one, #1709). Read only, so the
+ * repository’s .git there stays outside the folders it may edit (agy-git-dir.mjs).
+ * @param {string} cwd @param {{ project?: { folder?: string|null } | null, addDirs?: string[], readFiles?: string[] }} ctx
+ * @param {string} workRoot
+ */
+export function turnFolders(cwd, ctx, workRoot) {
+  const shared = sharedFolder(cwd, ctx.project, workRoot);
+  const addDirs = [...new Set([shared, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
+  const reads = [...(ctx.readFiles ?? []), ...(!shared && ctx.project?.folder ? [ctx.project.folder] : [])];
+  return { addDirs: /** @type {string[]} */ (addDirs), reads };
+}

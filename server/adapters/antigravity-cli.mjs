@@ -60,7 +60,7 @@ import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
-import { agentWorktree, sharedFolder } from './agent-worktree.mjs';
+import { agentWorktree, turnFolders } from './agent-worktree.mjs';
 import { agyArgs, agyBypassWebOff } from './agy-args.mjs';
 import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
@@ -610,7 +610,7 @@ export class AntigravityCliAdapter {
     const useHook = agySupportsHooks(this.version) && (persona?.permissionMode !== 'bypass' || agyBypassWebOff(persona));
     const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
     const rules = rulesWith(useHook);
-    const addDirs = [...new Set([sharedFolder(cwd, ctx.project, this.workRoot), ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
+    const { addDirs, reads } = turnFolders(cwd, ctx, this.workRoot);
     const asked = this.usage?.start(this.version, ctx.signal) ?? null;
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });
     // Its quota is reported once the run is over, while the turn can still record it: after a failed turn too, which
@@ -633,7 +633,7 @@ export class AntigravityCliAdapter {
       if (unhooked) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
       const rulesRead = unhooked ? rulesWith(false) : rules; // the rules file as agy reads it, recorded with each run’s prompt
       // What every run of this turn shares: where agy runs, and the rules file it reads, recorded with each run’s prompt.
-      const each = { ctx, cwd, addDirs, guide: rulesRead };
+      const each = { ctx, cwd, addDirs, reads, guide: rulesRead };
       try {
         let done = await this.run({ ...each, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
@@ -661,16 +661,16 @@ export class AntigravityCliAdapter {
   }
 
   /**
-   * @param {{ ctx: any, cwd: string, addDirs: string[], prompt: string, guide?: string, sessionId: string|null, wrote?: boolean, hookConfirmed?: boolean }} turn
+   * @param {{ ctx: any, cwd: string, addDirs: string[], reads?: string[], prompt: string, guide?: string, sessionId: string|null, wrote?: boolean, hookConfirmed?: boolean }} turn
    * @returns {Promise<{ missingSession?: boolean, endedOnRefusal?: string|null, wrote?: boolean }>}
    */
-  run({ ctx, cwd, addDirs, prompt, guide, sessionId, wrote = false, hookConfirmed = false }) {
+  run({ ctx, cwd, addDirs, reads = ctx.readFiles ?? [], prompt, guide, sessionId, wrote = false, hookConfirmed = false }) {
     const persona = ctx.persona;
     const model = agyModel(persona, this.capabilities.models);
     const effort = agyEffort(model, effortOf(persona));
     const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
     const mapper = createAgyMapper(ctx, { effort, resumed: sessionId, wrote });
-    const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs, reads: ctx.readFiles ?? [] });
+    const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs, reads });
     const env = hookConfirmed ? { ...this.env, ...hookVars } : this.env;
     return new Promise((resolve, reject) => {
       let child;
