@@ -21,8 +21,8 @@ const DOTS = [
 const dots = DOTS.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="6" fill="var(--s1)"/>`).join('');
 // A ring marking one run, standing alone.
 const ring = '<circle cx="330" cy="190" r="12" fill="none" stroke="var(--s2)" stroke-width="2"/>';
-// The fit line, drawn through its points as a series is.
-const fit = '<path d="M40 215 L210 135 L380 55" fill="none" stroke="var(--s3)" stroke-width="2"/>';
+// The fit line, a straight line of two points, as a fit almost always is.
+const fit = '<path d="M40 215 L380 55" fill="none" stroke="var(--s3)" stroke-width="2"/>';
 const scatter = (id, labels) =>
   `<h2 style="color:var(--text);margin:8px">Runs got faster as sleep grew</h2><svg id="${id}" width="420" height="240" role="img" aria-label="Pace against sleep">${dots}${ring}${fit}${labels}</svg>`;
 
@@ -45,11 +45,17 @@ const APPS = {
     )
     .join('')}</svg>`,
   // A label over the line with a halo in the background’s color, which keeps it legible there.
-  halo: `<svg id="halo" width="420" height="240" role="img" aria-label="Fit">${fit}<text x="196" y="140" ${T} stroke="var(--bg)" stroke-width="4" paint-order="stroke">5:56</text></svg>`,
+  halo: `<svg id="halo" width="420" height="240" role="img" aria-label="Fit">${dots}${fit}<text x="196" y="140" ${T} stroke="var(--bg)" stroke-width="4" paint-order="stroke">5:56</text></svg>`,
   // A diagram’s nodes, big circles whose names spill past them, and a label on a straight edge between two of them.
-  nodes: `<svg id="nodes" width="420" height="120" role="img" aria-label="Steps"><path d="M70 60 L330 60" stroke="var(--text)" stroke-width="2"/><circle cx="70" cy="60" r="30" fill="var(--s1)"/><circle cx="330" cy="60" r="30" fill="var(--s2)"/><text x="40" y="64" ${T}>Committee review</text><text x="180" y="64" ${T}>passes</text></svg>`,
+  nodes: `<svg id="nodes" width="420" height="120" role="img" aria-label="Steps"><path d="M70 40 L330 80" stroke="var(--text)" stroke-width="2"/><circle cx="70" cy="40" r="30" fill="var(--s1)"/><circle cx="330" cy="80" r="30" fill="var(--s2)"/><text x="40" y="44" ${T}>Committee review</text><text x="180" y="65" ${T}>passes</text></svg>`,
+  // A scatter with a dot drawn faint, in a group at a fifth of full opacity, for context, under a label.
+  faint: `<svg id="faint" width="420" height="240" role="img" aria-label="Runs">${dots}<g opacity="0.2"><circle cx="320" cy="200" r="6" fill="var(--s1)"/></g><text x="306" y="204" ${T}>Last year</text></svg>`,
+  // A scatter whose reference line runs past its plot, clipped there, with the axis title under the hidden part.
+  clipped: `<svg id="clipped" width="420" height="260" role="img" aria-label="Runs"><defs><clipPath id="plot"><rect x="40" y="10" width="360" height="210"/></clipPath></defs>${dots}<path d="M0 260 L420 0" stroke="var(--text)" stroke-width="2" clip-path="url(#plot)"/><text x="10" y="252" ${T}>Hours</text></svg>`,
+  // A scatter with a level gridline under a label: a gridline isn’t a mark.
+  grid: `<svg id="grid" width="420" height="240" role="img" aria-label="Runs">${dots}<line x1="40" y1="30" x2="400" y2="30" stroke="var(--text)"/><text x="150" y="34" ${T}>Fastest runs</text></svg>`,
   // A label on a backing over the line: the backing keeps the line from showing through it.
-  backed: `<svg id="backed" width="420" height="240" role="img" aria-label="Fit">${fit}<rect x="192" y="127" width="34" height="17" fill="var(--bg)"/><text x="196" y="140" ${T}>5:56</text></svg>`,
+  backed: `<svg id="backed" width="420" height="240" role="img" aria-label="Fit">${dots}${fit}<rect x="192" y="127" width="34" height="17" fill="var(--bg)"/><text x="196" y="140" ${T}>5:56</text></svg>`,
   // An axis as d3 draws one: its domain path, tick lines, and tick labels beside them, and its title on the line.
   axes: `<svg id="axes" width="420" height="80" role="img" aria-label="Hours"><g class="axis" transform="translate(20,20)"><path class="domain" d="M0 6 V0 H360 V6" stroke="var(--text)" fill="none"/>${[
     0, 90, 180, 270, 360,
@@ -101,7 +107,7 @@ test('#952 labels drawn over a chart’s dot, ring and fit line are a warning th
   expect(check('onmarks').status, 'a warning: the version is shown, with a note').toBe('note');
 });
 
-for (const id of ['clear', 'counts', 'nodes', 'halo', 'backed', 'axes'])
+for (const id of ['clear', 'counts', 'nodes', 'faint', 'clipped', 'grid', 'halo', 'backed', 'axes'])
   test(`#952 ${id}: text that doesn’t hide a mark passes`, () => {
     expect(overMarks(id), says(id)).toEqual([]);
   });

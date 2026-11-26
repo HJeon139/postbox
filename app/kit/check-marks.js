@@ -16,14 +16,19 @@
   const SYMBOL = 30;
   // A dot or ring is a data mark up to this radius, in px; a larger circle is a diagram’s node, which holds its name.
   const DOT = 12;
-  // A line is a data series from this many points on: a segment or a single curve is a diagram’s edge or a leader line.
+  // A line is a data series from this many points on. A straight line of two points is a fit line or a reference in a
+  // chart (three or more dots), and a diagram’s edge or a leader line anywhere else; one that’s level or upright, a
+  // gridline, is never a mark.
   const SERIES = 3;
+  const CHART = 3;
   // A line spans at least this many px: a shorter one is part of an icon.
   const SPAN = 40;
   // A mark paints at least this alpha, and a line is at most this wide in px: fainter, or wider, it’s a band or a halo
   // drawn behind the data, which labels sit over.
   const SOLID = 0.35;
   const WIDE = 8;
+  // The check stops looking after this many ms, so a chart of thousands of marks can’t use up the frame’s time.
+  const BUDGET = 2000;
   const OUT = 'defs, clipPath, mask, marker, pattern, symbol';
   // A chart’s furniture, not its data: what d3 and most hand-drawn charts call their axes, ticks, grids and legends.
   const FURNITURE = /\b(axis|axes|tick|ticks|domain|grid|gridline|legend|key)\b/i;
@@ -35,48 +40,94 @@
     }
     return false;
   };
+  // A paint’s alpha, in any color syntax: rgba(…, a), or “/ a” in rgb(), oklch() and the rest.
   const alpha = (paint) => {
-    const m = paint.match(/rgba?\(([^)]+)\)/);
-    if (m)
-      return (
-        m[1]
-          .split(/[ ,/]+/)
-          .filter(Boolean)
-          .map(Number)[3] ?? 1
-      );
-    return paint === 'none' ? 0 : 1;
+    if (paint === 'none') return 0;
+    const slash = paint.match(/\/\s*([\d.]+)(%?)\s*\)$/);
+    if (slash) return slash[2] ? +slash[1] / 100 : +slash[1];
+    const m = paint.match(/rgba\(([^)]+)\)/);
+    return m ? (m[1].split(/[ ,]+/).filter(Boolean).map(Number)[3] ?? 1) : 1;
+  };
+  /** An element’s opacity with its groups’, up to its SVG: a dot in a faint group is faint. */
+  const opacityOf = (el, svg) => {
+    let o = 1;
+    for (let e = el; e && e !== svg; e = e.parentElement) o *= +getComputedStyle(e).opacity;
+    return o;
   };
   const painted = (paint, opacity) => alpha(paint) * opacity > 0.05;
   const solid = (paint, opacity) => alpha(paint) * opacity >= SOLID;
   const meets = (a, b, pad = 0) => a.left < b.right + pad && b.left < a.right + pad && a.top < b.bottom + pad && b.top < a.bottom + pad;
   const within = (a, b) => a.left >= b.left - 1 && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
 
-  /** An SVG’s data marks, with what of each paints: its fill (a dot) or its stroke (a ring, a line). */
+  /**
+   * An SVG’s data marks, with what of each paints: its fill (a dot) or its stroke (a ring, a line). A straight two-point
+   * line counts only in a chart, as its fit line.
+   */
   function marks(svg) {
-    const out = [];
-    for (const el of svg.querySelectorAll('circle, ellipse, path, polyline')) {
+    const found = [];
+    for (const el of svg.querySelectorAll('circle, ellipse, path, polyline, line')) {
       if (el.closest(OUT) || hidden(el) || furniture(el, svg)) continue;
-      const cs = getComputedStyle(el);
-      const r = el.getBoundingClientRect();
-      const round = el.tagName === 'circle' || el.tagName === 'ellipse';
-      if (round && Math.max(r.width, r.height) > 2 * DOT) continue;
-      if (!round && r.width > SYMBOL && points(el) < SERIES) continue;
-      const symbol = round || (r.width <= SYMBOL && r.height <= SYMBOL);
-      const fill = solid(cs.fill, +cs.fillOpacity * +cs.opacity) && symbol;
-      const width = parseFloat(cs.strokeWidth) || 0;
-      const long = round || Math.max(r.width, r.height) >= SPAN;
-      const stroke = solid(cs.stroke, +cs.strokeOpacity * +cs.opacity) && width > 0 && width <= WIDE && long;
-      if (!fill && !stroke) continue;
-      const kind = fill ? 'a dot' : round ? 'a ring' : 'a line';
-      out.push({ el, r, fill, stroke, kind, round, pad: width / 2 });
+      const m = markOf(el, svg);
+      if (m) found.push(m);
     }
-    return out;
+    const chart = found.filter((m) => m.kind === 'a dot').length >= CHART;
+    return found.filter((m) => !m.straight || chart);
   }
 
-  /** How many points a line passes through: a polyline’s, or a path’s command endpoints. */
+  /** One element as a data mark, or null. @param {Element} el @param {Element} svg */
+  function markOf(el, svg) {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const round = el.tagName === 'circle' || el.tagName === 'ellipse';
+    if (round && Math.max(r.width, r.height) > 2 * DOT) return null;
+    const symbol = round || (r.width <= SYMBOL && r.height <= SYMBOL);
+    const straight = !round && !symbol && points(el) < SERIES;
+    // A level or upright straight line is a gridline or an axis.
+    if (straight && Math.min(r.width, r.height) < 2) return null;
+    const ctm = el.getScreenCTM();
+    const scale = ctm ? Math.hypot(ctm.a, ctm.b) : 1;
+    const opacity = opacityOf(el, svg);
+    const fill = solid(cs.fill, +cs.fillOpacity * opacity) && symbol && el.tagName !== 'line';
+    const width = (parseFloat(cs.strokeWidth) || 0) * scale;
+    const long = round || Math.max(r.width, r.height) >= SPAN;
+    const stroke = solid(cs.stroke, +cs.strokeOpacity * opacity) && width > 0 && width <= WIDE && long;
+    if (!fill && !stroke) return null;
+    const kind = fill ? 'a dot' : round ? 'a ring' : 'a line';
+    return { el, r, fill, stroke, kind, round, straight, pad: width / 2, clip: clipOf(el, svg) };
+  }
+
+  /**
+   * The screen box a mark’s clip-path leaves it, or null for none: a chart clips a line it draws past its plot, and a
+   * hit test reads the whole line. Read from the clip’s shapes in the user space of what it clips, its default units.
+   * @param {Element} el @param {Element} svg
+   */
+  function clipOf(el, svg) {
+    for (let e = el; e && e !== svg.parentElement; e = e.parentElement) {
+      const id = getComputedStyle(e).clipPath.match(/url\(["']?#([^"')]+)["']?\)/)?.[1];
+      const clip = id && document.getElementById(id);
+      const ctm = clip && /** @type {SVGGraphicsElement} */ (e).getScreenCTM?.();
+      if (!clip || !ctm) continue;
+      const corners = [...clip.children].flatMap((c) => {
+        const b = /** @type {SVGGraphicsElement} */ (c).getBBox?.();
+        return b ? [new DOMPoint(b.x, b.y), new DOMPoint(b.x + b.width, b.y + b.height)].map((p) => p.matrixTransform(ctm)) : [];
+      });
+      if (!corners.length) continue;
+      const xs = corners.map((p) => p.x);
+      const ys = corners.map((p) => p.y);
+      return { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys) };
+    }
+    return null;
+  }
+
+  /** How many points a line passes through: a polyline’s, a line’s two, a path’s commands, or a bare moveto’s pairs. */
   function points(el) {
     if (el.tagName === 'polyline') return el.points.numberOfItems;
-    return (el.getAttribute('d') ?? '').match(/[MLHVCSQTAZ]/gi)?.filter((c) => !/z/i.test(c)).length ?? 0;
+    if (el.tagName === 'line') return 2;
+    const d = el.getAttribute('d') ?? '';
+    const commands = d.match(/[MLHVCSQTA]/gi)?.length ?? 0;
+    // Only a bare moveto lists further points with no letters (“M0 0 10 10 20 20”); a curve’s numbers are its controls.
+    if (commands > 1) return commands;
+    return Math.floor((d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/gi)?.length ?? 0) / 2);
   }
 
   /** An SVG’s labels: its <text>, less a label with a halo and one on a backing. An axis’s labels count: on a data mark, they hide it too. */
@@ -106,12 +157,14 @@
 
   /** How many of a label’s points fall on a mark’s painted fill or stroke. */
   function hits(label, mark) {
+    if (performance.now() > deadline) return 0;
     const ctm = mark.el.getScreenCTM();
     if (!ctm) return 0;
     const inv = ctm.inverse();
     let n = 0;
     for (let y = label.r.top + EDGE; y <= label.r.bottom - EDGE; y += STEP)
       for (let x = label.r.left + EDGE; x <= label.r.right - EDGE; x += STEP) {
+        if (mark.clip && (x < mark.clip.left || x > mark.clip.right || y < mark.clip.top || y > mark.clip.bottom)) continue;
         const p = new DOMPoint(x, y).matrixTransform(inv);
         if ((mark.fill && mark.el.isPointInFill(p)) || (mark.stroke && mark.el.isPointInStroke(p))) n++;
         if (n >= HITS) return n;
@@ -119,9 +172,11 @@
     return n;
   }
 
-  /** text-over-marks, for each SVG that isn’t inside another one. */
+  let deadline = 0;
+  /** text-over-marks, for each SVG that isn’t inside another one, until its time runs out. */
   function textOverMarks() {
     hidden.reset();
+    deadline = performance.now() + BUDGET;
     const out = [];
     for (const svg of document.querySelectorAll('svg')) {
       if (svg.parentElement.closest('svg') || hidden(svg)) continue;
