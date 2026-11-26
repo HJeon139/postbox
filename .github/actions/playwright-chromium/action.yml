@@ -64,9 +64,12 @@ runs:
       run: |
         if [ "$ONLY_SHELL" = true ]; then npx playwright install --with-deps --only-shell chromium
         else npx playwright install --with-deps chromium; fi
-    # apt wrote the folder as root, its lock file too: the runner’s cache step saves it as the runner’s user.
+    # apt wrote the folder as root, its lock file too: the runner’s cache step saves it as the runner’s user. Versions
+    # the mirror no longer offers go first, so a cache carried from an older image doesn’t keep growing.
     - name: Let the cache read the packages apt kept
       shell: bash
       env:
         ARCHIVES: ${{ steps.apt.outputs.dir }}
-      run: sudo chown -R "$(id -u):$(id -g)" "$ARCHIVES"
+      run: |
+        sudo apt-get autoclean -q
+        sudo chown -R "$(id -u):$(id -g)" "$ARCHIVES"
