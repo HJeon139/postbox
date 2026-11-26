@@ -1,7 +1,7 @@
 // A reply that goes back (#1518; designs/intent.md, the row on agents waking agents): a turn only other agents’
 // @-mentions started, whose replies @-mention no one, goes back to the agents whose mentions woke it, as if it had
-// mentioned them. Every time (#1523): chaining is how agents talk, and the room’s chain limit counts each bounce as
-// any wake. An exchange ends with a reaction to the reply that came back (#1553), or at an agent’s second reply in a
+// mentioned them. Every time (#1523): chaining is how agents talk, and the chain’s loop guard counts each bounce as
+// any wake (#1623). An exchange ends with a reaction to the reply that came back (#1553), or at an agent’s second reply in a
 // row to the same agent from a turn that reply woke and that did nothing but write (#1591). Functions take the Runtime first, as
 // waiting code does until Turns is a service.
 
@@ -28,7 +28,7 @@ export function backTo(entries) {
  * the thread reads it, after a restart too. It is written here, not when the reply goes: the agent’s next turn may
  * start, and be told where its own reply goes, before this one has gone (round 3 of the review of PR #1724: told
  * “goes back to @beta and @gamma”, a reply went back to gamma alone). So the mark names the agents the exchange had
- * already ended with, which keeps it ended, and one the chain limit then holds the reply from.
+ * already ended with, which keeps it ended, and one an add card then holds the reply on.
  * @param {any} rt @param {any} turn @param {any} se @param {any[]} took  the entries the turn took
  * @returns {{ reply: any, to: string[] } | null}  the reply and whom it goes back to, or null when it goes back to no one
  */
@@ -53,8 +53,9 @@ export function planBack(rt, turn, se, took) {
 }
 
 /**
- * The reply goes back to whom planBack decided, through agentWake, so the chain limit counts it and a card asks past
- * it. The reply keeps whom it went to now (`wentBack`), which the transcript shows under it.
+ * The reply goes back to whom planBack decided, through agentWake, so the chain’s loop guard counts it and stops it at
+ * the cap (#1623). The reply keeps whom it went to now (`wentBack`), which the transcript shows under it. One that
+ * didn’t go, and isn’t held on an add card, tells its agent why in one line, as a mention that woke no one does.
  * @param {any} rt @param {any} turn @param {any} se @param {{ reply: any, to: string[] } | null} plan
  */
 export function replyBack(rt, turn, se, plan) {
@@ -64,8 +65,9 @@ export function replyBack(rt, turn, se, plan) {
   const went = [];
   for (const h of to) {
     const r = rt.agentWake(se.id, h, reply.text, { replyIn, fromTurnId: turn.id, itemId: reply.id, prose: true, bounce: true });
-    // Only one that went: a bounce past the chain limit waits on the card, which shows it, and may never go.
+    // Only one that went: a bounce held on an add card may never go, and the card shows it.
     if (r.ok) went.push(h);
+    else if (!r.waiting) rt.sessions.tell(se.id, `Your reply didn’t go back to @${h}: ${r.message}`);
   }
   if (went.length) rt.threads.patchItem(turn.threadId, reply.id, { wentBack: went });
 }

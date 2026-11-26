@@ -45,7 +45,7 @@ test('#372 a turn in an old side thread that mentions two agents posts its messa
   );
 });
 
-test('#372 a turn in an old side thread whose wake waits on a card is still told side threads are gone', async () => {
+test('#372, #1623 a turn in an old side thread whose wake the chain’s cap stops is still told side threads are gone', async () => {
   const { store, rt, adapter, t, alpha } = three();
   const old = oldSide(rt, t);
   arrange.putThread(rt, { ...store.state.threads[t.id], hops: HOP_LIMIT });
@@ -54,7 +54,7 @@ test('#372 a turn in an old side thread whose wake waits on a card is still told
   rt.turnService.run(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
   await sleep(5);
   const r = rt.agentWake(alpha.id, 'beta', 'Status?');
-  assert.equal(r.waiting, true, 'past the wake limit, it waits on the card');
+  assert.deepEqual([r.ok, r.waiting], [false, undefined], 'past the cap, it doesn’t go');
   assert.equal(store.state.sessions[alpha.id].toldSideThreadsGone, true);
   h.release();
   await settle(rt);

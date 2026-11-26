@@ -87,7 +87,7 @@ function room() {
   say({ kind: 'sidelink', from: 'alpha', to: 'beta', count: 3, sideThreadId: 'th_side', threadSummary: 'Dates moved.' });
   say({ kind: 'command', command: 'ls', cwd: '/work', text: 'a.md\n', status: 'done', exitCode: 0 });
   say({ kind: 'proposal', handle: 'beta', proposal: { handle: 'delta' } });
-  say({ kind: 'hop', status: 'open', from: 'beta', to: 'alpha', text: 'Check March.', held: [{ from: 'gamma', to: 'alpha', text: 'And April.' }] });
+  say({ kind: 'hop', join: true, status: 'open', from: 'beta', to: 'delta', text: 'Check March.', held: [{ from: 'gamma', to: 'alpha', text: 'And April.' }] });
   arrange.react(rt, t.id, card.id, '👍');
   // A topic thread on the person’s question, which beta answered in, with a summary on its line.
   const topic = arrange.putThread(rt, {
@@ -177,8 +177,7 @@ const EXPECTED = {
           '@beta proposed a new teammate, @delta',
           'The thread “Totals” has new messages (1 in all; in short, as a model summarized it: “March is off.”; read_conversation with thread: "<id 1>" reads it).',
           'The person reacted 👍 to @beta’s block at <hh:mm>: “Totals”',
-          '@beta’s message to you (“Check March.”) is held on @beta’s request to wake @alpha (since <hh:mm> UTC), waiting for the person.',
-          '@gamma’s message to you (“And April.”) is held on @beta’s request to wake @alpha (since <hh:mm> UTC), waiting for the person.',
+          '@gamma’s message to you (“And April.”) is held on @beta’s request to add @delta (since <hh:mm> UTC), waiting for the person.',
         ].join('\n\n'),
       ],
       taskContext: null,
@@ -188,8 +187,7 @@ const EXPECTED = {
       context: [
         [
           '[Postbox] What happened in this room since your last turn:',
-          '@beta’s message to you (“Check March.”) is held on @beta’s request to wake @alpha (since <hh:mm> UTC), waiting for the person.',
-          '@gamma’s message to you (“And April.”) is held on @beta’s request to wake @alpha (since <hh:mm> UTC), waiting for the person.',
+          '@gamma’s message to you (“And April.”) is held on @beta’s request to add @delta (since <hh:mm> UTC), waiting for the person.',
         ].join('\n\n'),
       ],
       taskContext: null,
@@ -200,8 +198,7 @@ const EXPECTED = {
         [
           '[Postbox] Meanwhile in the room and other background context (answer room work in the room):',
           '[Postbox] What happened in this room since your last turn:',
-          '@beta’s message to you (“Check March.”) is held on @beta’s request to wake @alpha (since <hh:mm> UTC), waiting for the person.',
-          '@gamma’s message to you (“And April.”) is held on @beta’s request to wake @alpha (since <hh:mm> UTC), waiting for the person.',
+          '@gamma’s message to you (“And April.”) is held on @beta’s request to add @delta (since <hh:mm> UTC), waiting for the person.',
         ].join('\n\n'),
       ],
       taskContext: [

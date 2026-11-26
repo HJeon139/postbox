@@ -2,13 +2,13 @@
 // are recorded in tests/fixtures/uat/ack-loops-2026-11-23.json, cut from the event logs of the batch 9–10 UAT’s two
 // rooms (assets-room and holdstill), which both stopped at the run’s turn cap. They aren’t replays: each agent plays
 // its own recorded replies in order, as the room wakes it, and reacts where it did in the run
-// (tests/bounce-loop-fixture.mjs). The room’s chain limit, set low, is what a test that still loops runs into.
+// (tests/bounce-loop-fixture.mjs). The player’s limit of 40 turns is what a test that still loops runs into.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { noteAnswer } from '../server/empty-reply.mjs';
 import { endedExchange } from '../server/reply-back.mjs';
-import { heldOnCard, playsFrom, playsWith, room, settle } from './bounce-loop-fixture.mjs';
+import { hitLimit, playsFrom, playsWith, room, settle } from './bounce-loop-fixture.mjs';
 
 const replies = (store, t) => store.items(t.id).filter((i) => i.kind === 'agent' && i.text?.trim());
 const turnsOf = (adapter) => adapter.calls.map((c) => c.handle).join(' ');
@@ -19,7 +19,7 @@ test('#1591: an agent that reacts, then names the agent it reacted to, doesn’t
   const { store, rt, adapter, t } = room({ researcher: playsFrom('assets-room', 'researcher', 44), critic: playsFrom('assets-room', 'critic', 45) });
   rt.sendMessage(t.id, { text: '@researcher quote Postbox’s refusal of your stale write word for word' });
   await settle(rt);
-  assert.ok(!heldOnCard(store, t), `the exchange ended before the room’s limit: ${turnsOf(adapter)}`);
+  assert.ok(!hitLimit(adapter), `the exchange ended before the player’s limit: ${turnsOf(adapter)}`);
   assert.equal(turnsOf(adapter), 'researcher critic researcher');
   const last = replies(store, t).at(-1);
   assert.equal(last.text, "I reacted ✅ to @critic's message. The plan stays at v2.", 'the line still posts');
@@ -30,10 +30,10 @@ test('#1591: the same loop between two of three agents ends on the reaction (hol
   // developer and researcher: developer reacted ✅ to each of researcher’s replies and wrote “I reacted ✅ to
   // @researcher’s message and didn’t reply.”, 47 times, and researcher’s answer to that mention went back each time.
   const plays = { developer: playsWith('holdstill', 'developer', 'researcher', 9), researcher: playsWith('holdstill', 'researcher', 'developer', 10) };
-  const { store, rt, adapter, t } = room(plays);
+  const { rt, adapter, t } = room(plays);
   rt.sendMessage(t.id, { text: '@developer show a small app' });
   await settle(rt);
-  assert.ok(!heldOnCard(store, t), `the exchange ended before the room’s limit: ${turnsOf(adapter)}`);
+  assert.ok(!hitLimit(adapter), `the exchange ended before the player’s limit: ${turnsOf(adapter)}`);
   // Two direct mentions each way, which are requests as far as Postbox can tell; then the reply that came back, and the reaction.
   assert.equal(turnsOf(adapter), 'developer researcher developer researcher developer');
 });
@@ -75,7 +75,7 @@ test('#1591: agents that write “I’m ending without a reply” end at the sec
   const { store, rt, adapter, t } = room(plays);
   rt.sendMessage(t.id, { text: '@researcher write a long reply on how word counts differ between tools' });
   await settle(rt);
-  assert.ok(!heldOnCard(store, t), `the exchange ended before the room’s limit: ${turnsOf(adapter)}`);
+  assert.ok(!hitLimit(adapter), `the exchange ended before the player’s limit: ${turnsOf(adapter)}`);
   // researcher names critic, and critic’s answer goes back (#1518). Then each writes one line that only writes, which
   // is delivered, and researcher’s second in a row ends it.
   assert.equal(turnsOf(adapter), 'researcher critic researcher critic researcher');
@@ -203,11 +203,11 @@ const CUT_CASES = [
 ];
 for (const { name, ask, plays, reaches } of CUT_CASES) {
   test(`#1591: one reply that only writes still reaches the other agent: ${name}`, async () => {
-    const { store, rt, adapter, t } = room(plays);
+    const { rt, adapter, t } = room(plays);
     rt.sendMessage(t.id, { text: ask });
     await settle(rt);
     for (const [handle, text] of reaches) assert.ok(heard(adapter, handle, text), `${handle} heard “${text}”: ${turnsOf(adapter)}`);
-    assert.ok(!heldOnCard(store, t));
+    assert.ok(!hitLimit(adapter));
   });
 }
 

@@ -8,7 +8,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { guideText, roomText } from '../server/adapters/guide.mjs';
 import { CHAIN_HINT, DEFAULT_HOP_LIMIT } from '../shared/limits.mjs';
-import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /**
@@ -32,14 +31,6 @@ test('#492 two agents trading hand-offs past the old pair limit get no card: eac
     f.store.items(f.t.id).filter((x) => x.kind === 'hop'),
     [],
   );
-});
-
-test('#492 the chain limit still holds: past the room’s limit of wakes in a row, the next waits for you', async () => {
-  const f = setup();
-  arrange.setThread(f.rt, f.t.id, { chainLimit: 5 });
-  chain(f, 5);
-  assert.equal(f.rt.agentWake(f.alpha.id, 'beta', 'one more').waiting, true);
-  await settle(f.rt);
 });
 
 test('#492 a chain past the old limit of 10 raises no card: the backstop is 1,000 since #1035', async () => {

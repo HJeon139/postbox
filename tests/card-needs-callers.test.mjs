@@ -1,12 +1,10 @@
 // The callers that release a card without the person answering it (#366; the independent review of #633): an agent
-// withdrawing its block, a wake card retired because its target got a turn another way, and a host prompt that ended
-// with no wait. Each falls back to the next card that still waits, as an answer does; main set the need to null, and no
-// other spec covered these.
+// withdrawing its block, and a host prompt that ended with no wait. Each falls back to the next card that still waits,
+// as an answer does; main set the need to null, and no other spec covered these.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { endCard } from '../server/remote/turns-prompts.mjs';
-import { retireStale } from '../server/wake-cards.mjs';
 import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { settle } from './side-threads-fixture.mjs';
@@ -19,19 +17,6 @@ test('#366: an agent withdrawing its asking block leaves it needing you for its 
   const res = r.rt.toolsFor(r.alpha.id).update_block({ block: { id: b.block.id, withdraw: 'You answered in chat.' } });
   assert.equal(res.ok, true, res.message);
   assert.equal(r.needs()?.itemId, h.id);
-  assert.equal(r.rt.session(r.alpha.id).state, 'needs');
-  await settle(r.rt);
-});
-
-test('#366: a wake card retired because its target got a turn another way leaves its agent needing you for its next one', async () => {
-  const r = room();
-  const card = r.hop(); // the one waiting for the person, which retireStale finds
-  // Another wake request, for an agent the retired card's wake doesn't reach, so it still waits.
-  const next = arrange.post(r.rt, r.t.id, { kind: 'hop', fromSessionId: r.alpha.id, from: 'alpha', to: 'gamma', status: 'open', text: 'please' });
-  r.setNeed('hop', card.id);
-  retireStale(r.rt, r.t.id, r.beta, 'you wrote to it', { byPerson: true });
-  assert.equal(r.rt.store.pending.items(r.t.id).find((x) => x.id === card.id).status, 'retired');
-  assert.equal(r.needs()?.itemId, next.id);
   assert.equal(r.rt.session(r.alpha.id).state, 'needs');
   await settle(r.rt);
 });
