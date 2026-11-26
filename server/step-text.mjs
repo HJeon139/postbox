@@ -4,6 +4,7 @@
 // moved from server/runtime.mjs.
 
 import { STEP_TEXT } from '../shared/limits.mjs';
+import { cutText, tailText } from '../shared/text-parts.mjs';
 import { uatRecording } from './uat-mode.mjs';
 
 // The most of one field a step shows, so the next field still fits on the line.
@@ -14,9 +15,9 @@ const PATH = /^(?:[a-z]+:\/\/|~|\.{0,2}\/|[A-Za-z]:\\)\S*$/;
 /** A field’s value cut to n: a path in its middle, so the file name stays; anything else at its end. */
 function cut(/** @type {string} */ s, /** @type {number} */ n) {
   if (s.length <= n) return s;
-  if (!PATH.test(s)) return `${s.slice(0, n - 1)}…`;
+  if (!PATH.test(s)) return `${cutText(s, n - 1)}…`;
   const tail = Math.ceil((n - 1) * 0.7);
-  return `${s.slice(0, n - 1 - tail)}…${s.slice(-tail)}`;
+  return `${cutText(s, n - 1 - tail)}…${tailText(s, tail)}`;
 }
 
 /**
@@ -45,7 +46,7 @@ export function stepInput(input, label = '') {
 export function stepOutput(text) {
   const t = String(text ?? '').trim();
   if (t.length <= STEP_TEXT.output) return t;
-  const tail = t.slice(-(STEP_TEXT.output - 1));
+  const tail = tailText(t, STEP_TEXT.output - 1);
   const line = tail.indexOf('\n');
   return `…${line >= 0 && line < tail.length - 1 ? tail.slice(line + 1) : tail}`;
 }
@@ -79,14 +80,14 @@ export function turnStep({ id, label, tool, state, ms, who, parent, detail, kind
   const count = (/** @type {unknown} */ n) => typeof n === 'number' && Number.isInteger(n) && n >= 0;
   return {
     id,
-    label: String(label).slice(0, 200),
+    label: cutText(String(label), 200),
     ...stepTool(tool),
     state: stepState(state),
     ms,
-    ...(who ? { who: String(who).slice(0, 40) } : {}),
+    ...(who ? { who: cutText(String(who), 40) } : {}),
     ...(typeof parent === 'string' && parent ? { parent: parent.slice(0, 100) } : {}),
     // A thought is kept whole, up to its own bound; any other detail is a reason or a result’s note.
-    ...(detail ? { detail: String(detail).slice(0, kind === 'thought' ? STEP_TEXT.thought : STEP_TEXT.detail) } : {}),
+    ...(detail ? { detail: cutText(String(detail), kind === 'thought' ? STEP_TEXT.thought : STEP_TEXT.detail) } : {}),
     ...(STEP_KINDS.has(kind) ? { kind } : {}),
     ...(typeof job === 'string' && job ? { job: job.slice(0, 60) } : {}),
     // Its call’s input and the end of what it returned, bounded as the core bounds them.
@@ -96,6 +97,6 @@ export function turnStep({ id, label, tool, state, ms, who, parent, detail, kind
     ...(typeof part === 'string' && part ? { part: part.slice(0, 100) } : {}),
     ...(count(at) ? { at } : {}),
     ...(count(added) && count(deleted) ? { added, deleted } : {}),
-    ...(typeof diff === 'string' && diff ? { diff: diff.slice(0, STEP_TEXT.output) } : {}),
+    ...(typeof diff === 'string' && diff ? { diff: cutText(diff, STEP_TEXT.output) } : {}),
   };
 }
