@@ -13,8 +13,6 @@
 // is handled as on any other failure (server/scheduled-wakes.mjs), so it raises no alarm at each try.
 
 import { TRANSIENT_RETRY } from '../shared/limits.mjs';
-import { tookStep } from './reply-back.mjs';
-import { isOwnWork, postboxTool } from './tool-gate.mjs';
 
 /** What each status says the provider did. */
 const STATUS_WORDS = { 429: 'was rate limiting requests', 529: 'was overloaded' };
@@ -22,27 +20,17 @@ const STATUS_WORDS = { 429: 'was rate limiting requests', 529: 'was overloaded' 
 const didWhat = (status) => `${STATUS_WORDS[/** @type {429|529} */ (status)] ?? 'had a server error'} (${status})`;
 
 /**
- * Whether a step is work a retry may repeat: any of the agent’s own tools, and of Postbox’s, one that acts, such as
- * open_topic, which posts and wakes again (tool-gate.mjs, isOwnWork). One whose tool wasn’t recorded counts, as it may
- * have acted. @param {any} turn @param {any} s
+ * The calls a turn made that may have written, at most five: what its retry is told to check (#1713). The agent’s own
+ * tools by their steps’ labels; Postbox’s by name, as noteAnswer keeps them (empty-reply.mjs, `wrote`), since several
+ * make no step: open_topic posts and wakes again, schedule_wake sets a second wake, a second react takes the first
+ * back. Those that only read aren’t named, as in a scheduled wake’s recovery.
  */
-const repeatable = (turn, s) => {
-  if (!turn.postboxSteps?.has(s.id)) return true;
-  const name = s.tool ? (postboxTool(s.tool) ?? s.tool) : null;
-  return !name || isOwnWork(name);
+const startedLabels = (/** @type {any} */ turn) => {
+  const own = (turn.steps ?? [])
+    .filter((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said' && !turn.postboxSteps?.has(s.id))
+    .map((/** @type {any} */ s) => String(s.label ?? s.tool ?? 'a tool').slice(0, 80));
+  return [...own, ...(turn.wrote ?? [])].slice(0, 5);
 };
-
-/**
- * The tools a turn started, by their labels, at most five: what its retry is asked to check before repeating. A turn
- * whose only work was a Postbox tool that acted (`acted`) counts as having started work too (#1713).
- */
-const startedLabels = (/** @type {any} */ turn) =>
-  tookStep(turn) || turn.acted
-    ? (turn.steps ?? [])
-        .filter((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said' && repeatable(turn, s))
-        .map((/** @type {any} */ s) => String(s.label ?? s.tool ?? 'a tool').slice(0, 80))
-        .slice(0, 5)
-    : [];
 
 /** What a retried turn that had started work is told first. @param {{ status: number, started: string[] }} r */
 const checkWhatRan = (r) =>
