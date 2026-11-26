@@ -55,6 +55,7 @@ async function turnOver(messages, { abort = false } = {}) {
 test('#1714 the SDK’s wait for background work after a reply is Postbox’s bound, not its 10 minutes', async () => {
   const { options } = await turnOver(RECORDED);
   assert.equal(options.env.CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS, String(QUIET.backgroundMax));
+  assert.equal(options.env.PATH, process.env.PATH, 'with Postbox’s own environment, which the CLI needs');
   assert.equal(QUIET.backgroundMax, 2 * 60 * 60 * 1000);
 });
 

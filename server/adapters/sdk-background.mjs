@@ -7,13 +7,14 @@
 // on background work already has (QUIET.backgroundMax, #847), and tells the agent what the limit still stopped.
 
 import { QUIET } from '../../shared/limits.mjs';
+import { cutText } from '../../shared/text-parts.mjs';
 
 /** The query’s environment: Postbox’s own, with the SDK’s wait for background work set to Postbox’s bound. */
 export const backgroundWaitEnv = () => ({ ...process.env, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: String(QUIET.backgroundMax) });
 
 /**
  * Watches a turn’s messages for background work stopped after its reply: a task_notification `stopped` that follows a
- * `result` with no assistant message between. One the agent stopped itself comes mid-turn, before a result.
+ * `result` with no message of the agent’s own between. One the agent stopped itself comes mid-turn, before a result.
  */
 export function stoppedAfterReply() {
   let replied = false;
@@ -26,7 +27,14 @@ export function stoppedAfterReply() {
       // The agent at work again: its own message, not one a subagent forwards (parent_tool_use_id) while it runs on.
       else if (m?.type === 'assistant' && !m.parent_tool_use_id) replied = false;
       else if (replied && m?.type === 'system' && m.subtype === 'task_notification' && m.status === 'stopped')
-        stopped.push(String(m.summary || m.task_id || 'background work').slice(0, 120));
+        stopped.push(
+          cutText(
+            String(m.summary || m.task_id || 'background work')
+              .replace(/\s+/g, ' ')
+              .trim(),
+            120,
+          ),
+        );
     },
     /** What the agent hears at its next turn, or null when nothing was stopped. */
     told() {
