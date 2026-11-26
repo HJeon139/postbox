@@ -7,8 +7,8 @@ import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** How long the check takes from the moment it’s queued. */
-const TAKES_MS = 240_000;
+/** How long the check takes from the moment it’s queued: longer than one shell command may run in an agent’s turn. */
+const TAKES_MS = 720_000;
 
 /** What a git command printed, or null when it failed. @param {string[]} args */
 function git(args) {

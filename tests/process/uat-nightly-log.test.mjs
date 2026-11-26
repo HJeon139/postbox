@@ -1,6 +1,6 @@
 // The idleroom scenario’s nightly check (tests/uat/e2e/fixtures/nightly/nightly.mjs, #1746) and what the UAT reads of
 // it (tools/uat/nightly-log.mjs): the real script in a throwaway repository, queued, asked while it runs, and asked
-// again once it’s due. It runs git and node, so it’s under tests/process/ (npm run test:process). The script takes 4
+// again once it’s due. It runs git and node, so it’s under tests/process/ (npm run test:process). The script takes 12
 // minutes by the clock; the test moves the due time it recorded into the past, as those minutes passing would.
 
 import assert from 'node:assert/strict';
@@ -50,7 +50,7 @@ test('the nightly check refuses work that isn’t committed, and records nothing
   assert.deepEqual(TRIGGERS['timed-step-queued'].run({ workspace: dir }), []);
 });
 
-test('a queued check is due 4 minutes on, says it runs until then, and passes on its commit once due; the UAT reads each from its record', () => {
+test('a queued check is due 12 minutes on, says it runs until then, and passes on its commit once due; the UAT reads each from its record', () => {
   const dir = workspace();
   run(dir, 'git', ['add', '.']);
   run(dir, 'git', ['commit', '-q', '-m', 'slug']);
@@ -59,17 +59,17 @@ test('a queued check is due 4 minutes on, says it runs until then, and passes on
   assert.match(said, /^NIGHTLY QUEUED commit=[0-9a-f]{7,} due=\d{4}-\d\d-\d\dT[\d:.]+Z\n.*Nothing tells you when it has finished/);
   const queued = nightlyWork({ workspace: dir }).queued;
   assert.ok(queued && queued.at >= before && queued.at <= Date.now(), 'queued when the script ran');
-  assert.equal(queued.due, queued.at + 240_000);
+  assert.equal(queued.due, queued.at + 720_000);
   assert.equal(Date.parse(/due=(\S+)/.exec(said)?.[1] ?? ''), queued.due, 'the time it printed is the time it recorded');
-  // Whatever the computer’s load made of the seconds since: still running, with most of its 4 minutes left.
+  // Whatever the computer’s load made of the seconds since: still running, with most of its 12 minutes left.
   const left = Number(/^NIGHTLY RUNNING commit=[0-9a-f]+ left=(\d+)s$/.exec(nightly(dir, 'status'))?.[1]);
-  assert.ok(left > 200 && left <= 240, `left=${left}`);
+  assert.ok(left > 680 && left <= 720, `left=${left}`);
   assert.equal(nightlyWork({ workspace: dir }).passed, null, 'asking while it runs is no pass');
   const [hit] = TRIGGERS['timed-step-queued'].run({ workspace: dir });
   assert.equal(hit.at, queued.at);
   assert.match(hit.evidence, /^Queued at [\d:]+ UTC, due at [\d:]+ UTC\.$/);
 
-  // Four minutes on.
+  // Twelve minutes on.
   const record = join(dir, '.git', 'nightly.json');
   writeFileSync(record, JSON.stringify({ ...JSON.parse(readFileSync(record, 'utf8')), due: Date.now() - 1 }));
   assert.match(nightly(dir, 'status'), /^NIGHTLY PASSED commit=[0-9a-f]+ tests=1$/);
