@@ -229,7 +229,10 @@ export class Threads {
    * side thread, #110). @param {string} level @param {any} se @param {string} title @param {string} text @param {string|null} [threadId]
    */
   notify(level, se, title, text, threadId = null) {
-    this.store.emit('notify', { level, sessionId: se.id, threadId: threadId ?? se.threadId, handle: se.handle, title, text });
+    // Whom it rings (#1742): the people the agent’s need is for as this is raised, so the page judges this notice by
+    // the need it was raised for, not by one the session has by the time it arrives. None named rings whoever looks.
+    const who = this.store.pending.session(se.id)?.needsFor;
+    this.store.emit('notify', { level, sessionId: se.id, threadId: threadId ?? se.threadId, handle: se.handle, title, text, ...(who ? { for: who } : {}) });
   }
 
   /**

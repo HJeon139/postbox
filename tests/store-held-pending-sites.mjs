@@ -163,7 +163,21 @@ export const PENDING = {
   // reply and its thread as item.final carries them, both maybe held (#1367). And the project a new conversation starts
   // in, maybe deleted behind a held commit (#119).
   // conversationToWrite: the conversation a write lands in, through a topic maybe opened behind a held commit (#623).
-  'threads.mjs': ['create', 'patch', 'toWrite', 'pending', 'addItem', 'addItem', 'patchItem', 'patchItem', 'patchItem', 'bringForward', 'conversationToWrite'],
+  // notify: whom the agent’s need is for as a notice is raised (#1742), written a moment before, maybe behind a held commit.
+  'threads.mjs': [
+    'create',
+    'patch',
+    'toWrite',
+    'pending',
+    'addItem',
+    'addItem',
+    'patchItem',
+    'patchItem',
+    'patchItem',
+    'bringForward',
+    'conversationToWrite',
+    'notify',
+  ],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
   'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left
