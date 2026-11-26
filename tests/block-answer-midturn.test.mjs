@@ -192,3 +192,16 @@ test('#1810 another agent’s review of the block, waiting beside the answer, is
     'the review reaches the next turn',
   );
 });
+
+test('#1810 the answer to another block of the agent’s, waiting beside this one’s, isn’t settled with it', async () => {
+  const f = await answeredMidTurn({
+    during: ({ rt, t, se }) => {
+      const event = { blockId: 'another-block', revision: 1, action: 'submit', values: { verdict: 'approve' } };
+      const message = { kind: 'event', event, blockItemId: 'it_another' };
+      rt.delivery.send({ sessionId: se.id, threadId: t.id, source: 'answer', itemId: 'it_another', from: 'you', message });
+    },
+  });
+  assert.equal(f.replies[0].ok, false);
+  assert.equal(answersGiven(f.adapter, 'it_another').length, 1, 'the other block’s answer reaches the next turn');
+  assert.deepEqual(answersGiven(f.adapter, f.item.id), []);
+});
