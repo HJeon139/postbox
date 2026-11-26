@@ -1,10 +1,11 @@
 // The edges of reading a turn’s recorded stream (tools/atif-streams.mjs, #1758): a turn with two replies, a long
-// result, a call with no result, a step no stream holds, and a line of the wrong type.
+// result, a call with no result, a step no stream holds, a line of the wrong type, an input that isn’t an object, a
+// call with no name, and the note on one unplaced call.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { callsOf, RESULT_CHARS } from '../tools/atif-calls.mjs';
-import { callsInStream, recordedCalls } from '../tools/atif-streams.mjs';
+import { callsInStream, recordedCalls, withCalls } from '../tools/atif-streams.mjs';
 
 /** A stream’s line for a call, and for what it got back. */
 const use = (/** @type {string} */ id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'T', input: {} }] } });
@@ -58,4 +59,20 @@ test('#1758 a stream’s call is read once, from an assistant line, and its resu
     swapped.map((c) => [c.id, c.result]),
     [['a', null]],
   );
+});
+
+test('#1758 a stream’s call whose input isn’t an object has none, and one with no name is “unknown”', () => {
+  const events = [{ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'n', name: '', input: 'not an object' }] } }];
+  assert.deepEqual(callsInStream(events)[0].input, {});
+  const it = replyWith('a1', []);
+  const recorded = recordedCalls([{ handle: 'h', started: 900, events }], 'h', { sessions: new Map([['A', [it]]]), turns }, 'A');
+  const [call] = callsOf(it, new Map(), new Map(), () => null, recorded).tool_calls;
+  assert.equal(call.function_name, 'unknown');
+  assert.deepEqual(call.arguments, {});
+});
+
+test('#1758 one unplaced call is noted as one', () => {
+  const { notes, extra } = withCalls({ notes: 'Scope.', extra: {} }, { streamed: true, unplaced: 1, turnsWithoutStream: 0 });
+  assert.equal(notes, 'Scope. 1 of this agent’s recorded calls matched no reply in any of its conversations, so it isn’t in any trajectory.');
+  assert.deepEqual(extra, { calls_from: 'recorded streams', unplaced_calls: 1 });
 });
