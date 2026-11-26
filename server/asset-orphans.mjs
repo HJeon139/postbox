@@ -1,6 +1,7 @@
 // The asset folder’s pass at load (#516 S3, designs/architecture/assets.md, “Assets”), after the store holds its folder and has
 // read the log, before any tool accepts a write. A file is deleted only on positive evidence: a committed prune or
-// erase released its hash (assetReleases), and no version in any room still keeps it. A file nothing names and nothing
+// erase released its hash (assetReleases), and no version in any room still keeps it, by the rooms’ indexes and by a
+// recount of the versions themselves (#691). A file nothing names and nothing
 // released (a write cut off before its commit, or metadata an older Postbox dropped) is kept and counted, never deleted:
 // deleting by absence would turn any version the state lost into bytes lost for good. The load deletes only released
 // files; while Postbox runs, the one delete is a refused write removing the file it made, which the store’s holds keep
@@ -11,6 +12,17 @@ import { join } from 'node:path';
 
 /** The hashes some room’s unpruned versions keep, from the rooms’ indexes (shared/state-assets.mjs). @param {any} state */
 const keptHashes = (state) => new Set(Object.values(state.assetRooms ?? {}).flatMap((index) => Object.keys(index.files)));
+
+/**
+ * The hashes the unpruned versions keep, counted from the versions themselves, each with the first room seen keeping
+ * it: once per load, so a delete never rests on the indexes alone (#691). @param {any} state @returns {Map<string, string>}
+ */
+function recountKept(state) {
+  const kept = new Map();
+  for (const asset of Object.values(state.assets ?? {}))
+    for (const x of asset.versions) if (x.sha256 && !x.pruned && !kept.has(x.sha256)) kept.set(x.sha256, asset.room);
+  return kept;
+}
 
 /** Every file in the asset folder, as { name, path }: a blob’s name is its hash, a draft’s more. @param {string} dir */
 async function filesIn(dir) {
@@ -52,8 +64,16 @@ async function removed(blobs, sha, warn) {
  */
 export async function sweepAssets(store, blobs, { warn = console.warn } = {}) {
   const kept = keptHashes(store.state);
+  const counted = recountKept(store.state);
   const released = new Set(Object.keys(store.state.assetReleases ?? {}));
-  const toDelete = [...released].filter((sha) => !kept.has(sha));
+  // Deleting can't be undone: a released file goes only when the index and the recount agree nothing keeps it. Where
+  // they disagree, it stays, released, and the log says which, for the next load to decide again.
+  for (const sha of released)
+    if (!kept.has(sha) && counted.has(sha))
+      warn(
+        `Postbox kept a released asset file, ${sha}: room ${counted.get(sha)}’s index says no version keeps it, but a version there does. It isn’t deleted.`,
+      );
+  const toDelete = [...released].filter((sha) => !kept.has(sha) && !counted.has(sha));
   const gone = await Promise.all(toDelete.map((sha) => removed(blobs, sha, warn)));
   const deleted = toDelete.filter((_, i) => gone[i]);
   const done = [...[...released].filter((sha) => kept.has(sha)), ...deleted];
