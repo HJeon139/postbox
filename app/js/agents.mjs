@@ -139,8 +139,9 @@ function paintRow(n, se, fresh = false) {
   // Where it runs, for an agent on a host, and how its turn there stands when that needs saying.
   const where = [hostLine(se), hostOf(se)?.short];
   const there = turnLine(se);
-  // What it needs of another person isn’t “you” to the one looking (#1742).
-  const state = needsAnother(se) ? 'waits on another person' : stateWords(agentState(se, S()));
+  // What it needs of another person isn’t “you” to the one looking (#1742); every other state reads as it is.
+  const words = stateWords(agentState(se, S()));
+  const state = words === 'needs you' && needsAnother(se) ? 'waits on another person' : words;
   const sig = JSON.stringify([se.handle, f.mock, state, runs, joined, where, there]);
   paintTree(n, se, fresh);
   if (!fresh && n.dataset.sig === sig) return;

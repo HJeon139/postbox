@@ -36,6 +36,15 @@ const RING_SIZES = { xs: [4.5, 1.75, 3, 2], sm: [6, 2, 3.5, 2], lg: [10, 3, 5, 3
 const NS = 'http://www.w3.org/2000/svg';
 export const stateWord = (s) => STATE_WORD[s] ?? 'Idle';
 
+/** What “Needs you” reads when the need is another person’s (#1742): the agent waits, and not on the one looking. */
+const THEIRS = 'Waits on another person';
+
+/**
+ * A session’s state in a word or two, for the one looking: “Needs you” only when it is them it needs. Every other
+ * state reads as it is, whoever a need is for. @param {any} se
+ */
+export const stateWordOf = (se) => (se.state === 'needs' && needsAnother(se) ? THEIRS : stateWord(se.state));
+
 /**
  * One ring of a <pb-ring>: what holds still, drawn in the ring’s own SVG, and what moves, if anything, drawn in an SVG
  * of its own laid over it (#463). Only that overlay animates, by transform and opacity, one animation a ring: Safari
@@ -169,7 +178,7 @@ class PbRing extends HTMLElement {
     const label =
       state === 'rest'
         ? name
-        : `${name}: ${this.getAttribute('theirs') ? 'Waits on another person' : stateWord(state)}, ${ctxText}${where ? `; ${where}` : ''}${subText}`;
+        : `${name}: ${state === 'needs' && this.getAttribute('theirs') ? THEIRS : stateWord(state)}, ${ctxText}${where ? `; ${where}` : ''}${subText}`;
     svg.setAttribute('aria-label', label);
     const title = document.createElementNS(NS, 'title');
     title.textContent = label;

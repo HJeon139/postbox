@@ -6,12 +6,12 @@
 
 import { client, itemIn } from './client.mjs';
 import { h } from './dom.mjs';
-import { restRing, ringFor, stateWord } from './ring.mjs';
+import { restRing, ringFor, stateWordOf } from './ring.mjs';
 import { latestReply } from './speaker-line.mjs';
 
 /** Puts the session’s state in words on a line that follows it, and empties the words on one that doesn’t. */
 function paintWord(el, se, follows) {
-  const text = follows && se.state !== 'idle' ? `· ${stateWord(se.state).toLowerCase()}` : '';
+  const text = follows && se.state !== 'idle' ? `· ${stateWordOf(se).toLowerCase()}` : '';
   if (el.textContent !== text) el.textContent = text;
   return el;
 }

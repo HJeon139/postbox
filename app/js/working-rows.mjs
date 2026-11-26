@@ -8,7 +8,7 @@ import { subagentNow } from './agents.mjs';
 import { itemsOf } from './client.mjs';
 import { fill, h } from './dom.mjs';
 import { offScreen } from './live-in-view.mjs';
-import { ringFor, stateWord } from './ring.mjs';
+import { ringFor, stateWordOf } from './ring.mjs';
 
 /**
  * Whether an agent’s reply here is live, its thoughts and words shown as they’re written, so its working row needn’t
@@ -45,7 +45,7 @@ export function fillWorkRow(row, se, threadId) {
   const step = se.state === 'tool' && se.currentStep ? `: ${se.currentStep}` : '';
   fill(
     row.querySelector('.work-text'),
-    h('div.work-line', h('b', se.handle), h('span.dim', ` · ${stateWord(se.state).toLowerCase()}${step}`)),
+    h('div.work-line', h('b', se.handle), h('span.dim', ` · ${stateWordOf(se).toLowerCase()}${step}`)),
     se.glimpse && !liveHere(se, threadId) ? h('div.glimpse', se.glimpse) : null, // a live reply shows it as it’s written
     // Each subagent at work, in its own words when it has said something (#73): “reader: Now I’ll read paper 3…”.
     (se.subagents ?? []).map((x) => h('div.work-line.work-sub', h('span', `${x.name}: `), h('span.dim', subagentNow(x)))),

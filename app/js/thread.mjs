@@ -35,7 +35,7 @@ import { hostOf } from './remote.mjs';
 import { stoppedSaid, stoppedTag } from './reply-stop.mjs';
 import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
 import { adopt, clearBut, keepable, noteDrawn, standIn } from './resync-keep.mjs';
-import { ringFor, stateWord } from './ring.mjs';
+import { ringFor, stateWordOf } from './ring.mjs';
 import { boilerplateDesc, confirmDelete, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { drawsNothing, namesSpeaker } from './speaker-line.mjs';
@@ -1247,7 +1247,7 @@ export function mountComposer(threadId, { side = false } = {}) {
                   },
                 },
                 ring,
-                h('span.grow', p.handle, mockMarker(se ?? p), h('span.d', se ? `Here · ${stateWord(se.state).toLowerCase()}` : 'Not here · joins when woken')),
+                h('span.grow', p.handle, mockMarker(se ?? p), h('span.d', se ? `Here · ${stateWordOf(se).toLowerCase()}` : 'Not here · joins when woken')),
                 i === mention.index ? h('span.k', 'Enter') : null,
               );
             }),
