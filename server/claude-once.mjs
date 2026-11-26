@@ -20,7 +20,7 @@ const SYSTEM = 'Answer the message exactly as it asks.';
  * init, which says what the call was offered, and its result.
  * @param {string} model
  */
-const onceArgs = (model) => [
+export const onceArgs = (model) => [
   '-p',
   '--output-format',
   'json',

@@ -13,7 +13,7 @@
 // exits 1: a turn that started a session and failed before the model wrote anything, the case that saves the prompt
 // first. The agent is the one whose guide its arguments carry (“You are @researcher”); a CLI given no guide in its
 // arguments counts every turn as the faulted agent’s, so put only that agent on it. Runs that only ask the CLI its
-// version or models aren’t turns.
+// version or models, and Postbox’s own Haiku calls, aren’t turns.
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -27,12 +27,13 @@ export function parseFault(line) {
   return m && Number(m[2]) >= 1 ? { kind: 'fail-before-output', agent: m[1], n: Number(m[2]), line: m[0].trim() } : null;
 }
 
-/** Postbox’s probes of a CLI, which aren’t turns: its version, its models, Codex’s app server with no turn’s config. */
+/** Postbox’s runs of a CLI that aren’t turns: its version, its models, Codex’s app server with no turn’s config, and Postbox’s own Haiku call (server/claude-once.mjs). */
 export const isProbe = (argv) =>
   argv[0] === '--version' ||
   argv[0] === 'models' ||
   (argv[0] === 'chat' && argv.includes('--list-models')) ||
-  (argv[0] === 'app-server' && !argv.includes('-c'));
+  (argv[0] === 'app-server' && !argv.includes('-c')) ||
+  argv.includes('--no-session-persistence');
 
 /** The agent a turn is for, from the guide in its arguments (server/adapters/guide.mjs), or null. */
 export const handleOf = (argv) => {
