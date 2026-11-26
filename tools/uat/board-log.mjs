@@ -1,6 +1,6 @@
 // The sprint board’s own record, for the idleroom scenarios (#1746): tests/uat/e2e/fixtures/sprint/board.mjs keeps a
-// line for every change the team makes to the board (a story added, an estimate, a sprint’s plan, a story taken, done
-// or sent back, an action item), in the workspace’s .git folder, which the run keeps with the workspace. Read from
+// line for every change the team makes to the board (a story added, an estimate, a sprint’s plan, a story taken,
+// reviewed, done or sent back, an action item), in the workspace’s .git folder, which the run keeps with the workspace. Read from
 // there, so it’s the same on every backend. Who made a change isn’t in the record, since the tool can’t know: the
 // work ledger in the event history says which agent ran the command (whoRan).
 //
@@ -67,6 +67,24 @@ function finishedAt(log) {
   return null;
 }
 
+/**
+ * What the board’s own rules were holding a story for at a moment, in words, or '': a story nobody could take because
+ * a story it waits on wasn’t done, or one reviewed and never marked done. A room that stopped there stopped at the
+ * board, which isn’t the stall after a standup (#1784).
+ * @param {any[]} log  @param {string} id  @param {number} at
+ */
+export function heldBy(log, id, at) {
+  const { stories } = boardAt(log, at);
+  const mine = log.filter((x) => x.at <= at && x.story === id);
+  if (!stories.get(id)?.owner) {
+    const waits = (mine.findLast((x) => x.did === 'needs')?.needs ?? []).filter((/** @type {string} */ n) => !stories.get(n)?.done);
+    return waits.length ? `the board won’t let it be taken until ${waits.join(', ')} ${waits.length === 1 ? 'is' : 'are'} done` : '';
+  }
+  const taken = mine.findLast((x) => x.did === 'claim')?.at ?? 0;
+  const review = mine.findLast((x) => x.did === 'review' && x.at > taken);
+  return review ? `reviewed by @${review.who} and not marked done` : '';
+}
+
 /** The person’s messages, oldest first. @param {{ events?: any[] }} f */
 export const personSaid = (f) => (f.events ?? []).filter((e) => e?.type === 'item.add' && e.data?.item?.kind === 'user').map((e) => e.data.item);
 
@@ -111,15 +129,19 @@ export function workOf(f) {
  * Which agent ran the board command that made a record’s line, from the work ledger in the event history: of the
  * shell commands naming the board that started in the two minutes before it, the newest whose text says what the
  * line did (`claim S2`), since agents taking their stories start their commands in the same second; else the newest.
- * Null when the run recorded none.
- * @param {{ events?: any[] }} f  @param {number} at  @param {RegExp} [script]  @param {RegExp|null} [did]
+ * Two agents may run the same words at once, as when each estimates every story: a command makes one such line, so
+ * `used` holds the commands already credited with one and the next line goes to another. Null when the run recorded
+ * none.
+ * @param {{ events?: any[] }} f  @param {number} at  @param {RegExp} [script]  @param {RegExp|null} [did]  @param {Set<any>} [used]
  * @returns {string|null}
  */
-export function whoRan(f, at, script = BOARD, did = null) {
+export function whoRan(f, at, script = BOARD, did = null, used = new Set()) {
   const ran = (f.events ?? [])
     .filter((e) => e?.type === 'work.add' && e.data?.entry?.kind === 'command' && script.test(e.data.entry.command ?? ''))
     .map((e) => e.data.entry)
     .filter((c) => c.startedAt <= at && at - c.startedAt < 120_000);
   const same = did ? ran.filter((c) => did.test(c.command)) : [];
-  return (same.at(-1) ?? ran.at(-1))?.handle ?? null;
+  const by = same.findLast((c) => !used.has(c)) ?? same.at(-1) ?? ran.at(-1);
+  if (by) used.add(by);
+  return by?.handle ?? null;
 }

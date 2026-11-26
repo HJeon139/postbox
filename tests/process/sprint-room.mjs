@@ -34,7 +34,13 @@ export function room() {
   };
   const says = (/** @type {string} */ text) =>
     events.push({ type: 'item.add', data: { threadId: 't', item: { id: `it_${events.length}`, at: Date.now(), kind: 'user', text } } });
-  return { dir, events, as, starts, runs, says, facts: () => ({ events, workspace: dir }) };
+  /** A story finished as the board asks: another of the team reviews it, then its owner marks it done. */
+  const finish = (/** @type {string} */ who, /** @type {string} */ id) => {
+    const reviewer = who === 'critic' ? 'researcher' : 'critic';
+    as(reviewer, 'review', id, reviewer);
+    return as(who, 'done', id);
+  };
+  return { dir, events, as, starts, runs, says, finish, facts: () => ({ events, workspace: dir }) };
 }
 
 /** Sprint 1 up to its demo: six stories groomed, sized by two of the team, three taken, each by its own agent, all done. */
@@ -58,7 +64,7 @@ export function toSprintTwo(/** @type {ReturnType<typeof room>} */ r) {
     ['critic', 'S2'],
     ['researcher', 'S3'],
   ])
-    r.as(who, 'done', id);
+    r.finish(who, id);
   r.as('alpha', 'demo', '1');
   r.says('Demo: I accept the sprint, except the story about lowercase words: it must also drop accents.');
   r.as('alpha', 'return', 'S1', 'must drop accents');
