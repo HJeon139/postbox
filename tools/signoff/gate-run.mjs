@@ -1,6 +1,7 @@
 // `--run-gate` in tools/signoff.mjs (#845): runs the gate on a clean working tree at HEAD, holding one of the
 // machine’s heavy-suite slots (tools/heavy-lock.mjs) or a lock folder given with --lock, and writes the gate log
-// (./gate-log.mjs) whatever the result. It runs on the Node CI runs, found by step 2, first on PATH.
+// (./gate-log.mjs) whatever the commands’ result. The tree and HEAD are checked before the slot is taken, after it
+// is, and after the commands: when either changed, the run wasn’t of HEAD’s tree, and no log is written. It runs on the Node CI runs, found by step 2, first on PATH.
 //
 // Before it takes the slot it checks the temp folder has free inodes: a run that filled them failed tests no change
 // touched. It reads the load once, as it takes the slot, since load stays high while any gate runs, and warns above the
@@ -28,6 +29,20 @@ async function blocked(d, root, specs) {
 }
 
 /**
+ * What changed in the working tree or HEAD since the gate checked it, or '' when nothing did. The tree is checked clean
+ * before the slot is taken, and the wait for a slot and the run itself are long: a log that says clean, for head, is
+ * true only when both still hold after each.
+ * @param {import('./deps.mjs').Deps} d @param {string} root @param {string} head @param {string} when
+ */
+async function changed(d, root, head, when) {
+  const status = await must(d, ['git', 'status', '--porcelain'], { cwd: root });
+  if (status) return `the working tree changed ${when} (${status.split('\n').length} paths): the log would not be for HEAD, so none is written`;
+  const now = await must(d, ['git', 'rev-parse', 'HEAD'], { cwd: root });
+  if (now !== head) return `HEAD moved from ${head.slice(0, 8)} to ${now.slice(0, 8)} ${when}: the log would not be for either, so none is written`;
+  return '';
+}
+
+/**
  * Runs the gate’s commands in order, stopping at the first that fails, and returns each one’s record.
  * @param {import('./deps.mjs').Deps} d @param {string} root @param {string[]} specs @param {string} nodeBin
  */
@@ -47,27 +62,44 @@ async function runCommands(d, root, specs, nodeBin) {
 }
 
 /**
- * Takes the slot, reports the load, runs the gate and writes its log. Returns the log written, the load read, or why
- * it couldn’t run.
- * @param {import('./deps.mjs').Deps} d
- * @param {{ root: string, gitDir: string, head: string, specs: string[], lock?: string, pr: number,
- *   node: { major: number, path: string, version: string } }} o
+ * What runs while the slot is held: the tree and HEAD checked again after the wait, the load reported, the commands,
+ * and the tree and HEAD checked once more. Returns the run, or why it can’t be logged.
+ * @param {import('./deps.mjs').Deps} d @param {{ root: string, head: string, specs: string[], node: { path: string } }} o
  */
-export async function runGate(d, { root, gitDir, head, specs, lock, pr, node }) {
-  const why = await blocked(d, root, specs);
-  if (why) return { why };
-  const label = `signoff #${pr} in ${root}`;
-  const release = await loud(d, 'a heavy-suite slot', () => d.acquire({ label, log: d.log, ...(lock ? { dir: lock } : {}) }));
+async function holding(d, { root, head, specs, node }) {
+  const waited = await changed(d, root, head, 'while the gate waited for a heavy-suite slot');
+  if (waited) return { why: waited };
   const load = { one: d.loadavg()[0], cores: d.cores() };
   d.log(`load ${load.one.toFixed(1)} on ${load.cores} cores as the gate starts`);
   if (load.one > load.cores) d.log(`⚠ the load is above the core count: tests that wait on time may fail for it, not for the change`);
   const startedAt = new Date(d.now()).toISOString();
-  let ran;
+  const ran = await runCommands(d, root, specs, node.path);
+  const during = await changed(d, root, head, 'while the gate ran');
+  if (during) return { why: during };
+  return { load, startedAt, ran };
+}
+
+/**
+ * Takes the slot, runs the gate holding it and writes its log. Returns the log written, the load read, or why it
+ * couldn’t run or be logged.
+ * @param {import('./deps.mjs').Deps} d
+ * @param {{ root: string, gitDir: string, head: string, specs: string[], lock?: string, pr: number,
+ *   node: { major: number, path: string, version: string } }} o
+ */
+export async function runGate(d, o) {
+  const { root, gitDir, head, specs, lock, pr, node } = o;
+  const why = await blocked(d, root, specs);
+  if (why) return { why };
+  const label = `signoff #${pr} in ${root}`;
+  const release = await loud(d, 'a heavy-suite slot', () => d.acquire({ label, log: d.log, ...(lock ? { dir: lock } : {}) }));
+  let r;
   try {
-    ran = await runCommands(d, root, specs, node.path);
+    r = await holding(d, o);
   } finally {
     release();
   }
+  if (r.why !== undefined) return { why: r.why };
+  const { load, startedAt, ran } = r;
   const log = {
     format: FORMAT,
     writer: WRITER,

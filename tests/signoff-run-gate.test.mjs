@@ -145,3 +145,38 @@ test('a long command prints a line at least once a minute while it runs, and sto
   assert.deepEqual(waits, ['… still waiting on npm run check, 50 s so far', '… still waiting on npm run check, 100 s so far']);
   assert.equal(w.timers.size, 0, 'no timer outlives its command');
 });
+
+test('a working tree changed while the gate waits for its slot fails step 5, and writes no log', async () => {
+  let waited = false;
+  const w = world({ answers: [[/^git status --porcelain$/, () => ({ code: 0, out: waited ? ' M server/store.mjs\n' : '' })]] });
+  const acquire = w.d.acquire;
+  w.d.acquire = async (a) => {
+    waited = true;
+    return acquire(a);
+  };
+  assert.equal(await signoff(['840', '--run-gate'], w.d), EXIT.gate);
+  assert.match(line(w, /^✖ 5\./), /the working tree changed while the gate waited for a heavy-suite slot \(1 paths\)/);
+  assert.equal(w.files.has(`${GIT_DIR}/signoff/${w.head}.json`), false, 'no log');
+  assert.equal(ran(w, /^npm run check$/).length, 0, 'nothing ran on a changed tree');
+  assert.equal(w.released, 1, 'the slot is let go');
+});
+
+test('HEAD moved while the gate ran fails step 5, and writes no log', async () => {
+  let moved = false;
+  const w = world({
+    answers: [
+      [/^git rev-parse HEAD$/, (_a, _o, world) => ({ code: 0, out: `${moved ? '9'.repeat(40) : world.head}\n` })],
+      [
+        /^npm run check$/,
+        () => {
+          moved = true;
+          return { code: 0, out: '' };
+        },
+      ],
+    ],
+  });
+  assert.equal(await signoff(['840', '--run-gate'], w.d), EXIT.gate);
+  assert.match(line(w, /^✖ 5\./), /HEAD moved from 82ffee08 to 99999999 while the gate ran/);
+  assert.equal(w.files.has(`${GIT_DIR}/signoff/${w.head}.json`), false, 'no log');
+  assert.equal(w.released, 1, 'the slot is let go');
+});
