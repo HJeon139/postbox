@@ -179,7 +179,7 @@ test('PUT /api/me saves the profile of whoever is asking, refuses a bad one whol
   assert.deepEqual(app.rt.s.people[me.id].profile, { name: 'Robin' });
 });
 
-test('every backend is given the note as the turn has it: one function words a turn’s input for all five, here and on a host', async () => {
+test('every backend is given the note as the turn has it: one function words a turn’s input for all four, here and on a host', async () => {
   const { formatMessage } = await import('../server/adapters/guide.mjs');
   const { readFileSync } = await import('node:fs');
   const note = `${HEAD}\n- Name: Robin\n- Also written as: robin-example (github)`;

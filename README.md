@@ -38,7 +38,7 @@ Open <http://127.0.0.1:4173/>. The demo’s agents are scripted, so you can try 
 
 - [**Running Postbox**](designs/running.md): installing the package, flags, the data folder, settings, upgrades and known limits.
 - [**Conversations, threads and Work**](designs/conversations.md): how you talk to agents, and see what they did.
-- [**Run real agents**](designs/backends.md): the five backends, permission modes, and your own adapter.
+- [**Run real agents**](designs/backends.md): the backends, permission modes, and your own adapter.
 - [**Remote hosts**](designs/remote-hosts.md): setting up a host and working with agents there.
 - [**Agent apps and the block catalog**](designs/agent-apps.md): what agents send, and how their apps run.
 - [**Tests, tools and the repository**](designs/tests-and-tools.md): the gate and the tools.

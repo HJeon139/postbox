@@ -2,7 +2,7 @@
 
 Part of [the architecture](../architecture.md). Everything Postbox passes to a turn, explicitly and in one place: the person’s own setup, with a few overrides.
 
-**Decision** ([#57](https://github.com/HJeon139/postbox/issues/57)). Everything that shapes a turn is passed explicitly, in one place ([`server/adapters/setup.mjs`](../../server/adapters/setup.mjs)), so an agent has the person’s own setup with only the overrides below. These apply to the Claude backends; how the Kiro, Antigravity and Codex backends map them is in [backends.md](../backends.md).
+**Decision** ([#57](https://github.com/HJeon139/postbox/issues/57)). Everything that shapes a turn is passed explicitly, in one place ([`server/adapters/setup.mjs`](../../server/adapters/setup.mjs)), so an agent has the person’s own setup with only the overrides below. These apply to Claude Code; how the Kiro, Antigravity and Codex backends map them is in [backends.md](../backends.md).
 
 ## Setting sources
 
@@ -24,7 +24,7 @@ Part of [the architecture](../architecture.md). Everything Postbox passes to a t
 
 ## Your MCP servers
 
-From [#59](https://github.com/HJeon139/postbox/issues/59). They load as in your terminal, claude.ai connectors and plugin servers included. Postbox adds its own with `--mcp-config`, always named `postbox`. An Isolated persona gets `--strict-mcp-config` (`strictMcpConfig`), so only Postbox’s loads. A persona can turn any of yours off: they go in the settings overlay’s `deniedMcpServers`, the denylist Claude Code merges from every source. A real turn confirmed a turned-off server leaves the `init`’s `mcp_servers`, with its tools. The persona sheet lists the servers found in your config (user, project and local scopes, names only) and the ones the last `init` reported, with that init’s status.
+From [#59](https://github.com/HJeon139/postbox/issues/59). They load as in your terminal, claude.ai connectors and plugin servers included. Postbox adds its own with `--mcp-config`, always named `postbox`. An Isolated persona gets `--strict-mcp-config`, so only Postbox’s loads. A persona can turn any of yours off: they go in the settings overlay’s `deniedMcpServers`, the denylist Claude Code merges from every source. A real turn confirmed a turned-off server leaves the `init`’s `mcp_servers`, with its tools. The persona sheet lists the servers found in your config (user, project and local scopes, names only) and the ones the last `init` reported, with that init’s status.
 
 ## Postbox’s own skills
 

@@ -434,7 +434,7 @@ export class KiroCliAdapter {
           }
           resolve({});
         };
-        // A stopped turn ends once the CLI’s whole group has exited, as for the Claude backends (#126).
+        // A stopped turn ends once the CLI’s whole group has exited, as for Claude Code (#126).
         const settle = (code) => stop.settle(() => done(code));
         child.on('close', settle);
         child.on('exit', (code) => {

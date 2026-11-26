@@ -1,4 +1,4 @@
-// What a real agent loads from the person’s own Claude Code setup (#57), shared by both adapters; and where each
+// What a real agent loads from the person’s own Claude Code setup (#57), here and on a host; and where each
 // adapter’s raw stream goes (recorderFor).
 //
 // By default a persona loads the person’s setup, as in their terminal: user, project and local settings, so the
@@ -13,7 +13,7 @@
 // - The persona’s Tools checklist reaches the backend as deny rules (#5), and tools that act outside Postbox’s
 //   record are denied unless the persona allows them: see TOOL_RULES and deniedTools.
 // A persona set to Isolated (usesHostSetup: false) loads the project’s settings only, not the person’s own, and
-// only Postbox’s MCP server: both adapters pass --strict-mcp-config / strictMcpConfig for it.
+// only Postbox’s MCP server: --strict-mcp-config is passed for it.
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';

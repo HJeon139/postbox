@@ -100,7 +100,7 @@ Each is one line: the decision, why, and where its detail is.
 - **An event log with snapshots, not a database:** the event model needs a numbered, append-only sequence and one person needs no server to run ([store.md](architecture/store.md)).
 - **A commit is whole and fsynced before anything sees it:** a turn’s records and marker land together or not at all ([store.md](architecture/store.md)).
 - **No framework and no build step:** the app needs nothing but Node to run, and its hot paths don’t depend on a framework ([front-end.md](architecture/front-end.md)).
-- **One harness-event contract for every backend:** a behavior fixed once is fixed for all five, and a new backend maps only its stream ([adapters.md](architecture/adapters.md)).
+- **One harness-event contract for every backend:** a behavior fixed once is fixed for all four, and a new backend maps only its stream ([adapters.md](architecture/adapters.md)).
 - **Everything that shapes a turn is passed explicitly:** an agent gets the person’s own setup, with only the overrides Postbox needs ([agent-setup.md](architecture/agent-setup.md)).
 - **The harness decides, in the mode the person set:** Postbox shows what agents did, and adds ask rules only for writes outside it, only in Ask me and Accept edits ([permissions.md](architecture/permissions.md), [agent-setup.md](architecture/agent-setup.md)).
 - **One session per agent per conversation:** agents never fork themselves, and the person chooses what an agent remembers by where they talk to it ([shared-memory.md](architecture/shared-memory.md)).
@@ -144,7 +144,7 @@ Each is one line: the decision, why, and where its detail is.
 | [assets.md](architecture/assets.md) | Attachments, agents’ assets, their retention and their search |
 | [background-processes.md](architecture/background-processes.md) | Background work that outlives a turn: keeping a harness’s background jobs and marked work, wake on exit, and hosts (proposed, #1614) |
 | [front-end.md](architecture/front-end.md) | The page without a framework or build, the transcript window, and the right pane |
-| [adapters.md](architecture/adapters.md) | The five backends, the harness-event contract, the guide and the shared limits |
+| [adapters.md](architecture/adapters.md) | The four backends, the harness-event contract, the guide and the shared limits |
 | [agent-setup.md](architecture/agent-setup.md) | What a turn is given: setting sources, publishing tools, writes outside Postbox, MCP servers, skills, hooks, tools, model and effort |
 | [permissions.md](architecture/permissions.md) | Modes, permission cards, prompts bound to their calls, refusals, answers and the permissions panel |
 | [shared-memory.md](architecture/shared-memory.md) | Catch-up, the turn envelope, deliveries and topic threads |

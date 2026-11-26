@@ -1,10 +1,10 @@
 # Real agents and their backends
 
-The five backends an agent can run on, what each needs, its permission modes and what differs between them, and how to bring your own.
+The backends an agent can run on, what each needs, its permission modes and what differs between them, and how to bring your own.
 
 ## Run real agents
 
-A persona runs on one of five backends. Pick one in the new-agent sheet, under **Backend**. Three of them can also run on another computer: see [remote-hosts.md](remote-hosts.md).
+A persona runs on one of four real backends, or on the mock agent. Pick one in the new-agent sheet, under **Backend**. Three of them can also run on another computer: see [remote-hosts.md](remote-hosts.md).
 
 | Backend | What it runs | Needs |
 |---|---|---|
@@ -14,7 +14,9 @@ A persona runs on one of five backends. Pick one in the new-agent sheet, under *
 | Codex | The `codex app-server` you’re signed in to. Postbox starts and resumes an app-server thread for each conversation. | Codex CLI installed (`codex --version` works) and signed in, or `POSTBOX_CODEX_BIN` pointing at it |
 | Mock agent | The scripted agent the demo uses | Nothing |
 
-Postbox never reads, stores or asks for an API key. The Claude backends use Claude Code’s own sign-in, or `ANTHROPIC_API_KEY` if your environment already sets it; the Kiro CLI uses its own sign-in, or `KIRO_API_KEY`; the Antigravity CLI uses its own sign-in. Postbox starts each backend only if it can run here; the server’s first lines list the ones it found. `POSTBOX_BACKENDS=mock` turns the real ones off.
+Postbox never reads, stores or asks for an API key. Claude Code uses its own sign-in, or `ANTHROPIC_API_KEY` if your environment already sets it; the Kiro CLI uses its own sign-in, or `KIRO_API_KEY`; the Antigravity CLI uses its own sign-in. Postbox starts each backend only if it can run here; the server’s first lines list the ones it found. `POSTBOX_BACKENDS=mock` turns the real ones off.
+
+**The Agent SDK backend is gone** (26 November 2026, [#1831](https://github.com/HJeon139/postbox/issues/1831)). It ran the same Claude Code inside Postbox’s own process and couldn’t run on a host. An agent, a saved agent or a conversation that a data folder holds on it runs on Claude Code from the next start, with its model, effort, folder, memory and session, and nothing to answer ([`server/retired-backends.mjs`](../server/retired-backends.mjs)). Claude agents now need the `claude` CLI on this computer or on a host.
 
 **Model.** Postbox keeps no list of models of its own. When a sheet with a **Model** field opens, Postbox asks that backend’s own harness which models it offers, and the field suggests them ([`server/model-lists.mjs`](../server/model-lists.mjs)): Claude Code answers an `initialize` request, and the others their own list commands below. None of these runs a model. A list is used for a minute, and the last one each backend gave is kept in the data folder, so after a restart, or when the harness can’t list just then, the field suggests that one and says so. For an agent that runs on a host, the harness asked is the host’s own CLI, through its daemon, and that list is kept per host: see [remote-hosts.md](remote-hosts.md). New agents start on `claude-opus-5-5` while the backend lists it, or hasn’t listed yet, and otherwise on the first model it lists. The field takes any model you type, listed or not, and passes it to the harness as `--model`. Only switching backend changes it: to the new backend’s default, when that backend doesn’t offer it. Change it per persona under **Personas**.
 

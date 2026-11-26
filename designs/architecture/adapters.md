@@ -1,10 +1,10 @@
-# Real agents: five backends, one harness-event contract
+# Real agents: four backends, one harness-event contract
 
 Part of [the architecture](../architecture.md). How an agent’s harness runs, and how what it does reaches Postbox.
 
-## Five backends behind one interface
+## Four backends behind one interface
 
-**Decision.** A persona runs on one of five real backends, each behind an adapter with one interface ([`server/adapters/adapter.mjs`](../../server/adapters/adapter.mjs)), registered as Postbox starts ([`server/backends.mjs`](../../server/backends.mjs)). The mock agent is a sixth adapter, for the demo and the tests. What each needs and how it differs for the person is in [backends.md](../backends.md).
+**Decision.** A persona runs on one of four real backends, each behind an adapter with one interface ([`server/adapters/adapter.mjs`](../../server/adapters/adapter.mjs)), registered as Postbox starts ([`server/backends.mjs`](../../server/backends.mjs)). The mock agent is a fifth adapter, for the demo and the tests. What each needs and how it differs for the person is in [backends.md](../backends.md).
 - **Claude Code:** one `claude -p` process per turn, with stream-json in and out, resuming the thread’s Claude Code session.
 - **Kiro CLI:** one headless `kiro-cli chat` process per turn, with stream-json out and a custom agent file Postbox writes for the turn.
 - **Antigravity CLI:** one headless `agy` process per turn, with stream-json out and a plugin Postbox writes into the agent’s folder for the turn.

@@ -11,7 +11,6 @@ Status: proposed for [#1614](https://github.com/HJeon139/postbox/issues/1614), n
 **Claude Code waits for its background tasks.** When an agent starts a command with `run_in_background` and finishes its answer, the CLI stays alive until the task ends. Then it reports the task in a turn of its own. Postbox ends a turn only when the CLI’s process closes (`server/adapters/claude-code.mjs`, `child.on('close', settle)`). Until then `Running.busy()` stays true, `Delivery.ready()` (`server/delivery.mjs`) returns false, and every message to the agent waits.
 - **Measured with the real CLI in #1614:** a reply with no background command exited at 7.6 s. The same reply after `sleep 90` with `run_in_background` exited at 98.2 s.
 - **In the room on 21 and 22 November 2026:** agents’ messages waited 26 to 167 minutes behind their own background gates and CI watches.
-- **The Agent SDK waits too, up to a limit of its own** ([#1714](https://github.com/HJeon139/postbox/issues/1714)). After the last result it waits for background work only up to `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`, 10 minutes by default. Then it ends the run, and that work is stopped. In a recording of 26 November 2026 with the limit at 30 s, the SDK stopped a background `sleep 90` 5 s after the reply’s result, while `claude -p` with the same setting waited the full 90 s. Postbox passes that limit as `QUIET.backgroundMax` (2 h), the bound a host turn waiting on background work already has (#847), so the Agent SDK waits as long as a Claude Code turn on a host does, until this design lands (the CLI on this computer has no bound). Work the bound still stops after a reply is named to the agent at its next turn (`server/adapters/sdk-background.mjs`).
 
 **Codex, Kiro and Antigravity differ from Claude Code, and from each other.** Each runs in its own process group (#126).
 - **Codex:** Postbox kills that group at each turn’s end (`stopTurn`, `server/adapters/codex.mjs`), so background work dies with the turn.
@@ -25,7 +24,7 @@ Stop kills the group on all three. On a host, the daemon owns that group (`serve
 
 ## What `main` already has
 
-- **Recognizing a task.** Claude Code’s `run_in_background` tasks are recognized from the stream (`server/adapters/claude-stream.mjs`). Each is recorded as a job with its task id, command and output file (`server/harness-events.mjs`, `startJob`). At the turn’s result, `on_turn_end` lists the jobs still running (`tools.waiting`). The Agent SDK reports the same tasks.
+- **Recognizing a task.** Claude Code’s `run_in_background` tasks are recognized from the stream (`server/adapters/claude-stream.mjs`). Each is recorded as a job with its task id, command and output file (`server/harness-events.mjs`, `startJob`). At the turn’s result, `on_turn_end` lists the jobs still running (`tools.waiting`).
 - **Keeping a job.** Send now stops the CLI with `jobs: 'keep'` (`server/message-queue.mjs`, `stopForSendNow`). `stopTurn`’s `keep` (`server/adapters/process-group.mjs`) finds each kept job by its command among the CLI’s tool shells (`shellGroups`), and keeps it. It’s lenient: it takes the first match, and if any job goes unmatched, it keeps every unmatched shell.
 - **Seeing a job end.** A 5-second poll of the kept jobs’ process groups sees each one end (`server/kept-jobs.mjs`, #129, #164). Each kept job has its own Stop.
 - **On a host:**
@@ -71,7 +70,7 @@ A bound job is recorded as section 6, “What’s recorded”, lists.
 
 ### 2. When the turn ends early, and when it waits
 
-**Claude Code and the Agent SDK.** At the `result`, Postbox ends the CLI early only when every task `on_turn_end` lists binds by section 1. Then it stops the CLI through a strict mode of `stopTurn`:
+**Claude Code.** At the `result`, Postbox ends the CLI early only when every task `on_turn_end` lists binds by section 1. Then it stops the CLI through a strict mode of `stopTurn`:
 - **Kept:** each bound job’s whole group survives.
 - **Stopped:** the CLI and every other tool-shell group under it. They get SIGINT, then SIGKILL after `GRACE_MS`, as today.
 
