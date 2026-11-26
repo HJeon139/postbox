@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.49.0 (2026-11-26)
+
+### Features
+
+- **people:** a reply that names a person asks them, until they read it
+
+### Fixes
+
+- **people:** an ask older than the ones a session keeps is still read
+- **people:** an ask of a person waits for that person, and only their reading ends it
+- **uat:** say when the tester has had no step for five minutes while a turn is open
+- **uat:** hand back what still waits after an action that was held or failed
+
 ## 4.48.0 (2026-11-26)
 
 ### Features
