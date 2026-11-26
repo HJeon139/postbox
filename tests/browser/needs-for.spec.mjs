@@ -50,6 +50,13 @@ test('a need for you pulses, counts and is yours to go to; one for another perso
   // In words too: its row and its ring say whom it waits on isn’t you.
   await expect(page.locator('.rail section.agents-sec')).toContainText('waits on another person');
   await expect(ring.getByRole('img')).toHaveAccessibleName(/Waits on another person/);
+  // Everywhere its state is worded: the conversation’s row never says “needs you” of another person’s need.
+  await expect(page.locator(`.rail a[href="#/t/${t.id}"] .state-word`)).toHaveText(' · waits on another person');
+  // Only “needs you” is reworded: a failed turn that is another person’s still reads “failed”, in its row and on its ring.
+  rt.sessions.update(se.id, { needs: { kind: 'failed', itemId: ask.id, text: 'API 500' }, state: 'failed' });
+  await expect(ring).toHaveAttribute('theirs', 'yes');
+  await expect(page.locator('.rail section.agents-sec .agent-state')).toHaveText(' · failed');
+  await expect(ring.getByRole('img')).toHaveAccessibleName(/: Failed,/);
 
   // You write: from then on what its agents need is yours.
   rt.sessions.update(se.id, { needs: null, state: 'idle' });

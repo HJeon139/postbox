@@ -140,3 +140,21 @@ test('#1742 on this computer the data folder’s one person is the same under an
   // A provider that answers with many people still tells them apart by subject.
   assert.notEqual(people.of({ ...ROBIN, subject: 'sam' }).id, people.of(ROBIN).id);
 });
+
+test('#1742 two records already kept under two accounts: the first kept is the local person, and no other issuer’s record is', () => {
+  const local = unixAccount({ info: /** @type {any} */ (() => ({ uid: 2000, username: 'robin' })) });
+  const { rt } = setup();
+  const people = new People({ store: rt.store });
+  const keep = (/** @type {any} */ principal, /** @type {number} */ createdAt) => {
+    const record = { ...people.of({ ...principal, sole: undefined }), createdAt };
+    rt.store.emit('person', record);
+    return record;
+  };
+  // Kept out of order, and beside an older record of another issuer: the oldest of the local issuer’s own is theirs.
+  const newer = keep({ ...local, subject: '1000' }, 2000);
+  const older = keep({ ...local, subject: '501' }, 1000);
+  const elsewhere = keep({ ...ROBIN, issuer: 'https://idp.example' }, 500);
+  assert.equal(people.of(local).id, older.id);
+  assert.notEqual(newer.id, older.id);
+  assert.notEqual(people.of(local).id, elsewhere.id);
+});
