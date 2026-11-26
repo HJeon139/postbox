@@ -70,7 +70,6 @@ const NO_READER = {
   'threads.mjs': ['conversationThreads', 'conversationThreads'], // the threads read_conversation and read_message may read: a read tool’s
   // The archive pass for a turn with no work’s convId: the pass picks from published, and its commit gathers again
   'turn-end-work.mjs': ['endWork'],
-  'ui-tools.mjs': ['defineTerm'], // define_term’s answer: whether the term overrides the conversation’s
   'wake-cards.mjs': ['heldFor'], // the catch-up’s held lines, what the person sees (#693)
 };
 

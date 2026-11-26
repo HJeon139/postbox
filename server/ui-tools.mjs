@@ -98,10 +98,11 @@ function defineTerm(rt, { turn, se, threadId }, { term, definition, key, source 
       at: Date.now(),
     },
   });
+  // As written (#1819): the conversation, or its definition, may be held behind a commit.
   const inherited = rt.threads
-    .lineage(threadId())
+    .lineage(threadId(), (/** @type {string} */ id) => rt.store.pending.thread(id))
     .slice(1)
-    .some((id) => rt.s.glossary[id]?.[k]);
+    .some((/** @type {string} */ id) => rt.store.pending.glossary(id)[k]);
   return { ok: true, message: inherited ? `Defined “${term}” here, over the conversation’s definition.` : `Defined “${term}”.` };
 }
 

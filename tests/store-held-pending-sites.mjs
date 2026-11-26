@@ -172,6 +172,8 @@ export const PENDING = {
   // reply and its thread as item.final carries them, both maybe held (#1367). And the project a new conversation starts
   // in, maybe deleted behind a held commit (#119).
   // conversationToWrite: the conversation a write lands in, through a topic maybe opened behind a held commit (#623).
+  // glossaryFor: given the pending thread reader, each thread’s glossary as written, a term defined behind a held
+  // commit too, which decides the term problems a turn’s end writes (#1819).
   // notify: whom the agent’s need is for as a notice is raised (#1742), written a moment before, maybe behind a held commit.
   'threads.mjs': [
     'create',
@@ -185,6 +187,7 @@ export const PENDING = {
     'patchItem',
     'bringForward',
     'conversationToWrite',
+    'glossaryFor',
     'notify',
   ],
   // A finished turn’s checks: its lineage, through a topic maybe opened behind a held commit (#623), its own block and
@@ -215,5 +218,8 @@ export const PENDING = {
   // bring_to_conversation: the thread it’s called in and its conversation, where the post lands, maybe opened behind a held commit (#623)
   'bring.mjs': ['offersBring', 'bringToConversation', 'bringToConversation'],
   'share-back.mjs': ['shareText'], // the title a shared post carries, of a topic maybe opened behind a held commit (#623)
+  // define_term: the lineage and its glossaries, maybe held behind a commit, for whether the term overrides the
+  // conversation’s definition (#1819).
+  'ui-tools.mjs': ['defineTerm'],
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };
