@@ -1,27 +1,32 @@
 // Text over marks, for the pre-display check (app/kit/check.js), #952: an SVG chart’s labels drawn over its dots, rings
 // and lines, which hides the marks under them and the values they carry. It tests the marks’ own geometry under each
-// label (isPointInFill, isPointInStroke), not their boxes, so a label beside a line whose box it shares passes. An
-// axis, its ticks, a grid and a legend are left out, and so are a count inside its own dot, a label with a halo that
-// keeps it legible, and one on a backing. Postbox inlines it into a check frame’s page after check-boxes.js.
+// label (isPointInFill, isPointInStroke), not their boxes, so a label beside a line whose box it shares passes, and
+// only the band of its letters, so a mark grazing the space above or below them passes too. An axis, its ticks, a grid
+// and a legend are left out, and so are a count inside its own dot, a name inside its own node, a label with a halo
+// that keeps it legible, and one on a backing. Postbox inlines it into a check frame’s page after check-boxes.js.
 // biome-ignore lint/suspicious/noRedundantUseStrict: the page runs this as a classic script, which isn’t strict without it.
 'use strict';
 {
   const { clip, where, hidden, guard } = window.__pbCheck;
-  // Points under a label are tested on this grid, in px, inside an edge this wide: a label grazing a mark passes.
+  // Points under a label are tested on this grid, in px, inside an edge this wide at its sides: a label grazing a mark
+  // there passes.
   const STEP = 1;
   const EDGE = 1;
-  // A label sits on a mark when this many of its points hit it. Only the middle of its box is tested: the band of this
-  // share of its height above and below holds ascenders, descenders and line spacing, so a mark there grazes the label
-  // without hiding it, or being hidden.
+  // A label sits on a mark when this many of its points hit it. Above and below, the edge is this share of its font
+  // size: that band of a line’s box holds only the tops of capitals, the descenders and line spacing, so a mark there
+  // grazes the label without hiding it, or being hidden. Of a label of several lines, it trims the first line’s top and
+  // the last one’s bottom.
   const HITS = 2;
-  const CORE = 0.25;
+  const CORE = 0.3;
   // A filled path smaller than this is a symbol, a dot drawn as a path; a larger one is an area, which labels sit in.
   const SYMBOL = 30;
   // A dot or ring is a data mark up to this radius, in px; a larger circle is a diagram’s node, which holds its name.
   const DOT = 12;
-  // A closed outline up to this size in px is a node, a box or a hex, and a label inside it is its name; a larger one is
-  // a region, whose edge a label inside can still sit on.
+  // A closed outline up to this size in px, of up to this many commands, is a node, a box or a hex, and a label inside it
+  // is its name. A larger one is a region, and one of more commands an area chart, one a data point: a label inside
+  // either can still sit on its edge.
   const NODE = 160;
+  const SIDES = 8;
   // A line is a data series from this many points on. A straight line of two points is a fit line or a reference in a
   // chart (three or more dots or rings), and a diagram’s edge or a leader line anywhere else; one that’s level or upright, a
   // gridline, is never a mark.
@@ -99,7 +104,8 @@
     const stroke = solid(cs.stroke, +cs.strokeOpacity * opacity) && width > 0 && width <= WIDE && long;
     if (!fill && !stroke) return null;
     const kind = fill ? 'a dot' : round ? 'a ring' : 'a line';
-    const node = el.tagName === 'path' && /z\s*$/i.test(el.getAttribute('d') ?? '') && r.width <= NODE && r.height <= NODE;
+    const closed = el.tagName === 'path' && /z\s*$/i.test(el.getAttribute('d') ?? '');
+    const node = closed && r.width <= NODE && r.height <= NODE && points(el) <= SIDES;
     return { el, r, fill, stroke, kind, round, node, straight, pad: width / 2, clip: clipOf(el, svg) };
   }
 
@@ -151,7 +157,9 @@
       const cs = getComputedStyle(el);
       if (painted(cs.stroke, +cs.strokeOpacity) && parseFloat(cs.strokeWidth) >= 2) continue;
       if (backings.some((b) => within(r, b))) continue;
-      out.push({ el, t, r });
+      const ctm = el.getScreenCTM();
+      const size = parseFloat(cs.fontSize) * (ctm ? Math.hypot(ctm.a, ctm.b) : 1);
+      out.push({ el, t, r, inset: Math.max(EDGE, size * CORE) });
     }
     return out;
   }
@@ -172,8 +180,7 @@
     if (!ctm) return 0;
     const inv = ctm.inverse();
     let n = 0;
-    const inset = Math.max(EDGE, label.r.height * CORE);
-    for (let y = label.r.top + inset; y <= label.r.bottom - inset; y += STEP)
+    for (let y = label.r.top + label.inset; y <= label.r.bottom - label.inset; y += STEP)
       for (let x = label.r.left + EDGE; x <= label.r.right - EDGE; x += STEP) {
         if (mark.clip && (x < mark.clip.left || x > mark.clip.right || y < mark.clip.top || y > mark.clip.bottom)) continue;
         const p = new DOMPoint(x, y).matrixTransform(inv);

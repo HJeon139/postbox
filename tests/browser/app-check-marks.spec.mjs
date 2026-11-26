@@ -62,13 +62,17 @@ const APPS = {
   grid: `<svg id="grid" width="420" height="240" role="img" aria-label="Runs">${dots}<line x1="40" y1="30" x2="400" y2="30" stroke="var(--text)"/><text x="150" y="34" ${T}>Fastest runs</text></svg>`,
   // A label on a backing over the line: the backing keeps the line from showing through it.
   backed: `<svg id="backed" width="420" height="240" role="img" aria-label="Fit">${dots}${fit}<rect x="192" y="127" width="34" height="17" fill="var(--bg)"/><text x="196" y="140" ${T}>5:56</text></svg>`,
-  // An axis as d3 draws one: its domain path, tick lines, and tick labels beside them, and its title on the line.
   // A dot reaching into the top of a label’s box, above its letters: it grazes the label without hiding it.
   grazed: `<svg id="grazed" width="420" height="240" role="img" aria-label="Runs">${dots}<text x="150" y="166.5" ${T}>Morning</text></svg>`,
   // A diagram’s node, a hexagon whose slanted sides cut into the corners of the name it holds.
   named: `<svg id="named" width="200" height="120" role="img" aria-label="Steps"><path d="M40 60 L60 30 H140 L160 60 L140 90 H60 Z" fill="none" stroke="var(--s1)" stroke-width="4"/><text x="100" y="64" text-anchor="middle" textLength="116" lengthAdjust="spacingAndGlyphs" ${T}>Committee review</text></svg>`,
-  // A region larger than a node, its edge a line, with a label inside it on that edge.
+  // A region larger than a node, its edge a line, with a label inside its box on that edge.
+  // A three-line callout with a dot on its first line, which the band of a one-line label still reaches.
+  callout: `<svg id="callout" width="420" height="120" role="img" aria-label="Weeks"><circle cx="270" cy="34" r="4" fill="var(--s1)"/><text x="250" y="40" ${T}><tspan x="250">Best week</tspan><tspan x="250" dy="16">of the year,</tspan><tspan x="250" dy="16">after rest</tspan></text></svg>`,
+  // A sparkline drawn as a small closed area, its last value printed on its top edge: an area, not a node.
+  spark: `<svg id="spark" width="200" height="90" role="img" aria-label="Visits"><path d="M10 60 L30 20 L50 40 L70 30 L90 45 L110 35 L130 40 L150 38 L150 70 L10 70 Z" fill="none" stroke="var(--s1)" stroke-width="2"/><text x="128" y="45" ${T}>42</text></svg>`,
   region: `<svg id="region" width="420" height="240" role="img" aria-label="Costs"><path d="M20 220 L400 220 L400 20 Z" fill="none" stroke="var(--s2)" stroke-width="2"/><text x="200" y="125" ${T}>Forbidden</text></svg>`,
+  // An axis as d3 draws one: its domain path, tick lines, and tick labels beside them, and its title on the line.
   axes: `<svg id="axes" width="420" height="80" role="img" aria-label="Hours"><g class="axis" transform="translate(20,20)"><path class="domain" d="M0 6 V0 H360 V6" stroke="var(--text)" fill="none"/>${[
     0, 90, 180, 270, 360,
   ]
@@ -125,8 +129,14 @@ test('#952 a label on the visible part of a clipped line, on a ring scatter’s 
   expect(overMarks('boxClip')[0], says('boxClip')).toMatch(/“Break-even” \(on a line\)/);
 });
 
-test('#952 a label inside a region larger than a node, on its edge, is on a line: only a node’s name is its own', () => {
+test('#952 a label on the edge of a region larger than a node, or of a small area chart, is on a line: only a node’s name is its own', () => {
   expect(overMarks('region')[0], says('region')).toMatch(/“Forbidden” \(on a line\)/);
+  expect(overMarks('spark')[0], says('spark')).toMatch(/“42” \(on a line\)/);
+});
+
+test('#952 a dot on the first line of a three-line callout is under it', () => {
+  // The warning quotes the label’s text as SVG joins its lines, with no space between them.
+  expect(overMarks('callout')[0], says('callout')).toContain('“Best weekof the year,after rest” (on a dot)');
 });
 
 for (const id of ['clear', 'counts', 'nodes', 'faint', 'clipped', 'grid', 'halo', 'backed', 'axes', 'grazed', 'named'])
