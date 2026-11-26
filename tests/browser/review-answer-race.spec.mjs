@@ -6,7 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { gate, holdAct } from './answer-hold.mjs';
+import { away, back, gate, holdAct } from './answer-hold.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const DRAFT = {
@@ -76,8 +76,9 @@ test('#518 revision 2’s draft and the verdict on screen are what’s sent, wit
   revise(r);
   await expect(r.block.locator('.rv-receipt'), 'revision 2 is drawn').toBeVisible();
   await comment(page, r.block, 7, 'Rank by date.');
+  const settled = page.waitForResponse(`**/api/threads/${r.t.id}/items/${r.item.id}/act`);
   release();
-  await page.waitForResponse(`**/api/threads/${r.t.id}/items/${r.item.id}/act`);
+  await settled;
   // Nothing draws the block again: the person sees Approve picked, and that is what goes.
   await expect(approve(r.block)).toHaveAttribute('aria-checked', 'true');
   await submit(r.block).click();
@@ -92,8 +93,9 @@ test('#518 revision 2’s draft is kept over a reload after the older answer set
   revise(r);
   await expect(r.block.locator('.rv-receipt')).toBeVisible();
   await comment(page, r.block, 7, 'Rank by date.');
+  const settled = page.waitForResponse(`**/api/threads/${r.t.id}/items/${r.item.id}/act`);
   release();
-  await page.waitForResponse(`**/api/threads/${r.t.id}/items/${r.item.id}/act`);
+  await settled;
   await page.reload();
   await synced(page, app);
   await expect(r.block.getByText('Rank by date.'), 'kept over a reload').toBeVisible();
@@ -101,7 +103,7 @@ test('#518 revision 2’s draft is kept over a reload after the older answer set
 
 test('#518 when the page never drew the answered block, what it sent leaves the draft as revision 2 is drawn', async ({ page }) => {
   const r = await room(page, 'Away');
-  const elsewhere = app.rt.createThread({ projectId: r.projectId, title: 'Elsewhere', personaIds: [arrange.persona(app.rt, 'researcher').id] });
+  page.on('console', (m) => m.text().startsWith('DRAW') && console.log(m.text()));
   // The answer is held before it reaches Postbox and sent once the page is elsewhere, so it lands while the block isn’t
   // drawn; its reply to the page is held until after the agent revises.
   const { send, release } = await answeredThenRevised(page, r, { untilSent: true });
@@ -110,20 +112,19 @@ test('#518 when the page never drew the answered block, what it sent leaves the 
   await r.block.getByRole('button', { name: 'Edit your comment on line 5' }).click();
   await page.keyboard.press('End');
   await page.keyboard.insertText(' And by date.');
-  await page.goto(`${app.origin}/#/t/${elsewhere.id}`);
-  await synced(page, app);
+  await away(page, app, r.projectId);
   send();
   await expect.poll(() => r.now().answer?.read).toBe(true);
   revise(r);
-  await page.goto(`${app.origin}/#/t/${r.t.id}`);
-  await synced(page, app);
+  await back(page, app, r.t.id);
   await expect(r.block.locator('.rv-receipt'), 'revision 2 is drawn').toBeVisible();
   // Sent, the comment is the person’s thread on the block; drawn, it isn’t also a draft, before or after the settle.
   const drafted = r.block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
   await expect(drafted.filter({ hasText: 'Index the titles too.' })).toHaveCount(0);
   await expect(drafted.filter({ hasText: 'Then by author. And by date.' }), 'the edit open on the later comment is kept').toHaveCount(1);
+  const settled = page.waitForResponse(`**/api/threads/${r.t.id}/items/${r.item.id}/act`);
   release();
-  await page.waitForResponse(`**/api/threads/${r.t.id}/items/${r.item.id}/act`);
+  await settled;
   await expect(drafted.filter({ hasText: 'Index the titles too.' })).toHaveCount(0);
   await expect(approve(r.block), 'the verdict on screen').toHaveAttribute('aria-checked', 'true');
   await submit(r.block).click();
@@ -133,10 +134,8 @@ test('#518 when the page never drew the answered block, what it sent leaves the 
 
 test('#518 a dismissal elsewhere of revision 2 takes what revision 1’s answer sent out of the draft too', async ({ page }) => {
   const r = await room(page, 'Dismissed elsewhere');
-  const elsewhere = app.rt.createThread({ projectId: r.projectId, title: 'Elsewhere', personaIds: [arrange.persona(app.rt, 'researcher').id] });
   const { send, release } = await answeredThenRevised(page, r, { untilSent: true });
-  await page.goto(`${app.origin}/#/t/${elsewhere.id}`);
-  await synced(page, app);
+  await away(page, app, r.projectId);
   send();
   await expect.poll(() => r.now().answer?.read).toBe(true);
   // Revision 2 is never drawn here: another page dismisses it, and the agent revises again.
@@ -144,13 +143,13 @@ test('#518 a dismissal elsewhere of revision 2 takes what revision 1’s answer 
   app.rt.act(r.t.id, r.item.id, 'dismiss', {}, 2);
   await expect.poll(() => r.now().answer?.read, { message: 'the agent read the dismissal' }).toBe(true);
   revise(r);
-  await page.goto(`${app.origin}/#/t/${r.t.id}`);
-  await synced(page, app);
+  await back(page, app, r.t.id);
   await expect(r.block.locator('.rv-receipt'), 'revision 3 is drawn').toBeVisible();
   const drafted = r.block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
   await expect(drafted.filter({ hasText: 'Index the titles too.' }), 'what revision 1 sent isn’t a draft').toHaveCount(0);
+  const settled = page.waitForResponse(`**/api/threads/${r.t.id}/items/${r.item.id}/act`);
   release();
-  await page.waitForResponse(`**/api/threads/${r.t.id}/items/${r.item.id}/act`);
+  await settled;
   await comment(page, r.block, 7, 'Rank by date.');
   await submit(r.block).click();
   await expect.poll(() => r.now().answer?.revision).toBe(3);

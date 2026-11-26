@@ -35,8 +35,9 @@ test('#518 what the person types into a form’s newer revision survives the old
   const two = { ...form, fields: [...form.fields, { id: 'b', label: 'When?', kind: 'text' }] };
   expect(tools.update_block({ block: two }).ok).toBe(true);
   await block.getByRole('textbox', { name: 'When?' }).fill('May');
+  const settled = page.waitForResponse(`**/api/threads/${t.id}/items/${item.id}/act`);
   release();
-  await page.waitForResponse(`**/api/threads/${t.id}/items/${item.id}/act`);
+  await settled;
   // The agent revises once more, which draws the form again from its draft.
   expect(tools.update_block({ block: { ...two, title: 'Plan the trip' } }).ok).toBe(true);
   await expect(block.getByRole('textbox', { name: 'When?' })).toHaveValue('May');
@@ -69,8 +70,9 @@ test('#518 a choice picked on a newer revision survives the older answer settlin
   const two = { ...choice, options: [...choice.options, { id: 'wed', label: 'Wednesday' }] };
   expect(tools.update_block({ block: two }).ok).toBe(true);
   await block.getByRole('button', { name: 'Wednesday' }).click();
+  const settled = page.waitForResponse(`**/api/threads/${t.id}/items/${item.id}/act`);
   release();
-  await page.waitForResponse(`**/api/threads/${t.id}/items/${item.id}/act`);
+  await settled;
   expect(tools.update_block({ block: { ...two, title: 'When?' } }).ok).toBe(true);
   await expect(block.getByRole('button', { name: 'Wednesday' })).toHaveAttribute('aria-pressed', 'true');
 });
