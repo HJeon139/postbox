@@ -92,7 +92,7 @@ test('#1810 an answer too long to give whole in the refusal isn’t settled: it 
   const long = Array.from({ length: 5 }, (_, i) => ({ line: 1, text: `${i} ${'x'.repeat(3500)}` }));
   const f = await answeredMidTurn({ comments: long });
   assert.equal(f.replies[0].ok, false);
-  assert.match(f.replies[0].message, /It reaches you whole when this turn ends: read it, then update\./);
+  assert.match(f.replies[0].message, /It reaches you when this turn ends: read it, then update\./);
   assert.equal(answersGiven(f.adapter, f.item.id).length, 1, 'the next turn gets it, whole, once');
 });
 
@@ -130,7 +130,7 @@ test('#1810 a long answer held behind the running turn stays in its queue, and c
     comments: long,
     during: ({ rt, se }) => startFromEntries(rt, se.id),
   });
-  assert.match(f.replies[0].message, /It reaches you whole when this turn ends/);
+  assert.match(f.replies[0].message, /It reaches you when this turn ends/);
   assert.equal(answersGiven(f.adapter, f.item.id).length, 1, 'the queued turn gets it, whole, once');
 });
 

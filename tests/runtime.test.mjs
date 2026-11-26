@@ -1387,7 +1387,7 @@ test('#123: an outcome over an answer the agent hasn’t read is refused, and a 
   const at = new Date(store.item(t.id, item.id).answer.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   assert.equal(
     replies[0].message,
-    `The outcome wasn’t recorded: you haven’t read the answer it reports on. The person answered revision 1 of frames at ${at}: cancel {}. Their answer stays on screen. It was waiting for this turn to end, and comes here instead, so that’s the whole answer. Read it, then record the outcome.`,
+    `The outcome wasn’t recorded: you haven’t read the answer it reports on. The person answered revision 1 of frames at ${at}: cancel {}. Their answer stays on screen. It reaches you when this turn ends: read it, then record the outcome.`,
   );
   assert.equal(store.item(t.id, item.id).block.outcome, undefined);
   assert.equal(store.item(t.id, item.id).answered, true);

@@ -32,7 +32,7 @@ export function unreadAnswer(apps, sessionId, threadId, it, outcome = false) {
   // shows run without a card (write-intent.mjs, requestOf).
   const settles = full.length <= CATCH_UP_CHARS && !apps.running.turnOf(sessionId)?.remote && it.block.type !== 'confirm';
   const waited = stillWaits(apps, sessionId, it);
-  if (waited && !settles) return { ok: false, message: `${said} It reaches you whole when this turn ends: read it, ${then}.` };
+  if (waited && !settles) return { ok: false, message: `${said} It reaches you when this turn ends: read it, ${then}.` };
   if (waited) settleWaiting(apps, sessionId, it);
   apps.threads.patchItem(threadId, it.id, { answer: { ...a, read: true } });
   const why = waited ? 'It was waiting for this turn to end, and comes here instead' : 'It didn’t reach you in a turn';

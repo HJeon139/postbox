@@ -42,7 +42,7 @@ test('#1810 on a host, the answer isn’t settled by a refusal its agent never r
     },
   });
   assert.equal(f.replies[0].ok, false);
-  assert.match(f.replies[0].text, /It reaches you whole when this turn ends: read it, then update\.$/);
+  assert.match(f.replies[0].text, /It reaches you when this turn ends: read it, then update\.$/);
   assert.deepEqual(states[0], { entry: 'waiting', read: false }, 'its entry still waits, unread');
   // One turn follows, given the whole answer.
   const given = answersGiven(f.adapter, f.item.id);
@@ -84,7 +84,7 @@ test('#1810 a confirm’s answer isn’t settled by the refusal: it starts its t
       }),
   });
   assert.equal(f.replies[0].ok, false);
-  assert.match(f.replies[0].message, /It reaches you whole when this turn ends: read it, then update\.$/);
+  assert.match(f.replies[0].message, /It reaches you when this turn ends: read it, then update\.$/);
   assert.deepEqual(read, [false, false], 'unread until its turn starts');
   assert.equal(answersGiven(f.adapter, f.item.id).length, 1);
   assert.deepEqual(request?.confirmed, [{ label: 'Run them', statement: confirm.statement }]);
