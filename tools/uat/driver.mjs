@@ -132,7 +132,7 @@ export function driver(page, hooks = {}) {
         })()`;
         const tag = await ev(`${control}?.tagName ?? null`);
         if (!tag) throw new Error(`Couldn’t find the field “${field}”.`);
-        if (tag === 'SELECT') await pickOption(ev, control, value);
+        if (tag === 'SELECT') await pickOption(ev, control, field, value);
         else await typeInto(control, String(value), `the field “${field}”`);
       }
       for (const option of choose) await clickAt(byText(ITEM(key), 'button.chip, [role=radio], [role=checkbox], label', option), `the option “${option}”`);
