@@ -88,12 +88,30 @@ const shown = (s) => s.output ?? s.detail;
  * @param {any} w  the call's ledger entry @param {(sha256: string) => string | null} blob
  */
 function storedResult(w, blob) {
-  const out = w?.endedInBackground ? w.callOutput : w?.output;
-  if (typeof out?.size === 'number' && out.size > RESULT_READ_BYTES) return `[output too large to read: ${out.size.toLocaleString('en-US')} bytes]`;
+  return outputResult(w?.endedInBackground ? w.callOutput : w?.output, blob, '');
+}
+
+/**
+ * A background command's output as the ledger kept it once its job ended, as its result, saying it can be the job's:
+ * what's left when neither the output its call ended with nor its step's text is, as in an export from a data folder,
+ * whose snapshot keeps only the entry's last state (#1757). Null for any other call. @param {any} w  the call's ledger entry @param {(sha256: string) => string | null} blob
+ */
+function jobResult(w, blob) {
+  if (!w?.endedInBackground) return null;
+  return outputResult(
+    w.output,
+    blob,
+    '[the command ran in the background: this is what the work ledger kept once its job ended, which can be the job’s output, not what the call returned]\n',
+  );
+}
+
+/** A stored output as a result, after `note`, or null when it doesn't read back. @param {any} out @param {(sha256: string) => string | null} blob @param {string} note */
+function outputResult(out, blob, note) {
+  if (typeof out?.size === 'number' && out.size > RESULT_READ_BYTES) return `${note}[output too large to read: ${out.size.toLocaleString('en-US')} bytes]`;
   const text = typeof out?.sha256 === 'string' ? blob(out.sha256) : null;
   if (typeof text !== 'string') return null;
   const kept = out.cut ? `[the work ledger kept only its last ${out.size.toLocaleString('en-US')} bytes]\n` : '';
-  return resultContent(kept + text);
+  return resultContent(note + kept + text);
 }
 
 /**
@@ -136,7 +154,7 @@ export function callsOf(it, ledger, questions = new Map(), blob = () => null) {
     };
   });
   const results = calls.flatMap((s) => {
-    const content = storedResult(ledger.get(s.id), blob) ?? shown(s);
+    const content = storedResult(ledger.get(s.id), blob) ?? shown(s) ?? jobResult(ledger.get(s.id), blob);
     return typeof content === 'string' ? [{ source_call_id: s.id, content }] : [];
   });
   return { tool_calls, results, thoughts, narration };

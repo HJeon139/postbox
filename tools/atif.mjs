@@ -85,8 +85,11 @@ function foldOne(f, e) {
       e.seq,
     );
   else if (e.type === 'entry.patch') noteTake(f, d.sessionId, Object.assign(inboxOf(f, d.sessionId).get(d.id) ?? {}, d.patch), e.seq);
-  else if (e.type === 'work.add' && WORK_KINDS.has(d.entry?.kind)) f.work.set(d.entry.id, { ...d.entry, from: e.seq });
-  else if (e.type === 'work.patch' && f.work.has(d.id)) {
+  else if (e.type === 'work.add' && WORK_KINDS.has(d.entry?.kind)) {
+    // A snapshot replays each entry as it ended, as a work.add: its output is the call's unless its job's replaced it.
+    const own = d.entry.output && !d.entry.endedInBackground ? { callOutput: d.entry.output } : {};
+    f.work.set(d.entry.id, { ...d.entry, ...own, from: e.seq });
+  } else if (e.type === 'work.patch' && f.work.has(d.id)) {
     const w = f.work.get(d.id);
     // The output a call ended with, kept apart from the job's a background command's may be replaced with later (#1757).
     if (d.patch?.output && !d.patch.endedInBackground) w.callOutput = d.patch.output;

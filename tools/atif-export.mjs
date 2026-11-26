@@ -13,8 +13,8 @@
 //   say what it lost.
 // Each turn’s prompt comes from prompts.jsonl, which a UAT run records in its data folder (#1528): beside the events
 // file, or in the run’s or the data folder. Without it, a trajectory says what it leaves out (tools/atif-prompts.mjs).
-// Each call’s output, where no live frame carried it, comes from the data folder’s blobs, which the work ledger names
-// by hash (tools/atif-calls.mjs).
+// Each call’s output comes from the data folder’s blobs, which the work ledger names by hash, and only where no blob
+// reads back from what a live frame carried (tools/atif-calls.mjs, #1757).
 // Each trajectory goes to <out>/<handle>-<session>.atif.json; with no --out and one trajectory, to standard output.
 
 import { createHash } from 'node:crypto';
