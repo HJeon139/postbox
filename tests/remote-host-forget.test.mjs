@@ -3,66 +3,15 @@
 // a daemon from before `forget` leaves it owed and isn’t asked again on that connection.
 
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { oweForget, sendForgets, watchForgets } from '../server/remote/host-forget.mjs';
-import { Store } from '../server/store.mjs';
+import { rig, settled } from './remote-host-forget-rig.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
 // What a daemon from before `forget` answers it, recorded from main’s daemon at bb315158 (an in-process daemon given
 // the line, the way tests/fixtures/remote/models-before-1312.json was): it refuses a message it doesn’t carry.
 const BEFORE_FORGET = JSON.parse(readFileSync(new URL('./fixtures/remote/forget-before-491.json', import.meta.url), 'utf8'));
-
-/**
- * Hosts (host-service.mjs) over a real store with two hosts, and a fake manager: each host’s link, its state, and
- * what the daemon answers each message. answer(msg) is the reply, or null for none.
- * @param {{ answer?: (m: any) => any, connected?: string[], store?: any }} [o]
- */
-function rig({ answer = (m) => ({ type: 'forgotten', persona: m.persona }), connected = ['ho_a'], store = new Store(null) } = {}) {
-  for (const [id, name] of [
-    ['ho_a', 'a.example'],
-    ['ho_b', 'b.example'],
-  ])
-    store.emit('host', { id, name, settings: {}, createdAt: 1 });
-  const manager = Object.assign(new EventEmitter(), { links: new Map(), states: new Map(), needs: /** @type {any[]} */ ([]) });
-  const linkOf = (/** @type {string} */ id) => {
-    if (!manager.links.has(id)) manager.links.set(id, newLink(answer));
-    return manager.links.get(id);
-  };
-  for (const id of connected) manager.states.set(id, 'connected');
-  Object.assign(manager, {
-    status: (/** @type {string} */ id) => ({ state: manager.states.get(id) ?? 'disconnected' }),
-    link: linkOf,
-    need: (/** @type {string} */ id) => manager.needs.push(['need', id]),
-    release: (/** @type {string} */ id) => manager.needs.push(['release', id]),
-    /** The host connects again: as in hosts.mjs, the host keeps its link, and link.mjs gives it a new welcome. @param {string} id */
-    connect(id) {
-      const l = linkOf(id);
-      l.connected = true;
-      l.welcome = {};
-      manager.states.set(id, 'connected');
-      manager.emit('status', id);
-    },
-  });
-  return { store, manager, hosts: /** @type {any} */ ({ store, manager }) };
-}
-
-/** A link whose daemon answers each message with answer(msg). @param {(m: any) => any} answer */
-function newLink(answer) {
-  const l = Object.assign(new EventEmitter(), { connected: true, welcome: {}, sent: /** @type {any[]} */ ([]) });
-  Object.assign(l, {
-    send(/** @type {any} */ msg) {
-      l.sent.push(msg);
-      const reply = answer(msg);
-      if (reply) setImmediate(() => l.emit('message', reply));
-      return true;
-    },
-  });
-  return /** @type {any} */ (l);
-}
-
-const settled = () => new Promise((r) => setImmediate(() => setImmediate(r)));
 
 test('#491 a deleted persona is owed by every host; a connected one removes it at once, and one that connects later then', async () => {
   const { store, manager, hosts } = rig();
