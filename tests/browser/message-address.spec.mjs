@@ -212,9 +212,13 @@ test('#168 Back to a message’s address from another conversation goes to the m
   await expect.poll(() => landed(page, items[3].id)).toBe('landed');
   await page.keyboard.press('End');
   await expect.poll(() => landed(page, items[3].id), { message: 'read on past it' }).toBe('not in view');
+  // To another conversation within the page, as the rail goes there, and back.
   const away = longRoom(app, 'Address, elsewhere again').t;
-  await page.goto(`${app.origin}/#/t/${away.id}`);
   await synced(page, app);
+  await page.evaluate((id) => {
+    location.hash = `#/t/${id}`;
+  }, away.id);
+  await expect(page.locator('.transcript')).toHaveAttribute('data-thread', away.id);
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`\\?m=${items[3].id}$`));
   await expect.poll(() => landed(page, items[3].id), { message: 'on the message again' }).toBe('landed');
