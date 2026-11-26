@@ -16,7 +16,7 @@ import { review } from './driver-review.mjs';
 import { pickOption } from './driver-select.mjs';
 import { keeper, shots } from './driver-shots.mjs';
 import { pressKey } from './keys.mjs';
-import { byText, ITEM, JUMP, THREAD_LINK } from './selectors.mjs';
+import { byOption, byText, ITEM, JUMP, THREAD_LINK } from './selectors.mjs';
 
 // The answers to Stop’s question about background jobs, in the decision’s words (#126), with “Stop them too” for more
 // than one job. Written against fix/p0-stop’s ask row before it merged; if its buttons change, change them here.
@@ -135,7 +135,7 @@ export function driver(page, hooks = {}) {
         if (tag === 'SELECT') await pickOption(ev, control, field, value);
         else await typeInto(control, String(value), `the field “${field}”`);
       }
-      for (const option of choose) await clickAt(byText(ITEM(key), 'button.chip, [role=radio], [role=checkbox], label', option), `the option “${option}”`);
+      for (const option of choose) await clickAt(byOption(ITEM(key), 'button.chip, [role=radio], [role=checkbox], label', option), `the option “${option}”`);
       // A control may be a link, such as Work’s links, or a summary, such as a turn’s work record (“2 files +112 −0”).
       if (button) await clickAt(byText(ITEM(key), 'button, a[href], [role=button], summary', button), `the button “${button}”`);
     },
