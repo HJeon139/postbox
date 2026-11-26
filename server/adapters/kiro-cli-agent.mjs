@@ -60,6 +60,8 @@ export function kiroRules({ persona, folders, reads = [], resolve = true, kiroHo
   const mode = persona?.permissionMode ?? 'auto';
   // In Auto with Shell, any command runs, so a read or an edit follows the shell’s rule anywhere (#1723, as #1710 did
   // for Antigravity): Kiro can’t ask, and refusing a file tool what a command may do only sent the agent to the shell.
+  // For file tools Kiro reads `*` within one path segment and `**` across them (kiro.dev/docs/permissions), so it’s
+  // `**`. Kiro itself asks before any write in .git, which headless is a refusal, so .git edits stay refused anyway.
   const shellReach = mode === 'auto' && has.has('shell');
   if ((mode === 'acceptEdits' || mode === 'auto') && dirs.length) {
     rules.push({ capability: 'fs_write', match: dirs, effect: 'allow' });
@@ -70,8 +72,9 @@ export function kiroRules({ persona, folders, reads = [], resolve = true, kiroHo
     rules.push({ capability: 'fs_write', match: dirs.flatMap((d) => (shellReach ? [`${d}/.kiro`] : [`${d}/.kiro`, `${d}/.git`])), effect: 'deny' });
   }
   if (shellReach) {
-    rules.push({ capability: 'fs_read', match: ['*'], effect: 'allow' }, { capability: 'fs_write', match: ['*'], effect: 'allow' });
-    // Kiro’s own home stays as its working folders’ .kiro does: its settings start MCP servers.
+    rules.push({ capability: 'fs_read', match: ['**'], effect: 'allow' }, { capability: 'fs_write', match: ['**'], effect: 'allow' });
+    // Kiro’s own home stays as its working folders’ .kiro does: its settings start MCP servers. A command can still
+    // write both, so this keeps the file tools honest rather than holding a boundary.
     if (kiroHome) rules.push({ capability: 'fs_write', match: resolve ? spellings(kiroHome) : [kiroHome], effect: 'deny' });
   }
   // Auto runs what the persona’s Tools allow, as #416’s option A: Kiro has no Auto of its own, and nothing judges these

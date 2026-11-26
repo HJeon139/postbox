@@ -57,8 +57,9 @@ export function kiroRemoteEnv(persona, home) {
 }
 
 /**
- * The Kiro home a persona’s turn runs with on a host: Postbox’s own for it when Isolated, else the host’s KIRO_HOME or
- * ~/.kiro, which the daemon finds. Null when the host’s home isn’t known yet. @param {any} persona @param {string|undefined} home
+ * The Kiro home a persona’s turn runs with on a host, as far as this computer knows: Postbox’s own for it when
+ * Isolated, else ~/.kiro. A host whose own KIRO_HOME names another folder runs with that one (daemon-start.mjs), which
+ * this doesn’t see. Null when the host’s home isn’t known yet. @param {any} persona @param {string|undefined} home
  */
 export function remoteKiroHome(persona, home) {
   if (!home) return null;
