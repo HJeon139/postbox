@@ -11,5 +11,7 @@ export function hostTurnsPort(rt) {
     cancel: (sessionId) => rt.remote.cancel(sessionId),
     confirmStops: (hostId, waitMs) => rt.remote.confirmStops(hostId, waitMs),
     stoppingSession: (turnId) => rt.remote.stopping.get(turnId)?.sessionId,
+    stoppingPersonas: (hostId) => [...rt.remote.stopping.values()].filter((s) => s.hostId === hostId).map((s) => s.personaId),
+    onStopEnded: (heard) => rt.remote.stopsEnded.add(heard),
   };
 }

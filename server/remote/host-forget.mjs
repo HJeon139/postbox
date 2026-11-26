@@ -8,6 +8,10 @@
 // One host serves more than one Postbox in turn (a hello’s takeover, #759’s relay), and each keeps its own persona
 // ids, so a host removes only the folder it’s named, never every folder a list leaves out.
 //
+// A persona deleted while one of its turns is still stopping on a host (a stop there is a SIGINT the turn ends in its
+// own time) isn’t sent there until the host confirms that turn is over: the turn could write its memory again after
+// the removal (#1680). The removal stays owed meanwhile, and goes when the stop is confirmed.
+//
 // A daemon older than `forget` refuses it as a message it doesn’t carry (tests/fixtures/remote/forget-before-491.json):
 // its removals stay owed until the host runs this version, and the server log says so, once per connection.
 
@@ -45,10 +49,24 @@ export function watchForgets(hosts) {
   };
   hosts.manager?.on('status', ifConnected);
   hosts.store.subscribe((/** @type {any} */ ev) => ev.type === 'host.forget' && ev.data?.add?.length && ifConnected(ev.data.id));
+  // A stop the host confirmed may free a removal held for it (#1680).
+  hosts.hostTurns?.onStopEnded(ifConnected);
+}
+
+/** @param {Hosts} hosts @param {string} hostId @returns {string[]} */
+const owedTo = (hosts, hostId) => hosts.store.state.hostForgets?.[hostId] ?? [];
+
+/**
+ * What a host is sent now: what it owes, but a persona with a turn still stopping there (#1680).
+ * @param {Hosts} hosts @param {string} hostId
+ */
+function sendable(hosts, hostId) {
+  const stopping = new Set(hosts.hostTurns?.stoppingPersonas(hostId) ?? []);
+  return owedTo(hosts, hostId).filter((p) => !stopping.has(p));
 }
 
 /**
- * Sends a host every removal it owes, and drops each it answers. Keeps the host connected while it waits, up to waitMs.
+ * Sends a host every removal it owes (but those held by a turn stopping there), and drops each it answers. Keeps the host connected while it waits, up to waitMs.
  * @param {Hosts} hosts @param {string} hostId
  * @param {{ waitMs?: number, setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (t: any) => void }} [o]
  */
@@ -57,7 +75,7 @@ export async function sendForgets(
   hostId,
   { waitMs = FORGET_WAIT_MS, setTimer = (fn, ms) => setTimeout(fn, ms).unref(), clearTimer = clearTimeout } = {},
 ) {
-  const owed = hosts.store.state.hostForgets?.[hostId] ?? [];
+  const owed = sendable(hosts, hostId);
   const busy = sending.get(hosts) ?? new Set();
   sending.set(hosts, busy);
   if (!owed.length || busy.has(hostId) || !hosts.manager) return;
@@ -77,8 +95,8 @@ export async function sendForgets(
     hosts.manager.release(hostId, why);
     busy.delete(hostId);
   }
-  // Owed while this send waited: sent now, on the same connection.
-  const more = (hosts.store.state.hostForgets?.[hostId] ?? []).some((p) => !owed.includes(p));
+  // Owed while this send waited, or no longer held by a turn stopping there: sent now, on the same connection.
+  const more = sendable(hosts, hostId).some((p) => !owed.includes(p));
   if (more && !isDone(l)) await sendForgets(hosts, hostId, { waitMs, setTimer, clearTimer });
 }
 

@@ -16,7 +16,7 @@ import { encode, HARNESSES, message, PROTOCOL_VERSION, utf8Bytes } from '../shar
 /**
  * The fake’s state: createFakeDaemon’s options, and what it holds and records.
  * @typedef {{ token: string, lines: string[], autoEnd: boolean, exit: { code: number | null, signal: string | null },
- *   stopExit: { code: number | null, signal: string | null }, home: string, now: () => number, harnesses: string[],
+ *   stopExit: { code: number | null, signal: string | null } | null, home: string, now: () => number, harnesses: string[],
  *   problems: { code: string, message: string }[], holdCaughtUp: string[], callLines: boolean,
  *   check: (argv: string[]) => { code: number | null } | Promise<{ code: number | null }>, removing: string,
  *   turns: Map<string, FakeTurn>, pending: Map<string, object>,
@@ -110,6 +110,10 @@ export const HANDLERS = {
     send(d, c, 'started', { turn: m.turn });
     if (d.autoEnd) finish(d, t, d.exit);
   },
+  // As daemon-forget.mjs answers a persona whose memory folder it removed (#491); the fake keeps no folders.
+  forget(d, c, m) {
+    send(d, c, 'forgotten', { persona: m.persona });
+  },
   snapshot(d, _c, m) {
     const t = d.turns.get(m.turn);
     if (t) t.snapshot = m;
@@ -157,6 +161,7 @@ export const HANDLERS = {
     const t = d.turns.get(m.turn);
     if (!t) return fail(d, c, 'no-turn', `There’s no turn ${m.turn} on this host.`, 'stop', m.turn);
     d.stops.push(m.turn);
+    if (!d.stopExit) return;
     const reading = c.follows.has(`${m.turn}:out`);
     finish(d, t, d.stopExit);
     // As the real daemon’s quiet follower: a connection that isn’t reading the turn hears its `ended` on its own.
@@ -183,7 +188,7 @@ export const HANDLERS = {
     // cleanup.mjs’s rootProblem, word for word but the path.
     if (d.removing === 'refuse')
       return fail(d, c, 'internal', '/home/user/.postbox-remote isn’t a folder (it’s a link or a file), so Postbox won’t delete anything in it.', 'remove');
-    for (const t of d.turns.values()) finish(d, t, d.stopExit);
+    for (const t of d.turns.values()) finish(d, t, d.stopExit ?? { code: null, signal: 'SIGINT' });
     d.turns.clear();
     send(d, c, 'removed', {});
     close(d, c);
