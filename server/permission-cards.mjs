@@ -2,6 +2,7 @@
 // Runtime keeps a one-line method for each, so its callers and tests don’t change.
 
 import { isDeepStrictEqual } from 'node:util';
+import { cutText } from '../shared/text-parts.mjs';
 import { adapterOf } from './adapters/adapter.mjs';
 import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
@@ -69,7 +70,7 @@ export function askPerson(
     handle: se.handle,
     turnId: turn.id,
     tool: String(tool ?? '').slice(0, 120),
-    summary: String(summary).slice(0, 200),
+    summary: cutText(String(summary), 200),
     ...writeOf(tool, input, detail, draft),
     // The tool call it’s about, so a refusal of a call you answered here doesn’t get a second card.
     toolUseId: toolUseId ? String(toolUseId) : null,
@@ -188,9 +189,7 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
       { edited: it.tool === 'Bash' ? input.command : JSON.stringify(input, null, 2) },
     );
   } else {
-    const reason = String(values?.reason ?? '')
-      .trim()
-      .slice(0, MAX_REASON);
+    const reason = cutText(String(values?.reason ?? '').trim(), MAX_REASON);
     rt.threads.addItem(threadId, { kind: 'voice', text: `Didn’t allow: ${asked}${reason ? ` (“${reason}”)` : ''}` });
     rt.settlePermission(
       itemId,
@@ -257,9 +256,9 @@ export function recordDenial(rt, turn, d) {
     turnId: turn.id,
     toolUseId: key,
     tool: String(d.tool ?? '').slice(0, 120),
-    summary: String(d.label ?? d.tool ?? '').slice(0, 200),
-    detail: detail.slice(0, 4000),
-    reason: String(d.reason ?? '').slice(0, 400),
+    summary: cutText(String(d.label ?? d.tool ?? ''), 200),
+    detail: cutText(detail, 4000),
+    reason: cutText(String(d.reason ?? ''), 400),
     reasonType: d.reasonType ? String(d.reasonType).slice(0, 40) : null,
     who: d.who ? String(d.who).slice(0, 40) : null,
     rules,
@@ -328,10 +327,10 @@ function writeOf(tool, input, detail, given) {
       ? JSON.stringify({ ...input, [draft.field]: '(the draft above)' }, null, 2)
       : null;
   return {
-    detail: String(rest ?? detail).slice(0, 4000),
+    detail: cutText(String(rest ?? detail), 4000),
     // Where it lands, so the card can say so before anything exists there.
     ...(outside ? { outside: true, where: whereOf(String(tool ?? ''), input) } : {}),
-    ...(draft ? { draft: { field: draft.field, text: String(draft.text).slice(0, 20000) } } : {}),
+    ...(draft ? { draft: { field: draft.field, text: cutText(String(draft.text), 20000) } } : {}),
   };
 }
 

@@ -4,6 +4,7 @@
 // server/runtime.mjs; Runtime keeps a method of each name that delegates here.
 
 import { parseMentions } from '../shared/text.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 import * as queue from './message-queue.mjs';
 import { refuseWhileHeld } from './run-clock-held.mjs';
@@ -27,7 +28,7 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   const retryId = typeof clientId === 'string' && clientId ? clientId.slice(0, 100) : undefined;
   const repeat = retryId && repeatOf(rt, threadId, retryId);
   if (repeat) return repeat;
-  text = String(text).slice(0, 50000);
+  text = cutText(String(text), 50000);
   attachments = rt.assets.sentAttachments(attachments);
   if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
   const mentioned = parseMentions(text, rt.personas.handles())
