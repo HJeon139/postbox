@@ -8,8 +8,8 @@
 // Each reads the run’s event history, and the first also the scenario’s definition of done, which only
 // tests/uat/e2e/scenarios/idleroom.md gives: in any other run it finds nothing.
 
+import { workOf } from './board-log.mjs';
 import { midTurnAsks } from './mid-turn-asks.mjs';
-import { nightlyWork } from './nightly-log.mjs';
 import { clockOf, quietStretches } from './quiet-stretches.mjs';
 
 /**
@@ -54,24 +54,31 @@ export function stretchLine(s) {
 /** How long a stretch went on after work could have gone on: past the timed step’s end, or all of it with none queued. @param {ReturnType<typeof quietStretches>[number]} s */
 const idleFor = (s) => s.overdueMs ?? s.ms;
 
+/** How a stall with no timed step pending reads: in a sprint room, and in a room whose timed step nobody had started. */
+const UNQUEUED = {
+  sprint: { how: 'with the sprint unfinished and nothing to restart it', why: 'The second sprint’s stories weren’t all done.' },
+  timed: {
+    how: 'with work waiting, the timed step not yet queued and nothing to restart it',
+    why: 'Nobody had queued the timed step yet: the work stopped before it.',
+  },
+};
+
 /**
  * Each quiet stretch with the work not done, nobody asked and nothing scheduled, that went on `min` or more after the
  * next step could have started, as a finding. It says whether the timed step had been queued: a hand-off dropped
  * before anyone queued it is a room idle with work waiting too, from another cause.
  * @param {any} f  @param {{ min?: number, work?: import('./quiet-stretches.mjs').Work }} [opts]
  */
-export function idleFindings(f, { min = IDLE_MIN_MS, work = nightlyWork(f) } = {}) {
+export function idleFindings(f, { min = IDLE_MIN_MS, work = workOf(f) } = {}) {
   return quietStretches(f, work)
     .filter((s) => s.waiting === 'nothing' && idleFor(s) >= min)
     .map((s) => {
       const queued = s.overdueMs !== null;
-      const how = queued
-        ? 'after the timed step was due, with nothing to restart it'
-        : 'with work waiting, the timed step not yet queued and nothing to restart it';
+      const how = queued ? 'after the timed step was due, with nothing to restart it' : UNQUEUED[work.customer ? 'sprint' : 'timed'].how;
       return {
         key: `idle-work-waiting:${s.from}`,
         title: `The room sat idle for ${lengthOf(idleFor(s))} ${how}`,
-        evidence: `No agent was in a turn and no item arrived for ${stretchLine(s)} ${queued ? 'The timed step had been queued, and nothing told the room it had finished.' : 'Nobody had queued the timed step yet: the work stopped before it.'} The definition of done wasn’t met, no ask was open and no wake was scheduled.`,
+        evidence: `No agent was in a turn and no item arrived for ${stretchLine(s)} ${queued ? 'The timed step had been queued, and nothing told the room it had finished.' : UNQUEUED[work.customer ? 'sprint' : 'timed'].why} The definition of done wasn’t met, no ask was open and no wake was scheduled.`,
       };
     });
 }
@@ -108,7 +115,7 @@ export function uncountedAskFindings(f, { min = ASK_UNCOUNTED_MS } = {}) {
  * The measurement: each classed quiet stretch of a minute or more, and the timed step’s own line. None for a run with
  * neither. @param {any} f  @param {import('./quiet-stretches.mjs').Work} [work]
  */
-export function quietMeasure(f, work = nightlyWork(f)) {
+export function quietMeasure(f, work = workOf(f)) {
   const listed = quietStretches(f, work).filter((s) => s.ms >= QUIET_LISTED_MS && s.waiting !== 'unknown');
   const step = timedStepLine(work);
   if (!listed.length && !step) return [];

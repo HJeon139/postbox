@@ -1,5 +1,5 @@
 {
-  "source": "Cut from the first paid idleroom run’s events.jsonl (uat-runs/2026-11-26T07-38-10-idleroom, main at 0a264559f, four agents on Claude Code), from its start to the seq given as “until”: the sprint, the 11 minutes the room was quiet on @researcher’s scheduled wake, and the turns after the wake. Each event keeps its seq and order and only the fields the readers read (tools/uat/quiet-stretches.mjs, standup.mjs, idle-triggers.mjs): a session’s state, times and need; an item’s id, time, kind, turn and status, and the person’s messages whole; an entry’s source, sender, reply and whether it came back, and the turn that took it; a work-ledger line’s kind, turn and agent; a reaction’s author and time; whom a reply went back to. A reply’s streamed words (many item.text events) are one event where its first chunk was, cut to 120 characters with whitespace joined. A session event that repeats its session’s last one but for its time is dropped, so each change of state keeps its first event. Nothing is added, reordered or retimed. “nightly” is the nightly check’s own record from the run’s kept workspace (.git/nightly-log.jsonl), whole.",
+  "source": "Cut from the first paid idleroom run’s events.jsonl (uat-runs/2026-11-26T07-38-10-idleroom, main at 0a264559f, four agents on Claude Code), from its start to the seq given as “until”: the sprint, the 11 minutes the room was quiet on @researcher’s scheduled wake, and the turns after the wake. Each event keeps its seq and order and only the fields the readers read (tools/uat/quiet-stretches.mjs, standup.mjs, idle-triggers.mjs): a session’s state, times and need; an item’s id, time, kind, turn and status, and the person’s messages whole; an entry’s source, sender, reply and whether it came back, and the turn that took it; a work-ledger line’s kind, turn, agent and start, and a command’s first 80 characters; a reaction’s author and time; whom a reply went back to. A reply’s streamed words (many item.text events) are one event where its first chunk was, cut to 120 characters with whitespace joined. A session event that repeats its session’s last one but for its time is dropped, so each change of state keeps its first event. Nothing is added, reordered or retimed. “nightly” is the nightly check’s own record from the run’s kept workspace (.git/nightly-log.jsonl), whole.",
   "run": "2026-11-26T07-38-10-idleroom",
   "until": 2260,
   "nightly": [
@@ -105,7 +105,17 @@
     {
       "seq": 43,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_uRZZctqa", "turnId": "turn_MCttAOJX", "sessionId": "se_QaZzpEcS", "handle": "alpha" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_uRZZctqa",
+          "turnId": "turn_MCttAOJX",
+          "sessionId": "se_QaZzpEcS",
+          "handle": "alpha",
+          "startedAt": 1795678710172,
+          "command": "pwd && ls -la && git status --short && git log --oneline -5 2>/dev/null; echo -…"
+        }
+      }
     },
     {
       "seq": 44,
@@ -136,7 +146,17 @@
     {
       "seq": 50,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_N0lMpvKn", "turnId": "turn_MCttAOJX", "sessionId": "se_QaZzpEcS", "handle": "alpha" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_N0lMpvKn",
+          "turnId": "turn_MCttAOJX",
+          "sessionId": "se_QaZzpEcS",
+          "handle": "alpha",
+          "startedAt": 1795678715950,
+          "command": "cat > BOARD.md <<'EOF' # Board: slug sprint Goal: `slug.mjs` exports `slug(titl…"
+        }
+      }
     },
     {
       "seq": 51,
@@ -350,7 +370,17 @@
     {
       "seq": 113,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_bA8bcGYa", "turnId": "turn_MaSmM8RX", "sessionId": "se_hlzKMhfj", "handle": "developer" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_bA8bcGYa",
+          "turnId": "turn_MaSmM8RX",
+          "sessionId": "se_hlzKMhfj",
+          "handle": "developer",
+          "startedAt": 1795678721642,
+          "command": "ls -la && cat BOARD.md && echo ---- && cat nightly.mjs && node --version"
+        }
+      }
     },
     {
       "seq": 114,
@@ -556,7 +586,17 @@
     {
       "seq": 193,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_mgUu8qMw", "turnId": "turn_MaSmM8RX", "sessionId": "se_hlzKMhfj", "handle": "developer" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_mgUu8qMw",
+          "turnId": "turn_MaSmM8RX",
+          "sessionId": "se_hlzKMhfj",
+          "handle": "developer",
+          "startedAt": 1795678726253,
+          "command": "cat > slug.mjs <<'EOF' /** * Makes a lowercase URL slug from a title. * Runs of…"
+        }
+      }
     },
     {
       "seq": 194,
@@ -590,7 +630,17 @@
     {
       "seq": 199,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_K3RvnXa0", "turnId": "turn_ByZihPqk", "sessionId": "se_EmtPrqkZ", "handle": "researcher" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_K3RvnXa0",
+          "turnId": "turn_ByZihPqk",
+          "sessionId": "se_EmtPrqkZ",
+          "handle": "researcher",
+          "startedAt": 1795678726804,
+          "command": "cat BOARD.md && ls -la && git log --oneline | head -5"
+        }
+      }
     },
     {
       "seq": 200,
@@ -1076,7 +1126,17 @@
     {
       "seq": 342,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_E6W2F7J6", "turnId": "turn_hcKLocvs", "sessionId": "se_zyg5B2EM", "handle": "critic" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_E6W2F7J6",
+          "turnId": "turn_hcKLocvs",
+          "sessionId": "se_zyg5B2EM",
+          "handle": "critic",
+          "startedAt": 1795678733636,
+          "command": "cat slug.mjs && echo ---- && cat slug.test.mjs && echo ---- && node --test 2>&1…"
+        }
+      }
     },
     {
       "seq": 343,
@@ -1107,7 +1167,17 @@
     {
       "seq": 351,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_PtW3DVJW", "turnId": "turn_RXSwm0wb", "sessionId": "se_QaZzpEcS", "handle": "alpha" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_PtW3DVJW",
+          "turnId": "turn_RXSwm0wb",
+          "sessionId": "se_QaZzpEcS",
+          "handle": "alpha",
+          "startedAt": 1795678735332,
+          "command": "node --test 2>&1 | tail -4 && cat slug.mjs slug.test.mjs"
+        }
+      }
     },
     {
       "seq": 353,
@@ -1256,7 +1326,17 @@
     {
       "seq": 384,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_FkZMxCiI", "turnId": "turn_RXSwm0wb", "sessionId": "se_QaZzpEcS", "handle": "alpha" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_FkZMxCiI",
+          "turnId": "turn_RXSwm0wb",
+          "sessionId": "se_QaZzpEcS",
+          "handle": "alpha",
+          "startedAt": 1795678738374,
+          "command": "sed -i 's/^- \\[ \\] `slug.test.mjs` has five tests, all passing under `node --te…"
+        }
+      }
     },
     {
       "seq": 385,
@@ -2234,7 +2314,17 @@
     {
       "seq": 672,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_Kg8jFgCH", "turnId": "turn_sds8pVUQ", "sessionId": "se_hlzKMhfj", "handle": "developer" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_Kg8jFgCH",
+          "turnId": "turn_sds8pVUQ",
+          "sessionId": "se_hlzKMhfj",
+          "handle": "developer",
+          "startedAt": 1795678754366,
+          "command": "git add slug.mjs slug.test.mjs && git commit -q -m \"Add slug() helper with test…"
+        }
+      }
     },
     {
       "seq": 674,
@@ -3030,7 +3120,17 @@
     {
       "seq": 950,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_RRG1Ggq6", "turnId": "turn_T0qqPpSC", "sessionId": "se_EmtPrqkZ", "handle": "researcher" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_RRG1Ggq6",
+          "turnId": "turn_T0qqPpSC",
+          "sessionId": "se_EmtPrqkZ",
+          "handle": "researcher",
+          "startedAt": 1795678764289,
+          "command": "date -u && git log --oneline && node -e \"import('./slug.mjs').then(m=>{const s=…"
+        }
+      }
     },
     {
       "seq": 954,
@@ -3862,7 +3962,17 @@
     {
       "seq": 1212,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_inFWjEBb", "turnId": "turn_YUd5N3SZ", "sessionId": "se_EmtPrqkZ", "handle": "researcher" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_inFWjEBb",
+          "turnId": "turn_YUd5N3SZ",
+          "sessionId": "se_EmtPrqkZ",
+          "handle": "researcher",
+          "startedAt": 1795678775495,
+          "command": "date -u && node nightly.mjs status"
+        }
+      }
     },
     {
       "seq": 1216,
@@ -5257,7 +5367,17 @@
     {
       "seq": 1600,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_8YUIo92z", "turnId": "turn_vhhPgSQF", "sessionId": "se_EmtPrqkZ", "handle": "researcher" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_8YUIo92z",
+          "turnId": "turn_vhhPgSQF",
+          "sessionId": "se_EmtPrqkZ",
+          "handle": "researcher",
+          "startedAt": 1795678800418,
+          "command": "date -u && node nightly.mjs status"
+        }
+      }
     },
     {
       "seq": 1601,
@@ -6830,7 +6950,17 @@
     {
       "seq": 2044,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_ToSJlOPN", "turnId": "turn_ztSY8aec", "sessionId": "se_EmtPrqkZ", "handle": "researcher" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_ToSJlOPN",
+          "turnId": "turn_ztSY8aec",
+          "sessionId": "se_EmtPrqkZ",
+          "handle": "researcher",
+          "startedAt": 1795679490432,
+          "command": "date -u && node nightly.mjs status && git log --oneline"
+        }
+      }
     },
     {
       "seq": 2046,
@@ -7122,7 +7252,17 @@
     {
       "seq": 2115,
       "type": "work.add",
-      "data": { "entry": { "kind": "command", "id": "wc_K3wAHFos", "turnId": "turn_K8YjJsLz", "sessionId": "se_QaZzpEcS", "handle": "alpha" } }
+      "data": {
+        "entry": {
+          "kind": "command",
+          "id": "wc_K3wAHFos",
+          "turnId": "turn_K8YjJsLz",
+          "sessionId": "se_QaZzpEcS",
+          "handle": "alpha",
+          "startedAt": 1795679507916,
+          "command": "node nightly.mjs status && git log --oneline && git status --short"
+        }
+      }
     },
     {
       "seq": 2116,

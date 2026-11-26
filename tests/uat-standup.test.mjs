@@ -1,17 +1,19 @@
-// The standup readers (tools/uat/standup.mjs, room-checks-standup.mjs, #1746) over the first paid idleroom run’s
-// records (tests/fixtures/uat/idleroom-2026-11-26.json says how it was cut): four agents on Claude Code, a sprint, and
-// 11 minutes quiet on one agent’s scheduled wake. No recorded run has a standup by that word, so a round is found
-// there by the words @alpha’s opening message did use, which named every other agent, and the trigger at its own
-// word must find none. The same run tests the idle checks at their real bars, with the nightly check’s own record.
+// The readers of turns and rounds (tools/uat/standup.mjs, #1746) over the first paid idleroom run’s records
+// (tests/fixtures/uat/idleroom-2026-11-26.json says how it was cut): four agents on Claude Code, one pass of work, and
+// 11 minutes quiet on one agent’s scheduled wake. A round is read by its shape, one agent’s turn that every other
+// agent took a turn on, which that run has once: @alpha’s opening message. The same run tests the idle checks at
+// their real bars, with the nightly check’s own record, and who ran a command, from its work ledger.
+// tests/process/uat-sprint-board.test.mjs has the sprint’s ceremonies, on the real board.
 
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { whoRan } from '../tools/uat/board-log.mjs';
 import { dropUnverified, runChecks } from '../tools/uat/checks.mjs';
 import { nightlyWork } from '../tools/uat/nightly-log.mjs';
 import { quietStretches } from '../tools/uat/quiet-stretches.mjs';
-import { afterStandup } from '../tools/uat/room-checks-standup.mjs';
+import { idleFindings } from '../tools/uat/room-checks-idle.mjs';
 import { lastTurns, STANDUP, standupRounds, turnsIn } from '../tools/uat/standup.mjs';
 import { TRIGGERS } from '../tools/uat/triggers.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -46,29 +48,42 @@ test('each turn is read with what woke it, the calls it made, its reaction and w
   assert.equal(turns.filter((t) => t.reacted).length, 32);
 });
 
-test('a standup round is one agent’s turn that says so and names every other agent, with the turn each took for it', () => {
-  assert.deepEqual(standupRounds(run), [], 'nobody in the recorded sprint said “standup”');
-  assert.deepEqual(TRIGGERS['standup-round-held'].run(run), []);
-  assert.equal(TRIGGERS['standup-round-held'].recorded(run), true);
-  assert.equal(TRIGGERS['standup-round-held'].recorded({ events: [] }), false);
-  assert.deepEqual(standupRounds(run, { says: OPENED }), [
-    {
-      by: 'alpha',
-      at: 1795678710159,
-      endedAt: 1795678730505,
-      answers: [
-        { handle: 'developer', wrote: true, at: 1795678730505 },
-        { handle: 'critic', wrote: true, at: 1795678723707 },
-        { handle: 'researcher', wrote: true, at: 1795678723294 },
-      ],
-    },
-  ]);
-  // A message that names two of the three isn’t a round: @alpha’s “@critic, step 2 is yours”, which named @critic and @developer.
+test('a round is one agent’s turn and a turn from every other agent on it; the word “standup” is a hint, not the test', () => {
+  const round = {
+    by: 'alpha',
+    at: 1795678710159,
+    endedAt: 1795678730505,
+    said: false,
+    answers: [
+      { handle: 'developer', wrote: true, at: 1795678730505 },
+      { handle: 'critic', wrote: true, at: 1795678723707 },
+      { handle: 'researcher', wrote: true, at: 1795678723294 },
+    ],
+  };
+  // By shape, the recorded pass of work has one round, and nobody in it said “standup”.
+  assert.deepEqual(standupRounds(run, { says: null }), [round]);
+  assert.deepEqual(standupRounds(run), []);
+  assert.deepEqual(standupRounds(run, { says: OPENED }), [round]);
+  // A turn that reached two of the three isn’t a round: @alpha’s “@critic, step 2 is yours”, which woke @critic and @developer.
   assert.deepEqual(standupRounds(run, { says: /step 2 is yours/ }), []);
   // Nor is one whose agents haven’t each taken a turn on it yet: the room before @researcher’s first turn.
   const researcher = run.events.find((/** @type {any} */ e) => e.type === 'session' && e.data.handle === 'researcher').data.id;
   const took = run.events.find((/** @type {any} */ e) => e.type === 'entry.patch' && e.data.sessionId === researcher).seq;
-  assert.deepEqual(standupRounds({ events: run.events.filter((/** @type {any} */ e) => e.seq < took) }, { says: OPENED }), []);
+  assert.deepEqual(standupRounds({ events: run.events.filter((/** @type {any} */ e) => e.seq < took) }, { says: null }), []);
+  // With no sprint board a round is no standup: the trigger wants a story someone had taken and not finished.
+  assert.deepEqual(TRIGGERS['standup-round-held'].run(run), []);
+  assert.equal(TRIGGERS['standup-round-held'].recorded({ workspace: 'a folder' }), true);
+  assert.equal(TRIGGERS['standup-round-held'].recorded(run), false, 'facts with no workspace can’t say');
+});
+
+test('who ran a command is the agent whose shell command named the script, within two minutes before its record', () => {
+  // The nightly check’s own record against the run’s work ledger: @researcher’s status found the pass, then @alpha’s did.
+  assert.equal(whoRan(run, run.nightly[1].at, /nightly\.mjs/), 'researcher');
+  assert.equal(whoRan(run, run.nightly[2].at, /nightly\.mjs/), 'alpha');
+  // In the 11 quiet minutes nobody had run it for more than two.
+  assert.equal(whoRan(run, 1795679300000, /nightly\.mjs/), null);
+  // The run had no sprint board, so nobody ran one.
+  assert.equal(whoRan(run, run.nightly[1].at), null);
 });
 
 test('the words that make a message a standup', () => {
@@ -99,30 +114,28 @@ test('each agent’s last turn before a moment says what woke it, what it did an
   assert.equal(afterWake?.line, '@researcher’s last turn was woken by its scheduled wake; it made 1 call; its reply woke @alpha by name.');
 });
 
-test('after-standup says how the round went, what the room then waited on, and each agent’s last turn before it', () => {
+test('a room waiting on the customer’s answer to a demo reads as waiting on the person, and a sprint’s stall says so', () => {
   const f = facts();
-  assert.deepEqual(afterStandup(f), [], 'no standup round, no measurement');
-  assert.deepEqual(runChecks(f, { only: ['after-standup'] }), []);
-  const [m, ...rest] = afterStandup(f, { says: OPENED });
-  assert.deepEqual(rest, []);
-  assert.equal(m.verdict, 'measurement');
-  assert.equal(m.title, 'What each agent’s last turn did before the room went quiet after the standup');
-  assert.ok(
-    m.evidence.startsWith(
-      '@alpha ran a standup at 07:38:30 UTC: 3 agents took a turn on it. Then the room was quiet for 10 min 48 s from 07:40:39 UTC: waiting on a scheduled wake (@researcher’s wake due at 07:51:27 UTC); moved by @researcher’s scheduled wake. @alpha’s last turn was woken by',
-    ),
-    m.evidence,
-  );
-  assert.ok(m.evidence.endsWith('its reply went back to @critic.'));
-  // The room while the sprint still ran: a round, and no quiet minute after it yet.
-  const during = facts(run.events.filter((/** @type {any} */ e) => e.seq < 1006));
-  const [busy] = afterStandup(during, { says: OPENED });
-  assert.equal(busy.title, 'A standup was held, and the room went on');
-  assert.equal(busy.evidence, '@alpha ran a standup at 07:38:30 UTC: 3 agents took a turn on it. The room wasn’t quiet for a minute after it.');
+  const nightly = nightlyWork(f);
+  // The recorded 11 quiet minutes, had a demo been shown just before them and not answered.
+  const waiting = { ...nightly, customer: [{ from: QUIET_FROM - 1000, to: Number.POSITIVE_INFINITY, what: 'the customer’s answer to sprint 1’s demo' }] };
+  const [s] = quietStretches(f, waiting).filter((x) => x.ms >= 60_000);
+  assert.deepEqual([s.waiting, s.what], ['person', ['the customer’s answer to sprint 1’s demo']]);
+  // Answered before the room went quiet, the demo is no longer what it waits on.
+  const answered = { ...nightly, customer: [{ from: QUIET_FROM - 1000, to: QUIET_FROM - 1, what: 'the customer’s answer to sprint 1’s demo' }] };
+  assert.equal(quietStretches(f, answered).filter((x) => x.ms >= 60_000)[0].waiting, 'scheduled');
+  // Nor is a demo shown only after the room went quiet what that stretch waited on.
+  const later = { ...nightly, customer: [{ from: QUIET_FROM + 1000, to: Number.POSITIVE_INFINITY, what: 'the customer’s answer to sprint 1’s demo' }] };
+  assert.equal(quietStretches(f, later).filter((x) => x.ms >= 60_000)[0].waiting, 'scheduled');
+  // The quiet 4 minutes after the work, had it been a sprint room with its second sprint unfinished: the stall, in a sprint’s words.
+  const sprint = { asked: nightly.asked, queued: null, passed: null, customer: [] };
+  const [x] = idleFindings(f, { min: 240_000, work: sprint });
+  assert.equal(x.title, 'The room sat idle for 4 min 6 s with the sprint unfinished and nothing to restart it');
+  assert.match(x.evidence, /moved by the person’s message\. The second sprint’s stories weren’t all done\. The definition of done wasn’t met/);
 });
 
-test('the run’s last pass decides after-standup too, which reads a stretch that may still be open', () => {
-  const findings = new Map([['after-standup:after-standup', { source: 'check', check: 'after-standup' }]]);
+test('the run’s last pass decides after-ceremony too, which reads a stretch that may still be open', () => {
+  const findings = new Map([['after-ceremony:after-ceremony', { source: 'check', check: 'after-ceremony' }]]);
   dropUnverified(findings);
   assert.equal(findings.size, 0);
 });

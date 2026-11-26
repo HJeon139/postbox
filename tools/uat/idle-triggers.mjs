@@ -1,13 +1,13 @@
-// The idleroom and standup scenarios’ triggers (#1746; tools/uat/triggers.mjs has what a trigger is): the team handed work between
-// agents, a standup round was held, the timed step was started, the room was then left quiet while the work waited,
-// and an ask was shown while its turn ran. Each says the run reached the situation, not how Postbox handled it: the
-// checks say that (tools/uat/room-checks-idle.mjs, room-checks-standup.mjs).
+// Triggers for a room that stops while work waits (#1746; tools/uat/triggers.mjs has what a trigger is): the team
+// handed work between agents, a timed step was started, the room was then left quiet while the work waited, and an
+// ask was shown while its turn ran. Each says the run reached the situation, not how Postbox handled it: the checks
+// say that (tools/uat/room-checks-idle.mjs). The sprint’s ceremonies have their own (tools/uat/sprint-triggers.mjs).
 
+import { workOf } from './board-log.mjs';
 import { midTurnAsks } from './mid-turn-asks.mjs';
 import { nightlyWork } from './nightly-log.mjs';
 import { clockOf, quietStretches } from './quiet-stretches.mjs';
 import { lengthOf, QUIET_LISTED_MS } from './room-checks-idle.mjs';
-import { standupRounds } from './standup.mjs';
 
 /** How long a turn has to go on after an ask for the ask to have been shown mid-turn, not on the turn’s closing line. */
 export const MID_TURN_MS = 30_000;
@@ -41,7 +41,7 @@ export function handOffs(f) {
  * wake, or on nothing at all.
  * @param {any} f  @param {import('./quiet-stretches.mjs').Work} [work]
  */
-export function quietWhileWaiting(f, work = nightlyWork(f)) {
+export function quietWhileWaiting(f, work = workOf(f)) {
   return quietStretches(f, work)
     .filter((s) => !s.open && s.ms >= QUIET_LISTED_MS && s.work !== 'done' && (s.waiting === 'nothing' || s.waiting === 'scheduled'))
     .map((s) => ({ at: s.to, evidence: `Quiet for ${lengthOf(s.ms)} from ${clockOf(s.from)}, until ${s.movedBy}.` }));
@@ -60,16 +60,6 @@ export const IDLE_TRIGGERS = {
       if (pairs.length < 2 || agents.size < 3) return [];
       return [{ at: pairs[1].at, evidence: `${all.length} hand-offs: ${pairs.map((h) => `@${h.from} to @${h.to}`).join(', ')}.` }];
     },
-  },
-  'standup-round-held': {
-    issue: 1746,
-    says: 'one agent ran a standup, naming every other agent in a message that says so, and each took a turn on it',
-    recorded: (f) => (f.events ?? []).some((/** @type {any} */ e) => e?.type === 'work.add'),
-    run: (f) =>
-      standupRounds(f).map((r) => ({
-        at: r.endedAt,
-        evidence: `@${r.by} asked at ${clockOf(r.at)}; ${r.answers.map((a) => `@${a.handle} ${a.wrote ? 'answered' : 'took a turn and wrote nothing'}`).join(', ')}.`,
-      })),
   },
   'timed-step-queued': {
     issue: 1746,

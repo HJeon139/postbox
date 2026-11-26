@@ -85,24 +85,27 @@ function entryAdded(entries, replies, handles, d) {
 const wrote = (t) => t.replies.some((r) => r.text.trim());
 
 /**
- * Each standup round: one agent’s turn whose words say “standup”, and the turn every other agent in the run took on
- * what it wrote, whether named in it or reached by it going back, with whether that turn wrote an answer.
- * @param {{ events?: any[] }} f  @param {{ says?: RegExp }} [opts]
- * @returns {{ by: string, at: number, endedAt: number, answers: { handle: string, wrote: boolean, at: number }[] }[]}
+ * Each round, by its shape: one agent’s turn, and the turn every other agent in the run took on what it wrote, whether
+ * named in it or reached by it going back, with whether that turn wrote an answer. The word is only a hint, since an
+ * agent may hold a standup without it: `says` keeps the rounds whose asking turn used it, and null keeps them all,
+ * each marked with whether it said “standup”.
+ * @param {{ events?: any[] }} f  @param {{ says?: RegExp|null }} [opts]
+ * @returns {{ by: string, at: number, endedAt: number, said: boolean, answers: { handle: string, wrote: boolean, at: number }[] }[]}
  */
 export function standupRounds(f, { says = STANDUP } = {}) {
   const turns = turnsIn(f);
   const agents = [...new Set(turns.map((t) => t.handle))];
   const out = [];
   for (const t of turns) {
-    if (!t.replies.some((r) => says.test(r.text))) continue;
+    if (says && !t.replies.some((r) => says.test(r.text))) continue;
     // A turn may ask in more than one message: all of its replies count once one of them says it.
     const ids = new Set(t.replies.map((r) => r.id));
     const others = agents.filter((h) => h !== t.handle);
     const took = others.map((h) => turns.find((x) => x.handle === h && x.woke.some((w) => w.itemId !== null && ids.has(w.itemId))));
-    if (took.includes(undefined)) continue;
+    if (!others.length || took.includes(undefined)) continue;
     const answers = /** @type {Turn[]} */ (took).map((x) => ({ handle: x.handle, wrote: wrote(x), at: x.startedAt }));
-    out.push({ by: t.handle, at: Math.min(...t.replies.map((r) => r.at)), endedAt: Math.max(...answers.map((a) => a.at)), answers });
+    const said = t.replies.some((r) => STANDUP.test(r.text));
+    out.push({ by: t.handle, at: Math.min(...t.replies.map((r) => r.at)), endedAt: Math.max(...answers.map((a) => a.at)), said, answers });
   }
   return out;
 }
