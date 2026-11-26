@@ -52,6 +52,8 @@ const APPS = {
   faint: `<svg id="faint" width="420" height="240" role="img" aria-label="Runs">${dots}<g opacity="0.2"><circle cx="320" cy="200" r="6" fill="var(--s1)"/></g><text x="306" y="204" ${T}>Last year</text></svg>`,
   // The same clipped line with a label on its visible part, in the plot: that one is on the line.
   clippedOn: `<svg id="clippedOn" width="420" height="260" role="img" aria-label="Runs"><defs><clipPath id="plot2"><rect x="40" y="10" width="360" height="210"/></clipPath></defs>${dots}<path d="M0 260 L420 0" stroke="var(--text)" stroke-width="2" clip-path="url(#plot2)"/><text x="200" y="140" ${T}>Break-even</text></svg>`,
+  // A line clipped in its own box’s units, which the check doesn’t place: it’s tested whole, so a label on it is on it.
+  boxClip: `<svg id="boxClip" width="420" height="260" role="img" aria-label="Runs"><defs><clipPath id="box" clipPathUnits="objectBoundingBox"><rect x="0" y="0" width="1" height="1"/></clipPath></defs>${dots}<path d="M0 260 L420 0" stroke="var(--text)" stroke-width="2" clip-path="url(#box)"/><text x="200" y="140" ${T}>Break-even</text></svg>`,
   // A scatter of open rings, with its two-point fit line under a label: rings make it a chart too.
   rings: `<svg id="rings" width="420" height="240" role="img" aria-label="Runs">${DOTS.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="6" fill="none" stroke="var(--s1)" stroke-width="2"/>`).join('')}${fit}<text x="196" y="140" ${T}>5:56</text></svg>`,
   // A scatter whose reference line runs past its plot, clipped there, with the axis title under the hidden part.
@@ -111,9 +113,10 @@ test('#952 labels drawn over a chart’s dot, ring and fit line are a warning th
   expect(check('onmarks').status, 'a warning: the version is shown, with a note').toBe('note');
 });
 
-test('#952 a label on the visible part of a clipped line, and on a ring scatter’s fit line, is on the line', () => {
+test('#952 a label on the visible part of a clipped line, on a ring scatter’s fit line, and on a line clipped in its box’s units, is on the line', () => {
   expect(overMarks('clippedOn')[0], says('clippedOn')).toMatch(/“Break-even” \(on a line\)/);
   expect(overMarks('rings')[0], says('rings')).toMatch(/“5:56” \(on a line\)/);
+  expect(overMarks('boxClip')[0], says('boxClip')).toMatch(/“Break-even” \(on a line\)/);
 });
 
 for (const id of ['clear', 'counts', 'nodes', 'faint', 'clipped', 'grid', 'halo', 'backed', 'axes'])

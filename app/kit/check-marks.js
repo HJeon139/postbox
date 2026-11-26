@@ -17,7 +17,7 @@
   // A dot or ring is a data mark up to this radius, in px; a larger circle is a diagram’s node, which holds its name.
   const DOT = 12;
   // A line is a data series from this many points on. A straight line of two points is a fit line or a reference in a
-  // chart (three or more dots), and a diagram’s edge or a leader line anywhere else; one that’s level or upright, a
+  // chart (three or more dots or rings), and a diagram’s edge or a leader line anywhere else; one that’s level or upright, a
   // gridline, is never a mark.
   const SERIES = 3;
   const CHART = 3;
