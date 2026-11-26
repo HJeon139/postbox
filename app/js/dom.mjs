@@ -55,7 +55,7 @@ export function fill(el, ...children) {
 }
 
 /** The longest a press holds off a repaint (#898), so a press that rests on a panel doesn’t freeze what it shows. */
-const HOLD_MS = 3000;
+export const HOLD_MS = 3000;
 const TEXT_FIELD = 'input, textarea, [contenteditable]';
 
 /**
