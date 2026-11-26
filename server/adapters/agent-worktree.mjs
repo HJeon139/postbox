@@ -25,6 +25,7 @@ import { access, mkdir, readFile, rm } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { storedFolder } from '../folder-path.mjs';
 import { runGit } from '../ledger-git.mjs';
+import { gitPointer } from './agy-git-dir.mjs';
 import { agentFolder } from './folder.mjs';
 
 /** @typedef {(cwd: string, args: string[]) => Promise<{ code: number, stdout: string, stderr: string }>} Git */
@@ -122,15 +123,18 @@ const exists = (path) =>
   );
 
 /**
- * A worktree folder’s state: finished, with its .git naming a folder under the repository’s .git/worktrees and git’s
- * marker for one still being made (a `locked` file there) gone; unfinished, with that marker still there; else none.
+ * A worktree folder’s state: unfinished while git’s marker for one it’s still making is there, a `locked` file in its
+ * admin folder that says `initializing` (git writes it so, under the C locale runGit sets); finished, with its .git
+ * naming that admin folder and no such marker; else none. A `locked` file saying anything else is a lock someone set
+ * (`git worktree lock`, empty or with its reason) on a worktree that may hold their work: it’s finished, and used.
  * @param {string} dir @returns {Promise<'finished' | 'unfinished' | 'none'>}
  */
 async function stateOf(dir) {
   try {
-    const admin = /^gitdir:\s*(.+)$/m.exec(await readFile(join(dir, '.git'), 'utf8'))?.[1]?.trim();
+    const admin = gitPointer(await readFile(join(dir, '.git'), 'utf8'), 'gitdir: ');
     if (!admin) return 'none';
-    return (await exists(join(resolve(dir, admin), 'locked'))) ? 'unfinished' : 'finished';
+    const lock = await readFile(join(resolve(dir, admin), 'locked'), 'utf8').catch(() => null);
+    return lock?.trim() === 'initializing' ? 'unfinished' : 'finished';
   } catch {
     return 'none';
   }

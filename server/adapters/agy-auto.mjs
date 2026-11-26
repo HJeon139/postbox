@@ -16,8 +16,9 @@
 // Accept edits and Auto for a persona that can’t publish (publishingCall), and in Run everything when its hook runs.
 // What’s left goes on to Postbox’s permission_prompt, as a card.
 // Nothing routine runs code the agent could have written (#423’s review): npm test and npm run run the folder’s
-// scripts, and git commit its hooks, so they ask. git runs only where the folder’s .git is a real folder, which edits
-// in Auto can’t change without a card (agy-hook.mjs), so its config can’t name a program git would run (core.fsmonitor,
+// scripts, and git commit its hooks, so they ask. git runs only where the folder’s .git is a real folder, or a
+// worktree’s .git file naming a main repository outside the agent’s folders (agy-git-dir.mjs, #1709), which edits in
+// Auto can’t change without a card (agy-hook.mjs), so its config can’t name a program git would run (core.fsmonitor,
 // diff.external, gpg.program). No MCP tool outside Postbox is approved here: what one does can’t be read from its name.
 
 import { splitCommand } from '../../shared/command-chains.mjs';

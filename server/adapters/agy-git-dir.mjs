@@ -11,6 +11,16 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { inside } from './agy-paths.mjs';
 
 /**
+ * A `.git` file’s or a `commondir`’s path, read as git reads it (setup.c): trailing newlines stripped and nothing else,
+ * and a `.git` file only when it starts with `gitdir: `. Null when git wouldn’t read one there.
+ * @param {string} text @param {string} [prefix]
+ */
+export function gitPointer(text, prefix = '') {
+  if (!text.startsWith(prefix)) return null;
+  return text.slice(prefix.length).replace(/[\r\n]+$/, '') || null;
+}
+
+/**
  * Whether routine git may run in cwd: its .git is a real folder, or a worktree’s file naming a main repository’s
  * worktree folder outside the agent’s folders.
  * @param {string} cwd @param {string[]} [roots]  the folders the agent may edit
@@ -21,13 +31,13 @@ export function ownGitDir(cwd, roots = []) {
     const kind = lstatSync(dotGit);
     if (kind.isDirectory()) return true;
     if (!kind.isFile()) return false; // a link, say
-    const named = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, 'utf8'))?.[1]?.trim();
+    const named = gitPointer(readFileSync(dotGit, 'utf8'), 'gitdir: ');
     if (!named) return false;
     const admin = realpathSync(resolve(cwd, named));
     // <repository>/.git/worktrees/<name>, made by git worktree add, whose commondir names the repository’s .git, where
     // git reads the config. Both must be outside every folder the agent may edit.
     if (basename(dirname(admin)) !== 'worktrees') return false;
-    const common = readFileSync(join(admin, 'commondir'), 'utf8').trim();
+    const common = gitPointer(readFileSync(join(admin, 'commondir'), 'utf8'));
     if (!common) return false;
     const repoGit = realpathSync(resolve(admin, common));
     const real = (/** @type {string} */ d) => {

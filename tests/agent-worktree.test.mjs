@@ -216,6 +216,7 @@ test('#1709 a worktree add fetches no submodules, and has time for a large check
   assert.deepEqual(add?.slice(0, 2), ['-c', 'submodule.recurse=false']);
   assert.deepEqual(gitTimeoutFor(add ?? []), { timeoutMs: 5 * 60_000 });
   assert.deepEqual(gitTimeoutFor(['rev-parse', 'HEAD']), {});
+  assert.deepEqual(gitTimeoutFor(['add', '-A']), {}, 'only a worktree add has the longer time');
 });
 
 test('#1709 a folder already at the worktree’s place, not a worktree, is left as it is: it may hold an agent’s work', async (t) => {

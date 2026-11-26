@@ -73,13 +73,29 @@ test('#1709 a repository with no commit yet leaves the agent in the project’s 
 test('#1709 a worktree git didn’t finish making, as when Postbox stopped mid-add, is removed and made again', async () => {
   const { project: p, workRoot } = await project('unfinished');
   const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
-  // git worktree add marks a worktree it’s still making with a `locked` file in its admin folder.
+  // git worktree add marks a worktree it’s still making with a `locked` file in its admin folder, saying `initializing`
+  // under LC_ALL=C (read from git 2.52 mid-add, held there by a slow smudge filter).
   const admin = git(dir, ['rev-parse', '--git-dir']).trim();
   await writeFile(join(admin, 'locked'), 'initializing\n');
   await writeFile(join(dir, 'README.md'), '');
   assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot), dir);
   assert.equal(git(dir, ['status', '--porcelain']), '', 'made again whole');
   assert.equal(git(dir, ['show', 'HEAD:README.md']), 'hello\n');
+});
+
+test('#1709 a worktree someone locked keeps the work in it, and the agent goes on working there', async () => {
+  const { project: p, workRoot } = await project('locked');
+  const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
+  await writeFile(join(dir, 'draft.md'), 'not committed\n');
+  for (const lock of [
+    ['worktree', 'lock', dir],
+    ['worktree', 'lock', '--reason', 'keep this', dir],
+  ]) {
+    git(dir, lock);
+    assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot), dir);
+    assert.equal(git(dir, ['status', '--porcelain']), '?? draft.md\n', 'the uncommitted work is still there');
+    git(dir, ['worktree', 'unlock', dir]);
+  }
 });
 
 test('#1709 in Auto, routine git runs with no card in an agent’s real worktree, as git lays it out', async () => {
