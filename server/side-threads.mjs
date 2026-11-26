@@ -175,7 +175,7 @@ export function sideSession(rt, side, personaId, by) {
  */
 function wakeAbsent(rt, from, parent, p, card, prose) {
   if (deletedFrom(rt, parent, p))
-    return { ok: false, message: `@${p.handle} was deleted from this conversation, so it didn’t get your message. Carry on without it.` };
+    return { ok: false, message: `@${p.handle} isn’t in this conversation any more, so it didn’t get your message. Carry on without it.` };
   return askToAdd(rt, from, parent, p, card, { prose });
 }
 

@@ -2,6 +2,7 @@
 // run, a free port, and the processes a process started.
 
 import { spawnSync } from 'node:child_process';
+import { randomInt } from 'node:crypto';
 import { createServer } from 'node:net';
 
 /**
@@ -71,7 +72,7 @@ export const free = (port) =>
  */
 export async function freePort(taken = []) {
   for (let i = 0; i < 100; i++) {
-    const port = 20000 + Math.floor(Math.random() * 12000);
+    const port = randomInt(20000, 32000);
     if (!taken.includes(port) && (await free(port))) return port;
   }
   throw new Error('No free port between 20000 and 32000 after 100 tries.');

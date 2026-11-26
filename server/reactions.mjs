@@ -30,7 +30,7 @@ export function toggleReaction(store, threadId, itemId, emoji, by = null) {
   if (!it) throw httpError(404, 'That message doesn’t exist any more.');
   if (!REACTABLE.has(it.kind) || (it.kind === 'block' && !it.valid)) throw httpError(409, 'You can react to a message, a block or an app.');
   if (it.status === 'streaming') throw httpError(409, 'That reply is still being written. React once it’s done.');
-  if (it.deletedAgent) throw httpError(409, 'That agent was deleted, so it can’t hear a reaction.');
+  if (it.deletedAgent) throw httpError(409, 'That agent isn’t in this conversation any more, so it can’t hear a reaction.');
   const was = it.reactions ?? [];
   const on = !was.some((r) => r.emoji === emoji && whose(r, by));
   const at = Date.now();

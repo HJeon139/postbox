@@ -187,7 +187,7 @@ test('#858 a correction on a block that isn’t a review, or from a retired sess
   s.rt.deleteSession(s.se.id);
   assert.throws(
     () => s.rt.act(s.t.id, s.item().id, '@correct', { threadId: s.threadId, text: 'After delete.' }),
-    (e) => e.status === 409 && /That agent was deleted, so it can’t hear a correction\./.test(e.message),
+    (e) => e.status === 409 && /That agent isn’t in this conversation any more, so it can’t hear a correction\./.test(e.message),
   );
   assert.equal(s.item().block.threads[0].comments.length, 1, 'nothing was added');
   assert.deepEqual(await s.events(), []);
