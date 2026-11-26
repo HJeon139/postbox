@@ -246,7 +246,7 @@ export function showApp(apps, sessionId, tools, { id, title, code, permissions =
  * @param {import('./app-service.mjs').Apps} apps @param {string} sessionId @param {any} turn  the turn the tools act for, or null
  * @param {() => string} threadId  where the turn speaks @param {() => void} endSegment  ends the reply so far
  * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string, intent?: string }} args
- * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s, as one without an intent does
+ * @param {{ files?: AppFile[], held?: boolean }} [given]  as for show_app; held is set once a version holds the files (#1702); a version without them keeps the last one’s, as one without an intent does
  */
 export function updateApp(apps, sessionId, turn, threadId, endSegment, { id, code, permissions, title, summary = '', intent }, given = {}) {
   const app = apps.store.pending.app(id);
@@ -275,6 +275,8 @@ export function updateApp(apps, sessionId, turn, threadId, endSegment, { id, cod
     check: { status: 'pending', attempt: app.check.attempt },
   };
   apps.store.emit('app', next);
+  // The version holds the call’s data files, so keptIfShown keeps their blobs (#1702).
+  if (given.files) given.held = true;
   // A reply still waiting for an earlier version’s check won’t get one now (#337).
   settleUnchecked(apps, id, next.current);
   // A new version always comes to the newest point, where the agent says what changed (#49).
