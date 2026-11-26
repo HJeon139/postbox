@@ -966,10 +966,13 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .thread-root > .btn { align-self: flex-start; }
 
 /* Under a message: Reply in thread, or its replies. */
+/* A row too narrow for every action wraps between them, before any shrinks, so the reactions stay on one line: at
+   375 px the last actions go to a line of their own (#168). */
 .msg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; row-gap: 4px; }
-/* A row too narrow for every action wraps between them, before any shrinks: the reactions stay on one line, and Copy
-   link, last, goes to a line of its own, as in a side thread's panel (#168). */
 .msg-actions .btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
+/* Copy link, an icon alone: 24 px square and 4 px from the action before it, so a side thread’s panel fits its row on one
+   line, as before it (#168). */
+.msg-actions .btn.sm[data-copy-link] { width: 24px; padding: 0; margin-left: -4px; }
 /* An action's icon drawn by the action, not by a span of its own: the actions under a message cost no more elements with
    Copy link than without it (#168), within the page's element budget (#1155). The element's --m names its icon.
    It's data-glyph, not data-icon, which the reactions use for their pictures. */

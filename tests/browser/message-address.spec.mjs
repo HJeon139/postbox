@@ -150,7 +150,7 @@ test('#168 a message’s reactions keep their pictures beside its actions’ dra
   expect(drawn.width, 'at its own size, not an action icon’s 12 px').not.toBe('12px');
 });
 
-test('#168 in a side thread’s panel, the reactions and each action stay on one line, Copy link wrapping instead', async ({ page }) => {
+test('#168 in a side thread’s panel, the reactions and each action stay on one line', async ({ page }) => {
   const { t, se, items } = longRoom(app, 'Address, narrow row');
   const topic = app.rt.startTopic(t.id, items.at(-1).id).threadId;
   const reply = arrange.post(app.rt, topic, {
