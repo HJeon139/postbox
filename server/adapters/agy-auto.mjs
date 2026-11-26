@@ -16,13 +16,13 @@
 // Accept edits and Auto for a persona that can’t publish (publishingCall), and in Run everything when its hook runs.
 // What’s left goes on to Postbox’s permission_prompt, as a card.
 // Nothing routine runs code the agent could have written (#423’s review): npm test and npm run run the folder’s
-// scripts, and git commit its hooks, so they ask. git runs only where the folder’s .git is a real folder, which edits
-// in Auto can’t change without a card (agy-hook.mjs), so its config can’t name a program git would run (core.fsmonitor,
+// scripts, and git commit its hooks, so they ask. git runs only where the folder’s .git is a real folder, or a
+// worktree’s .git file naming a main repository outside the agent’s folders (agy-git-dir.mjs, #1709), which edits in
+// Auto can’t change without a card (agy-hook.mjs), so its config can’t name a program git would run (core.fsmonitor,
 // diff.external, gpg.program). No MCP tool outside Postbox is approved here: what one does can’t be read from its name.
 
-import { lstatSync } from 'node:fs';
-import { join } from 'node:path';
 import { splitCommand } from '../../shared/command-chains.mjs';
+import { ownGitDir } from './agy-git-dir.mjs';
 import { leadsInto, readingsOf, realReadings } from './agy-paths.mjs';
 import { isPublishingTool } from './setup.mjs';
 
@@ -216,32 +216,28 @@ function findOk(args, ok) {
   return true;
 }
 
-/** Whether the agent’s folder has a real .git folder, so git reads no config the agent could have written. */
-function realGitDir(cwd) {
-  try {
-    return lstatSync(join(cwd, '.git')).isDirectory();
-  } catch {
-    return false; // no .git: git would look elsewhere, so it asks
-  }
-}
-
 /** Whether one command, as words, is a routine one (see the top of this file). @param {string[]} w @param {any} where */
 function routineWords(w, where) {
   const [cmd, ...args] = w;
   const read = (x) => staysIn(x, where, false);
   const write = (x) => staysIn(x, where, true);
-  if (cmd === 'find') return findOk(args, read);
-  if (Object.hasOwn(READS, cmd)) return optionsOk(args, READS[cmd], read);
+  // A read-only command may also name what the agent may only read (readRoots: an agent in its own worktree reads the
+  // project’s folder, #1709). git keeps to its own folders, and ownGitDir to the folders it may edit.
+  const look = (x) => staysIn(x, { ...where, roots: [...where.roots, ...(where.readRoots ?? [])] }, false);
+  if (cmd === 'find') return findOk(args, look);
+  if (Object.hasOwn(READS, cmd)) return optionsOk(args, READS[cmd], look);
   if (Object.hasOwn(WRITES, cmd)) return optionsOk(args, WRITES[cmd], write);
   if (cmd === 'gh') return GH_COMMANDS.has(`${args[0]} ${args[1]}`) && optionsOk(args.slice(2), GH, read);
-  if (cmd === 'git') return Object.hasOwn(GIT, args[0]) && realGitDir(where.cwd) && optionsOk(args.slice(1), GIT[args[0]], args[0] === 'add' ? write : read);
+  if (cmd === 'git')
+    return Object.hasOwn(GIT, args[0]) && ownGitDir(where.cwd, where.roots) && optionsOk(args.slice(1), GIT[args[0]], args[0] === 'add' ? write : read);
   return false;
 }
 
 /**
  * Whether Postbox runs this command without a card in Auto: every part routine, every path in the agent’s folders.
  * @param {string} command
- * @param {{ roots: string[], cwd: string, home: string, isProtected: (p: string) => boolean }} where
+ * @param {{ roots: string[], readRoots?: string[], cwd: string, home: string, isProtected: (p: string) => boolean }} where
+ *   readRoots: folders it may only read, which a read-only command may name
  */
 export function routineCommand(command, where) {
   const parts = splitCommand(command).map(words);
@@ -266,7 +262,7 @@ export function publicFetch(url) {
 /**
  * Whether Auto runs this Antigravity tool call without a card. File reads and edits keep the hook’s own rules.
  * @param {string} name @param {any} args
- * @param {{ roots: string[], cwd: string, home: string, isProtected: (p: string) => boolean }} where
+ * @param {{ roots: string[], readRoots?: string[], cwd: string, home: string, isProtected: (p: string) => boolean }} where
  */
 export function autoAllows(name, args, where) {
   switch (name) {
