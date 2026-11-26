@@ -180,6 +180,13 @@ test('#168 in a side thread’s panel, the reactions and each action stay on one
   });
   expect(lines.react, 'the reactions on one line').toBeLessThanOrEqual(lines.button + 2);
   expect(lines.send, 'Send to conversation on one line').toBeLessThanOrEqual(30);
+  // Too narrow for it, Copy link wraps to a line of its own, lined up with the row.
+  const offset = await row.evaluate((r) => {
+    /** @type {HTMLElement} */ (r).style.width = '120px';
+    const copy = /** @type {Element} */ (r.querySelector('[data-copy-link]'));
+    return Math.round(copy.getBoundingClientRect().left - r.getBoundingClientRect().left);
+  });
+  expect(offset, 'Copy link at the row’s start').toBe(0);
 });
 
 test('#168 in forced colors, the replies link’s icon takes the link color, and a sent note’s the text color', async ({ page }) => {
