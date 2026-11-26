@@ -15,8 +15,8 @@ import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { formField } from './form-field.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
 import { renderReview } from './review.mjs';
-import { keepUnsent, markSent } from './review-draft.mjs';
-import { forgetReviewDraft, keepReviewDraft } from './review-draft-store.mjs';
+import { markSent, unmarkSent } from './review-draft.mjs';
+import { forgetReviewDraft } from './review-draft-store.mjs';
 import { fmtCell } from './table-cells.mjs';
 import { scrollFrame } from './table-scroll.mjs';
 import { sortedRows } from './table-sort.mjs';
@@ -102,16 +102,17 @@ async function submit(item, ctx, action, values, setError) {
   setError(null);
   const s = seen.get(item.id);
   const asked = s?.revision ?? item.revision ?? 1;
-  const sent = markSent(drafts.get(item.id));
+  markSent(drafts.get(item.id), asked);
   try {
     await ctx.act(action, values, asked);
-    // Revised while this answer was on its way: what the person started on the newer revision stays (#518).
-    const now = seen.get(item.id)?.revision ?? 0;
-    if (now > asked && keepUnsent(drafts.get(item.id), sent)) return void keepReviewDraft(item.id, now, sent?.d);
+    // Revised while this answer was on its way: every revision draws from this one draft, so what the person started
+    // on the newer one stays (#518). What this answer sent leaves it where that revision is drawn (reviewDraft).
+    if ((seen.get(item.id)?.revision ?? 0) > asked) return;
     drafts.delete(item.id);
     forgetReviewDraft(item.id);
     seen.delete(item.id);
   } catch (e) {
+    unmarkSent(drafts.get(item.id));
     // A refusal for a revision the page hasn’t drawn yet says so; the new version, with its notice, replaces it as it arrives.
     setError(e.message, e.fieldErrors);
   }

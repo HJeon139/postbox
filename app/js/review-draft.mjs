@@ -71,6 +71,7 @@ export function stopComment(draft) {
 export function reviewDraft(item, content, draft) {
   const d = draft(item.id, () => restoreReviewDraft(item.id, item, newReviewDraft(content)));
   if (item.answer?.action === 'submit') d.comments = [];
+  else dropSent(d, item.revision ?? 1);
   return d;
 }
 
@@ -102,25 +103,30 @@ export function followOpen(draft, from, to) {
   draft.parked = draft.parked.map((p) => (typeof p.key === 'string' ? p : { ...p, key: follow(p.key, from, to) }));
 }
 
-/** The comments an answer sends (#518), marked as it goes. A spread copies the mark, as followLines copies a comment. */
+/**
+ * The comments an answer sends (#518), marked with the revision it answered as it goes. A spread copies the mark, as
+ * followLines copies a comment, and JSON leaves it out, so it reaches neither the answer nor what a reload keeps.
+ */
 const SENT = Symbol('sent');
 
-/** Marks what an answer sends: its comments, and its verdict. @param {any} d  the review’s draft, if it has one */
-export function markSent(d) {
-  if (!d || !Array.isArray(d.comments)) return null;
-  for (const c of d.comments) c[SENT] = true;
-  return { d, verdict: d.verdict };
+/** Marks the comments an answer sends for a revision. @param {any} d  the review’s draft, if it has one @param {number} revision */
+export function markSent(d, revision) {
+  for (const c of Array.isArray(d?.comments) ? d.comments : []) c[SENT] = revision;
+}
+
+/** An answer that didn’t go: its comments are unsent drafts again. @param {any} d */
+export function unmarkSent(d) {
+  for (const c of Array.isArray(d?.comments) ? d.comments : []) delete c[SENT];
 }
 
 /**
- * An answer settled after the agent revised the review, and every revision draws from one draft (#518): what the person
- * started on the newer revision stays, and what this answer sent goes, its comments and its verdict, as a draft the
- * answer cleared would have them. False when the draft isn’t the one the answer sent.
- * @param {any} d @param {ReturnType<typeof markSent>} sent
+ * A newer revision drawn after an answer the page never drew answered (a page elsewhere, a resync): the comments that
+ * answer sent are the block’s threads now, so they leave the draft here, where the block is drawn, and the person sees
+ * the draft they send (#518). What they started on the newer revision stays, and so does the verdict on screen. An
+ * edit open is saved first, since it’s kept by its place in the comments. @param {any} d @param {number} revision
  */
-export function keepUnsent(d, sent) {
-  if (!sent || d !== sent.d) return false;
-  d.comments = d.comments.filter((/** @type {any} */ c) => !c[SENT]);
-  if (d.verdict === sent.verdict) d.verdict = newReviewDraft('').verdict;
-  return true;
+function dropSent(d, revision) {
+  if (!d.comments.some((/** @type {any} */ c) => c[SENT] < revision)) return;
+  saveEdit(d);
+  d.comments = d.comments.filter((/** @type {any} */ c) => !(c[SENT] < revision));
 }
