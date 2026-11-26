@@ -21,7 +21,8 @@ export function waitingList(state, threads, { labels, mainThread }) {
 
 /**
  * The run’s holds. The function it returns says why the tester’s action `a` is held, for the tester to read at its
- * next step, or null when the action goes ahead.
+ * next step, or null when the action goes ahead. That step comes at once when something the tester has had still
+ * waits while an agent works: the wait hands it back again (settle’s `again`, in tools/uat/turns.mjs, #1760).
  * @param {{ goals: { leave: (phase: number) => string | null }, log: (line: string) => void }} o
  * @returns {(a: any, at: { waiting: string[], idle: boolean, phase: number }) => string | null}
  */

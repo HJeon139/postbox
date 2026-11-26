@@ -262,11 +262,13 @@ async function main() {
       midTurn.push(...newFindings(MID_TURN));
     };
 
-    // What needs the person that a wait between steps has seen: it hands back to the tester once for each (#289).
+    // What needs the person that a wait between steps has seen: it hands back to the tester once for each (#289), and
+    // again after an action that was held or failed, which leaves the tester a refusal to read (#1760).
     const told = new Set();
+    const stopped = () => Boolean(budget.stopped || bound.stopped);
     const settle = (handBack = false) =>
       timing.time('agents', () =>
-        settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log, stopped: () => Boolean(budget.stopped || bound.stopped) }),
+        settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, again: actionError !== null, log, stopped }),
       );
 
     const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
