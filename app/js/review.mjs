@@ -8,7 +8,7 @@ import { reviewFileKeys } from '/shared/review-files.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
-import { reviewApp } from './review-app.mjs';
+import { rerenderAround, reviewApp } from './review-app.mjs';
 import { followOpen, reviewDraft, saveEdit, startComment, stopComment } from './review-draft.mjs';
 import { keepReviewDraft } from './review-draft-store.mjs';
 import { inlineMd, itemWords, words } from './review-inline.mjs';
@@ -36,11 +36,8 @@ export function renderReview(b, item, ctx, kit) {
     d.on = b.content;
   }
   if (!item.answered) keepReviewDraft(item.id, item.revision ?? 1, d);
-  const rerender = () => {
-    const n = renderBlock(item, ctx);
-    node.replaceWith(n);
-    return n;
-  };
+  // An app review keeps its app’s frame across it (#1726): only what’s around the app changes.
+  const rerender = () => rerenderAround(item.id, node, () => renderBlock(item, ctx));
   const compose = (key) => {
     startComment(d, key);
     rerender();
@@ -113,7 +110,7 @@ export function renderReview(b, item, ctx, kit) {
   const closed = item.closed?.by === 'agent' || Boolean(item.deletedAgent);
   const threadBox = (key) => threadsFor(key, { b, d, done, closed, rerender, closeComposer, correct, itemId: item.id });
 
-  if (b.format === 'app') box.append(reviewApp(b, { d, done, rerender, threadBox }));
+  if (b.format === 'app') box.append(reviewApp(b, { itemId: item.id, d, done, rerender, threadBox }));
   else if (mode === 'preview') {
     const all = [...(b.threads ?? []), ...d.comments];
     // The lines with threads or drafts, and a line’s open comment box, which a revision can leave on a line (#123).
