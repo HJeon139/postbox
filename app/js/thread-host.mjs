@@ -3,7 +3,7 @@
 // warning as a notice, a background job that stops only with its turn, and a `!` command that ran on this computer.
 // What the composer says of a host is in app/js/composer-host.mjs.
 
-import { api, busy, client, itemsOf, sessionsOf } from './client.mjs';
+import { api, busy, client, itemIn, sessionsOf } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
 import { heldLine } from './held-line.mjs';
 import { hostOf, ranOnHost, resumeHint } from './remote.mjs';
@@ -44,14 +44,34 @@ export function hostTurnsList(threadId) {
   return { el, paint };
 }
 
+/** @type {WeakMap<HTMLElement, string>} each drawn reply’s node, by whose reply it is: off the DOM, which was slower to read across a whole room (#851) */
+const replyOf = new WeakMap();
+
 /**
- * The replies whose look on a host changed since they were drawn (remoteSig), of one session or of all.
+ * Marks a reply’s node with what its look on a host depends on (remoteSig) and whose reply it is, as it’s drawn.
+ * @param {HTMLElement} node @param {any} it  an agent’s reply
+ */
+export function markRemote(node, it) {
+  node.dataset.remoteSig = remoteSig(it);
+  replyOf.set(node, it.sessionId ?? '');
+}
+
+/**
+ * The replies whose look on a host changed since they were drawn (remoteSig), of one session or of all. Only the drawn
+ * ones, by their nodes: a reply the window hasn’t mounted draws from the state when it mounts. A session event is
+ * frequent, so it reads only its own session’s drawn replies, never every item of the thread (#851).
  * @param {string} threadId @param {Map<string, HTMLElement>} nodes  the transcript’s, by item @param {string | null} [sessionId]
  */
-const remoteStale = (threadId, nodes, sessionId = null) =>
-  itemsOf(threadId)
-    .filter((it) => it.kind === 'agent' && (!sessionId || it.sessionId === sessionId) && (nodes.get(it.id)?.dataset.remoteSig ?? '') !== remoteSig(it))
-    .map((it) => it.id);
+function remoteStale(threadId, nodes, sessionId = null) {
+  const stale = [];
+  for (const [id, node] of nodes) {
+    const of = replyOf.get(node);
+    if (of === undefined || (sessionId && of !== sessionId)) continue;
+    const it = itemIn(threadId, id);
+    if (it && (node.dataset.remoteSig ?? '') !== remoteSig(it)) stale.push(id);
+  }
+  return stale;
+}
 
 /**
  * What a change to a session or a host redraws in the transcript: a reply whose turn ran on a host shows how it stands

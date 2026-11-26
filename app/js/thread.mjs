@@ -41,7 +41,7 @@ import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { drawsNothing, namesSpeaker } from './speaker-line.mjs';
 import { moveSpeakerLine, who } from './speaker-who.mjs';
 import { systemLine } from './system-line.mjs';
-import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
+import { failedOnHost, hostChanged, hostEnd, hostTurnsList, markRemote, ranHere } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { viewAskBlock } from './view-ask-card.mjs';
@@ -110,7 +110,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     node.dataset.key = it.id;
     const drawn = S().apps[drawnApp(it)];
     if (drawn) node.dataset.appSig = appSig(drawn);
-    if (it.kind === 'agent') node.dataset.remoteSig = remoteSig(it);
+    if (it.kind === 'agent') markRemote(node, it);
     noteDrawn(node, it, prev);
     node.classList.add('item');
     if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
