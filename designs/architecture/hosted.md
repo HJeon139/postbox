@@ -71,7 +71,7 @@ flowchart LR
 
 The unsigned headers the load balancer also adds (`x-amzn-oidc-identity`, `x-amzn-oidc-accesstoken`) are never read. Source for all of this: [Authenticate users using an Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-authenticate-users.html), read 26 November 2026. Node verifies ES256 with `node:crypto`, so no dependency is added.
 
-A request with no valid signed identity gets no route at all, reads included. That is new: locally a read needs no token ([security-boundaries.md](security-boundaries.md), “Writes need the page’s token”).
+A request with no valid signed identity gets no route at all, reads included, with one exception: a health check for the load balancer, which answers only that Postbox is up and carries no state (the owner, 26 November 2026). That is new: locally a read needs no token ([security-boundaries.md](security-boundaries.md), “Writes need the page’s token”).
 
 **The allow list** is [#1733](https://github.com/HJeon139/postbox/issues/1733), unchanged: a hosted Postbox refuses to start without one, and someone signed in who isn’t on it gets a page that says so.
 
@@ -135,16 +135,12 @@ What it would need, noted so no one mistakes it for small: a host with an owner,
 |---|---|---|
 | 1 | This document | Merged |
 | 2 | **Address:** the public origin and listen address | A Postbox started with them answers that origin and refuses others; `!` and app links are refused; with neither, the gate’s tests pass unchanged |
-| 3 | **Sign-in:** the load balancer’s provider, with the allow list of [#1733](https://github.com/HJeon139/postbox/issues/1733) | A request with a valid signed identity is that person; one without gets no route; a local run asks nothing |
+| 3 | **Sign-in:** the load balancer’s provider, with the allow list of [#1733](https://github.com/HJeon139/postbox/issues/1733) | A request with a valid signed identity is that person; one without gets no route but the health check; a local run asks nothing |
 | 4 | **Same-machine:** each row above marked for it | Each surface works on a host’s agent or says plainly that it doesn’t apply here |
 | 5 | **Several people:** who has a room open, per person, then the rest of its rows | Two people in one room each read their own asks, each clear only their own unread marks, and each keep their own theme |
 | 6 | **Cloud hosts and deployment:** the image, the recipe, a real start on AWS | The owner starts it, signs in, adds a host and runs a room |
 
 Slices 2 and 3 change a security boundary and are reviewed as such. Slice 6 costs real money to prove and is the owner’s to start.
-
-## Open question for the owner
-
-**Reads behind sign-in only.** Hosted, every read needs a signed identity, where locally reads need nothing. Is there any read a hosted Postbox should answer without sign-in (a health check for the load balancer is the one this design assumes)?
 
 ## Revisit when
 
