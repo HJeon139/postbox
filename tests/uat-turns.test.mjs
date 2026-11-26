@@ -10,30 +10,10 @@ import { stopAskText } from '../server/turn-stop.mjs';
 import { JOBS_ANSWERS } from '../tools/uat/driver.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import * as turns from '../tools/uat/turns.mjs';
+import { onFakeClock } from './uat-fake-clock.mjs';
 
 // Read from the module, so the test runs (and fails) against the code from before the fix too.
 const { sendThenStop, settle, STOP_AFTER_MAX_S, BLOCK_GRACE_MS, WAIT_MAX_S, TESTER_WAIT_S, namedWait, testerWait } = /** @type {any} */ (turns);
-
-/** Runs `work` while the fake clock moves on a quarter second at a time, until it settles or 20 fake minutes pass. */
-async function onFakeClock(t, work) {
-  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
-  let out = null;
-  const p = work().then(
-    (value) => (out = { value }),
-    (error) => (out = { error }),
-  );
-  try {
-    for (let ms = 0; !out && ms < 20 * 60_000; ms += 250) {
-      for (let i = 0; i < 5; i++) await new Promise(setImmediate);
-      if (!out) t.mock.timers.tick(250);
-    }
-    await p;
-  } finally {
-    t.mock.timers.reset();
-  }
-  if (out?.error) throw out.error;
-  return out?.value;
-}
 
 // What the driver reads of Postbox’s ask (driver.mjs, jobsAsk): the row’s text, then its buttons.
 const ASK = `${stopAskText('researcher', 1)} ${JOBS_ANSWERS.stop[0]} ${JOBS_ANSWERS.keep[0]}`;

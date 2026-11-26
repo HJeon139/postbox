@@ -345,3 +345,11 @@ export const PALETTES = Object.freeze([
     when: 'passed or failed; never for a category, where they read as a verdict',
   },
 ]);
+
+/** What a session keeps of the asks its replies made of people (#1742, server/person-mentions.mjs). */
+export const ASKS = Object.freeze({
+  // The unread asks kept on the session, newest last, which a view reads at once. A bound on what every session
+  // patch carries, not on how many asks can wait: an older one is still on its reply, and a view reads it when it
+  // comes up as the session’s need. Eight is more than an agent leaves unread in practice: no recorded run has one.
+  kept: 8,
+});
