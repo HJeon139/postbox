@@ -132,13 +132,25 @@ test('#1757 a failed call’s note is its detail, not its output, and the stored
   assert.deepEqual(bare.observation.results, [{ source_call_id: command.toolUseId, content: 'Exit code 1' }]);
 });
 
-test('#1757 a background command’s stored output is the job’s, seen later, so the call’s own text stays its result', () => {
-  const step = callIn(
-    withEnded((p) => ({ ...p, endedInBackground: true })),
-    { live: rec.live, blob: theBlob },
-  );
-  assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: 'high' }]);
+test('#1757 a background command’s result is the output its call ended with, not the job’s the ledger put there later', () => {
+  const endedAt = rec.events.find((e) => e.type === 'work.patch' && e.data.patch.output?.sha256 === ended.output.sha256);
+  const last = rec.events.at(-1).seq;
+  /** The job's end, as the ledger's taskEnded patches it in: its output in place of the call's (server/ledger.mjs). @param {any} output */
+  const jobEnds = (output) => [
+    ...rec.events,
+    { ...endedAt, seq: last + 1, data: { ...endedAt.data, patch: { state: 'done', exit: 0, output, endedInBackground: true } } },
+  ];
+  const job = { sha256: 'f'.repeat(64), size: 9 };
+  const blob = (/** @type {string} */ h) => (h === job.sha256 ? 'job’s end' : theBlob(h));
+  const step = callIn(jobEnds(job), { live: rec.live, blob });
+  assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: 'the whole output\nhigh' }]);
   assert.equal(step.tool_calls[0].extra.ended_in_background, true);
+  // Nor the job’s too-large note: the call’s own output is still there to read.
+  const big = callIn(jobEnds({ ...job, size: 100 * 1024 * 1024 }), { live: rec.live, blob });
+  assert.deepEqual(big.observation.results, [{ source_call_id: command.toolUseId, content: 'the whole output\nhigh' }]);
+  // With no output stored for the call itself, the step’s text is its result.
+  const noOwn = callIn(withEnded((p) => ({ ...p, output: undefined })).concat(jobEnds(job).slice(-1)), { live: rec.live, blob });
+  assert.deepEqual(noOwn.observation.results, [{ source_call_id: command.toolUseId, content: 'high' }]);
 });
 
 test('#1757 a stored output the ledger kept only the end of says so; one too large to read is noted over the live text', () => {
@@ -146,7 +158,9 @@ test('#1757 a stored output the ledger kept only the end of says so; one too lar
     withEnded((p) => ({ ...p, output: { ...p.output, cut: true } })),
     { live: rec.live, blob: theBlob },
   );
-  assert.match(cut.observation.results[0].content, /^\[the work ledger kept only its last \d+ bytes\]\nthe whole output/);
+  assert.ok(
+    cut.observation.results[0].content.startsWith(`[the work ledger kept only its last ${ended.output.size.toLocaleString('en-US')} bytes]\nthe whole output`),
+  );
   const big = callIn(
     withEnded((p) => ({ ...p, output: { ...p.output, size: 100 * 1024 * 1024 } })),
     { live: rec.live, blob: theBlob },
