@@ -238,7 +238,8 @@ test('#168 an address to a message far from both ends loads only the range aroun
   const { t, se } = longRoom(app, 'Address, far');
   // Past the 200 the page loads from each end.
   const far = [];
-  for (let i = 0; i < 500; i++) far.push(arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, handle: 'researcher', text: `Later ${i}.`, status: 'done' }));
+  for (let i = 0; i < 500; i++)
+    far.push(arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, handle: 'researcher', text: `Later ${i}.`, status: 'done' }));
   const target = far[150];
   await page.goto(`${app.origin}/#/t/${t.id}?m=${target.id}`);
   await synced(page, app);

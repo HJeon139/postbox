@@ -40,7 +40,10 @@ export function canonical(r, current = null) {
   if (r.work) rememberWork(r.threadId, true);
   // An address to a message opens its thread beside the conversation, never one remembered, and the Work left open
   // there, as messagePane says (#168).
-  if (r.item) return r.work || !messagePane(current ?? {}, r.threadId, r.sideId ?? null).work ? null : paneHref(r.threadId, { ...r, side: r.sideId, work: true, item: r.item });
+  if (r.item) {
+    if (r.work || !messagePane(current ?? {}, r.threadId, r.sideId ?? null).work) return null;
+    return paneHref(r.threadId, { ...r, side: r.sideId, work: true, item: r.item });
+  }
   // In a window with no room for the pane beside the conversation, coming back opens the conversation, not a view
   // over it (#197).
   if (!besideFits()) return null;
