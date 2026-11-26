@@ -100,3 +100,21 @@ test('#1702 two calls staging the same bytes: the refused one never removes the 
     assert.equal(String(await f.rt.blobs.get(taken.files[0].sha256)), 'same,1\n', `kept first: ${keptFirst}`);
   }
 });
+
+test('#1702 show_app on its own app, and on an id another agent holds, keeps the files the version takes', async () => {
+  const f = await setup();
+  await writeFile(join(f.folder, 'a.csv'), 'a,1\n');
+  await writeFile(join(f.folder, 'b.csv'), 'b,2\n');
+  assert.equal((await f.call('show_app', { id: 'chart', title: 'Chart', code: '<p>x</p>', files: ['a.csv'] })).isError, false);
+  // Its own id: a new version, through update_app.
+  assert.equal((await f.call('show_app', { id: 'chart', title: 'Chart', code: '<p>y</p>', files: ['b.csv'] })).isError, false);
+  assert.equal(String(await f.rt.apps.appFile('chart', 'b.csv', 2)), 'b,2\n');
+  // Another agent’s id: shown under a new one, with its file.
+  f.rt.store.emit('app', { ...f.rt.store.pending.app('chart'), sessionId: 'someone-else' });
+  await writeFile(join(f.folder, 'c.csv'), 'c,3\n');
+  const renamed = await f.call('show_app', { id: 'chart', title: 'Mine', code: '<p>z</p>', files: ['c.csv'] });
+  assert.match(renamed.text, /shown as (\S+)\./);
+  const id = /shown as (\S+)\./.exec(renamed.text)?.[1].replace(/\.$/, '') ?? '';
+  assert.equal(String(await f.rt.apps.appFile(id, 'c.csv', 1)), 'c,3\n');
+  assert.equal(blobsIn(f.root).length, 3);
+});
