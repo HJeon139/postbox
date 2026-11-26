@@ -72,8 +72,8 @@ let addressed = null;
 
 /**
  * Goes to a message by its address (#168): the address goes on the history, so Back returns, and this goes to the
- * message itself, every time it’s asked, a second time after a pane change too. In the conversation on screen, the
- * pane stays as it is: Work, a turn, a full view.
+ * message itself, every time it’s asked, a second time after a pane change too. In the conversation on screen, Work
+ * stays, with its turn and the item open in it, and a full view only when it’s the message’s own thread.
  * @param {string} itemId @param {string} threadId
  */
 function goToAddress(itemId, threadId) {
@@ -82,7 +82,8 @@ function goToAddress(itemId, threadId) {
   const side = threadId === conv ? null : threadId;
   // A full view stays only if it’s this thread’s: full-screen Work, or another thread, would cover the message.
   const full = r.full === 'thread' && r.sideId === side ? r.full : null;
-  const pane = { work: r.work, turn: r.turn, full, at: null };
+  // An item open in Work beside the thread stays; one open in full-screen Work goes with it.
+  const pane = { work: r.work, turn: r.turn, full, at: full === r.full ? r.at : null };
   const to = r.view === 'thread' && r.threadId === conv ? paneHref(conv, { ...pane, side, item: itemId }) : itemHref(threadId, itemId);
   // The address is this one’s: focusAddressed, as it comes in, doesn’t go to it a second time.
   addressed = { conv, key: `${threadId}?m=${itemId}` };

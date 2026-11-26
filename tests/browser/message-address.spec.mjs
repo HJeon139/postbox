@@ -240,7 +240,12 @@ test('#168 going to an ask with Work full screen shows the ask, with Work beside
     [items[5].id, t.id],
   );
   await expect(page, 'Work kept, not full screen').toHaveURL(new RegExp(`#/t/${t.id}\\?work&m=${items[5].id}$`));
-  await expect.poll(() => landed(page, items[5].id), { message: 'the ask, not covered' }).toBe('landed');
+  await expect.poll(() => landed(page, items[5].id), { message: 'the ask, in view and focused' }).toBe('landed');
+  const onTop = await page.evaluate((key) => {
+    const r = document.querySelector(`[data-key="${CSS.escape(key)}"]`)?.getBoundingClientRect();
+    return Boolean(r) && !!document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20))?.closest(`[data-key="${CSS.escape(key)}"]`);
+  }, items[5].id);
+  expect(onTop, 'nothing covers it').toBe(true);
 });
 
 test('#168 going on purpose to a message the thread doesn’t have says so', async ({ page }) => {
@@ -253,4 +258,18 @@ test('#168 going on purpose to a message the thread doesn’t have says so', asy
     await goToItem('it_deleted', threadId);
   }, t.id);
   await expect(page.getByText('That message isn’t here')).toBeVisible();
+});
+
+test('#168 going to an ask keeps the item open in Work beside the thread', async ({ page }) => {
+  const { t, items } = longRoom('Address, item open in Work');
+  await page.goto(`${app.origin}/#/t/${t.id}?work&at=as_open`);
+  await synced(page, app);
+  await page.evaluate(
+    async ([itemId, threadId]) => {
+      const { goToItem } = await import('/app/js/needs-nav.mjs');
+      await goToItem(itemId, threadId);
+    },
+    [items[5].id, t.id],
+  );
+  await expect(page, 'Work and its open item kept').toHaveURL(new RegExp(`#/t/${t.id}\\?work&at=as_open&m=${items[5].id}$`));
 });
