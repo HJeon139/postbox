@@ -214,3 +214,20 @@ export function turnFolders(cwd, ctx, workRoot) {
   const reads = [...(ctx.readFiles ?? []), ...(!shared && ctx.project?.folder ? [ctx.project.folder] : [])];
   return { addDirs: /** @type {string[]} */ (addDirs), reads };
 }
+
+/**
+ * What an agent in its own worktree is told about where it works (#1709, the person’s decision of 26 November 2026:
+ * the person merges an agent’s branch, and the agent says which branch its work is on). Empty for a turn in the
+ * project’s shared folder.
+ * @param {string} cwd @param {{ id?: string, handle: string }} persona
+ * @param {{ id?: string, folder?: string|null } | null | undefined} project @param {string} workRoot
+ */
+export function worktreeNote(cwd, persona, project, workRoot) {
+  if (!project?.folder || sharedFolder(cwd, project, workRoot)) return '';
+  // Brief: with the guide and the hook’s notes, agy’s rules file has about 750 characters to spare of its 12,000.
+  return [
+    '## Where you work',
+    '',
+    `Your current folder is your own git worktree, on branch ${branchFor(persona, project)}. The project’s folder, ${project.folder}, is the person’s: read it, but don’t work there. Your work reaches the person and other agents only as commits on your branch, which the person merges; it doesn’t follow their later commits. When you commit, name your branch in your reply.`,
+  ].join('\n');
+}

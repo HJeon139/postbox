@@ -60,7 +60,7 @@ import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
-import { agentWorktree, turnFolders } from './agent-worktree.mjs';
+import { agentWorktree, turnFolders, worktreeNote } from './agent-worktree.mjs';
 import { agyArgs, agyBypassWebOff } from './agy-args.mjs';
 import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
@@ -188,10 +188,10 @@ export const toolsNote = (dir) =>
  * Pure, so the tests can check it.
  * What it says about approval follows how agy runs: with the PreToolUse hook, calls ask through a card (HOOK_NOTE); in Run
  * everything, nothing is asked; without the hook (agy before 1.4.7), headless agy refuses them (HEADLESS_NOTE).
- * @param {{ persona: any, guide: string, schemas?: string|null, hooked?: boolean }} turn  schemas: agy’s schema folder for
- *   Postbox’s server; hooked: the PreToolUse hook runs this turn
+ * @param {{ persona: any, guide: string, schemas?: string|null, hooked?: boolean, place?: string }} turn  schemas: agy’s
+ *   schema folder for Postbox’s server; hooked: the PreToolUse hook runs this turn; place: where it works (worktreeNote)
  */
-export function agyRules({ persona, guide, schemas = null, hooked = false }) {
+export function agyRules({ persona, guide, schemas = null, hooked = false, place = '' }) {
   const ids = toolsOff(persona, TOOL_WORDS);
   const offIds = setupOf(persona).canPublish ? ids : [...ids, 'publish'];
   const words = (/** @type {string} */ id) => (id === 'publish' ? 'publishing or posting anything outside Postbox' : TOOL_WORDS[id]);
@@ -207,7 +207,7 @@ export function agyRules({ persona, guide, schemas = null, hooked = false }) {
     : '';
   const bypass = persona?.permissionMode === 'bypass';
   const approval = bypass ? '' : hooked ? HOOK_NOTE : `${HEADLESS_NOTE}\n\n${LOOKING_NOTE}`;
-  return `${[guide, schemas ? toolsNote(schemas) : '', approval, limits].filter(Boolean).join('\n\n')}\n`;
+  return `${[guide, place, schemas ? toolsNote(schemas) : '', approval, limits].filter(Boolean).join('\n\n')}\n`;
 }
 
 export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp, stepId };
@@ -592,7 +592,8 @@ export class AntigravityCliAdapter {
     const { guide, message: turnMessage } = turnGuide(message, { ...ctx, persona, brief: session?.brief, toolRules: null, setup: false });
     const prompt = formatMessage(turnMessage, ctx.pathOf);
     const useHook = agySupportsHooks(this.version) && (persona?.permissionMode !== 'bypass' || agyBypassWebOff(persona));
-    const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
+    const place = worktreeNote(cwd, persona, ctx.project, this.workRoot);
+    const rulesWith = (hooked) => agyRules({ persona, guide, place, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
     const rules = rulesWith(useHook);
     const { addDirs, reads } = turnFolders(cwd, ctx, this.workRoot);
     const asked = this.usage?.start(this.version, ctx.signal) ?? null;

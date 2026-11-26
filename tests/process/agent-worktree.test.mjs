@@ -5,13 +5,17 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { after, test } from 'node:test';
 import { agentWorktree, branchFor } from '../../server/adapters/agent-worktree.mjs';
 import { decideAgyTool } from '../../server/adapters/agy-hook.mjs';
 import { excludePlugin, PLUGIN_DIR } from '../../server/adapters/agy-plugin.mjs';
+import { AntigravityCliAdapter } from '../../server/adapters/antigravity-cli.mjs';
 
 const home = await mkdtemp(join(tmpdir(), 'pb-test-worktree-'));
 after(() => rm(home, { recursive: true, force: true }));
@@ -146,4 +150,51 @@ test('#1709 in Auto, routine git runs with no card in an agent’s real worktree
   assert.equal(decide([dir]), 'allow');
   // Given the project’s own folder too, the agent could have written the config git reads there.
   assert.equal(decide([dir, p.folder]), 'ask');
+});
+
+test('#1709 an Antigravity turn in an agent’s worktree is told its branch and that the person merges, in agy’s rules file', async () => {
+  const { project: p, workRoot } = await project('told');
+  const persona = { id: 'pe_a', handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode: 'ask', tools: [], description: '', instructions: '' };
+  /** @type {{ cwd: string, rules: string }[]} */
+  const seen = [];
+  // A fake agy: it records the rules file the turn wrote into its folder, and ends the turn with a result line.
+  const spawnImpl = (/** @type {string} */ _bin, /** @type {string[]} */ _args, /** @type {any} */ opts) => {
+    const rules = join(opts.cwd, PLUGIN_DIR, 'rules', 'AGENTS.md');
+    seen.push({ cwd: opts.cwd, rules: existsSync(rules) ? readFileSync(rules, 'utf8') : '' });
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true });
+    setImmediate(() => {
+      child.stdout.end(`${JSON.stringify({ type: 'result', result: 'ok', session_id: 'c1' })}\n`);
+      child.stderr.end();
+      setImmediate(() => child.emit('close', 0));
+    });
+    return child;
+  };
+  const adapter = new AntigravityCliAdapter({
+    workRoot,
+    settingsFile: join(home, 'told', 'settings.json'),
+    spawnImpl: /** @type {any} */ (spawnImpl),
+    env: {},
+  });
+  const ctx = {
+    signal: new AbortController().signal,
+    mcpUrl: 'http://127.0.0.1:1/mcp?session=se_1',
+    persona,
+    project: p,
+    handles: ['gem'],
+    state: {},
+    saveState: () => {},
+    pathOf: () => null,
+    text: () => {},
+    activity: () => {},
+    status: () => {},
+    reported: () => {},
+  };
+  await adapter.deliver({}, { kind: 'user', text: 'Go.' }, ctx).catch(() => {});
+  const turn = seen.find((x) => x.rules);
+  assert.ok(turn, 'agy ran with its rules file');
+  assert.notEqual(turn.cwd, p.folder, 'in its own worktree');
+  assert.match(turn.rules, /## Where you work/);
+  assert.ok(turn.rules.includes(`branch postbox/pr_told-gem-pe_a`), turn.rules.slice(0, 400));
+  assert.ok(turn.rules.includes(p.folder));
+  assert.match(turn.rules, /which the person merges/);
 });
