@@ -27,10 +27,12 @@ export function endChecks(checks, turn, se, took = []) {
 
 /** The server’s checks over a finished turn. */
 export function checkTurn(checks, turn, se, took = []) {
-  const lineage = checks.threads.lineage(turn.threadId);
+  // As written (#623): a topic opened behind a held commit is in the turn’s lineage.
+  const written = (/** @type {string} */ id) => checks.store.pending.thread(id);
+  const lineage = checks.threads.lineage(turn.threadId, written);
   const items = lineage.flatMap((id) => checks.store.pending.items(id));
   const apps = Object.values(checks.store.pending.apps()).filter((a) => lineage.includes(a.threadId));
-  const problems = termProblems(turn.said, checks.threads.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
+  const problems = termProblems(turn.said, checks.threads.glossaryFor(turn.threadId, written), introducedTerms(items, apps), personSaid(items));
   // Diagrams too wide or too busy to read at the conversation’s width.
   const diagrams = lintDiagrams(turn.said);
   if (diagrams.length)
