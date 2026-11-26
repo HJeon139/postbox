@@ -224,7 +224,7 @@ test('#491 a send the link can’t write releases the host at once and leaves th
   assert.equal(store.state.hostForgets.ho_a, undefined);
 });
 
-test('#1683 one removal a host refuses settles nothing else: the others it answers on that connection are dropped', async (t) => {
+test('#1683 a refused removal alone stays owed: the others the host answers on that connection are settled', async (t) => {
   t.mock.method(console, 'error', () => {});
   // As daemon-forget.mjs answers: a refusal naming its persona, for the first; the others removed.
   const { store, manager, hosts } = rig({

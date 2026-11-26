@@ -113,7 +113,9 @@ function answers(hosts, hostId, l, left, { waitMs, setTimer, clearTimer }) {
         // others’ answers on this one are still read.
         if (!left.delete(msg.persona)) return;
         markDone(l);
-        console.error(`${nameOf(hosts, hostId)} couldn’t remove a deleted agent’s memory: ${msg.message} Postbox asks again when it next connects.`);
+        console.error(
+          `${nameOf(hosts, hostId)} couldn’t remove the memory of a deleted agent (${msg.persona}): ${msg.message} Postbox asks again when it next connects.`,
+        );
         if (!left.size) finish();
       } else if (msg.type === 'error' && msg.re === 'forget') {
         // A refusal naming no persona, from a daemon before #1683: nothing says which, so this connection stops here.

@@ -19,8 +19,10 @@ import { fail, send } from './daemon-reply.mjs';
 export async function forget(d, c, m) {
   if (typeof m?.persona !== 'string' || !m.persona || memoryFolderName(m.persona) !== m.persona)
     return fail(c, 'bad-message', 'forget.persona must be the id of a persona: letters, digits, _ and - only.', 'forget');
-  const refuse = (/** @type {string} */ code, /** @type {string} */ text) =>
+  const refuse = (/** @type {string} */ code, /** @type {string} */ text) => {
+    d.log(`Couldn’t remove the memory of a deleted agent (${m.persona}): ${text}`);
     void send(c, 'error', { code, message: text.slice(0, REMOTE_LIMITS.messageChars), re: 'forget', persona: m.persona });
+  };
   const memory = `${d.p.root}/memory`;
   let kind;
   try {
