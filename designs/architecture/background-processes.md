@@ -1,312 +1,238 @@
 # Background work that outlives a turn
 
-When an agent starts work in the background, such as a gate, a CI watch or a server, its turn should end once the model is done. The work keeps running, the room can see it, and the agent that started it is woken when it ends.
+An agent whose background job is still running takes new messages right away. That’s the one outcome this design is for, on every backend and on remote hosts. A background job exists to free its agent for other work while it runs, so holding the agent busy until the job ends defeats it (designs/intent.md, “Function first”).
 
-The approach is native harness first, and Postbox adds no tool for it. Agents start background work their harness’s own way: `run_in_background`, `&`, `nohup` or `tmux`. Postbox keeps what the harness reports, and finds the rest by a marker that each harness process inherits. Each harness gets this only after a live check passes for it, and keeps today’s behavior until then. Where a step can’t be shown safe, it falls back to today’s behavior too, never to losing work.
+How: the turn ends when the model has replied, the job runs on, and its end wakes the agent that started it, once. Agents start background work their harness’s own way, with `run_in_background`, `&`, `nohup` or `tmux`, and Postbox adds no tool for it.
 
-Status: proposed for [#1614](https://github.com/HJeon139/postbox/issues/1614), not built. It replaces an earlier draft, which added four Postbox tools and a launcher. On [#1615](https://github.com/HJeon139/postbox/pull/1615), the owner directed that Postbox integrate with each harness instead, because agents use their harness’s own way and fumble Postbox-specific mechanisms. It also covers the attribution [#1606](https://github.com/HJeon139/postbox/issues/1606) asks for, for the processes a session leaves behind.
+**Where it stands:** proposed for [#1614](https://github.com/HJeon139/postbox/issues/1614), and nothing here is built. On `main` an agent is held busy for its background work on four of the five backends, as “The problem” lists. **What’s next:** the four live checks in “The first step”, then that step.
+
+**How this document got here:**
+- An earlier draft added four Postbox tools and a launcher. On [#1615](https://github.com/HJeon139/postbox/pull/1615) the owner directed that Postbox integrate with each harness instead, because agents use their harness’s own way and fumble Postbox-specific mechanisms.
+- The draft after that ended a turn early only when every task bound to exactly one process group under strict rules, and otherwise kept the wait. A review on 26 November 2026 found that it left agents busy in the usual cases, such as a gate run in the foreground, fixed, then run again in the background. It also carried work that doesn’t stop the pile-up, which is now under “Later, not part of #1614”.
+- The owner then stated the rule in the room: “the purpose of background jobs is to free up the agent to take new messages while the job is running in the background”, and holding the agent busy “must be removed”.
 
 ## The problem
 
-**Claude Code waits for its background tasks.** When an agent starts a command with `run_in_background` and finishes its answer, the CLI stays alive until the task ends. Then it reports the task in a turn of its own. Postbox ends a turn only when the CLI’s process closes (`server/adapters/claude-code.mjs`, `child.on('close', settle)`). Until then `Running.busy()` stays true, `Delivery.ready()` (`server/delivery.mjs`) returns false, and every message to the agent waits.
-- **Measured with the real CLI in #1614:** a reply with no background command exited at 7.6 s. The same reply after `sleep 90` with `run_in_background` exited at 98.2 s.
-- **In the room on 21 and 22 November 2026:** agents’ messages waited 26 to 167 minutes behind their own background gates and CI watches.
-- **The Agent SDK waits too, up to a limit of its own** ([#1714](https://github.com/HJeon139/postbox/issues/1714)). After the last result it waits for background work only up to `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`, 10 minutes by default. Then it ends the run, and that work is stopped. In a recording of 26 November 2026 with the limit at 30 s, the SDK stopped a background `sleep 90` 5 s after the reply’s result, while `claude -p` with the same setting waited the full 90 s. Postbox passes that limit as `QUIET.backgroundMax` (2 h), the bound a host turn waiting on background work already has (#847), so the Agent SDK waits as long as a Claude Code turn on a host does, until this design lands (the CLI on this computer has no bound). Work the bound still stops after a reply is named to the agent at its next turn (`server/adapters/sdk-background.mjs`).
+Postbox ends a turn only when the harness’s process closes (`child.on('close', settle)` in `server/adapters/claude-code.mjs`, `kiro-cli.mjs` and `antigravity-cli.mjs`). Until then `Running.busy()` stays true, `Delivery.ready()` (`server/delivery.mjs`) returns false, and every message to the agent waits in its inbox.
 
-**Codex, Kiro and Antigravity differ from Claude Code, and from each other.** Each runs in its own process group (#126).
-- **Codex:** Postbox kills that group at each turn’s end (`stopTurn`, `server/adapters/codex.mjs`), so background work dies with the turn.
-- **Kiro and Antigravity:** a turn ends at the CLI’s `close` (`child.on('close', settle)` in `kiro-cli.mjs` and `antigravity-cli.mjs`), and Postbox sends no signal then. `stopTurn` runs only on Stop (`stopOnAbort`), and Antigravity also stops a turn whose session is missing (`stop.now()` in `antigravity-cli.mjs`). Node fires `close` only once the child’s stdio streams have closed, so it depends on where the background work’s output goes:
-  - **`cmd > log 2>&1 &`:** `close` comes right after the CLI exits, and `cmd` survives a normal end untracked. That’s #1606’s orphan, with no wake and no Stop.
-  - **An unredirected `cmd &`:** `cmd` holds the CLI’s pipes, so `close` waits until it ends. The critic’s probe of a fake harness measured `exit` at 456 ms and `close` at 3,004 ms. The turn stays busy the whole time, which is #1614’s wait on these harnesses too.
+| Backend | What holds the agent after its reply, on `main` | The longest a message waits |
+|---|---|---|
+| Claude Code, this computer | The CLI stays alive until its background tasks end, then reports them in a turn of its own | The job’s whole run. Postbox sets no bound |
+| Agent SDK | The same wait, inside the SDK | 2 h (`QUIET.backgroundMax` in `shared/limits.mjs`, passed by `server/adapters/sdk-background.mjs`, #1801). Then the SDK stops the work |
+| Claude Code, on a host | The same wait, on the host | 2 h. Then the turn is stopped as hung (#847, `server/remote/turns-background.mjs`) |
+| Kiro and Antigravity | An unredirected `cmd &` holds the CLI’s pipes, so `close` comes only when `cmd` ends | The job’s whole run. No bound |
+| Codex | Nothing: the turn ends at the reply. But Postbox kills the turn’s process group then (`stopTurn` in `server/adapters/codex.mjs`), so background work dies, and the guide tells Codex agents to wait in the foreground (`TURN_ENDS` in `server/adapters/guide.mjs`) | The command’s whole run, as a foreground call |
 
-Stop kills the group on all three. On a host, the daemon owns that group (`server/remote/host/daemon-kill.mjs`).
-
-**On any harness, some work escapes.** A foreground call can start `cmd &`, `nohup cmd &` or `setsid cmd` and then let its shell exit. The child is reparented to init. It’s no longer under the CLI, so `shellGroups` (`server/adapters/process-group.mjs`) doesn’t find it, and nothing tracks it. Stop still reaches it while it stays in the harness’s group. It doesn’t once its shell led a group of its own, or it ran `setsid`. That’s #1606’s orphan.
+The evidence:
+- **Measured with the real CLI in #1614:** a Claude Code reply with no background command exited at 7.6 s. The same reply after `sleep 90` with `run_in_background` exited at 98.2 s.
+- **In the room on 21 and 22 November 2026:** agents’ messages waited 26 to 167 minutes behind their own background gates and CI watches (#1614).
+- **The Agent SDK’s limit** ([#1714](https://github.com/HJeon139/postbox/issues/1714)): after the last result the SDK waits for background work only up to `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`, 10 minutes by default, and then stops that work. Two review rounds run as background subagents were lost that way on 22 November 2026. #1801 raised the limit to 2 h, which saved the work and lengthened the wait.
+- **Kiro and Antigravity:** Node fires `close` only once the child’s stdio streams have closed. A probe of a fake harness that ran an unredirected `cmd &` measured `exit` at 456 ms and `close` at 3,004 ms (during #1615’s review). With `cmd > log 2>&1 &`, `close` follows `exit`, and `cmd` runs on with no wake.
 
 ## What `main` already has
 
-- **Recognizing a task.** Claude Code’s `run_in_background` tasks are recognized from the stream (`server/adapters/claude-stream.mjs`). Each is recorded as a job with its task id, command and output file (`server/harness-events.mjs`, `startJob`). At the turn’s result, `on_turn_end` lists the jobs still running (`tools.waiting`). The Agent SDK reports the same tasks.
-- **Keeping a job.** Send now stops the CLI with `jobs: 'keep'` (`server/message-queue.mjs`, `stopForSendNow`). `stopTurn`’s `keep` (`server/adapters/process-group.mjs`) finds each kept job by its command among the CLI’s tool shells (`shellGroups`), and keeps it. It’s lenient: it takes the first match, and if any job goes unmatched, it keeps every unmatched shell.
-- **Seeing a job end.** A 5-second poll of the kept jobs’ process groups sees each one end (`server/kept-jobs.mjs`, #129, #164). Each kept job has its own Stop.
-- **On a host:**
-  - the daemon records a turn’s tool shells’ groups, and matches them by their members’ start times (`daemon-kill.mjs`, `liveGroups`, `sameProcess`);
-  - it doesn’t parse the harness’s stream, and stores `out.jsonl` for Postbox to read (`server/remote/host/cleanup.mjs`);
-  - `stopTurn` on a host returns `stopRemote(child)`, which ignores `keep`, so Send now keeps no jobs on a host today.
+The first step is built from these, and adds no new mechanism.
+- **Recognizing a task.** Claude Code’s `run_in_background` calls, timed-out calls moved to the background, Monitors and background subagents are recognized from the stream (`server/adapters/claude-stream.mjs`). Each command is recorded as a job with its task id, command and output file (`server/harness-events.mjs`). At the turn’s result, `on_turn_end` lists the jobs and the subagents still running. The Agent SDK streams the same messages.
+- **Keeping a job.** Send now stops the CLI with `jobs: 'keep'` (`stopForSendNow` in `server/message-queue.mjs`). `stopTurn`’s `keep` (`server/adapters/process-group.mjs`) sends the CLI SIGKILL at once, since its SIGINT handler would stop the jobs. It finds each job’s tool shell by its command, and keeps that shell’s process group. It’s lenient: a job it can’t tell apart is kept with every unmatched shell, so it’s never killed (#164).
+- **What the kill does to a job,** recorded with `ps` on Claude Code 2.1.296 for #126 (`process-group.mjs`’s opening comment): after SIGKILL to the CLI, its tool shells live on with init as their parent, and a background job keeps writing to its output file.
+- **Seeing a job end.** A 5-second poll of the kept jobs’ process groups sees each one end (`server/kept-jobs.mjs`, #129, #164). The agent is told at its next turn, with the output file’s path (`endJob` in `server/job-records.mjs`). Nothing wakes it.
+- **In the room.** Each kept job is listed under its reply with its own Stop (designs/intent.md, “Decisions and why”, the row that begins “Stop reaches every process of the turn”).
+- **On a host.** The daemon records a turn’s tool shells’ groups and matches them by their members’ start times (`server/remote/host/daemon-kill.mjs`). `stopTurn` on a host ignores `keep`, so Send now keeps no jobs there today.
 
-This design extends those pieces. It adds no tool, no listener and no permission surface. Every command is still one the agent ran through its harness’s own shell tool, judged in the persona’s mode.
+## The first step: Claude Code and the Agent SDK on this computer
 
-## The design
+This is where the pile-up was measured, and both backends already have every piece.
 
 ```mermaid
 sequenceDiagram
-  participant H as The harness (Claude Code CLI)
+  participant H as The CLI (Claude Code, or the one the Agent SDK runs)
   participant S as Postbox
-  participant J as The background work
-  H->>J: run_in_background (the harness reports the task)
-  H-->>S: the turn’s result; on_turn_end lists the tasks still running
-  S->>S: binds each task to one group, and scans for marked processes
-  alt every listed task binds
-    S->>H: stops the CLI and its other shells, keeping the bound groups
-    Note over S: The turn ends: Running.busy() is false, messages arrive
-  else any task doesn’t bind
-    Note over S,H: the turn waits, as on main today
-  end
-  loop every 5 s
-    S->>J: still alive? (members with their recorded start times)
+  participant J as The background job
+  H->>J: run_in_background
+  H-->>S: the reply’s result. Only shell jobs still run
+  S->>H: ends the CLI the way Send now does, keeping every tool shell
+  Note over S: The turn has ended. Running.busy() is false, and messages arrive
+  loop every 5 s, while a kept job exists
+    S->>J: is its process group still there?
   end
   J-->>S: gone
-  S->>S: commits the job’s end and one wake, together
-  S->>H: a new turn: “Your background job … ended”
+  S->>S: records the job’s end and one wake, in one commit
+  S->>H: a new turn: “Your background job … has ended. Its output is in …”
 ```
 
-### 1. Binding a harness task to its group
+- **When.** The reply’s `result` has arrived, and everything `on_turn_end` lists as still running is a shell job: a `run_in_background` Bash call, or one moved to the background at its timeout. With a background subagent or a Monitor running, see “When a turn still waits”.
+- **Ending the turn.** Postbox stops the CLI through the path Send now already uses, with every listed job to keep. It signals the CLI’s own group and no tool shell:
+  - a job whose shell is found is kept in that shell’s group;
+  - a job it can’t tell apart is kept with every unmatched shell, as Send now keeps it. So a gate that ran in the foreground, was fixed, and runs again in the background ends the turn like any other. Which shell is the job’s decides what its row is called and what its Stop reaches, never whether work is lost;
+  - a listed job with no shell left has already ended, and its end and wake are recorded at once;
+  - no shell is killed. At the result no foreground call is left to stop, so a shell that matches no job is left running, as `main` leaves a process its harness never reported.
+- **The wake.** When the kept-jobs poll sees a job’s group gone, Postbox records the end and one wake in one commit, sent the way a scheduled wake is (`server/scheduled-wakes.mjs`). It carries the text the agent is told today: the job’s id, its command and its output file’s path. The agent reads the file with its own tools.
+  - It goes only to the agent that started the job, counts as no hop, and raises no “needs you”.
+  - A restart between seeing the end and sending the wake sends it once.
+  - A job the person stopped wakes no one. The agent hears of it at its next turn, as today.
+  - Send now’s kept jobs wake their agent the same way, since they’re the same record.
+- **What it doesn’t add.** No marker in the environment, no strict binding, no output tail read by Postbox, no new item in the room, no tool, and no protocol message.
+- **Shutdown and restart stay as on `main`.** A clean shutdown stops kept jobs (`stopKeptJobs` in `server/kept-jobs.mjs`, called from `server/turn-stop.mjs`), and a start after a crash records them as stopped, saying they may still run (`server/job-records.mjs`). Neither costs anything `main` has: there a shutdown stops the waiting turn, and its jobs with it.
+- **The Agent SDK’s 2-hour wait no longer covers shell jobs.** The turn ends at the result, so the SDK’s limit is never reached for them, and “Postbox waits up to 2 h for background work after a reply” (`stoppedAfterReply` in `sdk-background.mjs`) is said only of a subagent or a Monitor. The limit itself stays until “Live input”, because without it the SDK stops a background subagent at 10 minutes (#1714).
 
-Postbox binds a task the harness reported to exactly one live process group. Every rule below must hold in one `ps` snapshot, taken at the `result` while the CLI that Postbox holds as its own child is still alive:
-- **The task is live, by the harness’s own account.** The owning turn’s stream reported it starting, with `task_started` and its tool call id, and hasn’t reported it ending. There’s no `task_notification` for it yet.
-- **Exactly one shell matches.** Among the CLI’s tool shells (`shellGroups`: children of the CLI that lead their own groups), exactly one runs the task’s command.
-- **That shell started inside the task’s own call.** Its leader’s start time (`lstart`, to the second) falls between two moments: when Postbox read the call’s `tool_use` line, and when it read that call’s result. Each end is widened by one second. These are Postbox’s receive times, because the stream carries no timestamp of its own.
-- **No other call could account for it.** No other tool call in the turn ran the same command, foreground or background, including calls by the turn’s subagents. The stream records every call’s input, so this reads the harness’s own record. It covers a task that exited before its notification arrived, while another call’s shell runs the same command.
+### Live checks before it’s built
 
-A bound job is recorded as section 6, “What’s recorded”, lists.
+None of these has been run. Each is a local run of a few turns with the real CLI, costs real usage, and is recorded here with its date, the CLI’s version and its fixture when it’s run.
 
-### 2. When the turn ends early, and when it waits
+| Check | What a pass shows | Result |
+|---|---|---|
+| The CLI is stopped after its `result`, while a `run_in_background` job runs | The job survives, and its output file keeps filling. Also what else sits under the CLI then, such as hooks or MCP servers, and whether any leads a process group of its own. #126’s recording stopped the CLI in the middle of a turn, not after a result | Not run |
+| The session’s next turn, after that stop | It resumes cleanly, with a task id in its history that no CLI will ever report | Not run |
+| The Agent SDK’s run is ended after its `result` | Ending the run doesn’t itself stop the tasks, as reaching its limit does (#1714) | Not run |
+| A new message during the wait, through the SDK’s streaming input, and through `claude -p --input-format stream-json` with stdin held open | The CLI takes it as a new turn while the job runs on. This is the fully native fix: see “Live input” | Not run |
 
-**Claude Code and the Agent SDK.** At the `result`, Postbox ends the CLI early only when every task `on_turn_end` lists binds by section 1. Then it stops the CLI through a strict mode of `stopTurn`:
-- **Kept:** each bound job’s whole group survives.
-- **Stopped:** the CLI and every other tool-shell group under it. They get SIGINT, then SIGKILL after `GRACE_MS`, as today.
+If the fourth check passes for a backend, that backend takes “Live input” as its step, and stop-and-keep stays as the fallback wherever it doesn’t. If the first or third fails, the step isn’t built for that backend as written, and this document says what was seen.
 
-If any listed task doesn’t bind, Postbox leaves the turn as `main` does: it waits for the CLI to report its tasks and exit. So the strict rules can cost latency, never work: an unbound task is never killed. The same wait applies while the model still works:
-- before the `result`;
-- while a subagent runs;
-- while a permission card waits;
-- while a Monitor runs, until its live check passes.
+## When a turn still waits
 
-The strict mode is apart from Send now’s lenient keep, which stays as it is, because the person chose to keep those jobs. Whether Send now should also be strict is a question for its own issue.
+A wait that costs the agent its messages needs a real risk, and says what it protects against. After each backend’s step, these are the only ones left:
 
-**Stop is `main`’s Stop.** On every harness, Stop kills the turn’s group as `main` does, and binds nothing. The person or the agent asked for the work to stop, and a background job begun in that turn goes with it. Jobs bound at earlier turns’ ends are in other groups, so Stop doesn’t reach them, and each keeps its own Stop. This rule is decided by what Stop means, not by whether the harness is still alive, so it holds between the CLI’s exit and its `close` too. It’s the same locally and on a host.
+| The turn waits | What the wait protects | What removes it |
+|---|---|---|
+| Before the model’s reply | Nothing to protect: the model is at work, and that’s what busy means. A message for it waits in its queue | Not a wait this design removes |
+| A background subagent is still running | The subagent runs inside the CLI’s own process, with no process of its own to keep. Ending the CLI ends it, and its work is lost, as the two review rounds of #1714 were | “Live input” |
+| A Monitor is still running | A Monitor’s lines reach the model only through the CLI that started it. Its script would survive the CLI, but nothing would read it, so the watch the agent asked for would be silently gone | “Live input” |
 
-**The snapshot decides how a turn’s end treats its group.** At the turn’s end, Postbox reads the group in one `ps` snapshot. What it does depends on whether the harness’s pid is in that snapshot with its recorded start time, not on which harness it is.
-- **The harness is still alive, as Codex’s app-server is when Postbox stops it:** case (a)’s foreground test in section 3 applies. A group with no bound job gets the group signal `main` sends there. A group holding a bound job is signaled member by member, as below.
-- **The harness has exited, as a Kiro or Antigravity CLI has at a normal end:** every member left has init as its parent, so the foreground test can’t tell a leftover helper from `cmd &`. Postbox doesn’t guess, and adds no kill that `main` doesn’t send. Every member that passes section 3’s other rules binds, and nothing is signaled. Those rules are a start time inside the turn, the same user, and still alive at the second read.
+Both of the last two are bounded at 2 h (`QUIET.backgroundMax`), which the Agent SDK and hosts have today. Claude Code on this computer gains the same bound in the first step, so no backend holds an agent with no end. Past it the turn is stopped, and the agent is told what was stopped, as `sdk-background.mjs` tells it today. The bound protects against an agent deaf for good behind work inside its CLI that hung. The person’s Send now still ends such a wait at any moment.
 
-**Kiro and Antigravity end at the terminal event and `exit`, not at a held `close`.** Waiting for `close` would keep #1614’s wait wherever `cmd &` holds the CLI’s pipes.
-- **When the turn ends:** once two things have happened:
-  - the CLI has exited;
-  - its stream has given its terminal event: Kiro’s `runFinished` or `runError` (`kiro-cli.mjs`; `runError` sets no `finished` today, so the implementation treats it as terminal too), or Antigravity’s `result` event, which sets its `finished` (`antigravity-cli.mjs`).
-- **When the terminal event lags `exit`:** stdout may still hold unread lines after `exit`, so Postbox keeps reading for up to 2 s. If the event arrives, the turn’s outcome follows `main`’s order for a closed CLI: a non-zero exit fails the turn even with the terminal event, and a zero exit with it succeeds. If not, the turn ends as `main` ends a CLI that exited without its final event: the reply read so far is kept, and the turn fails with the exit error. That error is built from the stderr read up to that point, with the same 2 s bound.
-- **The pipes stay drained.** Postbox doesn’t close its ends of the CLI’s stdio, because a job writing to a pipe with no reader gets SIGPIPE and dies. Critic’s probe killed a backgrounded `echo` that way, status 141. Postbox keeps reading each pipe until EOF. Bytes after the turn’s end are always discarded: a job fed through the CLI’s pipes has no tail, and its wake says its output wasn’t kept. So the job runs to its end exactly as it does on `main`, where the turn would have waited for it, and the same holds for a job that didn’t bind. The cost is the CLI’s stdout and stderr descriptors, one pair held per finished CLI until the last job holding its pipes ends. A job that never ends holds its pair until it’s stopped.
-- **The live checks** include whether `close` fires while an unredirected `cmd &` runs.
+Nothing else waits. In particular, a turn never waits because Postbox couldn’t tell which process is a job’s.
 
-**How many wakes a turn can cause.** A wake counts as no hop, so it needs a bound of its own:
-- **A job must outlive the turn by more than a moment.** It binds only if it’s still alive at a second read, 1 s after the snapshot. A helper that outlives its CLI by milliseconds doesn’t bind. The turn’s end doesn’t wait for this read. The turn ends at the snapshot, and the second read runs afterward, only when the snapshot found candidates. A turn with none does no second read.
-- **One wake per bound job, when it ends.** That is a bound on the rate, not on a chain. An agent that runs `sleep 2 &` in every turn is woken after every turn, for as long as it keeps doing so. Each such wake is one the agent chose, as a scheduled wake is, and the chain limit doesn’t count either kind. The room shows every job and its Stop, and the person can stop the agent. The live check for each harness includes a turn with no background command, which must bind nothing.
+## The order, and what each backend does until its step
 
-**Identity is checked again before every pid signal.** Once Postbox signals by pid, a reused pid is the risk, so no pid is signaled on an old reading. Before each signal, Postbox reads that pid’s start time in a fresh `ps` read and signals only if it still matches the one recorded. That covers the first SIGINT, the SIGKILL `GRACE_MS` later, a job’s own Stop, and the startup reconciliation in section 6. A pid whose start time changed, or that is gone, is skipped and recorded as ended. The window left is between that read and the signal itself: milliseconds, and not zero.
+Each step is its own change, with its own live check, and lands in this order. The order follows the evidence: the measured waits first, then the same wait where it’s already bounded, then the wait that’s reasoned from a probe, then the backend where no message waits today.
 
-**Group signals get the same check.** On `main` only the host daemon matches a group by its members’ start times. The local `liveGroups` (`server/kept-jobs.mjs`) checks only the leader’s command line. `listProcesses` reads no start time, and `stopTurn`’s group signals don’t go through `liveGroups` at all. `stopPgid` sends its delayed SIGKILL with no second check. So the local `ps` read gains `lstart`. Before each group signal, including the delayed SIGKILL, the kept-job poll and the strict stop check that a member still has its recorded start time, as the daemon does.
+| Order | Backend | Until its step lands | The bound until then | After its step |
+|---|---|---|---|---|
+| 1 | Claude Code and the Agent SDK, this computer | Today’s wait | None for Claude Code, 2 h for the Agent SDK | Free at the reply. A subagent or a Monitor: at most 2 h |
+| 2 | Claude Code on a host | Today’s wait | 2 h (#847) | The same as step 1 |
+| 3 | Kiro and Antigravity, here and on a host | Today’s wait for an unredirected `cmd &`. A redirected job already frees the agent, with no wake | None. The guide line in “The guide and intent.md” goes out with step 1 | Free at the reply, with a wake |
+| 4 | Codex, here and on a host | No message waits. Background work dies with the turn, and the guide says to run it in the foreground | The command’s run | Background work is kept, with a wake |
+| 5 | Live input, per backend, where its check passes | The waits in “When a turn still waits” | 2 h | No wait after a reply |
 
-### 3. The marker, for work the harness doesn’t report
+Kiro and Codex run on hosts today, and Antigravity doesn’t yet (`server/adapters/adapter.mjs`, the `remote` capability). Each gets its step on a host in the same change as on this computer, and Antigravity’s host step comes with its host support.
 
-Postbox starts every harness process with two variables in its environment: `POSTBOX_SESSION=<session id>` and `POSTBOX_TURN=<turn id>`. Neither is a secret, and the turn’s MCP token never goes into the environment (#54, #126). Every descendant inherits both at exec, including after `setsid`, `nohup` or reparenting to init, which the process group can’t follow.
+### Hosts
 
-**What binds.** A tool shell that backgrounds a command exits within milliseconds, and its child is reparented to init. The integrator measured this with a fake harness running `/bin/sh -c 'node -e … & echo $!'`. The shell lived 4.7 to 4.9 ms. Its child’s parent became pid 1, and its group stayed whichever group the shell had: its own, or the harness’s. A 5-second poll almost never sees such a shell, so ancestry recorded by polling can’t bind it. At a turn’s end, a process is bound as this turn’s background work in two cases:
-- **(a) It’s in the harness’s own process group, and its shell has exited.** Membership in that group is ancestry: only the harness and its descendants are in it. But membership alone doesn’t tell background work from a foreground child, so the parent decides:
-  - **Background:** a member whose parent is init or the subreaper. Its shell exited and left it running, which is what `cmd &` and `nohup cmd &` do. It binds when its start time falls inside the turn, with or without a readable marker. On macOS that covers #1614’s own `sleep 90 &`, whose `/bin/sleep` hides its environment.
-  - **Foreground:** a member whose parent chain still reaches the harness, or a tool shell that is still alive. It never binds, and it is stopped at the turn’s end. This test applies only while the harness is alive at the snapshot, as at Codex’s turn end. Once the harness has exited, section 2’s exited rule applies instead.
-- **(b) It’s outside that group,** after `setsid` or as the orphan of a tool shell that led its own group. It binds when all of these hold:
-  - its marker names this session and this turn;
-  - its start time falls inside the turn;
-  - its parent is init or the subreaper;
-  - it belongs to the user running the harness on that machine (its real uid, `ruid`, matches the harness’s).
-
-**Why case (b) binds: the owner’s decision.** Case (b) gives no tie to the harness that Postbox observed. The marker is the process’s own account, and the start time and parent show only timing. The integrator asked for it in the [fourth-round review of #1615](https://github.com/HJeon139/postbox/pull/1615#pullrequestreview-6011596385). Critic disagreed, and the owner decided in the room on 22 November 2026 ([the direction comment](https://github.com/HJeon139/postbox/pull/1615#issuecomment-7075169319)) that it binds:
-- **The reasoning:** a forged marker can only come from a process of the person’s own user. That process can already signal these processes, so a forger gains at most a spurious wake for the agent the marker names.
-- **The concern weighed against it:** permission to send a Unix signal isn’t, by itself, authority for Postbox to wake an agent or to offer a Stop across sessions.
-
-The owner chose coverage for `setsid` jobs and the orphans of tool shells that led their own groups, on Codex, Kiro and Antigravity, over that concern. A process that binds this way wakes its agent and has a Stop, like any bound job. A Claude Code task that section 1 handled is left to section 1.
-
-**Nothing leaks that `main` reaps, and a kept job isn’t signaled with the rest.** A group signal (`signalPgid`) reaches every member, so it can’t be used on a group that holds a bound job. At Codex’s turn end, the one end where the harness is still alive and `main` signals its group:
-- **A harness group with no bound job** gets that harness’s group signal where `main` sends one: at Codex’s turn end. At a normal Kiro or Antigravity end, `main` sends none, and neither does this design. Stop is section 2’s `main` Stop.
-- **A harness group that holds a bound job:** the first SIGINT goes to each member that didn’t bind, by its own pid, after the identity check in section 2. It spares the same members the delayed sweep below spares: the bound jobs and their descendants, meaning any member whose parent chain reaches a bound job’s pid with that pid’s recorded start time. The members it signals include the harness, its foreground children, and a marked process inside the turn that fails a rule above.
-- **The delayed SIGKILL sweeps the group again, not the old list.** A foreground process can start a child in the group during `GRACE_MS`, which the first list doesn’t name. So at SIGKILL time, Postbox reads the group’s members again in a fresh `ps` read. It sends SIGKILL to every member, by pid and after its identity check, except two kinds:
-  - a bound job;
-  - a descendant of a bound job, meaning its parent chain reaches a bound job’s pid with that pid’s recorded start time.
-
-  A member that appeared during the grace period and descends from no bound job is reaped, as the old group signal would have reaped it. Postbox repeats the sweep once more, 100 ms later, for a child started during the first sweep. After that, anything left is what a `fork` loop keeps spawning. Postbox records it on the job as “still spawning at the turn’s end”, the same limit the group signal has on `main`. A process outside the group that carries the marker but doesn’t bind stays informational: shown in the room with its pid as last seen, with no wake, no signal and no Stop. That’s the same as `main`, which never reached it either.
-
-**The poll’s cost.** On `main`, `pollKept` runs `ps` only while a kept job exists (`server/kept-jobs.mjs`). This design adds the marker scan at each turn’s end, and at each 5-second tick only while kept jobs exist. One scan per tick serves every turn and job. The implementation PR measures the scan, `ps -Eww -ax`, whose output is larger than today’s read, against `main`’s poll, and holds it to a budget stated there.
-
-**What the scan reads.** The scan keeps only the two marker variables from its output, and nothing else of any process’s environment. Raw scan output is never logged or stored.
-- **On macOS:** `ps -Eww -ax -o pid=,ppid=,pgid=,ruid=,lstart=,command=`. In macOS `ps`, `uid` is the effective user id and `ruid` the real one.
-- **On Linux:** `/proc/<pid>/environ`, with the owner from `/proc/<pid>/status` (`Uid:`).
-
-The owner is read so that case (b)’s same-user rule is checked, not assumed. A process of another user never binds, wakes no one and gets no Stop, whatever marker it carries.
-
-It’s one more read beside `listProcesses`, with the same 2 s timeout and 16 MB cap.
-
-**What it costs, measured.** On macOS (Darwin 25.6), `ps -E` prints no environment for Apple platform binaries. Four processes were started with `POSTBOX_SESSION=probe123`, then read with `ps -E -p <pid> -o command=`:
-
-| Process | Marker visible |
-|---|---|
-| `/bin/sleep 30` | no |
-| `nohup /bin/sh -c '/bin/sleep 31'` (exec’d to `sleep`) | no |
-| Xcode’s `python3`, after `os.setsid()` | yes |
-| `node -e …` | yes |
-
-So on macOS a job is found through any member that isn’t a platform binary, such as node, npm, gh, cargo or python. Its group is then found by its group id. A job made only of `/bin/sh` and `/bin/sleep`, like #1614’s own `sleep 90`, isn’t found by the marker. That’s why the marker is combined with the ancestry recorded while the harness is alive, and why a Claude Code task is bound by section 1, not by the marker.
-
-Other ways the marker is lost or misused:
-- **A fresh environment.** A process that execs with a new environment drops the marker and isn’t tracked. That includes `env -i`, `sudo`, `launchctl`, `systemd-run`, and work handed to `docker` or `ssh`. Changing the environment after exec changes nothing, because the scan reads the kernel’s exec-time copy.
-- **Linux, not verified here.** `/proc/<pid>/environ` is readable for the same user’s dumpable processes, but not for setuid processes or under `hidepid`. Each host’s live check confirms it.
-- **A process that drops or forges its marker.** One that drops it isn’t tracked, as a `nohup` process isn’t today. One outside the harness’s group that copies another session’s marker, with a start time inside that session’s turn and init as its parent, binds to that session by case (b). At worst it wakes that session’s agent once, spuriously. The one-wake limit holds per bound job: each bound job wakes its agent once, at its own end. A forger can only be the person’s own user, which case (b) checks and which could already signal it. A marker never makes a process bind to a session other than the one it names.
-
-### 4. Wake on exit
-
-When a kept job ends, the agent that started it gets one wake, sent the way a scheduled wake is (`server/scheduled-wakes.mjs`, `rt.delivery.send`):
-
-> Your background job “npm run check” ended after 4 min 12 s. Its last 50 lines: …
-
-- **The end.** A job has ended when no member of its group still has its recorded start time.
-- **The exit status** comes only from the harness, in a `task_notification` the CLI sent before it was ended. Otherwise the wake says “exit status unknown”.
-- **The output tail** comes from the harness’s own output file, and only within the harness’s own authority:
-  - **The folder:** derived from what Postbox knows, not from text. It’s Claude Code’s per-session task folder, found from the user id, the working folder and the `init` event’s session id. The path in the tool result’s text (`BACKGROUND_FILE` in `claude-stream.mjs`) is only a hint, accepted inside that folder alone. A structured `output_file` in a `task_notification`, if one arrives, must name the same file.
-  - **Off the turn end’s path:** the keep decision comes first and never waits on the file. Postbox verifies the file afterward, asynchronously, within a 1 s budget.
-  - **Opening:** with `O_RDONLY | O_NOFOLLOW | O_NONBLOCK`, so a FIFO or device can’t block the open. Postbox keeps the descriptor.
-  - **Checks:** `fstat` must show a regular file, owned by the person’s user, with one link. `realpath.native` of the path must lie inside the folder and have the descriptor’s device and inode. Postbox records that device and inode.
-  - **Reading:** at the end, through the descriptor only, at most the last 8 KB and 50 lines.
-  - **What the checks guard:** an agent could swap its task’s output file for a link to a file that its persona’s Read rules deny while its shell rules allow it. The checks keep Postbox from reading that file for it.
-- **After a restart,** the descriptor is gone. Postbox reopens the path with the same flags and checks, and reads it only if the device and inode match what it recorded. Otherwise the wake says the output isn’t available.
-- **A redirect.** With `cmd > log 2>&1`, the harness’s file is empty. Postbox doesn’t read the redirect target: the wake names it, unread (“Its output went to `log`”), and the agent reads it with its own tools at no extra cost. So Postbox never reads a path the agent chose, which the agent’s Read rules might deny.
-- **`tmux` is welcome, not required.** A `tmux new -d` session’s processes are found by the marker. The wake names the session, unread (“Its output is in tmux session `build`”), and the agent can run `tmux capture-pane` itself. tmux isn’t the mechanism, because it isn’t on every host and agents would have to choose it.
-- **Quoted as data:** an @-mention in the tail wakes no one.
-- **Once.** The job’s end and its wake are committed together. A restart or a host reconnect that finds the job already ended wakes no one again.
-- **Quiet in the room.**
-  - The wake goes only to the agent that started the job. It counts as no hop and raises no “needs you”.
-  - Each job stays visible in the room until it ends, then shows its end. That isn’t an alarm: the agent it wakes acts on it (AGENTS.md, “No unactionable alarms”).
-  - The person can Stop any bound job. An agent can stop only its own session’s.
-
-### 5. Remote hosts use the same code
-
-A host gets the turn-end path only with both of these. Until then it keeps today’s behavior.
-- **A stream reader in `shared/`.** Section 1’s binding needs `task_started`, `task_notification`, each tool call with its input and result, and the `result`. On `main`, the parser is `server/adapters/claude-stream.mjs`, and `hostFiles` (`server/remote/install-bundle.mjs`) ships only `shared/` and `server/remote/host/`. A small reader of just those events moves to `shared/`, and both the server and the daemon load it. Then the daemon can bind a result that arrives while the laptop sleeps.
-- **A stop that keeps.** `daemon-kill.mjs` gains the strict keep: it stops the runner and its other shells, and keeps the bound groups. For Codex on a host, it also gains section 2’s per-member signal at the turn’s end, gated by the same live check. At a normal Kiro or Antigravity end it sends nothing, and Stop is `main`’s Stop, as locally. On `main` the daemon signals the runner’s group. The binding rule, the marker scan, the poll and the job record live in one `shared/` module.
-
-The daemon keeps polling, and keeps each job’s record, tail and status in its own data folder, never in the workspace. It does this while the laptop sleeps or the link is down. On reconnect, a job that ended while the two were apart wakes its agent once, from the stored record, in one commit. Jobs still running reappear as they are.
-
-The protocol messages:
-- **`jobs.kept`:** daemon to laptop, the jobs a turn’s end kept.
-- **`jobs.list`:** daemon to laptop on reconnect, every job’s record.
-- **`jobs.ended`:** daemon to laptop, live.
-- **`jobs.stop`:** laptop to daemon.
-- **`jobs.ack`:** laptop to daemon, once the end and its wake are committed, so the daemon can drop the record.
-
-A daemon from before this change doesn’t list `jobs` in its welcome. With one, the laptop keeps today’s behavior. That follows the welcome-field pattern that `claudeChecks` uses (`server/adapters/claude-code-remote.mjs`, and remote-hosts.md, “Postbox and the daemon”). While a host is disconnected, its jobs show in the room as unknown, last seen at a time, never as an alarm.
+A turn on a host waits up to 2 h today, and Send now keeps nothing there. The step for a host:
+- **The laptop decides, and the daemon keeps.** Postbox on the laptop already reads the turn’s stream, so it applies the first step’s rule and sends the daemon’s `stop` with the jobs to keep. A message can reach an agent only while the laptop is up, because delivery runs there. So deciding there loses nothing: if the result came while the laptop slept, the stop goes out when it reconnects and reads the stream.
+- **The daemon’s stop gains `keep`** (`daemon-kill.mjs`): SIGKILL to the runner’s group at once, and the tool shells’ groups it already records are kept, each matched by its members’ start times as today.
+- **The daemon polls its kept groups** and stores each job’s end in its own data folder, never in the workspace, while the laptop sleeps or the link is down.
+- **Send now on a host keeps jobs too,** since it’s the same stop.
 
 ```mermaid
 sequenceDiagram
   participant L as Laptop (Postbox)
   participant D as Host daemon
   participant J as Job on the host
-  L->>D: run turn
-  D->>J: the harness starts a background task
-  D->>D: at the result, binds J (shared reader), stops the runner keeping J
-  D-->>L: turn result, then jobs.kept
+  D-->>L: the turn’s stream, with its result and a shell job still running
+  L->>D: stop, keeping the job
+  D->>D: SIGKILL to the runner’s group, keeps J’s group
+  D-->>L: the turn ended, and jobs.kept
+  Note over L: The agent is free, and messages arrive
   Note over L,D: the laptop sleeps, and the link drops
   J-->>D: ends (seen by the daemon’s poll)
-  D->>D: stores J’s end and tail in its data folder
+  D->>D: stores J’s end
   Note over L,D: the laptop reconnects
   D-->>L: welcome (lists jobs), then jobs.list
-  L->>L: commits J’s end and one wake, together
+  L->>L: records J’s end and one wake, in one commit
   L->>D: jobs.ack
   D->>D: drops J’s record
 ```
 
-### 6. Restart
+The protocol messages: `jobs.kept` and `jobs.ended` (daemon to laptop, live), `jobs.list` (daemon to laptop on reconnect), `jobs.stop` and `jobs.ack` (laptop to daemon). A daemon from before this change doesn’t list `jobs` in its welcome, and with one the laptop keeps today’s wait and its 2 h bound. That follows the welcome-field pattern `claudeChecks` uses (`server/adapters/claude-code-remote.mjs`, and remote-hosts.md, “Postbox and the daemon”). While a host is disconnected its jobs read as last seen at a time, never as an alarm.
 
-**What’s recorded.** Each job record in the store, or in the daemon’s data folder on a host, holds:
-- its kind, `bound` for a job this design bound and `sendNow` for one Send now kept;
-- its session and the turn that bound it;
-- the harness’s task id, for a Claude Code task;
-- its command line, as shown;
-- its group id, and each member’s pid, `ruid` and start time at binding;
-- its output file’s device and inode, when it has one;
-- when it was bound.
+Its live check: the first step’s first two checks, run on a host, and a job that ends while the laptop is disconnected.
 
-**A clean shutdown keeps bound jobs whose output doesn’t depend on Postbox.** On `main`, a clean shutdown stops every kept job (`stopKeptJobs` in `server/turn-stop.mjs`). When Postbox exits, its read ends of a CLI’s pipes close, so a job still writing to them dies of SIGPIPE at its next write, as critic’s probe showed. So at a clean shutdown, a `bound` job keeps running and its record stays only when its output goes elsewhere: a redirect, `nohup`, or a harness output file such as Claude Code’s. That lets a long run survive an upgrade, as the owner asked. A bound job still fed through a CLI’s pipes is stopped at shutdown, as on `main`, and its wake says Postbox stopped it as it shut down. The guide line says so too: “Background work is fine: you’re woken when it ends. Redirect its output to a file if it should outlive a Postbox restart.” Whether a job writes to a held pipe is read from its members’ file descriptors (`lsof -p`) at shutdown. If that can’t be read, the job is treated as pipe-fed. Records of kind `sendNow` keep `main`’s stop at shutdown, since the kind is what shutdown reads to tell them apart.
+### Kiro and Antigravity
 
-**Startup reconciliation.** After a Postbox restart, whether clean or after a crash, and after a daemon restart, each kept job is adopted again only if a member of its recorded group still has its recorded start time. A job that doesn’t match is recorded as ended, with “Postbox restarted while it ran: exit status unknown”, and wakes its agent once. Nothing is adopted that wasn’t bound before the restart.
+These CLIs exit by themselves after the reply, and Postbox sends no signal at a normal end. The wait is only the held `close`.
+- **The turn ends at the terminal event and `exit`, not at `close`.** The terminal event is Kiro’s `runFinished` or `runError` (`kiro-cli.mjs`; `runError` sets no `finished` today, so the step treats it as terminal too), or Antigravity’s `result` event.
+- **When the terminal event lags `exit`,** Postbox keeps reading stdout for up to 2 s. If the event arrives, the outcome follows `main`’s order for a closed CLI. If not, the turn ends as `main` ends a CLI that exited without its final event: the reply read so far is kept, and the turn fails with the exit error.
+- **The pipes stay drained.** Postbox doesn’t close its ends of the CLI’s stdio, because a job writing to a pipe with no reader gets SIGPIPE and dies: a probe killed a backgrounded `echo` that way, status 141 (during #1615’s review). Postbox reads each pipe to EOF and discards what comes after the turn’s end. So the job runs to its end exactly as on `main`, where the turn would have waited for it.
+- **What’s kept is what’s left.** After the CLI’s exit, whatever is still in its process group is work the turn left running. Nothing is signaled, as on `main`. The group is recorded as one kept job, with the command of each member as its label, only if it’s still there at a second read 1 s later, so a helper that outlives its CLI by milliseconds wakes no one. The turn’s end doesn’t wait for that read.
+- **The wake** is the first step’s, when the group is empty. Its text names no output file: a job that redirected its output is the agent’s to read, and one fed through the CLI’s pipes had its output discarded, which the wake says.
+- **Stop is `main`’s Stop.** It kills the turn’s group, background work included, between the CLI’s exit and its `close` too.
 
-## The guide
+Its live check, per CLI: at a normal end, does the CLI exit with `&` and `nohup` work left in its group? Does `close` fire while an unredirected `cmd &` runs, or only when it ends? Does a turn with no background command leave nothing in the group?
 
-`TURN_ENDS` (`server/adapters/guide.mjs`) is Codex-only on `main`.
-- **A harness with this design on** gets one line: “Background work is fine: you’re woken when it ends. Redirect its output to a file if it should outlive a Postbox restart.” For Codex it replaces `TURN_ENDS`; for the others it’s the only addition.
-- **A harness without it** keeps what its guide says today. Codex keeps `TURN_ENDS`, and Kiro and Antigravity get nothing new.
-- **`intent.md`:** the “Attention and wakes” row adds a kept job’s end to what wakes an agent.
+### Codex
 
-## Live checks, per harness, to record here
+Codex’s turn already ends at the reply, so no message waits. What’s missing is the job: Postbox stops the app-server’s whole group at each turn’s end, so an agent that wants a long command to finish has to hold its turn open for it.
+- **At the turn’s end the app-server is still alive,** so its group holds two kinds of member, and the parent tells them apart:
+  - **Background:** a member whose parent is init or the subreaper, and whose start time falls inside the turn. Its shell exited and left it running, which is what `cmd &` and `nohup cmd &` do. A fake harness running `/bin/sh -c 'node -e … & echo $!'` showed the shell living 4.7 to 4.9 ms and its child’s parent becoming pid 1, in the group the shell had (during #1615’s review). It’s kept, with its descendants.
+  - **Everything else:** the app-server, its helpers and any call still running. It’s stopped, as on `main`.
+- **A group that holds a kept member can’t take a group signal,** so each other member is signaled by its own pid: SIGINT, then SIGKILL after `GRACE_MS` to whatever a fresh read of the group still shows, kept members and their descendants spared. Before each pid signal Postbox reads that pid’s start time again and skips one that changed, since a reused pid is the risk of signaling by pid. The local `ps` read (`listProcesses`) gains `lstart` for this.
+- **A group with no background member** gets the group signal `main` sends.
+- **The wake** is the first step’s. `TURN_ENDS` goes from Codex’s guide in the same change.
 
-Each check is a local run of up to 3 turns, so the cost is bounded: up to 3 turns per harness, with real agents, as AGENTS.md asks of any run that costs real usage. A harness gets this design only once its check passes. The check goes through the normal turn path and shows three things:
-- the background job survives the turn’s end;
-- an ordinary foreground child the turn left behind is stopped, at Codex’s turn end. At a normal Kiro or Antigravity end, where the CLI has exited, the check is instead that `cmd &` binds and nothing is signaled. Stop on every harness kills the group, as on `main`;
-- a turn with no background command binds nothing;
-- a room message reaches the owner while the job still runs, and the job’s end wakes it once.
+Its live check: does the app-server end a turn while a backgrounded child runs, and what does it do to that child? Is a backgrounded child still in the app-server’s group, with init as its parent? Does a turn with no background command keep nothing?
 
-What each check answers:
-- **Claude Code:** with `-p` stream-json, does ending the CLI after the `result` keep every task, Monitor included? Does each task’s output file go on filling?
-- **Codex:** does the app-server end a turn while a backgrounded child runs, and what does it do to that child? Does the marker reach its tool shells?
-- **Kiro and Antigravity:** at a normal end, does the CLI exit with `&` and `nohup` work left in its group, and does that work bind and wake once? Does `close` fire while an unredirected `cmd &` runs, or only when it ends? Does the turn end at `exit` either way? Does the marker reach their tool shells?
-- **Each Linux host:** is `/proc/<pid>/environ` readable for the agent’s processes?
-- **Every harness:** across a clean Postbox restart, does a redirected bound job survive and get adopted, and is an unredirected one stopped with its wake saying why?
+### Live input
+
+The fully native fix keeps the CLI alive and hands it the new message as a new turn while its background work runs on. Then nothing is stopped: subagents and Monitors are covered, the harness reports each task’s end and exit status itself, and no wake from Postbox is needed for that backend.
+
+Its design is designs/508/delivery-routes.md, “Model turns and a live backend execution (A′)”, which names this state `background-wait` and admits input there “only through proven live input”. Its proof is the fourth check in “Live checks before it’s built”. Where that passes for a backend:
+- the backend takes live input in place of stop-and-keep;
+- the waits in “When a turn still waits” go, for that backend;
+- #1801’s limit goes: `backgroundWaitEnv` and `stoppedAfterReply` (`sdk-background.mjs`) for the Agent SDK, and the 2 h bound on a host’s waiting turn for Claude Code there.
+
+Where it doesn’t pass, or for a harness with no such input, the steps above stand, and the two waits keep their 2 h bound.
+
+## What the room shows
+
+The first step adds no surface. A kept job already has its row under its reply, with its Stop, and shows its end there.
+
+One line changes, because it would be wrong. An agent with a kept job and no turn reads “waiting on a job: …” today (`jobOf` in `shared/agent-state.mjs`, `stateWords` in `app/js/agents.mjs`). Once that agent is free, it isn’t waiting on anything, and a person or an agent who reads “waiting” would hold their message back. The state reads “job running: …” from the step that frees the agent. A turn still held by a subagent or a Monitor keeps its running step, “Waiting for a background subagent”, which is true of it.
+
+Stopping a job:
+- **The person** stops any listed job with its row’s Stop.
+- **An agent** has no Postbox tool for it, and gets none. It stops a job it started the way it stops any process, with its harness’s shell tool, under its persona’s mode.
+
+## The guide and intent.md
+
+- **A backend whose step has landed** gets one line in its guide: “Background work is fine: you’re woken when it ends.” For Codex it replaces `TURN_ENDS`. Without it an agent that doesn’t know of the wake polls its job with `sleep`, which holds its turn open as before.
+- **A backend whose step hasn’t landed** keeps what its guide says today.
+- **designs/intent.md** states the rule under “Function first”, says in its sessions row that background work isn’t busy, and says in its scheduled-wake row that a kept job’s end wakes its agent. Each marks what’s planned.
 
 ## How it’s tested
 
-- **The room outcome, through the normal turn path,** with recorded Claude Code streams. #1614’s recorded native stream, where the message waits, is the baseline.
-  - A turn whose tasks all bind ends at its `result`.
-  - A room message reaches the agent while the task runs.
-  - The task’s end wakes the agent exactly once, including with a restart between seeing the end and queuing the wake.
+The first step:
+- **The room outcome, through the normal turn path,** with recorded Claude Code and Agent SDK streams. #1614’s recorded stream, where the message waits, is the baseline, and the test fails on `main`.
+  - A turn whose result lists only shell jobs ends at its `result`.
+  - A room message reaches the agent while the job runs.
+  - The job’s end wakes the agent exactly once, including with a restart between seeing the end and sending the wake.
+  - A turn whose result lists a background subagent or a Monitor doesn’t end early, and is stopped at 2 h with the agent told.
 - **`tests/process/`, with real processes:**
-  - **Binding:** at the result, the bound job’s group survives, and the CLI and a foreground shell stop.
-  - **Nothing binds, so nothing is lost:** two calls ran the same command, so nothing binds. The CLI isn’t ended, and both shells live.
-  - **The late-notification case:** the task has exited, no `task_notification` has come, and another call’s shell runs the same command. Nothing binds, and the turn waits.
-  - **A shell from before its call** doesn’t bind.
-  - **The marker:**
-    - it survives `nohup` and `setsid` on a non-platform binary, and the scan finds it;
-    - `sh -c 'cmd &'`, with the shell in the harness’s group: `cmd` binds by group membership and wakes the agent;
-    - **A mixed group:** a bound background job and a foreground child of a live tool shell in the same harness group. The job survives, and the foreground child stops, each signaled by its own pid;
-    - **A child started during the grace period:** the bound job starts its own child before the first SIGINT, and the foreground child starts a new child in the group after it. Neither pass signals the bound job or its child. The delayed sweep reaps the foreground child’s new child;
-    - `sh -c 'cmd &'`, with the shell leading its own group: `cmd`, reparented to init, binds by its marker and wakes the agent;
-    - a process in the harness’s group that doesn’t bind is still stopped at Codex’s turn end;
-    - **A Stop after the CLI has exited, before `close`:** Stop kills the group as `main` does, and nothing binds;
-    - **A helper that outlives its CLI by milliseconds:** it’s gone at the second read, so it doesn’t bind and no wake comes;
-    - **A clean shutdown:** a redirected bound job keeps running and is adopted at the next start. An unredirected one, still writing to a CLI’s pipe, is stopped with a wake that says so, and is never left to die of SIGPIPE and read as “exit status unknown”;
-    - a marked process outside the group that doesn’t bind isn’t signaled, and its exit queues no wake;
-    - one whose marker names session B, inside B’s turn, binds to B and never to the session whose turn is ending. It wakes only B’s agent, once;
-    - one owned by another user isn’t bound, whatever its marker;
-    - **A harness that exits by itself, in both stdio layouts:** a fake Kiro-style harness starts a long-lived helper and runs `cmd &`, then exits.
-      - With `cmd` redirected, `close` follows `exit`.
-      - With `cmd` unredirected, `cmd` holds the pipes, and the turn ends at `exit` anyway.
+  - the same command run in the foreground earlier in the turn, then in the background: the turn ends, and the job survives;
+  - two background jobs with the same command: both survive, and each wakes once;
+  - a listed job that has already exited: its end and wake are recorded at once.
+- **Unit tests:** the wake counts as no hop and raises no “needs you”; a job the person stopped wakes no one; the agent’s state words.
+- **A browser spec** for “job running: …” on a free agent, run plain and with `POSTBOX_STREAM_LAG=300`.
 
-      Either way both processes bind, nothing is signaled, and the turn ends before `cmd` does.
-  - **Codex by pid:** at Codex’s turn end, the harness and its children stop, and a bound marked process survives;
-  - **A job that writes after the turn’s end:** on a Kiro-style harness whose `cmd &` holds the pipes and writes a line every half second, the turn ends at the terminal event and `exit`. The job keeps writing, isn’t killed by SIGPIPE, runs to its end, and wakes its agent once;
-  - **A terminal event that never comes:** a CLI exits without its final event. After 2 s, the turn fails with the exit error and keeps the reply read so far;
-  - **A reused pid is skipped:** a pid whose start time changes between the first SIGINT and the delayed SIGKILL, or before a job’s own Stop, isn’t signaled.
-  - **The output file:**
-    - swapping the path for a link after binding, or replacing the file, changes nothing read;
-    - a file outside the folder, a link, or a file with a second link gives no tail;
-    - a FIFO doesn’t delay the turn end;
-    - after a restart, a matching device and inode keep the tail.
-- **Unit tests:**
-  - the early-end decision for each end event;
-  - the wake naming a redirect or a tmux session, unread;
-  - the bounded, quoted tail;
-  - no hop and no “needs you”;
-  - Stop on another session’s job refused to agents;
-  - only the marker variables kept from a scan.
-- **The host:** a fake daemon, with the shared reader, through a disconnect, an exit while away and a reconnect. A second reconnect wakes no one, and an old daemon’s welcome keeps today’s behavior.
-- **A browser spec** for the job items and their Stop, run plain and with `POSTBOX_STREAM_LAG=300`.
+Each later step adds its own, on the same pattern:
+- **Hosts:** a fake daemon through a kept stop, a disconnect, an exit while away and a reconnect. A second reconnect wakes no one, and an old daemon’s welcome keeps today’s wait.
+- **Kiro and Antigravity:** a fake harness in both stdio layouts. With `cmd` unredirected, the turn ends at `exit`, the job keeps writing, isn’t killed by SIGPIPE, and wakes its agent once. A CLI that exits without its terminal event fails the turn after 2 s with the reply read so far. A helper gone at the second read wakes no one.
+- **Codex:** a mixed group, where the background member survives and a foreground child stops, each signaled by its own pid. A child started during the grace period is reaped. A reused pid is skipped.
+
+## Later, not part of #1614
+
+None of these stops messages piling up behind a background job, so none is part of #1614 or blocks a step above. Each needs its own evidence and its own issue before it’s built, and the earlier draft’s detail for each is in this file’s history.
+
+- **Whose process is this?** ([#1606](https://github.com/HJeon139/postbox/issues/1606)). Processes that escape a harness’s group, after `setsid` or as the orphan of a tool shell that led its own group, belong to no session Postbox can name. The earlier draft marked every harness process with `POSTBOX_SESSION` and `POSTBOX_TURN` in its environment and scanned for them (`ps -E` on macOS, where Apple’s own binaries hide their environment; `/proc/<pid>/environ` on Linux). That is #1606’s design to make. Until then such a process is what it is on `main`: untracked, with no wake.
+- **Processes Postbox can see but can’t stop or wake for.** The earlier draft showed them in the room as “informational”. A row nobody can act on isn’t added (AGENTS.md, “No unactionable alarms”).
+- **Telling one job’s shell from another’s exactly.** The strict rules (one matching shell, started inside its call, no other call with the same command) would sharpen a job’s label and its Stop. They never decide whether a turn ends. Worth building only if the lenient keep is seen to stop the wrong job.
+- **An output tail in the wake.** Postbox reading a job’s output file needs the checks that keep it from reading a file the agent’s Read rules deny. The wake names the file, and the agent reads it.
+- **`tmux`.** A session started with `tmux new -d` outlives its turn on every backend today. Naming it in a wake needs the marker above.
+- **Jobs that survive a Postbox restart.** A kept job is stopped at a clean shutdown, as on `main`. Keeping it across an upgrade means telling a job fed through a CLI’s pipes from one that isn’t (`lsof` at shutdown) and adopting it again at startup.
 
 ## When to revisit
 
-- If live input is proven for a harness (designs/508/delivery-routes.md, “Model turns and a live backend execution (A′)”), its CLI could stay alive and take messages between turns. Ending it at the `result` would then no longer be needed there.
-- If unbound tasks often keep a turn waiting, measure which rule fails them before loosening any.
+- When a live check is run: its result goes in its table here, pass or fail, and a failed check changes its step in the same change.
+- If a kept job’s Stop is seen to stop the wrong shell, or a wake names the wrong job, build the exact matching under “Later, not part of #1614”.
+- If agents are seen holding their turns open with `sleep` after their backend’s step lands, the guide line isn’t working, and the fix is there.
+- If a wait in “When a turn still waits” is measured holding messages after its backend’s step, it moves up the order ahead of whatever is next.
