@@ -5,6 +5,7 @@
 
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
 import { clockStopConfirmed } from '../run-clock.mjs';
+import { forgetWait } from '../turn-transient.mjs';
 import { hostOf, unregisteredWhy } from './placement.mjs';
 import { backgroundStopText, waitingOnBackground } from './turns-background.mjs';
 import { releaseHost } from './turns-need.mjs';
@@ -215,6 +216,8 @@ export function interrupted(rts, sessionId, why, { unkilled = false, noBackend =
   // Its backend isn’t registered here, so it can’t resume until it is: the hint says so (#965, resumeHint).
   if (noBackend) resume.noBackend = true;
   updateRemote(rts, sessionId, { state: 'interrupted', at: rts.now(), resume });
+  // An interrupted host turn needs the person, and ends any wait to retry a provider’s failure (#1713).
+  forgetWait(rt, sessionId);
   rt.sessions.update(sessionId, {
     state: 'failed',
     needs: { kind: 'failed', itemId: it.id, text: message },

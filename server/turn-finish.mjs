@@ -10,6 +10,7 @@ import { heldBy } from './turn-held.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { outOfQuota, quotaBack } from './turn-quota.mjs';
 import { foldSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { afterTransient, autoRetryEnds, forgetWait, transientMarks, transientRetry, transientSession } from './turn-transient.mjs';
 
 /**
  * A turn ended, with err when it failed or was stopped: it leaves the running turns, its replies and the session show
@@ -46,6 +47,8 @@ export function endTurn(rt, turn, err) {
     return;
   }
   if (!err) quotaBack(rt, se);
+  // A turn that didn’t fail ends the count of tries in a row for a provider’s failure (turn-transient.mjs).
+  autoRetryEnds(rt, se);
   // The listeners share what the person needs (open, viewing, topic): Asks’ listener (N) writes it, and those after it read it.
   rt.bus.emit('turn.ended', { turn, se, items, open: [], viewing: false, topic: null });
 }
@@ -68,23 +71,35 @@ function settleReplies(rt, turn, items, err) {
 
 /**
  * The session failed, and needs the person, who hears it at once. Out of quota, it doesn’t need them, who can’t act on
- * it before the reset (#442): its row says so, its reply without an alert, and the backend’s one notice.
+ * it before the reset (#442): its row says so, its reply without an alert, and the backend’s one notice. Failed for its
+ * provider (#1713), it doesn’t either while it tries again on its own, as the person could do no more than Retry. Once
+ * its tries run out it needs them as any failed turn does, the owner’s decision, as nothing else starts it again; the
+ * agents waiting on it hear so too (turn-transient.mjs).
  * @param {any} rt @param {any} se
- * @param {any} turn @param {{ target: string, message: string, failure: any }} why
+ * @param {any} turn @param {{ target: string, message: string, failure: any, transient: any }} why
  */
-function markFailed(rt, se, turn, { target, message, failure }) {
+function markFailed(rt, se, turn, { target, message, failure, transient }) {
   const quota = failure?.kind === 'quota' ? outOfQuota(rt, se, failure.until, turn.threadId) : null;
+  // Only a provider’s failure with tries left waits to try again, and then a new wait of its own. Any failure ends the
+  // wait before it, and clears that reply’s note: the agent needs the person, or waits for its quota (#1713).
+  const waits = transient && transient.at !== null;
+  forgetWait(rt, se.id);
+  /** @type {Record<string, any>} */
+  let need = { needs: { kind: 'failed', itemId: target, text: message, ...rt.sessions.awayFrom(se, turn.threadId) } };
+  if (quota) need = { quota, needs: null };
+  else if (waits) need = transientSession(transient, turn.threadId, target);
   rt.sessions.update(se.id, {
     state: 'failed',
-    ...(quota ? { quota, needs: null } : { needs: { kind: 'failed', itemId: target, text: message, ...rt.sessions.awayFrom(se, turn.threadId) } }),
+    currentStep: 'Failed',
+    ...need,
     sideTurn: null,
     subagents: [],
-    currentStep: 'Failed',
     finishedAt: Date.now(),
     stopAsk: null,
   });
   if (quota) rt.threads.patchItem(turn.threadId, target, { outOfQuota: true });
-  else rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+  else if (transient) afterTransient(rt, se, turn, transient, target);
+  if (!quota && !waits) rt.threads.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
 }
 
 /** What a reply lost to the network says, as Postbox sends what its turn took once more (#466). */
@@ -105,6 +120,8 @@ function endFailed(rt, se, turn, err) {
   const lost = failure?.kind === 'network' && !turn.asked?.message?.scheduledWakeId;
   const took = rt.delivery.takenBy(se.id, turn.id);
   const resends = lost && took.length > 0 && !took.some((/** @type {any} */ e) => e.resend);
+  // One its provider failed for a while goes again on its own, until its tries run out (#1713).
+  const transient = transientRetry(rt, se, turn, failure);
   const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
   const target =
     turn.segment ??
@@ -123,6 +140,7 @@ function endFailed(rt, se, turn, err) {
     status: resends ? 'retried' : 'failed',
     error: message,
     ...(resends ? { note: RESENT } : {}),
+    ...(transient ? transientMarks(transient) : {}),
     retry: turn.retry ?? null,
     asked: askedOf(turn),
     ...(err.remote ? { remote: err.remote } : {}),
@@ -133,7 +151,7 @@ function endFailed(rt, se, turn, err) {
   if (resends) {
     rt.sessions.update(se.id, { state: 'idle', sideTurn: null, subagents: [], currentStep: 'Sending again', finishedAt: Date.now(), stopAsk: null });
     rt.threads.notify('info', se, `@${se.handle} lost the network`, RESENT, turn.threadId);
-  } else markFailed(rt, se, turn, { target, message, failure });
+  } else markFailed(rt, se, turn, { target, message, failure, transient });
   // Its @-mentions still reach their agents (#485, the person’s choice), as entries its replies made as they settled,
   // read with the failure first, since what it wrote may be cut off (turns.mjs). Not a host turn that goes on
   // (Interrupted, Sign-in needed, its link lost): its replay’s replies make them (mention-entries.mjs). The item keeps
