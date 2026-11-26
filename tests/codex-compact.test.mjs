@@ -82,6 +82,7 @@ test('#425 /compact on a Codex agent runs Codex’s compaction of its thread, an
   assert.equal(seen.compactions[0].kept, undefined, 'Codex counts nothing, so nothing is made up');
   assert.equal(seen.compactions[0].total, undefined);
   assert.match(seen.compactions[0].summary, /Codex summarized/);
+  assert.ok(seen.steps.includes('Summarizing the conversation'), `its step while it runs: ${seen.steps.join(', ')}`);
   assert.equal(seen.text, '', 'the agent says nothing of its own');
 });
 
@@ -134,6 +135,9 @@ test('#425 /compact for a Codex agent with no conversation yet is refused before
   // With a conversation, or for any other command, nothing is refused.
   assert.equal(codex.refuses('/compact', { codexThreadId: 'thr-1' }, 'gpt'), null);
   assert.equal(codex.refuses('/review', {}, 'gpt'), null);
+  // A topic thread’s first turn compacts the thread it forks from, and a longer name isn’t this command.
+  assert.equal(codex.refuses('/compact', { fork: { threadId: 'thr-1' } }, 'gpt'), null);
+  assert.equal(codex.refuses('/compactor', {}, 'gpt'), null);
 });
 
 test('#874 a command to an agent whose backend isn’t registered is still posted, and its turn fails with the reason', async () => {
