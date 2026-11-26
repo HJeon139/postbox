@@ -135,9 +135,9 @@ export async function load(store, { fresh = false } = {}) {
     if (fresh)
       for (const n of await store.io.readdir(store.dir))
         if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n) || n === 'assets') await store.io.rm(store.at(n), { force: true, recursive: true });
-    // A snapshot’s temporary file left by a process that stopped while writing it (#1314): up to about 190 MB at
+    // A snapshot’s or the format record’s temporary file left by a process that stopped while writing it (#1314, #683): up to about 190 MB at
     // 1,000,000 items, and nothing else removes it. With the lock held, no other store is writing one here.
-    for (const n of await store.io.readdir(store.dir)) if (/^snapshot\.json\.\d+\.tmp$/.test(n)) await store.io.rm(store.at(n), { force: true });
+    for (const n of await store.io.readdir(store.dir)) if (/^(snapshot|format)\.json\.\d+\.tmp$/.test(n)) await store.io.rm(store.at(n), { force: true });
     install(store, await recover(store));
     await recordFormat(store.io, (n) => store.at(n));
     // The folder’s entries are made durable once per start: a segment rotated by an earlier run that only ever held
