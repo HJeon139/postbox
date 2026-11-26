@@ -245,12 +245,16 @@ export function showApp(apps, sessionId, tools, { id, title, code, permissions =
 /**
  * @param {import('./app-service.mjs').Apps} apps @param {string} sessionId @param {any} turn  the turn the tools act for, or null
  * @param {() => string} threadId  where the turn speaks @param {() => void} endSegment  ends the reply so far
- * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string, intent?: string }} args
+ * @param {{ id: string, code?: string, permissions?: string[], title?: string, summary?: string, intent?: string }} args
+ *   without code, the current version’s, when files are given (#1751)
  * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s, as one without an intent does
  */
 export function updateApp(apps, sessionId, turn, threadId, endSegment, { id, code, permissions, title, summary = '', intent }, given = {}) {
   const app = apps.store.pending.app(id);
   if (!app || app.sessionId !== sessionId) return notYours(apps, sessionId, id);
+  // New data files alone keep the current code (#1751): a live panel refreshes its data without resending the app.
+  if (code === undefined && !given.files) return { ok: false, message: 'Send code, codePath or files: an update with none of them has nothing to change.' };
+  code ??= app.versions[app.current - 1].code;
   const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
   if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
   const versions = [
