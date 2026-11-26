@@ -86,8 +86,9 @@ function foldOne(f, e) {
     );
   else if (e.type === 'entry.patch') noteTake(f, d.sessionId, Object.assign(inboxOf(f, d.sessionId).get(d.id) ?? {}, d.patch), e.seq);
   else if (e.type === 'work.add' && WORK_KINDS.has(d.entry?.kind)) {
-    // A snapshot replays each entry as it ended, as a work.add: its output is the call's unless its job's replaced it.
-    const own = d.entry.output && !d.entry.endedInBackground ? { callOutput: d.entry.output } : {};
+    // A snapshot replays each entry as it last stood, as a work.add: its output is the call's unless its job's end
+    // replaced it, which the ledger never does for a turn on a host (server/ledger.mjs, taskEnded).
+    const own = d.entry.output && (!d.entry.endedInBackground || d.entry.host) ? { callOutput: d.entry.output } : {};
     f.work.set(d.entry.id, { ...d.entry, ...own, from: e.seq });
   } else if (e.type === 'work.patch' && f.work.has(d.id)) {
     const w = f.work.get(d.id);

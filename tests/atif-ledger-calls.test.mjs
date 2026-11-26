@@ -192,6 +192,12 @@ test('#1757 from a snapshot, with no live frames: a command’s stored output is
   const [result] = background.observation.results;
   assert.ok(result.content.startsWith('[the command ran in the background: this is what the work ledger kept once its job ended'), result.content);
   assert.ok(result.content.endsWith('the whole output\nhigh'));
+  // On a host the ledger never replaces the output with the job’s, so a host’s entry is the call’s own, with no note.
+  const onHost = callIn(
+    asSnapshot((entry) => ({ ...entry, endedInBackground: true, host: 'ho_1' })),
+    { live: [], blob: theBlob },
+  );
+  assert.deepEqual(onHost.observation.results, [{ source_call_id: command.toolUseId, content: 'the whole output\nhigh' }]);
   // A snapshot taken while the job still ran holds the call’s own output, and the job’s end comes after it: the call’s
   // output is still its result.
   const job = { sha256: 'f'.repeat(64), size: 9 };
