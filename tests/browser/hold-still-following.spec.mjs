@@ -146,6 +146,8 @@ test('#1632 following, a press holds the button while the reply before its block
     const r = chip.getBoundingClientRect();
     const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, pointerType: 'mouse', isPrimary: true };
     chip.dispatchEvent(new PointerEvent('pointermove', at));
+    // A wheel turn leaves the pointer aiming at nothing (pointer-rest.mjs), so only the press holds.
+    window.dispatchEvent(new WheelEvent('wheel'));
     chip.dispatchEvent(new PointerEvent('pointerdown', at));
     // One pushes the button down, the other brings the end in.
     /** @type {any} */ (window).pbDrawAboveGrowBelow();
