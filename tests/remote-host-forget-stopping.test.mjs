@@ -30,8 +30,8 @@ test('#1680 a persona deleted while its turn is stopping on the host is forgotte
   await until(() => !r.store.state.hostForgets[r.host.id].includes('pe_other'), 'pe_other’s removal settled');
   assert.deepEqual(forgets(r), ['pe_other']);
   assert.deepEqual(r.store.state.hostForgets[r.host.id], [personaId], 'the stopping persona’s still owed');
-  // The daemon says the turn is over: the removal goes now, on the same connection.
-  r.d.end(turn);
+  // The turn handles its SIGINT, and the daemon says it’s over: the removal goes now, on the same connection.
+  r.d.end(turn, { code: null, signal: 'SIGINT' });
   await until(() => forgets(r).length === 2, 'the forget, once the turn ended');
   assert.deepEqual(forgets(r), ['pe_other', personaId]);
   // The fake daemon answers `forgotten`, as daemon-forget.mjs does once the folder is gone.

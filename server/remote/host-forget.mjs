@@ -10,7 +10,8 @@
 //
 // A persona deleted while one of its turns is still stopping on a host (a stop there is a SIGINT the turn ends in its
 // own time) isn’t sent there until the host confirms that turn is over: the turn could write its memory again after
-// the removal (#1680). The removal stays owed meanwhile, and goes when the stop is confirmed.
+// the removal (#1680). The removal stays owed meanwhile, and goes when the stop is confirmed. A turn whose process
+// outlived its kill (#872) is confirmed too, though it may still run: nothing more can be waited on.
 //
 // A daemon older than `forget` refuses it as a message it doesn’t carry (tests/fixtures/remote/forget-before-491.json):
 // its removals stay owed until the host runs this version, and the server log says so, once per connection.
@@ -66,7 +67,8 @@ function sendable(hosts, hostId) {
 }
 
 /**
- * Sends a host every removal it owes (but those held by a turn stopping there), and drops each it answers. Keeps the host connected while it waits, up to waitMs.
+ * Sends a host every removal it owes, except those held by a turn stopping there, and drops each it answers. Keeps
+ * the host connected while it waits, up to waitMs.
  * @param {Hosts} hosts @param {string} hostId
  * @param {{ waitMs?: number, setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (t: any) => void }} [o]
  */
