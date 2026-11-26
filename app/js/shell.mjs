@@ -2,7 +2,6 @@
 // ring strip, the places menu, and a project with no conversation yet. There’s no overview (#320): Postbox opens one.
 
 import { isMock, mockMarker } from './agent-facts.mjs';
-import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
 import { busy, client, needsYou, sessionsOf, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
@@ -10,7 +9,6 @@ import { installLine } from './install-line.mjs';
 import { nextNeedsYou } from './needs-nav.mjs';
 import { openNewThread } from './new-thread-sheet.mjs';
 import { openPalette } from './palette.mjs';
-import { openPermissions } from './permissions.mjs';
 import { projectPlaces } from './places-menu.mjs';
 import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWordOf } from './ring.mjs';
@@ -27,6 +25,25 @@ export { installLine, railHidden, toggleRail };
 export const openJumpTo = () => openPalette({ openNewAgent, openSettings });
 
 const S = () => client.state;
+
+/**
+ * The way from a conversation to its controls. One way in (#1735): every control of a room is in the main menu’s form
+ * for it, so this opens that form and is no menu of its own. A second list of the room’s agents and controls was a
+ * second thing to keep right. @param {any} t
+ */
+const manageRoomButton = (t) =>
+  h(
+    'button.btn.icon.sm.ghost',
+    {
+      type: 'button',
+      id: 'conversation-actions',
+      'aria-haspopup': 'dialog',
+      'aria-label': `Manage ${t.title}`,
+      title: 'Manage room and members: its title, agents, permissions and Delete',
+      onclick: () => openSettings('rooms', t.id),
+    },
+    icon('gear'),
+  );
 
 /**
  * The top bar: the places menu, the path to the open conversation and its two views, and the global actions. The
@@ -91,19 +108,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       project ? [icon('right', `i-sm${up}`), h(`a.crumb${up}`, { href: `#/p/${project.id}` }, project.name)] : null,
       title ? [icon('right', 'i-sm'), h('span.title', title)] : null,
     ),
-    t
-      ? h(
-          'button.btn.icon.sm.ghost',
-          {
-            type: 'button',
-            id: 'conversation-actions',
-            'aria-haspopup': 'menu',
-            'aria-label': `Actions for ${t.title}`,
-            onclick: (e) => conversationMenu(e.currentTarget, t),
-          },
-          icon('more'),
-        )
-      : null,
+    t ? manageRoomButton(t) : null,
     h(
       'div.top-actions',
       demoNote(),
@@ -409,39 +414,6 @@ function stripItem(x, active) {
     rings(x),
     unread ? h('span.badge', String(unread)) : null,
     h('span', x.title),
-  );
-}
-
-function conversationMenu(anchor, shown) {
-  // The top bar may be older than the thread: renamed since, say.
-  const t = S().threads[shown.id] ?? shown;
-  const room = t.kind === 'room';
-  openMenu(
-    anchor,
-    [
-      // Every control of a room is in the main menu’s form for it (#1735): its title, its members, its chain limit and
-      // its Delete. This menu only goes there, and to the room’s views.
-      {
-        label: 'Manage room and members…',
-        icon: 'gear',
-        desc: room ? 'Its title, agents and people, and Delete' : 'Its title and agents, and Delete',
-        run: () => openSettings('rooms', t.id),
-      },
-      { label: 'Work', icon: 'file', desc: 'What its agents changed, ran and published', run: () => openWork(t.id) },
-      {
-        label: 'Permissions…',
-        icon: 'gear',
-        desc: room ? 'An agent’s mode, rules and folders here' : 'Its mode, rules and folders here',
-        run: () => openPermissions({ threadId: t.id }),
-      },
-      'hr',
-      ...agentMenuLines(
-        sessionsOf(t.id).filter((x) => !x.retiredFork),
-        (personaId) => openSettings('personas', personaId),
-        anchor,
-      ),
-    ],
-    { label: `Actions for ${t.title}` },
   );
 }
 

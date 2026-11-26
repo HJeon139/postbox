@@ -814,6 +814,10 @@ export function openSettings(tab = 'appearance', personaId = null) {
             openPermissions,
             openChainLimit,
             chainLimitDesc,
+            editPersona: (/** @type {string} */ id) => {
+              personaId = id;
+              go('personas');
+            },
           }),
         people: () => peopleTab(go, setFoot, at),
         hosts: () => [hostsPanel(setFoot)],

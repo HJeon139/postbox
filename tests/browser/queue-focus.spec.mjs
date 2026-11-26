@@ -4,6 +4,7 @@
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { memberQueue } from './room-form.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -104,17 +105,19 @@ test('F1: the thread panel’s head keeps focus through the same events', async 
   await focusSurvives(page, r, page.locator('.sidepanel textarea'), 'the panel’s composer');
 });
 
-test('#1437 the composer has no waiting line: the row’s mail button and the ⋯ menu lead to the queue', async ({ page }) => {
+test('#1437 the composer has no waiting line: the row’s mail button and the room’s Members list lead to the queue', async ({ page }) => {
   const r = await room(page);
   await expect(mailButton(page, r.se)).toBeVisible();
   await expect(page.locator('.composer .queue-waiting')).toHaveCount(0);
   await expect(page.locator('.composer')).not.toContainText('waiting for');
-  // Where the rows are hidden, as on a phone, the conversation’s ⋯ menu lists each agent’s queue (#427).
+  // Where the rows are hidden, as in a narrow window, the room’s form leads to the queue of the member picked (#427).
   await page
     .locator('header.topbar')
-    .getByRole('button', { name: /^Actions for / })
+    .getByRole('button', { name: /^Manage / })
     .click();
-  await page.getByRole('menuitem', { name: new RegExp(`^2 messages queued for ${r.se.handle}`) }).click();
+  const queued = await memberQueue(page, r.se.handle);
+  await expect(queued).toHaveText(`2 messages queued for ${r.se.handle}`);
+  await queued.click();
   await expect(page.getByRole('dialog', { name: new RegExp(`queued for ${r.se.handle}`) })).toBeVisible();
 });
 

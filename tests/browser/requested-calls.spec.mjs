@@ -110,8 +110,9 @@ test('#296 a write the confirm shows word for word runs without a card; Stop bri
   });
 
   await test.step('the Permissions panel turns it off for the persona', async () => {
-    await page.locator('header.topbar button[aria-label^="Actions for"]').click();
-    await page.locator('.menu button.mi', { hasText: 'Permissions…' }).click();
+    // The room’s form in the main menu holds it (#1735): the top bar’s room button, then More › Permissions….
+    await page.locator('header.topbar #conversation-actions').click();
+    await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Permissions…', exact: true }).click();
     const box = page.getByRole('checkbox', { name: 'Writes you asked for run without a card' });
     await expect(box).toHaveAttribute('aria-checked', 'true');
     await box.click();

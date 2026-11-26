@@ -33,7 +33,9 @@ async function open(page, hash, origin = app.origin) {
 }
 
 const dialog = (page) => page.locator('.backdrop .dialog');
-const actions = (page) => page.locator('header.topbar button[aria-label^="Actions for"]');
+/** The room’s button in the top bar, which opens its form in the main menu (#1735). */
+const actions = (page) => page.locator('header.topbar #conversation-actions');
+const brand = (page) => page.locator('header.topbar button.brand');
 const plus = (page) => page.getByRole('button', { name: 'Add a file, an agent or a command' });
 
 // ── #69: an open block from an earlier turn is shown quietly ─────────────────────────────
@@ -62,11 +64,10 @@ test('#69 an older open block shows “1 open confirmation”, not needs-you, an
 // ── #26: focus stays on the control you used, and goes back where it came from ──────────
 
 test('#26 new agent: Space on a Tools checkbox keeps focus on it', async ({ page }) => {
-  // From the conversation’s ⋯: the overview’s New agent went with it (#320).
+  // From the room’s button in the top bar: the overview’s New agent went with it (#320).
   await open(page, `#/t/${threadNamed('Index planning').id}`);
   await actions(page).click();
   // The room’s members are in its form in the main menu (#1735): + there lists the agents not here, then New agent.
-  await page.getByRole('menuitem', { name: /^Manage room and members/ }).click();
   await page.getByRole('button', { name: 'Add an agent to Index planning' }).click();
   await page.getByRole('menuitem', { name: /^New agent/ }).click();
   await expect(dialog(page)).toBeVisible();
@@ -110,13 +111,11 @@ test('#26 settings: Enter on the Projects tab keeps focus on it, and Escape retu
   await focusIs(page, 'button: Settings');
 });
 
-test('#26 ⋯ › Manage room and members… › + › New agent… by keyboard, then Escape, returns focus to ⋯', async ({ page }) => {
+test('#26 the room’s button › + › New agent… by keyboard, then Escape, returns focus to the room’s button', async ({ page }) => {
   await open(page, `#/t/${threadNamed('Index planning').id}`);
   await actions(page).focus();
   await page.keyboard.press('Enter');
-  await focusIs(page, /^menuitem: Manage room and members…/);
-  await page.keyboard.press('Enter');
-  // The Members list’s + (#1735) opens its picker (#1620): the agents not here, then New agent, last, one ArrowUp away.
+  // Enter opens the room’s form at once, with no menu between. The Members list’s + (#1735) opens its picker (#1620): the agents not here, then New agent, last, one ArrowUp away.
   await page.getByRole('button', { name: 'Add an agent to Index planning' }).focus();
   await page.keyboard.press('Enter');
   await page.keyboard.press('ArrowUp');
@@ -128,7 +127,7 @@ test('#26 ⋯ › Manage room and members… › + › New agent… by keyboard,
   await expect(dialog(page)).toContainText('New conversation in Reading notes');
   await expect(dialog(page)).not.toContainText(/\bthread\b/i);
   await page.keyboard.press('Escape');
-  await focusIs(page, 'button: Actions for Index planning');
+  await focusIs(page, 'button: Manage Index planning');
 });
 
 test('#26 the folder picker opens with focus on its first entry, and Escape returns to +', async ({ page }) => {
@@ -147,8 +146,7 @@ test('#26 the folder picker opens with focus on its first entry, and Escape retu
 // ── #29: clicking a menu’s button again closes it ──────────────────────────────────────
 
 for (const [name, button] of [
-  ['the Postbox mark', (page) => page.locator('header.topbar button.brand')],
-  ['the conversation’s ⋯', actions],
+  ['the Postbox mark', brand],
   ['the composer’s +', plus],
 ])
   test(`#29 a second click on ${name} closes its menu`, async ({ page }) => {
@@ -168,38 +166,37 @@ for (const [name, button] of [
 test('#29 a second click closes a menu even after its button repainted under it', async ({ page }) => {
   const t = threadNamed('Index planning');
   await open(page, `#/t/${t.id}`);
-  await actions(page).click();
+  // The Postbox mark’s menu: the room’s own button opens its form, not a menu (#1735).
+  await brand(page).click();
   await expect(page.locator('.menu')).toHaveCount(1);
-  await actions(page).evaluate((b) => {
+  await brand(page).evaluate((b) => {
     b.dataset.first = 'yes';
   });
-  // A rename repaints the top bar, which rebuilds its ⋯ button.
+  // A rename repaints the top bar, which rebuilds its buttons.
   arrange.renameThread(app.rt, t.id, `${t.title} (renamed)`);
   try {
     await expect(page.locator('header.topbar button[data-first]'), 'the top bar repainted').toHaveCount(0);
-    await actions(page).click();
+    await brand(page).click();
     await expect(page.locator('.menu')).toHaveCount(0);
   } finally {
     arrange.renameThread(app.rt, t.id, 'Index planning');
   }
 });
 
-test('#26 ⋯ › the room’s title by keyboard returns focus to ⋯ after the top bar repaints with the new name', async ({ page }) => {
+test('#26 the room’s button › its title by keyboard returns focus to that button after the top bar repaints with the new name', async ({ page }) => {
   const t = threadNamed('Index the shelf');
   await open(page, `#/t/${t.id}`);
   await actions(page).focus();
   await page.keyboard.press('Enter');
   // The title is in the room’s form in the main menu (#1735), which opens with focus on it.
-  await focusIs(page, /^menuitem: Manage room and members…/);
-  await page.keyboard.press('Enter');
   await expect(dialog(page)).toBeVisible();
   await expect(dialog(page).getByLabel('Title')).toBeFocused();
   try {
     await page.keyboard.insertText(' (2)');
     await page.keyboard.press('Enter');
     await expect(dialog(page)).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Actions for Index the shelf (2)' })).toBeVisible();
-    await focusIs(page, 'button: Actions for Index the shelf (2)');
+    await expect(page.getByRole('button', { name: 'Manage Index the shelf (2)' })).toBeVisible();
+    await focusIs(page, 'button: Manage Index the shelf (2)');
   } finally {
     arrange.renameThread(app.rt, t.id, 'Index the shelf');
   }

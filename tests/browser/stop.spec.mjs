@@ -16,6 +16,7 @@ import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { plainOf } from '../turn-parts.mjs';
 import { failOnPageErrors, focusIs, openSteps, PHONE, startPostbox, synced } from './postbox.mjs';
+import { memberQueue, roomForm } from './room-form.mjs';
 import { ask, choice, jobStop, keepRunning, stopButton } from './stop-ask.mjs';
 
 const SEND_NOW = { name: /^Send now/ };
@@ -283,8 +284,12 @@ test.describe('at 375 px', () => {
     rt.sendMessage(room.id, { text: 'A one-line status, please.' });
     await synced(page, app);
     await page.locator('#conversation-actions').click();
-    await page.getByRole('menuitem', { name: new RegExp(`message.*queued for ${se.handle}`) }).click();
+    await (await memberQueue(page, se.handle)).click();
     await page.locator('.agent-queue-row').getByRole('button', SEND_NOW).click();
+    // The queue is empty and its dialog gone; then the room’s form is closed, back to the conversation.
+    await expect(page.locator('.agent-queue-dialog')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(roomForm(page)).toHaveCount(0);
     await expect(page.locator('.stopped-tag', { hasText: 'Interrupted by Send now' })).toBeVisible();
     await idle();
     await expect(page.locator('.stopped-tag'), 'both stopped replies’ tags, to measure').toHaveCount(2);

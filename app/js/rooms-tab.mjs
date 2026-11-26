@@ -1,12 +1,15 @@
 // The main menu’s Rooms (#1735): every conversation and room, each with who is in it and its actions, and a form for
 // one at a time: its title and its members, agents and people in one list, as both are seats in it.
 
-import { mockMarker } from './agent-facts.mjs';
+import { factsText } from '/shared/agent-facts.mjs';
+import { factsOf, mockMarker } from './agent-facts.mjs';
+import { openQueue, queuedFor } from './agent-queue.mjs';
 import { api, client, sessionsOf } from './client.mjs';
 import { h } from './dom.mjs';
 import { heard } from './go-when-there.mjs';
 import { barAction, barSign, formHead, pickList, sectionHead } from './manage-list.mjs';
 import { called, me, people } from './profile-tab.mjs';
+import { stateWordOf } from './ring.mjs';
 import { navigate, openMenu, route, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -191,7 +194,8 @@ function membersList(/** @type {any} */ t, /** @type {() => void} */ paint, /** 
         key: se.id,
         name: `@${se.handle}`,
         marks: [mockMarker(se), h('span.small.dim', 'agent')],
-        facts: [S().personas[se.personaId]?.description],
+        // What it does, then what it runs with and its state now, as its row in the sidebar says.
+        facts: [S().personas[se.personaId]?.description, `${factsText(factsOf(se))} · ${stateWordOf(se).toLowerCase()}`],
       })),
       ...everyone.map((/** @type {any} */ p) => ({
         key: p.id,
@@ -212,6 +216,26 @@ function membersList(/** @type {any} */ t, /** @type {() => void} */ paint, /** 
         () => sheets.confirmDelete(S().sessions[r?.key ?? ''], { keepConversation: true, removed: () => heard(() => !S().sessions[r?.key ?? '']).then(paint) }),
         { off: whyNot(r) },
       ),
+      ...agentActions(r && S().sessions[r.key], sheets),
     ],
   });
+}
+
+/**
+ * What else acts on the member picked, when it is an agent: Edit, which shows its persona’s form, and its queued
+ * messages while it has any. @param {any} se  the pick’s session, or none for a person @param {Record<string, Function>} sheets
+ */
+function agentActions(se, sheets) {
+  if (!se) return [];
+  const queued = queuedFor(se.id);
+  return [
+    barAction('Edit', se.handle, () => sheets.editPersona(se.personaId)),
+    queued
+      ? h(
+          'button.btn.sm',
+          { type: 'button', 'aria-haspopup': 'dialog', onclick: (/** @type {Event} */ e) => openQueue(se.id, /** @type {HTMLElement} */ (e.currentTarget)) },
+          `${queued} message${queued === 1 ? '' : 's'} queued for ${se.handle}`,
+        )
+      : null,
+  ];
 }
