@@ -35,8 +35,7 @@ test('#319 an agent in the data folder inside a clone is kept from the checkout�
     assert.ok(out.includes(join(checkout, 'AGENTS.md')), folder);
     assert.ok(out.includes(join(checkout, '.claude', 'AGENTS.md')), folder);
     // And what Claude Code loads beside it, should a developer add one to their clone.
-    for (const f of ['CLAUDE.md', 'CLAUDE.local.md', join('.claude', 'CLAUDE.md'), join('.claude', 'rules', '**')])
-      assert.ok(out.includes(join(checkout, f)), `${f} in ${folder}`);
+    for (const f of ['CLAUDE.md', 'CLAUDE.local.md', join('.claude', 'CLAUDE.md')]) assert.ok(out.includes(join(checkout, f)), `${f} in ${folder}`);
     assert.ok(!out.some((p) => p.startsWith(`${data}/`) || p === join(data, 'AGENTS.md')), `nothing in the data folder: ${out}`);
     // Each by the checkout’s path as given, or through its links (a temp folder’s, on macOS).
     assert.ok(
@@ -75,6 +74,30 @@ test('#319 a clone whose data/ links to the data folder elsewhere: an agent ther
   // The folder by the link’s path walks up through the checkout; by its own path it never reaches it.
   assert.ok(checkoutSteering(join(checkout, 'data', 'research'), join(checkout, 'data')).includes(join(checkout, 'AGENTS.md')));
   assert.deepEqual(checkoutSteering(join(home, 'research'), join(checkout, 'data')), []);
+});
+
+test('#319 a data folder given by a link outside the clone is matched through the link to the checkout', () => {
+  const { root, checkout, data } = clone();
+  const link = join(root, 'pb-link');
+  symlinkSync(data, link);
+  // By the link’s own path no repository is above it: only its real path reaches the checkout.
+  const out = checkoutSteering(join(link, 'workspaces', 'dev'), link);
+  assert.ok(out.includes(join(realpathSync.native(checkout), 'AGENTS.md')), JSON.stringify(out));
+});
+
+test('#319 the checkout’s rules are listed by their paths, which hold no glob, even under a folder named like one', () => {
+  const root = tempDir('pb-steering-');
+  const checkout = join(root, 'postbox (copy)');
+  const data = join(checkout, 'data');
+  mkdirSync(join(data, 'workspaces', 'dev'), { recursive: true });
+  mkdirSync(join(checkout, '.git'));
+  mkdirSync(join(checkout, '.claude', 'rules', 'more'), { recursive: true });
+  writeFileSync(join(checkout, 'package.json'), '{ "name": "postbox" }\n');
+  writeFileSync(join(checkout, '.claude', 'rules', 'style.md'), '# Rules\n');
+  writeFileSync(join(checkout, '.claude', 'rules', 'more', 'tests.md'), '# Rules\n');
+  const out = checkoutSteering(join(data, 'workspaces', 'dev'), data);
+  for (const f of ['style.md', join('more', 'tests.md')]) assert.ok(out.includes(join(checkout, '.claude', 'rules', f)), `${f}: ${out}`);
+  assert.ok(!out.some((p) => p.includes('*')), `no glob: ${out}`);
 });
 
 test('#319 the excludes reach the turn’s settings, beside the persona’s own, and none leave the settings as they were', () => {

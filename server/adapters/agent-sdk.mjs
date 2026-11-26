@@ -55,7 +55,10 @@ export async function loadAgentSdk() {
  * steering it mustn’t load when it works in the data folder inside the checkout (steering.mjs, #319).
  * @param {any} ctx @param {string} cwd @param {string} workRoot  `<data folder>/workspaces`
  */
-const folderOptions = (ctx, cwd, workRoot) => ({ ...fromContext(ctx, memoryRootFor(workRoot)), claudeMdExcludes: checkoutSteering(cwd, dirname(workRoot)) });
+const folderOptions = (ctx, cwd, workRoot) => ({
+  ...fromContext(ctx, memoryRootFor(workRoot)),
+  claudeMdExcludes: checkoutSteering(cwd, dirname(workRoot)),
+});
 
 /** The query() options for one turn. Pure apart from the callbacks, so the tests can check them. */
 /**
