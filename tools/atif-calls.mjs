@@ -76,7 +76,7 @@ const argumentsSource = (w, args, asked) => {
 };
 
 /**
- * What a call's recorded stream says of it beyond its input: that its result was an error, and the call a subagent
+ * What a call’s recorded stream says of it beyond its input: that its result was an error, and the call a subagent
  * made it under. @param {any} heard  its call in the stream, if any
  */
 const streamExtra = (heard) => ({ ...(heard?.isError ? { result_is_error: true } : {}), ...(heard?.parent ? { parent_tool_call_id: heard.parent } : {}) });
@@ -112,7 +112,7 @@ function jobResult(w, blob) {
 }
 
 /**
- * A stored output as a result, after `note`: empty, or the note alone, when the output was empty; null when it doesn't
+ * A stored output as a result, after `note`: empty, or the note alone, when the output was empty; null when it doesn’t
  * read back. @param {any} out @param {(sha256: string) => string | null} blob @param {string} note */
 function outputResult(out, blob, note) {
   // Output that was empty: the ledger keeps no blob for it, and an empty result says so (#1752), after its note.
@@ -125,9 +125,9 @@ function outputResult(out, blob, note) {
 }
 
 /**
- * One step's call: its name and arguments from the step, the ledger, its question blocks or its recorded stream, and
+ * One step’s call: its name and arguments from the step, the ledger, its question blocks or its recorded stream, and
  * in extra what else is known of it. @param {any} s  the step @param {any} w  its ledger entry
- * @param {Map<string, any[]>} questions @param {any} heard  its call in the turn's recorded stream, if any
+ * @param {Map<string, any[]>} questions @param {any} heard  its call in the turn’s recorded stream, if any
  */
 function stepCall(s, w, questions, heard) {
   const name = (typeof s.tool === 'string' && s.tool ? s.tool : ledgerName(w)) ?? (heard?.name || null);
@@ -149,8 +149,8 @@ function stepCall(s, w, questions, heard) {
       ...(s.kind ? { kind: s.kind } : {}),
       ...(name ? {} : { function_name: 'not recorded' }),
       arguments_source: streamed ? 'recorded stream' : argumentsSource(w, args, asked),
-      // What the conversation showed of its input and output, cut, and its step's note (a failure's reason, a
-      // subagent's summary, a status): only live frames carry the first two.
+      // What the conversation showed of its input and output, cut, and its step’s note (a failure’s reason, a
+      // subagent’s summary, a status): only live frames carry the first two.
       ...(typeof s.input === 'string' ? { display_input: s.input } : {}),
       ...(typeof s.output === 'string' ? { display_output: s.output } : {}),
       ...(typeof s.detail === 'string' ? { display_detail: s.detail } : {}),
@@ -161,7 +161,7 @@ function stepCall(s, w, questions, heard) {
 }
 
 /**
- * Adds a reply's calls that made no step, as its turn's recorded stream has them, with their results; then puts every
+ * Adds a reply’s calls that made no step, as its turn’s recorded stream has them, with their results; then puts every
  * call in the order the turn made it, when the stream recorded each one (#1758).
  * @param {any[]} tool_calls @param {any[]} results @param {any[]} unstepped
  * @param {ReturnType<typeof import('./atif-streams.mjs').recordedCalls> | null} recorded
@@ -187,22 +187,22 @@ function withUnstepped(tool_calls, results, unstepped, recorded) {
 
 /**
  * The tool calls, their results, the thoughts and the narration of one reply. A call's start time and exit code are its
- * ledger entry's; its output is its tool_result in the turn's recorded stream, else the store's blob the ledger names
- * (storedResult), else the step's text (its output, which only a live frame carries, or its note), else a background
- * job's output as the ledger kept it (jobResult). The stream's comes first because it's what the model got: where Claude
+ * ledger entry’s; its output is its tool_result in the turn’s recorded stream, else the store’s blob the ledger names
+ * (storedResult), else the step’s text (its output, which only a live frame carries, or its note), else a background
+ * job’s output as the ledger kept it (jobResult). The stream’s comes first because it’s what the model got: where Claude
  * Code cut a long output, the result is the cut text, though the store may hold the whole output.
  * @param {any} it  the reply, with its steps @param {Map<string, any>} ledger  the work ledger’s calls, by tool call id
  * @param {Map<string, any[]>} [questions]  each AskUserQuestion call’s blocks, by its id
  * @param {(sha256: string) => string | null} [blob]  a stored blob's text, or null when it isn't there
- * @param {ReturnType<typeof import('./atif-streams.mjs').recordedCalls> | null} [recorded]  what the turns' recorded
- *   streams add: a call's input where the ledger kept none, and the calls that made no step (#1758, #1752)
+ * @param {ReturnType<typeof import('./atif-streams.mjs').recordedCalls> | null} [recorded]  what the turns’ recorded
+ *   streams add: a call’s input where the ledger kept none, and the calls that made no step (#1758, #1752)
  */
 export function callsOf(it, ledger, questions = new Map(), blob = () => null, recorded = null) {
   const steps = [...it.steps.values()].filter((s) => s.label && s.kind !== 'reply');
   const thoughts = steps.filter((s) => s.kind === 'thought').map((s) => s.detail ?? s.label);
   const narration = steps.filter((s) => s.kind === 'said').map((s) => ({ step_id: s.id, text: s.detail ?? s.label, ...(s.who ? { who: s.who } : {}) }));
   const calls = steps.filter((s) => s.kind !== 'thought' && s.kind !== 'said');
-  /** @type {any[]} a step's call, or one its turn's stream has that made no step */
+  /** @type {any[]} a step’s call, or one its turn’s stream has that made no step */
   const tool_calls = calls.map((s) => stepCall(s, ledger.get(s.id), questions, recorded?.byId.get(s.id)));
   const results = calls.flatMap((s) => {
     // What the model got back, as its turn’s stream recorded it, is the result first (#1758).

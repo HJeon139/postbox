@@ -287,7 +287,7 @@ function contextOf(f, sessionId, blob = () => null, streams = []) {
 /**
  * One agent session’s trajectory, or null when the events give it no step.
  * @param {ReturnType<typeof foldEvents>} f @param {string} sessionId
- * @param {{ version: string, blob?: (sha256: string) => string | null, streams?: { handle: string, events: any[] }[] }} opts  blob: a stored blob's text, for outputs; streams: the turns' recorded streams (tools/atif-streams.mjs)
+ * @param {{ version: string, blob?: (sha256: string) => string | null, streams?: { handle: string, events: any[] }[] }} opts  blob: a stored blob’s text, for outputs; streams: the turns’ recorded streams (tools/atif-streams.mjs)
  */
 export function trajectoryOf(f, sessionId, { version, blob, streams }) {
   const se = f.sessions.get(sessionId) ?? {};
