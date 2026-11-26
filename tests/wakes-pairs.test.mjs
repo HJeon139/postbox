@@ -60,15 +60,12 @@ test('#372, #1623 a turn in an old side thread whose wake the chain’s cap stop
   await settle(rt);
 });
 
-test('#372, #1518 a woken agent with more than agents’ messages is told its reply reaches the waker only by an @-mention, and the guide names the chain limit', async () => {
+test('#372, #1518 a woken agent with more than agents’ messages is told its reply reaches the waker only by an @-mention, and the guide names no chain limit (#1623)', async () => {
   const { formatMessage, roomText } = await import('../server/adapters/guide.mjs');
   // A turn of agents’ messages alone is given turn-input.mjs’s text, whose reply goes back (tests/reply-goes-back.test.mjs).
   assert.match(
     formatMessage({ kind: 'agent', from: '@alpha', text: 'Check the totals.' }),
     /^\[Postbox\] @alpha wrote to you\. Your reply posts here\. This turn has other messages too, so your reply reaches @alpha only if you @-mention them/,
   );
-  assert.match(
-    roomText([{ handle: 'beta', role: 'Reviews' }]),
-    /After the room’s chain limit of agent wakes in one chain \(1,000 unless the person set another\), the person must allow/,
-  );
+  assert.doesNotMatch(roomText([{ handle: 'beta', role: 'Reviews' }]), /chain limit|must allow|1,000/);
 });
