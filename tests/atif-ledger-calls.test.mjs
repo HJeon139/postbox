@@ -40,8 +40,15 @@ test('with no live frames, a call’s output comes from the store’s blob its l
   assert.deepEqual(step.observation, { results: [{ source_call_id: command.toolUseId, content: 'high' }] });
 });
 
-test('a live frame’s output still wins over the blob, as what the conversation showed', () => {
-  const step = dryCall({ live: rec.live, blob: () => 'not this' });
+test('#1757 the stored output wins over a live frame’s capped text, which stays as what the conversation showed', () => {
+  // A step’s output is cut to its last 400 characters (shared/limits.mjs, STEP_TEXT), so the blob is the whole of it.
+  const step = dryCall({ live: rec.live, blob: (/** @type {string} */ h) => (h === ended.output.sha256 ? 'the whole output\nhigh' : null) });
+  assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: 'the whole output\nhigh' }]);
+  assert.equal(step.tool_calls[0].extra.display_output, 'high', 'the live frame’s text, as the conversation showed it');
+});
+
+test('#1757 with no stored output to read, a live frame’s text is the result, as before', () => {
+  const step = dryCall({ live: rec.live, blob: () => null });
   assert.deepEqual(step.observation.results, [{ source_call_id: command.toolUseId, content: 'high' }]);
 });
 

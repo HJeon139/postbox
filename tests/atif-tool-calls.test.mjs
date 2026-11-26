@@ -31,6 +31,7 @@ test('a tool call names the tool its harness ran, with the arguments the work le
         exit: 0,
         arguments_source: 'work ledger',
         display_input: 'command: printenv CLAUDE_EFFORT',
+        display_output: 'high',
       },
     },
   ]);
@@ -41,6 +42,7 @@ test('a tool call names the tool its harness ran, with the arguments the work le
   assert.equal(bare.tool_calls[0].function_name, 'Bash');
   assert.equal(bare.tool_calls[0].arguments.command, 'printenv CLAUDE_EFFORT');
   assert.equal(bare.tool_calls[0].extra.display_input, undefined);
+  assert.equal(bare.tool_calls[0].extra.display_output, undefined);
   assert.equal(bare.observation, undefined);
 });
 

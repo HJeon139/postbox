@@ -75,9 +75,24 @@ const argumentsSource = (w, args, asked) => {
   return w.kind === 'read' ? 'work ledger, target as displayed' : 'work ledger';
 };
 
+/** What a step showed of a call's output, cut: its output, or a failed call's text in its detail. @param {any} s */
+const shown = (s) => s.output ?? s.detail;
+
+/**
+ * A call's whole output as its result, from the store's blob the ledger names (`output.sha256`), or a note of its size
+ * when it's too large to read; null when the ledger names none or the blob doesn't read back. It wins over what a step
+ * showed, which is cut to its last 400 characters, or a failed call's 1,200 (#1757).
+ * @param {any} out  the ledger entry's output @param {(sha256: string) => string | null} blob
+ */
+function storedResult(out, blob) {
+  if (typeof out?.size === 'number' && out.size > RESULT_READ_BYTES) return `[output too large to read: ${out.size.toLocaleString('en-US')} bytes]`;
+  const text = typeof out?.sha256 === 'string' ? blob(out.sha256) : null;
+  return typeof text === 'string' ? resultContent(text) : null;
+}
+
 /**
  * The tool calls, their results, the thoughts and the narration of one reply. A call's start time and exit code are its
- * ledger entry's; its output is what a live frame showed, else the store's blob the ledger names (`output.sha256`).
+ * ledger entry's; its output is the store's blob the ledger names, else what a live frame showed (storedResult).
  * @param {any} it  the reply, with its steps @param {Map<string, any>} ledger  the work ledger’s calls, by tool call id
  * @param {Map<string, any[]>} [questions]  each AskUserQuestion call’s blocks, by its id
  * @param {(sha256: string) => string | null} [blob]  a stored blob's text, or null when it isn't there
@@ -105,19 +120,15 @@ export function callsOf(it, ledger, questions = new Map(), blob = () => null) {
         ...(s.kind ? { kind: s.kind } : {}),
         ...(name ? {} : { function_name: 'not recorded' }),
         arguments_source: argumentsSource(w, args, asked),
-        // What the conversation showed of its input, cut: only live frames carry it.
+        // What the conversation showed of its input and output, cut: only live frames carry them.
         ...(typeof s.input === 'string' ? { display_input: s.input } : {}),
+        ...(typeof shown(s) === 'string' ? { display_output: shown(s) } : {}),
       },
     };
   });
   const results = calls.flatMap((s) => {
-    if (typeof s.output === 'string' || typeof s.detail === 'string') return [{ source_call_id: s.id, content: s.output ?? s.detail }];
-    const out = ledger.get(s.id)?.output;
-    if (typeof out?.size === 'number' && out.size > RESULT_READ_BYTES)
-      return [{ source_call_id: s.id, content: `[output too large to read: ${out.size.toLocaleString('en-US')} bytes]` }];
-    const h = out?.sha256;
-    const text = typeof h === 'string' ? blob(h) : null;
-    return typeof text === 'string' ? [{ source_call_id: s.id, content: resultContent(text) }] : [];
+    const content = storedResult(ledger.get(s.id)?.output, blob) ?? shown(s);
+    return typeof content === 'string' ? [{ source_call_id: s.id, content }] : [];
   });
   return { tool_calls, results, thoughts, narration };
 }
