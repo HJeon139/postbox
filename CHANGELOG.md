@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.47.0 (2026-11-26)
+
+### Features
+
+- **people:** a person's message says who sent it
+
+### Fixes
+
+- **people:** a person's first message names them in the turn it starts
+
 ## 4.46.1 (2026-11-25)
 
 ### Fixes
