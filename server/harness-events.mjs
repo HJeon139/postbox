@@ -29,7 +29,9 @@
 // - progress  { text, parent? }            what a subagent, or the harness, says it’s doing now.
 // - status    { state?, step? }            the harness’s own state, such as summarizing the conversation.
 // - message_end { calledTools }            the model ended a message; one that called no tool waits on what runs on.
-// - compaction { kept, total, summary }    the harness summarized the conversation to make room.
+// - compaction { kept?, total?, summary }  the harness summarized the conversation to make room. kept and total: the
+//                                           tokens it kept, of how many, when the harness counts them (Codex
+//                                           doesn’t, #425).
 // - turn_end  { isError?, text? }          the turn ended; text, a reply no text event carried (#485).
 //
 // From these, and only here, Postbox builds what it shows and keeps: the reply’s text, each step and its label, the
@@ -251,7 +253,9 @@ export class HarnessEvents {
 
   /** @param {any} e */
   on_compaction(e) {
-    if (e.total) this.ctx.compaction({ kept: e.kept, total: e.total, summary: e.summary });
+    // A total of 0 is a count the harness didn’t give (claude-stream.mjs): no compaction to show. None at all is a
+    // harness that never counts (Codex, #425): the compaction shows without counts.
+    if (e.total !== 0) this.ctx.compaction({ kept: e.kept, total: e.total, summary: e.summary });
     this.words.compacted();
   }
 

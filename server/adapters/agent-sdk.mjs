@@ -13,6 +13,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { dirname } from 'node:path';
 import { withQuota, withTransient } from '../harness-failure.mjs';
 import { liveControl } from './agent-sdk-live.mjs';
 import { sdkModels } from './claude-models.mjs';
@@ -26,6 +27,7 @@ import { listCommands } from './sdk-commands.mjs';
 import { sdkOptions } from './sdk-options.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
+import { checkoutSteering } from './steering.mjs';
 
 export { sdkOptions };
 
@@ -38,6 +40,16 @@ export async function loadAgentSdk() {
     return null;
   }
 }
+
+/**
+ * What a turn’s folders give its options: the persona’s memory folder, from its context, and the Postbox checkout’s
+ * steering it mustn’t load when it works in the data folder inside the checkout (steering.mjs, #319).
+ * @param {any} ctx @param {string} cwd @param {string} workRoot  `<data folder>/workspaces`
+ */
+const folderOptions = (ctx, cwd, workRoot) => ({
+  ...fromContext(ctx, memoryRootFor(workRoot)),
+  claudeMdExcludes: checkoutSteering(cwd, dirname(workRoot)),
+});
 
 /** Where a forked session starts: the branch point’s checkpoint, or the latest point of the session it forks. */
 export function sdkForkPoint(state) {
@@ -161,7 +173,7 @@ export class AgentSdkAdapter {
         abortController,
         canUseTool,
         fork,
-        ...fromContext(ctx, memoryRootFor(this.workRoot)),
+        ...folderOptions(ctx, cwd, this.workRoot),
       }),
       spawnClaudeCodeProcess,
       // The SDK’s wait for background work after the reply, at Postbox’s bound rather than its 10 min (#1714).
