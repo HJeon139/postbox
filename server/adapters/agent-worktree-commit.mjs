@@ -44,14 +44,11 @@ export async function commitTurn(cwd, persona, project, workRoot, { git = defaul
   if ((await g(['config', '--get', 'core.worktree'])).code === 0) return refuse('its worktree’s record names another folder to work in');
   const head = await g(['symbolic-ref', '-q', 'HEAD']);
   if (head.stdout.trim() !== `refs/heads/${branchFor(persona, project)}`) return refuse('it isn’t on its own branch');
-  // A repository nested in it: reading or adding it starts git inside that repository, whose own config the agent
-  // wrote. One the index already holds is a gitlink, refused before the status could read it, as it would whatever
-  // git’s config says when the agent’s .gitmodules asks it to.
-  const tracked = await g(['ls-files', '--stage']);
-  if (tracked.code !== 0 || /^160000 /m.test(tracked.stdout)) return refuse('it holds a repository of its own');
   // Every untracked file, whatever status.showUntrackedFiles says, or a turn that only made files commits nothing.
-  // Unquoted (-z), so a new nested repository shows as a folder whatever its name.
-  const changed = await g(['status', '--porcelain', '-z', '--untracked-files=all']);
+  // Unquoted (-z), so a new nested repository shows as a folder whatever its name. A repository nested in the worktree
+  // that the index holds (a gitlink) is read by starting git inside it, under the config the agent wrote; the flag
+  // stops that, as git’s config can’t once the agent’s .gitmodules asks for it.
+  const changed = await g(['status', '--porcelain', '-z', '--ignore-submodules=all', '--untracked-files=all']);
   const entries = changed.stdout.split('\0').filter(Boolean);
   if (changed.code !== 0 || entries.length === 0) return false;
   // A conflict, or a merge, rebase or cherry-pick the agent left half done, would be committed as resolved, markers
@@ -60,6 +57,8 @@ export async function commitTurn(cwd, persona, project, workRoot, { git = defaul
   const midway = (await inProgress(g, place.admin)) ?? (conflicted ? 'conflict' : null);
   if (midway) return refuse(`a ${midway} is in progress there`);
   if (entries.some((l) => l.startsWith('?? ') && l.endsWith('/'))) return refuse('it holds a repository of its own');
+  // Adding a gitlink starts git inside it too, and add takes no such flag, so one in the index is refused just before.
+  if (await holdsGitlink(g)) return refuse('it holds a repository of its own');
   const added = await g(['add', '-A']);
   // Unsigned: signing would run gpg.program, a program from the repository’s or the person’s config, and could wait
   // on a passphrase. And no automatic maintenance, whose gc can prune the repository’s worktrees, the person’s own.
@@ -69,6 +68,12 @@ export async function commitTurn(cwd, persona, project, workRoot, { git = defaul
   const made = added.code === 0 ? await g([...identity, ...quiet, 'commit', '-q', author, '-m', `@${persona.handle}’s work at the end of a turn`]) : added;
   if (made.code === 0) return true;
   return refuse(`git refused (${made.stderr.trim().split('\n').at(-1) || `it exited with ${made.code}`})`);
+}
+
+/** Whether the worktree’s index holds a nested repository (a gitlink), or can’t be read. @param {(args: string[]) => Promise<{ code: number, stdout: string }>} g */
+async function holdsGitlink(g) {
+  const tracked = await g(['ls-files', '--stage']);
+  return tracked.code !== 0 || /^160000 /m.test(tracked.stdout);
 }
 
 /**

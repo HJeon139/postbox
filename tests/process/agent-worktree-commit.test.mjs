@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { agentWorktree } from '../../server/adapters/agent-worktree.mjs';
+import { agentWorktree, gitTimeoutFor } from '../../server/adapters/agent-worktree.mjs';
 import { commitTurn } from '../../server/adapters/agent-worktree-commit.mjs';
 import { runGit } from '../../server/ledger-git.mjs';
 import { git, home, project } from './agent-worktree-fixture.mjs';
@@ -147,6 +147,47 @@ test('#1709 a repository nested in the worktree isn’t committed, and runs noth
   await runGit(w.dir, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
   await runGit(w.dir, ['diff', 'HEAD']);
   assert.equal(existsSync(marker), false, 'the ledger’s reads didn’t run it either');
+});
+
+/**
+ * A worktree with a repository in an ignored folder, whose own config names a program for a file that has changed, and a
+ * commit that puts it in the index as the turn-end commit runs, as a process the agent left running could:
+ * before its status (when: 'status') or between its status and its add (when: 'add').
+ * @param {string} name @param {'status'|'add'} when
+ */
+async function slippedIn(name, when) {
+  const w = await wrote(name);
+  writeFileSync(join(w.dir, '.gitignore'), 'sub/\n');
+  writeFileSync(join(w.dir, '.gitmodules'), '[submodule "sub"]\n\tpath = sub\n\turl = ./sub\n\tignore = none\n');
+  const sub = join(w.dir, 'sub');
+  await mkdir(sub, { recursive: true });
+  git(sub, ['init', '-q']);
+  writeFileSync(join(sub, '.gitattributes'), 'f filter=x\n');
+  writeFileSync(join(sub, 'f'), 'one\n');
+  git(sub, ['add', 'f', '.gitattributes']);
+  git(sub, ['commit', '-qm', 'one']);
+  const marker = join(home, name, 'ran');
+  writeFileSync(join(sub, '.git', 'config'), `${readFileSync(join(sub, '.git', 'config'), 'utf8')}[filter "x"]\n\tclean = "touch ${marker}; cat"\n`);
+  writeFileSync(join(sub, 'f'), 'two\n');
+  const slip = () => git(w.dir, ['update-index', '--add', '--cacheinfo', `160000,${git(sub, ['rev-parse', 'HEAD']).trim()},sub`]);
+  let statuses = 0;
+  const gitThen = async (/** @type {string} */ cwd, /** @type {string[]} */ args) => {
+    if (args.includes('status') && when === 'status') slip();
+    const out = await runGit(cwd, args, gitTimeoutFor(args));
+    if (args.includes('status') && when === 'add' && statuses++ === 0) slip();
+    return out;
+  };
+  const made = await commitTurn(w.dir, agent, w.p, w.workRoot, { git: gitThen, log: (l) => w.logs.push(l) });
+  return { made, ran: existsSync(marker), logs: w.logs };
+}
+
+test('#1709 a nested repository that reaches the index after the check runs nothing its own config names', async () => {
+  for (const when of /** @type {const} */ (['status', 'add'])) {
+    const r = await slippedIn(`slipped-${when}`, when);
+    assert.equal(r.ran, false, `the nested repository’s filter didn’t run when it slipped in before the ${when}`);
+    assert.equal(r.made, false);
+    assert.match(r.logs.at(-1) ?? '', /holds a repository of its own/);
+  }
 });
 
 test('#1709 a nested repository whose name git quotes in its status isn’t committed either', async () => {
