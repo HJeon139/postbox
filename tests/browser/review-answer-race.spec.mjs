@@ -2,10 +2,11 @@
 // draft on the page, and submit() deleted that draft once its answer settled, so what the person had started on the
 // newer revision in the meantime, a comment or a verdict, was lost. Now a settled answer leaves the draft to the newer
 // revision, and what it sent leaves the draft where that revision is drawn, once the answer landed, so what’s on
-// screen is what’s sent. A form’s and a choice’s drafts are kept the same way.
+// screen is what’s sent. A form’s and a choice’s drafts are kept the same way (block-answer-race.spec.mjs).
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { gate, holdAct } from './answer-hold.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const DRAFT = {
@@ -17,33 +18,6 @@ const DRAFT = {
   format: 'markdown',
   content: '# Plan\n\nIndex first.\n\nThen search.',
 };
-
-/** A gate a test opens: wait() resolves once open() is called. */
-function gate() {
-  /** @type {() => void} */
-  let open = () => {};
-  const opened = new Promise((r) => {
-    open = () => r(undefined);
-  });
-  return { open, wait: () => opened };
-}
-
-/**
- * Holds a block’s answer on its way: its reply to the page until release(), and, with untilSent, the request itself
- * until send(). @param {import('@playwright/test').Page} page @param {string} threadId @param {string} itemId
- */
-async function holdAct(page, threadId, itemId, { untilSent = false } = {}) {
-  const sent = gate();
-  const released = gate();
-  if (!untilSent) sent.open();
-  await page.route(`**/api/threads/${threadId}/items/${itemId}/act`, async (route) => {
-    await sent.wait();
-    const response = await route.fetch();
-    await released.wait();
-    await route.fulfill({ response });
-  });
-  return { send: sent.open, release: released.open };
-}
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -157,30 +131,6 @@ test('#518 when the page never drew the answered block, what it sent leaves the 
   expect(r.now().answer.values).toEqual({ verdict: 'approve', comments: [expect.objectContaining({ line: 5, text: 'Then by author. And by date.' })] });
 });
 
-test('#518 what the person types into a form’s newer revision survives the older answer settling and the next revision', async ({ page }) => {
-  const { rt, store } = app;
-  const t = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title: 'Form', personaIds: [arrange.persona(rt, 'researcher').id] });
-  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
-  const form = { id: 'trip', type: 'form', version: 1, fallback: 'Plan the trip', fields: [{ id: 'a', label: 'Where to?', kind: 'text' }] };
-  tools.show_block({ block: form });
-  const item = store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'trip');
-  await page.goto(`${app.origin}/#/t/${t.id}`);
-  await synced(page, app);
-  const block = page.locator(`#main [data-key="${item.id}"]`);
-  const { release } = await holdAct(page, t.id, item.id);
-  await block.getByRole('textbox', { name: 'Where to?' }).fill('Lisbon');
-  await block.getByRole('button', { name: 'Send form' }).click();
-  await expect.poll(() => store.item(t.id, item.id).answer?.read).toBe(true);
-  const two = { ...form, fields: [...form.fields, { id: 'b', label: 'When?', kind: 'text' }] };
-  expect(tools.update_block({ block: two }).ok).toBe(true);
-  await block.getByRole('textbox', { name: 'When?' }).fill('May');
-  release();
-  await page.waitForResponse(`**/api/threads/${t.id}/items/${item.id}/act`);
-  // The agent revises once more, which draws the form again from its draft.
-  expect(tools.update_block({ block: { ...two, title: 'Plan the trip' } }).ok).toBe(true);
-  await expect(block.getByRole('textbox', { name: 'When?' })).toHaveValue('May');
-});
-
 test('#518 an answer that fails leaves its comments as drafts, through a redraw while it was on its way and the next revision', async ({ page }) => {
   const r = await room(page, 'Failed');
   allowPageError(page, /status of 422/);
@@ -225,39 +175,6 @@ test('#518 an answer refused as stale, because the agent’s revision got there 
   await r.block.getByRole('radio', { name: 'Lines' }).click();
   await expect(drafted.filter({ hasText: 'Index the titles too.' }), 'and after the next draw').toHaveCount(1);
   expect(r.now().answer ?? null, 'nothing reached the agent').toBe(null);
-});
-
-test('#518 a choice picked on a newer revision survives the older answer settling and the next revision', async ({ page }) => {
-  const { rt, store } = app;
-  const t = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title: 'Choice', personaIds: [arrange.persona(rt, 'researcher').id] });
-  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
-  const choice = {
-    id: 'when',
-    type: 'choice',
-    version: 1,
-    fallback: 'When?',
-    multiple: true,
-    options: [
-      { id: 'mon', label: 'Monday' },
-      { id: 'tue', label: 'Tuesday' },
-    ],
-  };
-  tools.show_block({ block: choice });
-  const item = store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'when');
-  await page.goto(`${app.origin}/#/t/${t.id}`);
-  await synced(page, app);
-  const block = page.locator(`#main [data-key="${item.id}"]`);
-  const { release } = await holdAct(page, t.id, item.id);
-  await block.getByRole('button', { name: 'Monday' }).click();
-  await block.getByRole('button', { name: /^Send/ }).click();
-  await expect.poll(() => store.item(t.id, item.id).answer?.read).toBe(true);
-  const two = { ...choice, options: [...choice.options, { id: 'wed', label: 'Wednesday' }] };
-  expect(tools.update_block({ block: two }).ok).toBe(true);
-  await block.getByRole('button', { name: 'Wednesday' }).click();
-  release();
-  await page.waitForResponse(`**/api/threads/${t.id}/items/${item.id}/act`);
-  expect(tools.update_block({ block: { ...two, title: 'When?' } }).ok).toBe(true);
-  await expect(block.getByRole('button', { name: 'Wednesday' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('#518 after an answer landed, a later revision’s own answer on its way keeps its comments through a redraw', async ({ page }) => {
