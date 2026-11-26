@@ -156,7 +156,7 @@ export function glimpseOf(text, max = GLIMPSE_CHARS) {
     .sentences.map((sentence) => sentence.trim())
     .filter(Boolean);
   const latest = sentences.at(-1) ?? '';
-  if (latest.length > max) return `${cutText(latest, Math.max(1, max - 1))}…`;
+  if (latest.length > max) return `${cutText(latest, Math.max(0, max - 1))}…`;
   const previous = sentences.at(-2);
   const separator = previous && /[。！？]$/.test(previous) ? '' : ' ';
   return previous && previous.length + latest.length + separator.length <= max ? `${previous}${separator}${latest}` : latest;

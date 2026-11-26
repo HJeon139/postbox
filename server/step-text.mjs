@@ -46,7 +46,7 @@ export function stepInput(input, label = '') {
 export function stepOutput(text) {
   const t = String(text ?? '').trim();
   if (t.length <= STEP_TEXT.output) return t;
-  const tail = t.slice(-(STEP_TEXT.output - 1));
+  const tail = tailText(t, STEP_TEXT.output - 1);
   const line = tail.indexOf('\n');
   return `…${line >= 0 && line < tail.length - 1 ? tail.slice(line + 1) : tail}`;
 }

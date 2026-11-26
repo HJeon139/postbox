@@ -12,7 +12,7 @@ import { HarnessText } from '../server/harness-text.mjs';
 import { clip as harnessClip } from '../server/harness-tools.mjs';
 import { clip as gitClip } from '../server/ledger-git.mjs';
 import { stepDiff } from '../server/step-diff.mjs';
-import { stepInput, turnStep } from '../server/step-text.mjs';
+import { stepInput, stepOutput, turnStep } from '../server/step-text.mjs';
 import { describeTool } from '../server/tool-labels.mjs';
 import { STEP_TEXT } from '../shared/limits.mjs';
 import { clip as protocolClip } from '../shared/remote-protocol-checks.mjs';
@@ -74,7 +74,12 @@ test('#1686 a diff’s long line, a thought step’s detail and a glimpse are cu
   );
   text.thoughtStep(across(STEP_TEXT.thought));
   whole(steps[0]?.detail, 'a thought step’s detail');
+  text.narrate(across(STEP_TEXT.thought));
+  whole(steps[1]?.detail, 'a subagent’s said step’s detail');
   whole(glimpseOf(`${across(39)}.`, 40), 'a glimpse');
+  assert.equal(glimpseOf('ab.', 1), '…', 'a glimpse stays within its bound');
+  // The end of what a call returned, on one line: the tail’s first character would be the emoji’s second half.
+  whole(stepOutput(acrossTail(STEP_TEXT.output - 1)), 'a step’s output');
 });
 
 test('#1686 a Claude Code session’s title in the picker is cut whole', async () => {
