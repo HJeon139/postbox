@@ -9,6 +9,7 @@ import { Agent, get } from 'node:http';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { closeServer, httpServer } from '../../server/http-server.mjs';
 import { start } from '../../server/index.mjs';
 import { tempDir } from '../temp-dirs.mjs';
 
@@ -60,4 +61,26 @@ test('#1726 a connection left idle past Node’s default 5 s (plus 1 s) still an
   const t0 = Date.now();
   await app.close();
   assert.ok(Date.now() - t0 < 3000, `close took ${Date.now() - t0} ms with an idle connection open`);
+});
+
+test('#1726 a response still going when Postbox closes doesn’t hold the close for the idle time after it', async (t) => {
+  /** @type {(res: import('node:http').ServerResponse) => void} */
+  let asked = () => {};
+  const inFlight = new Promise((r) => {
+    asked = r;
+  });
+  const server = httpServer((_req, res) => asked(res));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
+  const agent = new Agent({ keepAlive: true });
+  t.after(() => agent.destroy());
+  const reply = fetchOn(agent, `http://127.0.0.1:${port}/`);
+  const res = /** @type {import('node:http').ServerResponse} */ (await inFlight);
+  // Close while the response is still going, then end it: the close comes once that response is done.
+  const closed = closeServer(server).then(() => 'closed');
+  res.end('ok');
+  assert.deepEqual(await reply, { status: 200, reused: false });
+  const timer = new Promise((r) => setTimeout(() => r('still open after 3 s'), 3000).unref());
+  assert.equal(await Promise.race([closed, timer]), 'closed');
 });

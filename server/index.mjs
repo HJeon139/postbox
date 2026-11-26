@@ -22,7 +22,7 @@ import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { dataFolder } from './home.mjs';
 import { hostsRoute } from './hosts-routes.mjs';
-import { httpServer } from './http-server.mjs';
+import { closeServer, httpServer } from './http-server.mjs';
 import { whoIs } from './identity/session.mjs';
 import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
@@ -467,7 +467,7 @@ export async function start({
     await settleLedger(rt); // the stopped turns’ records, remote ones too, before the store closes
     narrator?.stop();
     await viewOf(rt).close();
-    if (server.listening) await new Promise((ok) => server.close(ok));
+    if (server.listening) await closeServer(server);
     await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
   if (listen) await listenServer(server, port, host, close, () => listening(rt)); // drain (#228), then archive (#305)
