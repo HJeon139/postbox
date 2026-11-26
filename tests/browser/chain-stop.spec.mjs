@@ -1,7 +1,7 @@
 // The wake chain’s loop guard (#1623; designs/intent.md, principle 6): at the cap of agent wakes in a row without you,
 // the next one doesn’t go, and the room shows one line, with no card and nothing to answer. A wake-limit card from
 // before shows what became of it, with no buttons, and an old wake line no longer counts toward a limit. The add card
-// (#228) still asks, and still sends the wakes held on it when you answer (#439).
+// (#228) still asks, and still sends the wakes held on it when you answer (#439). The composer counts no wakes.
 
 import { expect, test } from '@playwright/test';
 import { HOP_LIMIT } from '../../shared/limits.mjs';
@@ -72,6 +72,15 @@ test('#1623 at the cap the room shows one line, with no card, no button and noth
   await expect(transcript.locator('.g-needs')).toHaveCount(0);
   await expect(page.locator(`.rail a.row[data-thread="${stopped.id}"] .g-needs`)).toHaveCount(0);
   await expect(page.locator(`.rail a.row[data-thread="${addRoom.id}"]`)).toBeVisible();
+});
+
+test('#1623 the composer names no count of agent wakes, however long the chain', async ({ page }) => {
+  await page.goto(`${app.origin}/#/t/${stopped.id}`);
+  await synced(page, app);
+  const hint = page.locator('.composer .hint');
+  await expect(hint).toContainText('Replying to');
+  await expect(hint).not.toContainText(/woken each other|limit/);
+  await expect(hint.locator('.chain')).toHaveCount(0);
 });
 
 test('#1623 a wake-limit card from before shows as a line with no buttons, and an old wake line names no limit', async ({ page }) => {

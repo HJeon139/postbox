@@ -1,13 +1,12 @@
 // #492: two agents waking each other in turn stopped after a hand-off and its answer (PAIR_LIMIT, #372), which stopped
 // ordinary hand-offs 8 times in one working room, against 2 for a limit of 6 (E2’s replay, posted on #492). The person
-// decided there’s no pair limit: the room shows how many wakes have chained since your last message, with a hint to
-// Stop once it reaches CHAIN_HINT. The chain limit stays only as a backstop, at 50 rather than 10, until a supervisor
-// agent watches the room (#538); since #1035 it’s 1,000 by default, and each room can set its own.
+// decided there’s no pair limit. The chain limit stays only as a loop guard: 1,000 since #1035, and since #1623 the
+// chain stops there with one line in the room, and nothing for the person to watch or answer.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { guideText, roomText } from '../server/adapters/guide.mjs';
-import { CHAIN_HINT, DEFAULT_HOP_LIMIT } from '../shared/limits.mjs';
+import { DEFAULT_HOP_LIMIT } from '../shared/limits.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /**
@@ -44,9 +43,7 @@ test('#492 a chain past the old limit of 10 raises no card: the backstop is 1,00
   assert.equal(DEFAULT_HOP_LIMIT, 1000);
 });
 
-test('#492 the Stop hint comes after fewer wakes than the chain limit, and the guide names no pair limit', () => {
-  // Against the default only: a room may set its own limit below the hint’s count (#1035).
-  assert.ok(CHAIN_HINT > 2 && CHAIN_HINT < DEFAULT_HOP_LIMIT, `CHAIN_HINT is ${CHAIN_HINT}`);
+test('#492 the guide names no pair limit', () => {
   for (const text of [guideText(), roomText([{ handle: 'beta', role: 'Reviews' }])]) assert.doesNotMatch(text, /between the same two agents/);
 });
 

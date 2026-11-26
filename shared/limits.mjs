@@ -261,16 +261,6 @@ export const HOP_LIMIT = chainLimit(globalThis.process?.env?.POSTBOX_CHAIN_LIMIT
 export const ROOM_CHAIN_LIMIT_TAKES = `A room’s wake chain limit is a whole number from 1 to ${count(MAX_HOP_LIMIT)}.`;
 /** Whether a value is a chain limit a room can have: a whole number from 1 to MAX_HOP_LIMIT, never a string. @param {unknown} v */
 export const isRoomChainLimit = (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_HOP_LIMIT;
-/**
- * Agent wakes in a row, without you, after which the room shows the count with a hint to Stop agents going nowhere
- * (#492), well before the chain limit: E2’s replay found no loop past 2 wakes, and ordinary hand-offs run longer.
- */
-export const CHAIN_HINT = 6;
-/**
- * The count the hint shows from in a room with that limit: CHAIN_HINT, or the room’s limit when it’s lower, so the hint
- * never names a count past the limit (#1035). @param {number} limit
- */
-export const chainHintAt = (limit) => Math.min(CHAIN_HINT, limit);
 /** Wakes held on one waiting wake card, delivered or not as the person answers it (#439); past this, they’re refused. */
 export const HELD_WAKES = 20;
 /** Wakes one agent session may have pending with schedule_wake, not yet fired (#362); past this, it’s refused. */
