@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { offerNeed, releaseNeed } from '../server/card-needs.mjs';
 import { recordJob, settleJobs } from '../server/job-records.mjs';
 import { newId } from '../server/store.mjs';
+import { endSubagent } from '../server/subagent-end.mjs';
 import { threadLines } from '../server/thread-catch-up.mjs';
 import * as arrange from './arrange.mjs';
 import { heldStore, setup, until } from './stop-reply-fixture.mjs';
@@ -28,6 +29,10 @@ async function heldRoom(step = async () => {}) {
   };
   return { ...env, store: h.store, hold, close: () => h.store.close() };
 }
+
+const DIAGRAM = '```mermaid\ngraph LR\nA-->B\n```';
+/** The browser’s report of a diagram drawn too small to read. */
+const TOO_SMALL = { src: 'graph LR\nA-->B', textPx: 7, width: 728 };
 
 /** A turn record as the job functions read it. @param {any} env */
 const turnOf = (env) => ({ id: newId('tu'), sessionId: env.se.id, threadId: env.t.id, keepJobs: new Set(), stopReason: null });
@@ -127,5 +132,59 @@ test('a thread told while a commit is held isn’t told again in the next catch-
   const again = threadLines(env.rt.memory, env.se, 0);
   await release();
   assert.deepEqual(again, [], 'told once');
+  await env.close();
+});
+
+test('a job kept while a commit is held isn’t ended at its turn’s end (#623, job-records settleJobs)', async () => {
+  const env = await heldRoom();
+  const turn = turnOf(env);
+  recordJob(env.rt, turn, { id: 'job1', state: 'running', command: 'sleep 60', label: 'Sleep' });
+  await env.store.flush();
+  const job = env.store.state.sessions[env.se.id].jobs[0];
+  const release = await env.hold();
+  // Stop’s Keep running marks it kept, held behind the commit; its CLI then goes and the turn ends.
+  arrange.setSession(env.rt, env.se.id, { jobs: [{ ...job, kept: true }] });
+  settleJobs(env.rt, turn);
+  await release();
+  assert.deepEqual(
+    env.store.state.sessions[env.se.id].jobs.map((/** @type {any} */ j) => [j.id, j.kept]),
+    [['job1', true]],
+    'the kept job runs on',
+  );
+  await env.close();
+});
+
+test('a subagent ended twice while a commit is held is ended once, with one notice (#623, subagent-end endSubagent)', async () => {
+  const env = await heldRoom(async (/** @type {any} */ c) => {
+    c.status({ state: 'tool', subagents: [{ id: 'toolu_reader', name: 'general-purpose', state: 'tool', asked: 'Count the words' }] });
+  });
+  arrange.deliver(env.rt, env.se.id, { kind: 'user', text: 'Count them, with a subagent.' });
+  await until(() => (arrange.liveSession(env.rt, env.se.id)?.subagents ?? []).length > 0, 'the subagent at work');
+  const release = await env.hold();
+  // The person presses End, then again before the first press is written.
+  endSubagent(env.rt, env.se.id, 'toolu_reader');
+  endSubagent(env.rt, env.se.id, 'toolu_reader');
+  await release();
+  const se = env.store.state.sessions[env.se.id];
+  assert.deepEqual(se.endingSubagents, ['toolu_reader'], 'ending once');
+  assert.equal((se.context ?? []).filter((/** @type {string} */ x) => x.includes('toolu_reader')).length, 1, 'one notice');
+  arrange.abortTurn(env.rt, env.se.id);
+  await until(() => !arrange.running(env.rt, env.se.id), 'the turn’s end');
+  await env.close();
+});
+
+test('a diagram reported while its first report is held behind a commit isn’t reported again (#623, diagram-check diagramCheck)', async () => {
+  const env = await heldRoom();
+  const turnId = newId('tu');
+  const reply = arrange.post(env.rt, env.t.id, { kind: 'agent', sessionId: env.se.id, handle: 'researcher', turnId, text: DIAGRAM });
+  // The turn has ended, and its lint turn waits to settle, as the browser’s reports reach it.
+  arrange.armLint(env.rt, turnId, { sessionId: env.se.id, kind: null, ended: false, sent: false, problems: [], timer: null, threadId: env.t.id });
+  await env.store.flush();
+  const release = await env.hold();
+  const first = env.rt.diagramCheck(env.t.id, reply.id, TOO_SMALL).sent;
+  const again = env.rt.diagramCheck(env.t.id, reply.id, TOO_SMALL).sent;
+  await release();
+  assert.equal(first, true, 'the first report reaches the agent');
+  assert.equal(again, false, 'the same diagram isn’t reported twice');
   await env.close();
 });
