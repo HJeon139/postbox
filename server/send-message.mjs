@@ -16,9 +16,10 @@ import { retireStale } from './wake-cards.mjs';
  * repeat is answered with what the first try posted, and stores nothing (#1138).
  * @param {any} rt @param {string} threadId
  * @param {{ text?: string, attachments?: any[], sendNow?: boolean, clientId?: unknown }} [message]  as the route has it
- * @param {string} [personId]  who sent it (#1742), as the server knows from who is asking: never read from the message
+ * @param {{ id: string, keep?: () => void }} [sender]  who sent it (#1742), as the server knows from who is asking, never
+ *   read from the message: their id, and what keeps them as someone this Postbox knows (server/identity/session.mjs)
  */
-export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined } = {}, personId = undefined) {
+export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow = false, clientId = undefined } = {}, sender = undefined) {
   // As written: a conversation just started behind a held commit isn’t published yet, and its first message is sent (#1292).
   const t = rt.threads.toWrite(threadId);
   // First, before whom it goes to is worked out again: with no @-mention that’s the last speaker, who may have changed
@@ -45,12 +46,15 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
   if (sendNow) for (const { se } of targets) queue.stopForSendNow(rt, se.id);
   // Posted when it’s sent, with one entry per agent it goes to (designs/rooms-at-scale.md, “What an entry is”): a busy
   // agent’s waits in its inbox, which its queue lists, and an idle one’s starts its turn (#1404).
+  // The sender is kept now: nothing can refuse the send any more, and the turn it starts is worded as it posts, which
+  // names a sender only if Postbox knows them.
+  sender?.keep?.();
   const { item } = queue.postUserMessage(
     rt,
     threadId,
     { text, attachments },
     targets.map(({ se }) => se.handle),
-    personId ? { personId } : {},
+    sender ? { personId: sender.id } : {},
   );
   const entries = targets.map(({ se }) =>
     rt.delivery.send({ sessionId: se.id, threadId, source: 'person', itemId: item.id, from: 'you', retryId }, { wake: false }),

@@ -44,7 +44,8 @@ export class People {
   /**
    * A person did something that is kept as theirs (sent a message, #1742): they are someone this Postbox knows from
    * then on, so a turn can name them among several and the page can show whose message it is. Kept once, with nothing
-   * saved (`unsaved`), so their profile still starts from the provider’s name and agents are told nothing of them.
+   * saved (`unsaved`), so their profile still starts from the provider’s name and agents are told nothing of them, except their user name
+   * as the sender of a message once there is more than one person.
    * @param {any} person  as `of` answers
    */
   seen(person) {

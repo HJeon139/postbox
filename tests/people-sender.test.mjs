@@ -15,7 +15,7 @@ const SAM = { provider: 'oidc', issuer: 'https://idp.example', subject: 'u-2', u
 
 /** A message from `by` (a person’s id, or none), and what the agent was given for it. */
 async function turn({ rt, t, adapter }, text, by) {
-  const { item } = rt.sendMessage(t.id, { text }, by);
+  const { item } = rt.sendMessage(t.id, { text }, by ? { id: by } : undefined);
   await settle(rt);
   return { item, text: adapter.calls.at(-1).message.text };
 }
@@ -68,6 +68,17 @@ test('with more than one person, a turn and the conversation’s lines name the 
   // As another agent reads them in the conversation.
   assert.match(room.rt.memory.describeItem(first.item, room.beta), /^The person Robin, to @alpha: @alpha from Robin/);
   assert.match(room.rt.memory.describeItem(second.item, room.beta), /^The person sam, to @alpha: /);
+  // A person’s first message names them in the turn it starts: they are kept before it posts.
+  const pat = people.of({ ...SAM, subject: 'u-3', username: 'pat', name: 'Pat Lee' });
+  assert.equal(room.rt.store.state.people[pat.id], undefined);
+  const third = room.rt.sendMessage(room.t.id, { text: '@alpha from Pat' }, { id: pat.id, keep: () => people.seen(pat) });
+  await settle(room.rt);
+  assert.match(room.adapter.calls.at(-1).message.text, /\] The person pat, \d\d:\d\d UTC: @alpha from Pat/);
+  assert.deepEqual([third.item.personId, room.rt.store.state.people[pat.id].unsaved], [pat.id, true]);
+  // A send that is refused keeps no one.
+  const seq = room.rt.store.state.seq;
+  assert.throws(() => room.rt.sendMessage(room.t.id, { text: '' }, { id: 'pn_x', keep: () => assert.fail('kept for a refused send') }));
+  assert.equal(room.rt.store.state.seq, seq);
   // A message that names no sender, or one this Postbox doesn’t know, still reads as it did.
   const none = await turn(room, '@alpha from a terminal');
   assert.match(none.text, /\] The person, \d\d:\d\d UTC: @alpha from a terminal/);
