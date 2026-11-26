@@ -3,6 +3,7 @@
 // scripted agents only (no real turns). It runs in the Playwright worker’s process, so a spec reaches its runtime
 // and store directly, as the checks in tools/ did.
 
+import { randomInt } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -30,7 +31,7 @@ const free = (port) =>
  */
 async function freePort() {
   for (let i = 0; i < 100; i++) {
-    const port = 20000 + Math.floor(Math.random() * 12000);
+    const port = randomInt(20000, 32000);
     if (await free(port)) return port;
   }
   throw new Error('Couldn’t find a free port for Postbox.');
