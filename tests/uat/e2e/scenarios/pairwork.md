@@ -24,6 +24,6 @@ Pass if the rule is in slugify.py with a test for it, @critic looked at the chan
 
 ## Phase 3: The exchange ended
 
-Wait 60 seconds and send nothing, then look at the conversation from the last “done” back to your message in phase 2. Then send this, exactly: “@critic in one sentence, what did you ask @developer to change?”
+Wait 60 seconds and send nothing, then look at the conversation from the last “done” back to your message in phase 2. Then send this, exactly: “@critic in one sentence, what did you ask the developer to change?”
 
 Pass if the agents had stopped by themselves when you looked, and no more than three agent turns followed the last reply that did work (changed a file, ran the tests or reviewed). Fail the phase if they were still answering each other. Note, without failing the phase, each of those turns that only thanks or acknowledges the other, and how many there were. Say whether @critic’s answer matches what it asked for in phase 1.
