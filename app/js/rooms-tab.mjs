@@ -8,7 +8,7 @@ import { api, client, sessionsOf } from './client.mjs';
 import { h } from './dom.mjs';
 import { heard } from './go-when-there.mjs';
 import { onChangeWhileAlive } from './held-weakly.mjs';
-import { barAction, barSign, formHead, pickList, sectionHead } from './manage-list.mjs';
+import { barAction, barSign, formHead, listHead, pickList, sectionHead } from './manage-list.mjs';
 import { memberQueueButton } from './member-queue.mjs';
 import { called, me, people } from './profile-tab.mjs';
 import { stateWordOf } from './ring.mjs';
@@ -83,8 +83,7 @@ export function roomsTab(paint, setFoot, at, sheets) {
         ),
     ],
   });
-  setFoot(bar);
-  return [list];
+  return [listHead('Rooms', bar, { pinned: true }), list];
 }
 
 /** A room’s form: its title, who is in it, and the agents that could be. */
@@ -125,9 +124,8 @@ function roomForm(
   return [
     ...formHead('All rooms', back, t.title),
     h('div.field', h('label.label', { for: 'rm-title' }, 'Title'), title),
-    sectionHead('Members'),
+    listHead('Members', members.bar),
     members.list,
-    members.bar,
     // Why − can be off, in words on the page: a title shows only under a pointer.
     h(
       'span.help',
