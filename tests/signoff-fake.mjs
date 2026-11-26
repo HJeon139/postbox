@@ -26,23 +26,39 @@ const CHECK_YML = readFileSync(new URL('../.github/workflows/check.yml', import.
  */
 export function world(o = {}) {
   const runs = o.runs ?? GREEN;
-  const head = runs.head;
   /** @type {Map<string, string>} */
   const files = new Map([[`${ROOT}/.github/workflows/check.yml`, CHECK_YML]]);
   files.set(NODE22, '');
-  /** @type {{ argv: string[], o: any }[]} */
-  const calls = [];
-  const lines = [];
-  /** @type {Set<() => void>} */
-  const timers = new Set();
-  const w = { head, files, calls, lines, timers, clock: 0, acquired: /** @type {any[]} */ ([]), released: 0, links: /** @type {string[][]} */ ([]) };
+  const w = {
+    head: runs.head,
+    files,
+    calls: /** @type {{ argv: string[], o: any }[]} */ ([]),
+    lines: /** @type {string[]} */ ([]),
+    timers: /** @type {Set<() => void>} */ (new Set()),
+    clock: 0,
+    acquired: /** @type {any[]} */ ([]),
+    released: 0,
+    links: /** @type {string[][]} */ ([]),
+    temps: /** @type {string[]} */ ([]),
+    removed: /** @type {string[]} */ ([]),
+  };
   /** Advances the clock by ms and fires every timer that is set, as a minute passing would. */
   w.tick = (/** @type {number} */ ms) => {
     w.clock += ms;
-    for (const fn of timers) fn();
+    for (const fn of w.timers) fn();
   };
-  const table = [...(o.answers ?? []), ...defaults(head)];
-  w.d = {
+  w.d = fakeDeps(w, runs, o);
+  return w;
+}
+
+/**
+ * The deps object of world w: every effect answers from w and the table, and leaves its record in w.
+ * @param {any} w @param {typeof GREEN} runs @param {Parameters<typeof world>[0] & {}} o
+ */
+function fakeDeps(w, runs, o) {
+  const { files, calls, lines, timers } = w;
+  const table = [...(o.answers ?? []), ...defaults(w.head)];
+  return {
     run: async (argv, opts = {}) => {
       calls.push({ argv, o: opts });
       const line = argv.join(' ');
@@ -50,7 +66,7 @@ export function world(o = {}) {
       if (!hit) throw new Error(`The fake world has no answer for: ${line}`);
       return typeof hit[1] === 'function' ? hit[1](argv, opts, w) : hit[1];
     },
-    gh: (args) => ghAnswer(args, runs, o.prHead ?? head),
+    gh: (args) => ghAnswer(args, runs, o.prHead ?? w.head),
     now: () => w.clock,
     every: (ms, fn) => {
       w.every = ms;
@@ -67,8 +83,12 @@ export function world(o = {}) {
     writeFile: (path, text) => files.set(path, text),
     list: (dir) => [...new Set([...files.keys()].filter((p) => p.startsWith(`${dir}/`)).map((p) => p.slice(dir.length + 1).split('/')[0]))],
     exists: (path) => [...files.keys()].some((p) => p === path || p.startsWith(`${path}/`)),
-    mkdtemp: (prefix) => `${prefix}XXXXXX`,
-    rm: () => {},
+    // Each temporary folder has a name of its own, as mkdtemp makes it, so a test can tell which were removed.
+    mkdtemp: (prefix) => {
+      w.temps.push(`${prefix}${w.temps.length}`);
+      return w.temps.at(-1);
+    },
+    rm: (path) => w.removed.push(path),
     link: (target, path) => w.links.push([target, path]),
     tmpdir: () => '/tmp',
     home: '/home/me',
@@ -80,7 +100,6 @@ export function world(o = {}) {
     },
     log: (line) => lines.push(line),
   };
-  return w;
 }
 
 /** What gh answers, from A2’s recorded fixtures. @param {string[]} args @param {typeof GREEN} runs @param {string} prHead */

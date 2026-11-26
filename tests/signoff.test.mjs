@@ -80,6 +80,8 @@ test('Biome at each commit runs in a temporary worktree at that commit, never in
     COMMITS,
   );
   assert.equal(ran(w, /^git worktree add/).length, ran(w, /^git worktree remove/).length, 'each worktree is removed');
+  assert.equal(w.temps.length, 2, 'one temporary folder for step 3, one for step 4');
+  assert.deepEqual(w.removed, w.temps, 'each temporary folder is removed');
   // git worktree add writes only into the new folder; every git call that changes a checkout runs in that folder.
   const changesTree = ran(w, /^git (checkout|switch|restore|reset|merge |rebase|cherry-pick|revert|am|apply|stash|clean|pull)\b/);
   assert.ok(changesTree.length, 'the steps check out commits');
