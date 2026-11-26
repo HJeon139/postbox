@@ -2,7 +2,9 @@
 // out code in temporary worktrees, and --run-gate, which holds a heavy-suite slot. While one of them runs, the signal
 // passes on to the command running then, as tools/heavy-lock.mjs passes it on, and the part runs no further command.
 // Its own cleanup then runs (the worktree removed, the slot let go) before the script exits as the signal would have
-// ended it. Outside those parts a signal ends the script at once, which leaves nothing behind.
+// ended it. Outside those parts a signal ends the script at once, which leaves nothing of signoff’s own behind. A
+// signal during the wait for a slot leaves tools/heavy-lock.mjs’s waiting file, .<pid>.json in the slot folder: that
+// file is heavy-lock’s, and harmless, since a slot is checked by its holder’s pid.
 
 /** The signals that stop a sign-off: Ctrl-C, a kill, and the terminal closing. */
 export const SIGNALS = /** @type {const} */ (['SIGINT', 'SIGTERM', 'SIGHUP']);
