@@ -195,8 +195,13 @@ test('#1743 beside only a retired fork, @agent /delete is the conversation’s d
   await synced(page, app);
   await page.locator('#composer-input').focus();
   await page.keyboard.type('@lastlive /delete');
+  await expect(page.locator('.composer .hint')).toContainText('Enter runs /delete for lastlive');
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('alertdialog', { name: 'Delete lastlive’s session?' }), 'the live agent is its last').toBeVisible();
+  const ask = page.getByRole('alertdialog', { name: 'Delete lastlive’s session?' });
+  await expect(ask, 'the live agent is its last').toBeVisible();
   await expect(page.getByRole('alertdialog', { name: /^Remove / })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  // What the confirm says goes does go: the conversation, with the fork.
+  await expect(ask).toContainText('This erases');
+  await ask.getByRole('button', { name: 'Delete session' }).click();
+  await expect.poll(() => app.store.state.threads[room.id], { message: 'the conversation is gone' }).toBeUndefined();
 });
