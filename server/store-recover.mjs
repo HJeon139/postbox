@@ -129,7 +129,13 @@ export async function load(store, { fresh = false } = {}) {
   store.lock = await lockStore(store.io, store.dir);
   try {
     // Again under the lock: a newer Postbox could have opened the folder and gone between the first read and the lock.
-    if (!fresh) await checkFormat(store.io, (n) => store.at(n));
+    // The first read has warned about a record it couldn’t read.
+    if (!fresh)
+      await checkFormat(
+        store.io,
+        (n) => store.at(n),
+        () => {},
+      );
     // A fresh start empties the folder only once it holds the lock, so a running Postbox’s files are never deleted
     // under it (the integrator’s review of 1a).
     // The asset folder goes too: its files belong to the state this empties, and left there, the asset pass at load
