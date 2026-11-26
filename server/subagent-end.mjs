@@ -15,7 +15,10 @@ const URGENT = '[Postbox] URGENT:';
  * @returns {{ ending: true }}
  */
 export function endSubagent(rt, sessionId, subId) {
-  const se = rt.session(sessionId);
+  // Pending: an end asked a moment ago, behind a held commit, isn't asked again, and the subagents are as held writes
+  // leave them (#623).
+  const se = rt.store.pending.session(sessionId);
+  if (!se) throw httpError(404, 'That session doesn’t exist. It may have been deleted.');
   // The subagents are live while the turn runs (live-buffer.mjs): the running turn’s, over what was stored.
   const turn = rt.turns.get(sessionId);
   const subagents = turn ? liveFields(rt, turn).subagents : (se.subagents ?? []);

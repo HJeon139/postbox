@@ -35,11 +35,11 @@ const SESSION_WRITE = /\bsessions\.put\(|\bemit\(\s*['"`]session(?:\.patch)?['"`
  * the pending reads are #623's class (Refs #623).
  */
 const FROM_PUBLISHED = {
-  'diagram-check.mjs': ['rememberDiagrams'], // diagramsLinted
-  'job-records.mjs': ['recordJob', 'recordJob'], // jobs (a job recorded, kept)
   'kept-jobs.mjs': ['stopJob'], // jobs: a job's stopping mark
   'permission-cards.mjs': ['resolveDenial'], // allowOnce: Allow once on a denial card
-  'permissions-panel.mjs': ['changePermissionFolder', 'changePermissionFolder'], // addDirs: a folder removed, or added
+  // rules: a conversation's rule, copied whole from the session (found once the guard read copies given whole, #623);
+  // addDirs: a folder removed, or added
+  'permissions-panel.mjs': ['changePermissionRule', 'changePermissionFolder', 'changePermissionFolder'],
   'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn: a host turn's state
   'thread-catch-up.mjs': ['threadTail', 'threadCatchUp', 'reactionLines'], // seenIn and reactionsTold: catch-up markers per thread
 };
@@ -109,6 +109,16 @@ function argsAt(text, from) {
   return args;
 }
 
+/**
+ * A local built by spreading a field of a session, then given whole as a field: `const told = { ...(se.threadsTold ?? {}) }`,
+ * then `{ threadsTold: told }`. Behind a held commit, the copy drops what a held write of the field left (#623).
+ * @param {RegExpMatchArray[]} binds @param {string[]} copies @param {string} change
+ */
+function passesCopy(binds, copies, change) {
+  const spread = binds.filter((m) => copies.includes(m[1]) && m[2].includes('...')).map((m) => m[1]);
+  return spread.length > 0 && new RegExp(String.raw`[:{,]\s*(?:${spread.join('|')})(?![\w$.([])`).test(change);
+}
+
 /** The calls of Sessions.update: `sessions.update(` anywhere, and `this.update(` in Sessions itself. */
 const UPDATE = /\bsessions\.update\(|\bthis\.update\(/;
 
@@ -150,7 +160,7 @@ function builtFromSession(extra = []) {
         // A local that is itself a count built from one: `const n = se().compactions + 1`, then `{ compactions: n }`.
         const counted = binds.filter((m) => copies.includes(m[1]) && new RegExp(countOf(roots, copies)).test(m[2])).map((m) => m[1]);
         const usesCount = counted.length > 0 && new RegExp(String.raw`${START}(?:${counted.join('|')})\b`).test(change);
-        if (derivedFrom(roots, copies).test(change) || usesCount) {
+        if (derivedFrom(roots, copies).test(change) || usesCount || passesCopy(binds, copies, change)) {
           const m = lines[decl].match(DECL);
           (out[path] ??= []).push(m ? (m[1] ?? m[2] ?? m[3]) : '(top)');
         }
@@ -182,6 +192,10 @@ test('the guard finds a session field built from a published read, directly or t
     // Through a getter of the published session, as a turn's handlers read it: a count, and a list built from it.
     'export function zz11(rt, id) {\n  const se = () => rt.s.sessions[id];\n  const n = se().compactions + 1;\n  rt.sessions.update(id, { compactions: n });\n}',
     'export function zz12(rt, id, step) {\n  const se = () => rt.s.sessions[id];\n  const s = se();\n  rt.sessions.update(id, { toolCalls: [step, ...s.toolCalls.filter((c) => c !== step)] });\n}',
+    // A copy of a field, spread from the published session and given whole, as threadLines' threadsTold was: found.
+    "export function zz13(rt, id) {\n  const now = rt.s.sessions[id];\n  const told = { ...(now.threadsTold ?? {}) };\n  told.t1 = 'i1';\n  rt.sessions.update(id, { threadsTold: told });\n}",
+    // The same merged into the pending session the function is given: not found.
+    "export function zz14(rt, id) {\n  const newly = { t1: 'i1' };\n  rt.sessions.update(id, (s) => ({ threadsTold: { ...(s.threadsTold ?? {}), ...newly } }));\n}",
   ];
   const found = Object.keys(builtFromSession(probes)).filter((k) => k.startsWith('extra-'));
   assert.deepEqual(found, [
@@ -194,6 +208,7 @@ test('the guard finds a session field built from a published read, directly or t
     'extra-9.mjs',
     'extra-10.mjs',
     'extra-11.mjs',
+    'extra-12.mjs',
   ]);
 });
 

@@ -152,7 +152,8 @@ export function nextNeed(rt, se, o = {}) {
  * @returns {boolean} whether it took the need
  */
 export function offerNeed(rt, se, need, state) {
-  if (!takesNeed(rt, se, need)) return false;
+  // The current need as held writes leave it: one set a moment ago, behind a held commit, is the one to beat (#623).
+  if (!takesNeed(rt, rt.store.pending.session(se.id) ?? se, need)) return false;
   rt.sessions.update(se.id, { needs: need, state });
   return true;
 }
@@ -206,13 +207,14 @@ export function challengerWins(challenger, incumbent) {
  * @param {{ turnIds?: string[] }} [o]  which turns' cards count, when it isn't turnsOf's answer: Retry passes none,
  *   since the retried turn starts at once and its end decides them
  */
-export function releaseNeed(rt, caller, itemId, busy = caller?.state, { turnIds } = {}) {
-  // The session as it is now: a caller may hold a copy from before an await, and each patch makes a new one.
-  const se = caller && rt.s.sessions[caller.id];
+export function releaseNeed(rt, caller, itemId, busy, { turnIds } = {}) {
+  // The session as it is now, held writes included: a caller may hold a copy from before an await, each patch makes a
+  // new one, and a need or a state written behind a held commit is the one to release (#623).
+  const se = caller && (rt.store.pending.session(caller.id) ?? rt.s.sessions[caller.id]);
   if (!se || se.needs?.itemId !== itemId) return;
   const released = rt.store.pending.items(se.needs.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === itemId);
   const need = nextNeed(rt, se, turnIds === undefined ? { released } : { released, turnIds });
-  rt.sessions.update(se.id, { needs: need, state: rt.turns.has(se.id) ? busy : stateFor(need) });
+  rt.sessions.update(se.id, { needs: need, state: rt.turns.has(se.id) ? (busy ?? se.state) : stateFor(need) });
 }
 
 /** The session's state for a need it settles on, with no turn running: a failed turn shows Retry. @param {any} need */

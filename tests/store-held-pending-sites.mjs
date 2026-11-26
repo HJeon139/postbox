@@ -9,14 +9,17 @@ export const PENDING = {
   // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
   // keptBlock: the block a turn kept, in any of the agent's threads, which decides the need its end writes (#647).
   // dismissFailed: whether the reply dismissed is the one the agent waits to try again, which ends that wait (#1713).
-  'card-needs.mjs': ['keptBlock', 'keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'dismissFailed'],
+  // offerNeed and releaseNeed: the session whose need is offered or released, its need and state maybe set behind a
+  // held commit (#623).
+  'card-needs.mjs': ['keptBlock', 'keptTurns', 'nextNeed', 'offerNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'releaseNeed', 'dismissFailed'],
   // The project a session is attached into, maybe deleted behind a held commit (#119); the mirrored reply a terminal
   // line adds to, maybe held behind a commit; and the session attachClaudeSession just made, whose transcript mirror
-  // starts following.
-  'claude-mirror.mjs': ['attachClaudeSession', 'mirror', 'pollMirror'],
+  // starts following. A session already attached, and the session a poll follows, maybe made or deleted behind one (#623).
+  'claude-mirror.mjs': ['attachClaudeSession', 'attachClaudeSession', 'mirror', 'pollMirror', 'pollMirror'],
   'turn-run.mjs': ['deliver', 'deliver', 'turnMessage'], // the session it starts a turn in, and the thread it answers in, maybe made or held behind a commit (#796)
   'restart-sweep.mjs': ['settleFixing', 'settleRetiredNeeds', 'cardOf'], // an app left fixing, settled by whether its app-check entry still runs, a sweep that writes back (#1664); the need's card: whether it still waits, and its time on a tie, decide the need kept (#366); a session whose need is of a retired kind, settled
-  'app-check-wait.mjs': ['waitForCheck'], // whether a version’s check already settled before the reply’s wait started (#337)
+  'app-check-wait.mjs': ['waitForCheck'],
+  'archive-runtime.mjs': ['running'], // a job kept behind a held commit, whose turn the archive pass must not move (#623) // whether a version’s check already settled before the reply’s wait started (#337)
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
   'ask-question.mjs': ['handOver'], // a host question’s blocks this turn answered, whose answers go on when the host ends its call (#1059)
   'apps.mjs': ['appCheck', 'endFixes', 'showApp', 'updateApp'], // the check just recorded, for the reply waiting on it (#337); an agent’s apps left fixing, a sweep that writes back (#1664); show_app and update_app of an app the turn may have just shown
@@ -64,9 +67,15 @@ export const PENDING = {
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
-  'job-records.mjs': ['endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs'],
+  // The jobs Stop keeps, the job a report updates, and the jobs a turn's end settles, any maybe recorded behind a held
+  // commit (#623).
+  'job-records.mjs': ['runningJobs', 'recordJob', 'endJob', 'endJob', 'endJob', 'runningProgress', 'setJobStep', 'settleJobs', 'settleJobs', 'settleJobs'],
+  'kept-jobs.mjs': ['keptJobs'], // the jobs kept, any maybe kept behind a held commit, which the poll watches and a delete stops (#623)
+  'turn-held.mjs': ['heldBy'], // a failed turn's jobs, maybe recorded behind a held commit, which its reply says it held (#623)
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
-  'diagram-check.mjs': ['syntaxCheck'], // the turn’s replies, maybe held behind a commit: their diagrams decide its lint turn and the session’s diagramsLinted (#731)
+  // the turn’s replies, maybe held behind a commit: their diagrams decide its lint turn and the session’s diagramsLinted
+  // (#731); and the session’s diagramsLinted, maybe written behind one, which decides whether a diagram is told again (#623)
+  'diagram-check.mjs': ['rememberDiagrams', 'diagramCheck', 'syntaxCheck'],
   'app-animating.mjs': ['appAnimating'], // the app, maybe held behind a commit: whether its version was told decides the write that marks it (#438)
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
   'live-buffer.mjs': ['liveSession', 'closeLive', 'liveUpdate', 'liveFields'], // a live field sent only when it differs from the stored one, put back to it at the turn’s end, a running turn’s state stored only when it changed, and its calls and step from what was stored as it began, held writes included
@@ -135,7 +144,7 @@ export const PENDING = {
   // A command’s item, maybe deleted behind a held commit, before its output or its end is written; and the agent and
   // project whose folder it runs in, maybe made or changed behind one (#1292).
   'shell-runs.mjs': ['commandFolder', 'commandFolder', 'commandOutput', 'endCommand'],
-  'subagent-end.mjs': ['withUrgent'],
+  'subagent-end.mjs': ['endSubagent', 'withUrgent'], // an end asked behind a held commit, so it isn't asked twice (#623)
   // Stop's stopped entries name the message each sender sent, maybe settled behind a held commit. A topic's conversation,
   // which its session joins, and who answers in it, read as a topic opened behind a held commit leaves them (#1292).
   // deletedFrom: whether an agent left the conversation, which decides who answers or writes a
@@ -159,7 +168,8 @@ export const PENDING = {
   'thread-erase.mjs': ['eraseThreads', 'eraseThreads', 'eraseThreads', 'eraseThreads'],
   // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic
   // open_topic just opened, held (#796).
-  'thread-catch-up.mjs': ['threadHeader', 'threadTail', 'threadCatchUp'],
+  // threadLines: the threads told and the catch-ups read, maybe written behind a held commit, so none is told twice (#623).
+  'thread-catch-up.mjs': ['threadHeader', 'threadTail', 'threadCatchUp', 'threadLines'],
   'thread-summary.mjs': ['settleThread'],
   // Every write of a thread that exists starts from it (#796), and toWrite refuses one that doesn’t exist there. Then
   // the turn’s own items, a move after a pending read, and the thread a topic reply count goes to, maybe opened or
@@ -183,10 +193,11 @@ export const PENDING = {
     'notify',
   ],
   // A finished turn’s checks: its own block and the terms and apps it introduced, and the progress steps it stalls.
-  'turn-checks.mjs': ['checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
+  // endChecks: the diagrams reported before, maybe written behind a held commit (#623).
+  'turn-checks.mjs': ['endChecks', 'checkTurn', 'checkTurn', 'checkTurn', 'stallSteps'],
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left
   'turn-end-work.mjs': ['workLine'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
-  'turn-finish.mjs': ['endTurn'], // a turn’s end: its own items, maybe held behind a commit (#796)
+  'turn-finish.mjs': ['endTurn', 'endTurn'], // a turn’s end: its session and its own items, maybe held behind a commit (#796, #623)
   'turn-needs.mjs': ['needsAfter'], // the thread a turn’s reply count goes to, maybe held behind a commit (#796)
   // The quota marks that decide a mark or its clearing, and the persona that says whose quota it is, each maybe held
   // behind a commit (#442).

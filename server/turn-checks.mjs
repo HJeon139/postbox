@@ -20,7 +20,8 @@ export function endChecks(checks, turn, se, took = []) {
   const stalled = stallSteps(checks, turn, se);
   if (turn.kind === 'lint') return quietLint(checks, turn, se);
   // The diagrams reported before this turn: its own, which the estimate may flag now, still get their syntax checked.
-  const before = new Set(checks.store.state.sessions[se.id]?.diagramsLinted ?? []);
+  // Pending: a diagram remembered behind a held commit was reported before (#623).
+  const before = new Set(checks.store.pending.session(se.id)?.diagramsLinted ?? []);
   endLint(checks, turn, [...checkTurn(checks, turn, se, took), ...stalled]);
   syntaxCheck(checks, turn, before).catch((e) => console.error(`Postbox couldn’t check a diagram’s syntax; the page still reports it: ${e.message}`));
 }
