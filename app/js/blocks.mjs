@@ -16,7 +16,7 @@ import { formField } from './form-field.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
 import { renderReview } from './review.mjs';
 import { keepUnsent, markSent } from './review-draft.mjs';
-import { forgetReviewDraft } from './review-draft-store.mjs';
+import { forgetReviewDraft, keepReviewDraft } from './review-draft-store.mjs';
 import { fmtCell } from './table-cells.mjs';
 import { scrollFrame } from './table-scroll.mjs';
 import { sortedRows } from './table-sort.mjs';
@@ -106,10 +106,8 @@ async function submit(item, ctx, action, values, setError) {
   try {
     await ctx.act(action, values, asked);
     // Revised while this answer was on its way: what the person started on the newer revision stays (#518).
-    if ((seen.get(item.id)?.revision ?? 0) > asked && keepUnsent(drafts.get(item.id), sent)) {
-      forgetReviewDraft(item.id);
-      return;
-    }
+    const now = seen.get(item.id)?.revision ?? 0;
+    if (now > asked && keepUnsent(drafts.get(item.id), sent)) return void keepReviewDraft(item.id, now, sent?.d);
     drafts.delete(item.id);
     forgetReviewDraft(item.id);
     seen.delete(item.id);

@@ -16,6 +16,33 @@ const DRAFT = {
   content: '# Plan\n\nIndex first.\n\nThen search.',
 };
 
+/** A gate a test opens: wait() resolves once open() is called. */
+function gate() {
+  /** @type {() => void} */
+  let open = () => {};
+  const opened = new Promise((r) => {
+    open = () => r(undefined);
+  });
+  return { open, wait: () => opened };
+}
+
+/**
+ * Holds a block’s answer on its way: its reply to the page until release(), and, with untilSent, the request itself
+ * until send(). @param {import('@playwright/test').Page} page @param {string} threadId @param {string} itemId
+ */
+async function holdAct(page, threadId, itemId, { untilSent = false } = {}) {
+  const sent = gate();
+  const released = gate();
+  if (!untilSent) sent.open();
+  await page.route(`**/api/threads/${threadId}/items/${itemId}/act`, async (route) => {
+    await sent.wait();
+    const response = await route.fetch();
+    await released.wait();
+    await route.fulfill({ response });
+  });
+  return { send: sent.open, release: released.open };
+}
+
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 test.beforeAll(async () => {
@@ -38,16 +65,7 @@ test('#518 a draft started on a newer revision survives the older answer settlin
   await synced(page, app);
   const block = page.locator(`#main [data-key="${item.id}"]`);
   // The answer reaches Postbox at once, but its reply to the page is held: the page’s submit() hasn’t settled.
-  /** @type {() => void} */
-  let release = () => {};
-  const released = new Promise((r) => {
-    release = () => r(undefined);
-  });
-  await page.route(`**/api/threads/${t.id}/items/${item.id}/act`, async (route) => {
-    const response = await route.fetch();
-    await released;
-    await route.fulfill({ response });
-  });
+  const { release } = await holdAct(page, t.id, item.id);
   // Revision 1’s answer: a comment, and Approve.
   await block.getByRole('radio', { name: 'Lines' }).click();
   await block.locator('.g-mark[data-line="3"]').click();
@@ -69,6 +87,10 @@ test('#518 a draft started on a newer revision survives the older answer settlin
   release();
   await page.waitForResponse(`**/api/threads/${t.id}/items/${item.id}/act`);
   await synced(page, app);
+  // A reload before anything draws the block again still has the draft: what’s kept is the draft as it is now.
+  await page.reload();
+  await synced(page, app);
+  await expect(block.getByText('Rank by date.'), 'kept over a reload').toBeVisible();
   // The block is drawn again, as any change to it draws it: from the draft the page keeps for it.
   await block.getByRole('radio', { name: 'Preview' }).click();
   await block.getByRole('radio', { name: 'Lines' }).click();
@@ -95,22 +117,7 @@ test('#518 when the page never drew the answered block, the older answer’s com
   const block = page.locator(`#main [data-key="${item.id}"]`);
   // The answer is held before it reaches Postbox, then sent once the page is elsewhere, so it lands while the block
   // isn’t drawn; its reply to the page is held until after the agent revises.
-  /** @type {() => void} */
-  let send = () => {};
-  const sendNow = new Promise((r) => {
-    send = () => r(undefined);
-  });
-  /** @type {() => void} */
-  let release = () => {};
-  const released = new Promise((r) => {
-    release = () => r(undefined);
-  });
-  await page.route(`**/api/threads/${t.id}/items/${item.id}/act`, async (route) => {
-    await sendNow;
-    const response = await route.fetch();
-    await released;
-    await route.fulfill({ response });
-  });
+  const { send, release } = await holdAct(page, t.id, item.id, { untilSent: true });
   await block.getByRole('radio', { name: 'Lines' }).click();
   await block.locator('.g-mark[data-line="3"]').click();
   await page.keyboard.insertText('Index the titles too.');
