@@ -324,7 +324,7 @@ export async function start({
     if ((m = path.match(/^\/api\/backends\/([^/]+)\/models$/)) && req.method === 'POST')
       return send(res, 200, await models.list(decodePath(m[1]), body?.hostId ?? null));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/view$/)) && req.method === 'POST') {
-      rt.view(m[1]);
+      rt.view(m[1], person.id);
       viewOf(rt).noteWindow(body);
       return send(res, 200, { ok: true });
     }

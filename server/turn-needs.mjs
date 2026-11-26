@@ -27,7 +27,8 @@ export function needsAfter(rt, se, turn, items) {
   // among them), and the cards that wait until answered.
   const asks = rt.turnService.asks;
   const needs = asks.nextNeed(se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
-  const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
+  // One rule for “it asked a person”: the need its reply made (server/person-mentions.mjs), not a second reading of the words.
+  const mentionsYou = needs?.kind === 'mention';
   rt.sessions.update(se.id, (se) => ({
     state: asks.stateFor(needs),
     needs,

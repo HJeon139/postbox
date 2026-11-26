@@ -21,6 +21,7 @@ function stillWaits(rt, se, need) {
   if (need.kind === 'failed') return card.status === 'failed' && !card.dismissed;
   if (need.kind === 'permission') return card.status === 'open' && rt.remote.keepsCard(card);
   if (need.kind === 'block') return card.valid && ASKING.has(card.block?.type) && !card.answered;
+  if (need.kind === 'mention') return Boolean(card.asks) && !card.asksSeen;
   return card.status === 'open';
 }
 

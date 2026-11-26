@@ -2,6 +2,7 @@
 
 import { js, sleep } from '../browser.mjs';
 import { waitingOnYou } from './checks.mjs';
+import { stallWatch } from './stall.mjs';
 
 /** The longest the tester’s wait action waits: five minutes. */
 export const WAIT_MAX_S = 300;
@@ -40,17 +41,22 @@ const asking = (st, ids, sessions) => [
 /**
  * Of the asks on screen, those to hand the tester now, while an agent works: Stop’s question at once, a block once it
  * has waited BLOCK_GRACE_MS. `told` holds what the tester has had or will have anyway: what was handed back, and what
- * was on screen while nobody worked. `since` holds when this wait first saw each of the others.
- * @param {{ key: string, stop: boolean }[]} asks  @param {{ told: Set<string>, since: Map<string, number>, working: boolean }} o
+ * was on screen while nobody worked. `since` holds when this wait first saw each of the others. With `again`, the
+ * tester’s last action was held or failed, so what it has had and left unanswered is due at once (#1760): the refusal
+ * that names it is for a step, and without one the tester waits out the turn. An ask it hasn’t had keeps its grace.
+ * Each ask is due once in a wait, and says whether the tester has had it before (`again`).
+ * @param {{ key: string, stop: boolean }[]} asks  @param {{ told: Set<string>, since: Map<string, number>, working: boolean, again: boolean }} o
  */
-function dueAsks(asks, { told, since, working }) {
+function dueAsks(asks, { told, since, working, again }) {
   if (!working) {
     for (const x of asks) told.add(x.key);
     return [];
   }
   const now = Date.now();
   for (const x of asks) if (!told.has(x.key) && !since.has(x.key)) since.set(x.key, now);
-  const due = asks.filter((x) => !told.has(x.key) && (x.stop || now - (since.get(x.key) ?? now) >= BLOCK_GRACE_MS));
+  const due = asks
+    .filter((x) => (told.has(x.key) ? again : x.stop || now - (since.get(x.key) ?? now) >= BLOCK_GRACE_MS))
+    .map((x) => ({ ...x, again: told.has(x.key) }));
   if (due.length) for (const x of asks) told.add(x.key);
   return due;
 }
@@ -59,10 +65,12 @@ function dueAsks(asks, { told, since, working }) {
  * Waits until no agent under test is working, sampling what the screen says meanwhile. With `handBack`, it returns
  * while an agent still works once something needs the person that the tester hasn’t had: Stop’s question about a
  * background job, which keeps the turn running until it’s answered (#126), or a block that asks and has waited
- * BLOCK_GRACE_MS. The tester gets it then, rather than when the turn ends (#289), once for each (dueAsks).
+ * BLOCK_GRACE_MS. The tester gets it then, rather than when the turn ends (#289), once for each (dueAsks), and again
+ * after an action of its own that was held or failed (`again`, #1760). A turn open for STALL_MS of the wait is said
+ * once, to the log and to `onStall` (tools/uat/stall.mjs).
  * stopped: whether the run’s bound or budget has stopped it. Then an app being checked holds no wait: the turn that
  * would fix it may be one the run stopped (#1664).
- * @param {{ api: any, d: any, threadsUnderTest: any, facts: any, midTurnChecks: any, opt: any, told?: Set<string>, handBack?: boolean, stopped?: () => boolean, log?: (line: string) => void }} ctx
+ * @param {{ api: any, d: any, threadsUnderTest: any, facts: any, midTurnChecks: any, opt: any, told?: Set<string>, handBack?: boolean, again?: boolean, stopped?: () => boolean, log?: (line: string) => void, onStall?: (evidence: string) => void }} ctx
  */
 export async function settle({
   api,
@@ -73,12 +81,15 @@ export async function settle({
   opt,
   told = new Set(),
   handBack = false,
+  again = false,
   stopped = () => false,
   log = () => {},
+  onStall = () => {},
 }) {
   const end = Date.now() + Number(opt['turn-timeout']) * 1000;
   let calm = 0;
   const since = new Map();
+  const stall = stallWatch({ on: handBack, log, onStall });
   while (Date.now() < end) {
     await sleep(1500);
     const st = (await api('/api/state')).state;
@@ -93,11 +104,15 @@ export async function settle({
     const checking = Object.values(st.apps).some((a) => ids.includes(a.threadId) && ['pending', 'fixing'].includes(a.check?.status));
     const thinking = working.filter((se) => se.state !== 'gen').map((se) => se.handle);
     if (thinking.length) facts.samples.push({ busy: thinking, rows: (await d.working()).length });
-    const due = handBack ? dueAsks(asking(st, ids, sessions), { told, since, working: working.length > 0 }) : [];
+    const asks = asking(st, ids, sessions);
+    const due = handBack ? dueAsks(asks, { told, since, working: working.length > 0, again }) : [];
     if (due.length) {
-      log(`handed back while @${working.map((se) => se.handle).join(', @')} works: ${due.map((x) => x.what).join('; ')}`);
+      log(
+        `handed back${due.some((x) => x.again) ? ' again' : ''} while @${working.map((se) => se.handle).join(', @')} works: ${due.map((x) => x.what).join('; ')}`,
+      );
       return null;
     }
+    stall(working, asks);
     if (working.length) await midTurnChecks(st);
     calm = working.length || (checking && !stopped()) ? 0 : calm + 1;
     if (calm >= 2) return null;
