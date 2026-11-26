@@ -128,6 +128,10 @@ function turnHooks(rt, turn, live) {
     job(j) {
       rt.recordJob(turn, j);
     },
+    /** A line the agent reads at the start of its next turn, as a Postbox notice (sessions.tell). @param {string} text */
+    tell(text) {
+      rt.sessions.tell(turn.sessionId, text);
+    },
     /** The backend refused a tool call without asking: { toolUseId, tool, input, label, reason, reasonType, who }. */
     denied(d) {
       if (!live()) return;

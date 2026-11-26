@@ -21,6 +21,7 @@ import { agentFolder, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { recordOnce } from './prompt-sent.mjs';
+import { backgroundWaitEnv, stoppedAfterReply } from './sdk-background.mjs';
 import { listCommands } from './sdk-commands.mjs';
 import { sdkOptions } from './sdk-options.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
@@ -163,7 +164,10 @@ export class AgentSdkAdapter {
         ...fromContext(ctx, memoryRootFor(this.workRoot)),
       }),
       spawnClaudeCodeProcess,
+      // The SDK’s wait for background work after the reply, at Postbox’s bound rather than its 10 min (#1714).
+      env: backgroundWaitEnv(),
     };
+    const late = stoppedAfterReply();
     /** @type {any} */
     let thrown = null;
     try {
@@ -174,6 +178,7 @@ export class AgentSdkAdapter {
       for await (const m of q) {
         record(JSON.stringify(m));
         mapper.push(m);
+        late.push(m);
         if (m.type === 'system' && m.subtype === 'init') noteInit(q, m, ctx, started);
       }
     } catch (e) {
@@ -182,6 +187,8 @@ export class AgentSdkAdapter {
     } finally {
       ctx.signal.removeEventListener('abort', onAbort);
       ctx.saveState(mapper.endState);
+      // Background work the bound still stopped after the reply: the agent hears what, at its next turn (#1714).
+      if (!ctx.signal.aborted && late.told()) ctx.tell?.(late.told());
       // A stopped turn ends once its CLI’s whole group has exited, so the session’s next turn never runs beside it (#126).
       const stopped = /** @type {Promise<{ gone: Promise<void> }>|null} */ (stopping); // set in onAbort
       if (ctx.signal.aborted && stopped) await stopped.then((r) => r.gone);
