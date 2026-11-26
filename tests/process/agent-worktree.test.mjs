@@ -220,6 +220,18 @@ test('#1709 an agy without the hook gets no note: it would refuse the reads the 
   assert.doesNotMatch(rules, /## Where you work/);
 });
 
+test('#1709 an add stopped before git wrote its record’s HEAD is still removed and made again', async () => {
+  const { project: p, workRoot } = await project('no-head');
+  const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
+  const admin = git(dir, ['rev-parse', '--git-dir']).trim();
+  // As an add killed after it wrote the worktree’s .git and its marker, and before the record’s HEAD.
+  await writeFile(join(admin, 'locked'), 'initializing\n');
+  await rm(join(admin, 'HEAD'));
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: () => {} }), p.folder, 'this turn can’t use it');
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot), dir, 'the next makes it whole');
+  assert.equal(git(dir, ['show', 'HEAD:README.md']), 'hello\n');
+});
+
 test('#1709 a worktree whose record in the repository is gone isn’t used: the agent works in the project’s folder, and the log says why', async () => {
   const { project: p, workRoot } = await project('recloned');
   const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);

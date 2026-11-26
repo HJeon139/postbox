@@ -177,10 +177,11 @@ async function stateOf(dir) {
   try {
     const admin = gitPointer(await readFile(join(dir, '.git'), 'utf8'), 'gitdir: ');
     if (!admin) return 'none';
-    // Git’s record of it gone (the repository cloned again, or its .git deleted): no worktree git can use.
-    if (!(await exists(join(resolve(dir, admin), 'HEAD')))) return 'none';
+    // Git’s own marker first: an add stopped before it wrote the record’s HEAD is still one to remove and make again.
     const lock = await readFile(join(resolve(dir, admin), 'locked'), 'utf8').catch(() => null);
-    return lock?.trim() === 'initializing' ? 'unfinished' : 'finished';
+    if (lock?.trim() === 'initializing') return 'unfinished';
+    // Git’s record of it gone (the repository cloned again, or its .git deleted): no worktree git can use.
+    return (await exists(join(resolve(dir, admin), 'HEAD'))) ? 'finished' : 'none';
   } catch {
     return 'none';
   }
