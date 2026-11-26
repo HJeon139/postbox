@@ -140,7 +140,7 @@ function streamGaps({ unplaced, turnsWithoutStream: silent }) {
 export function withCalls(scope, recorded) {
   if (!recorded.streamed)
     return {
-      notes: `${scope.notes} Its calls are those that made a step in the conversation: one that made none, such as a reaction, isn’t in it, since the run recorded no stream of this agent’s turns.`,
+      notes: `${scope.notes} Its calls are those that made a step in the conversation: one that made none, such as a reaction, isn’t in it, since the run has no Claude Code stream of this agent’s turns.`,
       extra: { ...scope.extra, calls_from: 'steps' },
     };
   const gaps = streamGaps(recorded);

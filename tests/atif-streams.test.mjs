@@ -33,7 +33,7 @@ test('the fixture is the gap #1758 is about: 17 recorded calls, 10 of them steps
 test('#1758 with no streams, a trajectory says its calls are its steps’, and one that made no step isn’t in it', () => {
   for (const t of Object.values(byHandle(rec.events, []))) {
     assert.equal(t.extra.calls_from, 'steps');
-    assert.match(t.notes, /one that made none, such as a reaction, isn’t in it, since the run recorded no stream of this agent’s turns\.$/);
+    assert.match(t.notes, /one that made none, such as a reaction, isn’t in it, since the run has no Claude Code stream of this agent’s turns\.$/);
   }
 });
 
