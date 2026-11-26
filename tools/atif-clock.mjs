@@ -31,6 +31,11 @@ export const CLOCK_WORDS = {
     const exiting = d.stopping?.length ? 'stopped the agent’s turn, which may run on until its CLI has exited' : 'stopped the agent';
     return `Run clock expired at its budget of ${d.budgetMs / 1000}s: Postbox ${exiting}.`;
   },
+  'clock.ended': (d) => {
+    const at = `Run clock ended by the person at elapsed ${Math.floor(d.elapsedMs / 1000)}s of ${d.budgetMs / 1000}s`;
+    if (onHost(d)) return `${at}: Postbox asked the agent’s host to stop it, which the host hadn’t confirmed yet.`;
+    return d.stopping?.length ? `${at}: Postbox stopped the agent’s turn, which may run on until its CLI has exited.` : `${at}.`;
+  },
   'clock.stopped': (d) => {
     if (!isLocalStop(d.turn)) return 'The agent’s host confirmed its turn stopped.';
     return d.forced
@@ -42,7 +47,7 @@ export const CLOCK_WORDS = {
 /**
  * @typedef {{ turn: string, where: 'host' | 'local', asked_by: string, asked_at: number | null, confirmed_at: number | null,
  *   forced?: true, why?: string, gave_up_at?: number }} ClockStop
- * A stop: who asked it (the clock’s pause or expiry, or `stop` for one the clock didn’t make, such as the person’s Stop,
+ * A stop: who asked it (the clock’s pause, end or expiry, or `stop` for one the clock didn’t make, such as the person’s Stop,
  * which the record has only once Postbox gave up on it), when it ended (confirmed_at), or, for a forced one, when
  * Postbox stopped waiting for it (gave_up_at), with why: then it never ended as far as Postbox knows.
  */
@@ -56,8 +61,8 @@ export function clockStops(clocks) {
   const stops = new Map();
   const where = (/** @type {string} */ turn) => (isLocalStop(turn) ? 'local' : 'host');
   for (const c of clocks) {
-    // An expiry lists a turn a pause already stopped, which it didn’t stop again: the first is the stop.
-    if (c.type === 'clock.paused' || c.type === 'clock.expired')
+    // An expiry or an end lists a turn a pause already stopped, which it didn’t stop again: the first is the stop.
+    if (c.type === 'clock.paused' || c.type === 'clock.expired' || c.type === 'clock.ended')
       for (const turn of c.data.stopping ?? [])
         if (!stops.has(turn)) stops.set(turn, { turn, where: where(turn), asked_by: c.type, asked_at: c.data.at, confirmed_at: null });
     if (c.type !== 'clock.stopped') continue;

@@ -58,6 +58,7 @@ const TYPES = [
   'clock.restored',
   'clock.stopped',
   'clock.expired',
+  'clock.ended',
 ];
 /** The types the page may not see: each reaches it as a cursor (designs/architecture/security-boundaries.md). */
 const PRIVATE_TYPES = ['app.publish', 'app.note', 'app.notes.dropped', 'app.notes.read'];

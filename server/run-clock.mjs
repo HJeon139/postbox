@@ -1,10 +1,10 @@
-// Agents’ run clocks on the server: the person starts, pauses and resumes one (POST /api/sessions/:id/clock); a pause
-// stops the agent’s turn and holds its next until the resume. Each turn the agent starts carries its line and records a clock.turn event, and when the budget runs out Postbox records
+// Agents’ run clocks on the server: the person starts, pauses, resumes and stops one (POST /api/sessions/:id/clock); a
+// pause stops the agent’s turn and holds its next until the resume, and a stop ends the run for good (#1749). Each turn the agent starts carries its line and records a clock.turn event, and when the budget runs out Postbox records
 // clock.expired, stops the running turn and starts no other. The clock itself is in the store (shared/run-clock.mjs);
 // the timer here is only derived from it, set again at each start of Postbox (rearmClocks), so a budget that ran out
 // while Postbox was down expires as it starts. Time while Postbox is down counts: an agent on a host goes on working.
 
-import { CLOCK_BUDGET_MAX_S, clockElapsed, clockLine, isLocalStop } from '../shared/run-clock.mjs';
+import { CLOCK_BUDGET_MAX_S, clockElapsed, clockLine, clockOver, isLocalStop } from '../shared/run-clock.mjs';
 import { httpError } from './helpers.mjs';
 import { hostOf } from './remote/placement.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
@@ -80,7 +80,23 @@ function refuseStart(rt, se, clock, budgetS) {
 }
 
 /**
- * The person’s action on an agent’s clock: start it with a budget in whole seconds, pause it or resume it.
+ * The person ends a timed run before its budget (#1749): the clock stops for good at what it had used, the agent’s turn
+ * stops as a pause stops it, and no turn of it starts again, as after an expiry. A paused clock can be ended too.
+ * @param {any} rt @param {any} se  the session, pending @param {any} clock  its clock, pending @param {() => number} now
+ */
+function endClock(rt, se, clock, now) {
+  if (clock?.state !== 'running' && clock?.state !== 'paused') throw httpError(409, `@${se.handle} has no running or paused run clock to stop.`);
+  const at = now();
+  // Stopped first, so the end records the turns on a host that may run on until the host confirms their stop.
+  if (rt.turns.has(se.id)) rt.stop(se.id, { silent: true });
+  const stopping = unconfirmedStops(rt, se.id);
+  const elapsedMs = clockElapsed(clock, at);
+  rt.store.emit('clock.ended', { sessionId: se.id, elapsedMs, budgetMs: clock.budgetMs, ...stoppingField(stopping), at });
+  clockNote(rt, se.id, 'ended', { budgetMs: clock.budgetMs, elapsedMs, stopping });
+}
+
+/**
+ * The person’s action on an agent’s clock: start it with a budget in whole seconds, pause it, resume it or stop it.
  * @param {any} rt @param {string} sessionId @param {unknown} body @param {() => number} [now]
  */
 export function clockAction(rt, sessionId, body, now = Date.now) {
@@ -116,8 +132,11 @@ export function clockAction(rt, sessionId, body, now = Date.now) {
       clockNote(rt, sessionId, 'resumed', { budgetMs: clock.budgetMs, elapsedMs: clockOf(rt, sessionId).usedMs });
       resumeHeld(rt, sessionId);
       break;
+    case 'stop':
+      endClock(rt, se, clock, now);
+      break;
     default:
-      throw httpError(422, 'A run clock’s action is start, pause or resume.');
+      throw httpError(422, 'A run clock’s action is start, pause, resume or stop.');
   }
   armClock(rt, sessionId, now);
   return { clock: clockOf(rt, sessionId) };
@@ -139,7 +158,7 @@ export function armClock(rt, sessionId, now = Date.now) {
   }
   const clock = clockOf(rt, sessionId);
   // A clock that counts: running, or paused while a turn it stopped may still run on its host.
-  if (!clock || clock.state === 'expired' || clock.since === null) return;
+  if (!clock || clockOver(clock) || clock.since === null) return;
   const left = clock.budgetMs - clockElapsed(clock, now());
   if (left <= 0) return expireClock(rt, sessionId, now);
   // In rt.watchdogs, so Runtime’s close() clears it (server/runtime-close.mjs).
@@ -237,7 +256,7 @@ export function rearmClocks(rt, now = Date.now) {
     if (rt.store.writable) repairClockNote(rt, sessionId, clock);
     // Each running clock marks where Postbox’s record starts again, so a gap in it can be seen: an agent on a host may
     // have worked through it, past the budget, since the hard stop is this server’s timer.
-    if (clock && clock.state !== 'expired' && clock.since !== null && rt.store.writable) {
+    if (clock && !clockOver(clock) && clock.since !== null && rt.store.writable) {
       const at = now();
       rt.store.emit('clock.restored', { sessionId, elapsedMs: clockElapsed(clock, at), budgetMs: clock.budgetMs, at });
       const host = Boolean(hostOf(rt.personas.forSession(rt.store.pending.session(sessionId))));
@@ -249,13 +268,15 @@ export function rearmClocks(rt, now = Date.now) {
 
 /**
  * A host turn attached again after a restart, for an agent its clock holds (server/turn-run.mjs): stopped as the clock
- * stops a turn, by its pause or its expiry, now that its remote turn names its host turn. Its host’s confirmation ends
+ * stops a turn, by its pause, its end or its expiry, now that its remote turn names its host turn. Its host’s confirmation ends
  * it in the clock’s `stopping` (unconfirmedStops listed it as the clock paused or expired). @param {any} rt @param {any} turn
  */
 export function stopHeldTurn(rt, turn) {
   if (rt.turns.get(turn.sessionId) !== turn) return;
-  const clock = clockOf(rt, turn.sessionId);
-  rt.stop(turn.sessionId, { by: clock?.state === 'paused' ? 'pause' : 'clock', silent: true });
+  const state = clockOf(rt, turn.sessionId)?.state;
+  // An ended clock’s turns stop as the person’s stop stopped them (#1749), not as its budget does.
+  const by = { paused: 'pause', ended: 'you' }[state] ?? 'clock';
+  rt.stop(turn.sessionId, { by, silent: true });
 }
 
 /**
@@ -266,7 +287,7 @@ export function stopHeldTurn(rt, turn) {
  */
 export function clockTurn(rt, sessionId, turnId, message, now = Date.now) {
   const clock = clockOf(rt, sessionId);
-  if (!clock || clock.state === 'expired') return message;
+  if (!clock || clockOver(clock)) return message;
   // A slash command and a host turn attached again get no background (formatMessage, server/adapters/guide.mjs), so
   // they see no line, and clock.turn, which says a turn was told where its clock is, isn’t recorded for them.
   if (message.slash || typeof message.attach === 'string') return message;
