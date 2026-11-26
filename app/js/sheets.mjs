@@ -688,7 +688,7 @@ export function openRename(threadId) {
 
 /**
  * The Delete session confirm, for an agent alone in its conversation, which goes with it; in a room, removing the agent
- * from it (remove-from-room.mjs). keepConversation, from the Agents header’s − (#1620), asks the server to refuse rather
+ * from it (remove-from-room.mjs). keepConversation, from the Members bar’s − (#1620, #1735), asks the server to refuse rather
  * than erase the conversation if this turns out to be its last agent by the time the person confirms. removed runs
  * once the session is gone.
  * @param {any} se @param {{ keepConversation?: boolean, removed?: () => void }} [opts]
