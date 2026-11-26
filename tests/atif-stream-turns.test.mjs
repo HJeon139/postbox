@@ -249,3 +249,24 @@ test('#1758 a stream whose step’s reply names no turn never marks another sess
   const streams = [{ handle: 'h', started: 1003, events: [use('x')] }];
   assert.equal(recordedCalls(streams, 'h', { sessions, turns }, 'B').turnsWithoutStream, 1, 'tB’s gap stays counted');
 });
+
+test('#1758 a call before a turn’s first step goes with that turn’s reply, not an earlier turn’s', () => {
+  const use = (/** @type {string} */ id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'T', input: {} }] } });
+  /** @param {string} id @param {string} turnId @param {string[]} steps */
+  const reply = (id, turnId, steps) => ({ id, turnId, steps: new Map(steps.map((s) => [s, {}])) });
+  const sessions = new Map([['A', [reply('a1', 't1', ['x']), reply('a2', 't2', ['y'])]]]);
+  const turns = [
+    { id: 't1', sessionId: 'A', startedAt: 1000, toolCalls: 1 },
+    { id: 't2', sessionId: 'A', startedAt: 2000, toolCalls: 2 },
+  ];
+  // t2’s stream starts with a call that made no step, a read_message or a tool lookup, before its first step y.
+  const streams = [
+    { handle: 'h', started: 1001, events: [use('x')] },
+    { handle: 'h', started: 2001, events: [use('u0'), use('y')] },
+  ];
+  const a = recordedCalls(streams, 'h', { sessions, turns }, 'A');
+  assert.deepEqual(
+    [...a.unstepped].map(([at, calls]) => [at, calls.map((c) => c.id)]),
+    [['a2', ['u0']]],
+  );
+});
