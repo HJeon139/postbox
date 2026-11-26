@@ -1,8 +1,8 @@
 // #518: an answer settles after the agent has already revised the block. Every revision of a review draws from one
 // draft on the page, and submit() deleted that draft once its answer settled, so what the person had started on the
 // newer revision in the meantime, a comment or a verdict, was lost. Now a settled answer leaves the draft to the newer
-// revision, and what it sent leaves the draft where that revision is drawn, so what’s on screen is what’s sent. A
-// form’s and a choice’s drafts are kept the same way.
+// revision, and what it sent leaves the draft where that revision is drawn, once the answer landed, so what’s on
+// screen is what’s sent. A form’s and a choice’s drafts are kept the same way.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -205,4 +205,86 @@ test('#518 an answer that fails leaves its comments as drafts, through a redraw 
   revise(r);
   await expect(r.block.getByText('Then rank.')).toBeVisible();
   await expect(drafted.filter({ hasText: 'Index the titles too.' }), 'and on revision 2').toHaveCount(1);
+});
+
+test('#518 an answer refused as stale, because the agent’s revision got there first, leaves its comments as drafts on that revision', async ({ page }) => {
+  const r = await room(page, 'Stale');
+  allowPageError(page, /status of 409/);
+  // The answer is held before it reaches Postbox; the agent revises meanwhile, so the answer lands on revision 1 after
+  // revision 2 exists, and Postbox refuses it. Its reply to the page is held until revision 2 is drawn.
+  const { send, release } = await answeredThenRevised(page, r, { untilSent: true });
+  revise(r);
+  await expect(r.block.getByText('Then rank.'), 'revision 2 is drawn').toBeVisible();
+  const refused = page.waitForResponse((res) => res.url().endsWith(`/items/${r.item.id}/act`) && res.status() === 409);
+  send();
+  release();
+  await refused;
+  const drafted = r.block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
+  await expect(drafted.filter({ hasText: 'Index the titles too.' }), 'still a draft after the refusal').toHaveCount(1);
+  await r.block.getByRole('radio', { name: 'Preview' }).click();
+  await r.block.getByRole('radio', { name: 'Lines' }).click();
+  await expect(drafted.filter({ hasText: 'Index the titles too.' }), 'and after the next draw').toHaveCount(1);
+  expect(r.now().answer ?? null, 'nothing reached the agent').toBe(null);
+});
+
+test('#518 a choice picked on a newer revision survives the older answer settling and the next revision', async ({ page }) => {
+  const { rt, store } = app;
+  const t = rt.createThread({ projectId: Object.values(store.state.projects)[0].id, title: 'Choice', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
+  const choice = {
+    id: 'when',
+    type: 'choice',
+    version: 1,
+    fallback: 'When?',
+    multiple: true,
+    options: [
+      { id: 'mon', label: 'Monday' },
+      { id: 'tue', label: 'Tuesday' },
+    ],
+  };
+  tools.show_block({ block: choice });
+  const item = store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'when');
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const block = page.locator(`#main [data-key="${item.id}"]`);
+  const { release } = await holdAct(page, t.id, item.id);
+  await block.getByRole('button', { name: 'Monday' }).click();
+  await block.getByRole('button', { name: /^Send/ }).click();
+  await expect.poll(() => store.item(t.id, item.id).answer?.read).toBe(true);
+  const two = { ...choice, options: [...choice.options, { id: 'wed', label: 'Wednesday' }] };
+  expect(tools.update_block({ block: two }).ok).toBe(true);
+  await block.getByRole('button', { name: 'Wednesday' }).click();
+  release();
+  await page.waitForResponse(`**/api/threads/${t.id}/items/${item.id}/act`);
+  expect(tools.update_block({ block: { ...two, title: 'When?' } }).ok).toBe(true);
+  await expect(block.getByRole('button', { name: 'Wednesday' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('#518 after an answer landed, a later revision’s own answer on its way keeps its comments through a redraw', async ({ page }) => {
+  const r = await room(page, 'Second answer');
+  allowPageError(page, /status of 422/);
+  // Revision 1’s answer lands, and the agent revises.
+  await r.block.getByRole('radio', { name: 'Lines' }).click();
+  await comment(page, r.block, 3, 'Index the titles too.');
+  await approve(r.block).click();
+  await submit(r.block).click();
+  await expect.poll(() => r.now().answer?.read).toBe(true);
+  revise(r);
+  await expect(r.block.locator('.rv-receipt'), 'revision 2 is drawn').toBeVisible();
+  // Revision 2’s answer is refused, after a redraw while it was on its way.
+  const back = gate();
+  await page.route(`**/api/threads/${r.t.id}/items/${r.item.id}/act`, async (route) => {
+    await back.wait();
+    await route.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: 'That answer didn’t go through. Try again.' }) });
+  });
+  await r.block.getByRole('radio', { name: 'Lines' }).click();
+  await comment(page, r.block, 7, 'Rank by date.');
+  await submit(r.block).click();
+  await r.block.getByRole('radio', { name: 'Preview' }).click();
+  await r.block.getByRole('radio', { name: 'Lines' }).click();
+  const refused = page.waitForResponse((res) => res.url().endsWith(`/items/${r.item.id}/act`) && res.status() === 422);
+  back.open();
+  await refused;
+  const drafted = r.block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
+  await expect(drafted.filter({ hasText: 'Rank by date.' }), 'revision 2’s comment is still a draft').toHaveCount(1);
 });

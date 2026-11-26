@@ -71,7 +71,7 @@ export function stopComment(draft) {
 export function reviewDraft(item, content, draft) {
   const d = draft(item.id, () => restoreReviewDraft(item.id, item, newReviewDraft(content)));
   if (item.answer?.action === 'submit') d.comments = [];
-  else dropSent(d, item.revision ?? 1);
+  else dropSent(d, item.priorAnswer);
   return d;
 }
 
@@ -120,13 +120,17 @@ export function unmarkSent(d) {
 }
 
 /**
- * A newer revision drawn after an answer the page never drew answered (a page elsewhere, a resync): the comments that
- * answer sent are the block’s threads now, so they leave the draft here, where the block is drawn, and the person sees
- * the draft they send (#518). What they started on the newer revision stays, and so does the verdict on screen. An
- * edit open is saved first, since it’s kept by its place in the comments. @param {any} d @param {number} revision
+ * A newer revision drawn after an answer that landed (its `priorAnswer`, which the page may never have drawn answered:
+ * a page elsewhere, a resync): the comments that answer sent are the block’s threads now, so they leave the draft here,
+ * where the block is drawn, and the person sees the draft they send (#518). Only an answer that landed takes them: one
+ * the server refused as stale left them the person’s. What they started on the newer revision stays, and so does the
+ * verdict on screen. An edit open is saved first, since it’s kept by its place in the comments.
+ * @param {any} d @param {{ action: string, revision: number } | undefined} landed
  */
-function dropSent(d, revision) {
-  if (!d.comments.some((/** @type {any} */ c) => c[SENT] < revision)) return;
+function dropSent(d, landed) {
+  if (landed?.action !== 'submit') return;
+  const taken = (/** @type {any} */ c) => c[SENT] !== undefined && c[SENT] <= landed.revision;
+  if (!d.comments.some(taken)) return;
   saveEdit(d);
-  d.comments = d.comments.filter((/** @type {any} */ c) => !(c[SENT] < revision));
+  d.comments = d.comments.filter((/** @type {any} */ c) => !taken(c));
 }
