@@ -13,7 +13,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { withQuota } from '../harness-failure.mjs';
+import { withQuota, withTransient } from '../harness-failure.mjs';
 import { liveControl } from './agent-sdk-live.mjs';
 import { sdkModels } from './claude-models.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
@@ -221,12 +221,13 @@ export class AgentSdkAdapter {
       // adds no stderr to it for a process it didn’t spawn, so the last lines of the CLI’s stderr go with it (#61).
       const why = stderr.trim().split('\n').slice(-3).join(' ').slice(0, 400);
       const said = mapper.result?.is_error ? (resultError(mapper.result) ?? '') : `The Agent SDK stopped: ${thrown.message}${why ? `: ${why}` : ''}`;
-      throw withQuota(new Error(said), mapper.quota);
+      throw withTransient(withQuota(new Error(said), mapper.quota), mapper.result?.api_error_status);
     }
     const current = mapper.sessionId ?? ctx.state.sdkSessionId;
     if (mapper.lastUuid && current) ctx.checkpoint?.({ sdkSessionId: current, uuid: mapper.lastUuid });
     if (ctx.signal.aborted) return;
     const failure = resultError(mapper.result);
-    if (failure) throw withQuota(new Error(failure), mapper.quota);
+    // A provider error that passes, such as 529 Overloaded, by the result’s HTTP status (#1713).
+    if (failure) throw withTransient(withQuota(new Error(failure), mapper.quota), mapper.result?.api_error_status);
   }
 }
