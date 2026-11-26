@@ -22,7 +22,7 @@ The owner’s concern with hosting is function, not deployment: putting the page
 
 - **the address it answers:** one public origin, beside loopback;
 - **who is asking:** a provider that reads the load balancer’s signed sign-in, behind the same `identify(req)` seam (`server/identity/index.mjs`);
-- **where agents run:** on hosts only, because the server’s image carries no agent CLI.
+- **where agents run:** on hosts only, because the server’s image carries no agent CLI, and the mock agent is hidden.
 
 ```mermaid
 flowchart LR
@@ -86,7 +86,7 @@ An audit of the code on 26 November 2026 (`main` at e7d50596e). Each row is a de
 | What | Today | Hosted | Slice |
 |---|---|---|---|
 | `!` commands, an app’s links | Allowed only while listening on and asked from loopback (`hereAlone`) | Off, by the same check | Address |
-| Local agent backends | Found on the server’s `PATH` (`server/backends.mjs`); the mock is always there | The image carries none, so real agents run on hosts. Whether the mock shows is the slice’s to decide | Cloud hosts |
+| Local agent backends | Found on the server’s `PATH` (`server/backends.mjs`); the mock is always there | The image carries none, so real agents run on hosts. The mock is hidden (the owner, 26 November 2026): it runs in the server’s own process and is no one’s agent to direct | Cloud hosts |
 | Terminal sessions as agents | Read from `~/.claude/projects` on the server every 1.5 s (`server/claude-mirror.mjs`) | Nothing to find; the surface says so or is hidden | Same-machine |
 | Claude Code’s settings, MCP servers, skills, the permissions panel | Read and written in the server account’s home (`claudeHome`) | The server’s account has none of a person’s; what the panel shows for an agent on a host is the open question | Same-machine |
 | Project and agent folders, the folder picker, attachments from a folder | Paths on the server’s disk (`server/folder-path.mjs`, `server/folders.mjs`) | A project’s folder on each host exists already (`PUT /api/projects/:p/hosts/:h/folder`); the server-side folder has no meaning | Same-machine |
@@ -145,8 +145,7 @@ Slices 2 and 3 change a security boundary and are reviewed as such. Slice 6 cost
 ## Open questions for the owner
 
 1. **Reads behind sign-in only.** Hosted, every read needs a signed identity, where locally reads need nothing. Is there any read a hosted Postbox should answer without sign-in (a health check for the load balancer is the one this design assumes)?
-2. **The mock agent on a hosted Postbox.** It runs in the server’s own process. Hide it, or keep it as the way to try a room before a host is added?
-3. **Per person or shared:** unread marks and the theme. Shared is nothing to build; per person is slice 5’s larger half.
+2. **Per person or shared:** unread marks and the theme. Shared is nothing to build; per person is slice 5’s larger half.
 
 ## Revisit when
 
