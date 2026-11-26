@@ -28,3 +28,10 @@ export const landed = (page, id) =>
     if (r.bottom < 0 || r.top > innerHeight) return 'not in view';
     return node.contains(document.activeElement) ? 'landed' : 'not focused';
   }, id);
+
+/** Whether the message is what’s on top at its own middle, not under Work or anything else. */
+export const uncovered = (page, id) =>
+  page.evaluate((key) => {
+    const r = document.querySelector(`[data-key="${CSS.escape(key)}"]`)?.getBoundingClientRect();
+    return Boolean(r) && !!document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20))?.closest(`[data-key="${CSS.escape(key)}"]`);
+  }, id);

@@ -4,7 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { landed, longRoom } from './message-address.mjs';
+import { landed, longRoom, uncovered } from './message-address.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -124,11 +124,7 @@ test('#168 going to an ask with Work full screen shows the ask, with Work beside
   );
   await expect(page, 'Work kept, not full screen').toHaveURL(new RegExp(`#/t/${t.id}\\?work&m=${items[5].id}$`));
   await expect.poll(() => landed(page, items[5].id), { message: 'the ask, in view and focused' }).toBe('landed');
-  const onTop = await page.evaluate((key) => {
-    const r = document.querySelector(`[data-key="${CSS.escape(key)}"]`)?.getBoundingClientRect();
-    return Boolean(r) && !!document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20))?.closest(`[data-key="${CSS.escape(key)}"]`);
-  }, items[5].id);
-  expect(onTop, 'nothing covers it').toBe(true);
+  expect(await uncovered(page, items[5].id), 'nothing covers it').toBe(true);
 });
 
 test('#168 going on purpose to a message the thread doesn’t have says so', async ({ page }) => {
@@ -210,11 +206,7 @@ test('#168 in a window too narrow for Work beside the conversation, going to an 
   await page.keyboard.press('Control+j');
   await expect(page, 'the ask’s address, without Work').toHaveURL(new RegExp(`#/t/${t.id}\\?m=${ask.id}$`));
   await expect.poll(() => landed(page, ask.id), { message: 'on the ask' }).toBe('landed');
-  const onTop = await page.evaluate((key) => {
-    const r = document.querySelector(`[data-key="${CSS.escape(key)}"]`)?.getBoundingClientRect();
-    return Boolean(r) && !!document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20))?.closest(`[data-key="${CSS.escape(key)}"]`);
-  }, ask.id);
-  expect(onTop, 'nothing covers it').toBe(true);
+  expect(await uncovered(page, ask.id), 'nothing covers it').toBe(true);
 });
 
 // The same for an address that comes in with Work in it, as one ⌃J made in a wider window, opened or reloaded narrow.
@@ -225,4 +217,5 @@ test('#168 a message’s address with Work in it, opened in a window too narrow 
   await synced(page, app);
   await expect(page, 'the message’s address, without Work').toHaveURL(new RegExp(`#/t/${t.id}\\?m=${items[5].id}$`));
   await expect.poll(() => landed(page, items[5].id), { message: 'on the message' }).toBe('landed');
+  expect(await uncovered(page, items[5].id), 'nothing covers it').toBe(true);
 });
