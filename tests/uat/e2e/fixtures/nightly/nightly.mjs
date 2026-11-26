@@ -16,9 +16,9 @@ function git(args) {
   return r.status === 0 ? r.stdout.trim() : null;
 }
 
-/** Where the queued check is kept: inside .git, so the working tree stays clean. */
+/** Where the queued check is kept: inside the repository’s one .git, so the working tree stays clean and a linked worktree shares it. */
 function recordPath() {
-  const dir = git(['rev-parse', '--git-dir']);
+  const dir = git(['rev-parse', '--git-common-dir']);
   return dir ? join(dir, 'nightly.json') : null;
 }
 

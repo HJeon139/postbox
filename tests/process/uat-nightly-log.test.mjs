@@ -84,6 +84,20 @@ test('a queued check is due 4 minutes on, says it runs until then, and passes on
   assert.equal(run(dir, 'git', ['status', '--porcelain']), '', 'the check leaves the working tree clean');
 });
 
+test('a check queued from a linked worktree is the same check: its record is in the repository’s own .git', () => {
+  const dir = workspace();
+  run(dir, 'git', ['add', '.']);
+  run(dir, 'git', ['commit', '-q', '-m', 'slug']);
+  const linked = join(dir, '..', `${dir.split('/').at(-1)}-linked`);
+  run(dir, 'git', ['worktree', 'add', '-q', linked]);
+  assert.match(nightly(linked, 'queue'), /^NIGHTLY QUEUED/);
+  assert.match(nightly(dir, 'status'), /^NIGHTLY RUNNING/);
+  assert.deepEqual(
+    nightlyLog(dir).map((x) => x.did),
+    ['queued'],
+  );
+});
+
 test('failing tests fail the check, which is no pass', () => {
   const dir = workspace();
   writeFileSync(join(dir, 'slug.mjs'), 'export const slug = (title) => title;\n');
