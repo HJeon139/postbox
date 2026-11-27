@@ -52,6 +52,15 @@ test('#1623 the room shows one line naming the cap, and later refusals in the sa
   assert.equal(lines(f).length, 1, 'one line per chain');
 });
 
+test('#1623 a chain counted past a cap lowered across a restart still stops with its one line', () => {
+  // POSTBOX_CHAIN_LIMIT lowered from a higher cap while this chain ran: its count is already past the cap now.
+  const f = setup();
+  arrange.setThread(f.rt, f.t.id, { hops: HOP_LIMIT + 5 });
+  assert.equal(f.rt.agentWake(f.alpha.id, 'beta', 'One more look.').ok, false);
+  assert.equal(f.rt.agentWake(f.beta.id, 'alpha', 'Again.').ok, false);
+  assert.equal(lines(f).length, 1, 'one line, as at the cap');
+});
+
 test('#1623 the person’s next message starts the count again: the next wake goes, and a chain that loops again gets a line of its own', async () => {
   const f = atCap();
   f.rt.agentWake(f.alpha.id, 'beta', 'One more look.');
