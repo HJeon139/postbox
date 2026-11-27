@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.5 (2026-11-27)
+
+### Fixes
+
+- **mentions:** a mention with a format character shows as a mention, as it wakes
+- **mentions:** a copied line whose mention carries a format character is still a copy
+- **mentions:** an invisible format character in an @handle no longer stops the wake (#1840)
+
 ## 4.52.4 (2026-11-26)
 
 ### Fixes
