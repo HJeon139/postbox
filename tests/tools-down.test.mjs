@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { saveBackendState, toolsDownBack } from '../server/store-outage.mjs';
+import { saveBackendState, takenBack } from '../server/store-outage.mjs';
 import * as arrange from './arrange.mjs';
 
 const told = /^\[Postbox\] In your last turn, Postbox’s tool server didn’t start/;
@@ -19,7 +19,7 @@ function room() {
   const store = new Store(null);
   /** @type {any[]} */
   const sent = [];
-  const fail = { next: false, downAgain: /** @type {string | null} */ (null), afterWords: false, silent: false, hang: false };
+  const fail = { next: false, downAgain: /** @type {string | null} */ (null), afterWords: false, silent: false, hang: false, refused: false };
   const adapter = {
     name: 'mock',
     async folderFor() {
@@ -38,6 +38,13 @@ function room() {
       if (fail.silent) {
         fail.silent = false;
         return;
+      }
+      // A backend that refused to open the turn, after a step saying so: Codex when Postbox’s tools didn’t start
+      // (codexRefusal), whose error says it never reached the agent.
+      if (fail.refused) {
+        fail.refused = false;
+        ctx.activity({ id: 'postbox-tools-down', label: 'Postbox’s tools didn’t load', state: 'failed', ms: 0 });
+        throw Object.assign(new Error('Postbox’s tools didn’t load.'), { notReached: true });
       }
       // A CLI that couldn’t start: the turn never reached the agent.
       if (fail.next) {
@@ -175,7 +182,7 @@ test('#1171 a newer note still waiting for writes to reopen stands against the o
   const r = room();
   r.store.writable = false;
   saveBackendState(r.rt, r.se.id, { postboxToolsDown: 'refused' });
-  toolsDownBack(r.rt, r.se.id, { toolsDownTaken: 'ran' });
+  takenBack(r.rt, r.se.id, { toolsDownTaken: 'ran' });
   assert.equal(r.rt.backendWait.get(r.se.id)?.postboxToolsDown, 'refused');
 });
 
@@ -189,4 +196,103 @@ test('#1171 a turn the store’s outage stopped after it reached the agent doesn
   r.store.writable = false;
   r.store.tellStatus();
   assert.equal(r.rt.backendWait.get(r.se.id)?.postboxToolsDown, undefined, 'the agent read it in the turn that ran');
+});
+
+// #1904: what a turn takes from the session besides the tools-down note goes back the same way: Postbox’s waiting
+// notices (se.context) and the lint folded into it (foldLint).
+const NOTICE = '[Postbox] Your message to @critic was delivered.';
+/** A notice waiting for the agent’s next turn. @param {any} r */
+const notice = (r) => arrange.setSession(r.rt, r.se.id, { context: [NOTICE] });
+/** A lint turn settled and waiting, which the next turn folds in. @param {any} r */
+const lintWaits = (r) => {
+  const e = {
+    sessionId: r.se.id,
+    kind: null,
+    ended: true,
+    sent: false,
+    problems: [{ code: 'x', message: 'A problem.', scope: { kind: 'reply' } }],
+    timer: null,
+    threadId: r.t.id,
+    holds: 0,
+  };
+  r.rt.checks.lints.set('tu_earlier', e);
+  return e;
+};
+const carries = (/** @type {any} */ m) => (m.context ?? []).includes(NOTICE);
+
+test('#1904 a turn that fails before it runs gives back its waiting notice and folded lint, so the next turn has them', async () => {
+  const r = room();
+  notice(r);
+  lintWaits(r);
+  r.fail.next = true;
+  await r.turn('Try again.');
+  assert.ok(carries(r.sent[0]) && r.sent[0].lint, 'the failed turn took both');
+  await r.turn('Once more.');
+  assert.ok(carries(r.sent[1]), 'the notice comes with the next turn');
+  assert.match(String(r.sent[1].lint ?? ''), /A problem\./, 'and so does the lint');
+});
+
+test('#1904 a turn that reached the agent and then failed doesn’t give them back, so they aren’t told twice', async () => {
+  const r = room();
+  notice(r);
+  lintWaits(r);
+  r.fail.next = true;
+  r.fail.afterWords = true;
+  await r.turn('Try again.');
+  await r.turn('Once more.');
+  assert.ok(!carries(r.sent[1]));
+  assert.equal(r.sent[1].lint, undefined);
+});
+
+test('#1904 a turn stopped before its backend emitted anything gives back its waiting notice and folded lint', async () => {
+  const r = room();
+  notice(r);
+  lintWaits(r);
+  r.fail.hang = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  r.rt.stop(r.se.id);
+  for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
+  await r.turn('Once more.');
+  assert.ok(carries(r.sent[1]));
+  assert.match(String(r.sent[1].lint ?? ''), /A problem\./);
+});
+
+test('#1904 a turn the store’s outage stopped gives back its waiting notice once writes reopen', async () => {
+  const r = room();
+  notice(r);
+  r.fail.hang = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  r.store.writable = false;
+  r.store.tellStatus();
+  assert.deepEqual(r.store.state.sessions[r.se.id].context ?? [], [], 'nothing written while the store is closed');
+  r.store.writable = true;
+  r.store.tellStatus();
+  for (let i = 0; i < 200 && !(r.store.state.sessions[r.se.id].context ?? []).length; i++) await new Promise((x) => setTimeout(x, 5));
+  assert.deepEqual(r.store.state.sessions[r.se.id].context, [NOTICE]);
+});
+
+test('#1904 a turn its backend refused after a step saying so gives back what it took: it never reached its agent', async () => {
+  const r = room();
+  notice(r);
+  lintWaits(r);
+  r.fail.refused = true;
+  await r.turn('Try again.');
+  await r.turn('Once more.');
+  assert.ok(carries(r.sent[1]));
+  assert.match(String(r.sent[1].lint ?? ''), /A problem\./);
+});
+
+test('#1904 the notices go back ahead of one that came since, in the order they were told', async () => {
+  const r = room();
+  notice(r);
+  r.fail.hang = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  // Told while the turn that took the first one still runs, then that turn is stopped before any output.
+  r.rt.sessions.tell(r.se.id, 'A later notice.');
+  r.rt.stop(r.se.id);
+  for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
+  assert.deepEqual(r.store.state.sessions[r.se.id].context, [NOTICE, '[Postbox] A later notice.']);
 });

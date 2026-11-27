@@ -80,7 +80,8 @@ test('the shapes are these, so a field added to one is a decision this test sees
   assert.deepEqual(Object.keys(LIVE), ['step', 'session', 'snapshot']);
   assert.deepEqual(LIVE.step.shape.fields, ['threadId', 'itemId', 'rev']);
   assert.deepEqual(Object.keys(LIVE.step.shape.objects ?? {}), ['step']);
-  assert.deepEqual(LIVE.session.shape.fields, ['sessionId', 'toolCount', 'currentStep', 'glimpse', 'state', 'ctx', 'updatedAt']);
+  // background: whether the agent’s turn waits only on its background work (#189), a session field as public as its state.
+  assert.deepEqual(LIVE.session.shape.fields, ['sessionId', 'toolCount', 'currentStep', 'glimpse', 'state', 'background', 'ctx', 'updatedAt']);
   assert.deepEqual(Object.keys(LIVE.session.shape.lists ?? {}), ['toolCalls', 'subagents']);
   assert.deepEqual(LIVE.snapshot.shape.fields, ['turnId', 'sessionId', 'threadId', 'itemId']);
   assert.deepEqual(Object.keys(LIVE.snapshot.shape.objects ?? {}), ['session']);

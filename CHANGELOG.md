@@ -2,6 +2,33 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.11 (2026-11-27)
+
+### Fixes
+
+- **ring:** a permission card during a background wait keeps the ring's waiting word
+- **agents:** an agent's side-thread entry redraws as it starts or stops a background wait
+- **ring:** an agent that waits only on its background work says so, and holds still
+- **server:** mark a session that waits only on background work
+
+## 5.4.10 (2026-11-27)
+
+### Fixes
+
+- **permissions:** clean a card's and a refusal's tool and summary as well as cutting them
+- **codex:** only Postbox's server by its exact name skips the card, not a look-alike cleaned to it
+- **codex:** keep a request for input's lines on its card, and clean the tool's name
+- **codex:** an MCP server's words on an approval card are cleaned and bounded
+
+## 5.4.9 (2026-11-27)
+
+### Fixes
+
+- **turns:** only this turn's own host link giving up keeps what it took
+- **turns:** one rule for a turn that never reached its agent, keeping a host turn that runs on there
+- **claude:** Claude Code's API-error line isn't reply text, so its turn reads as never reached
+- **turns:** a turn that never reaches its agent gives back its waiting notices and folded lint
+
 ## 5.4.8 (2026-11-27)
 
 ### Fixes
