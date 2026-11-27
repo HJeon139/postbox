@@ -33,8 +33,11 @@ export const byOption = (scope, sel, text) => {
     .filter((e) => e.offsetParent !== null)
     .map((e) => ({ e, label: (e.querySelector('.chip-text > span') ?? e)${fold}, desc: e.querySelector('.chip-desc')?${fold} }))`;
   const exact = `${options}.find((o) => o.label === ${js(name)})?.e`;
+  // A whole label and description goes before any match by part of a chip’s text, so “Plan: fast” never picks a
+  // “Plan: fast mode” drawn first.
+  const joined = `${options}.find(${whole})?.e`;
   const labeled = `${options}
-    .filter((o) => ${js(name)}.startsWith(o.label + ' — ') || ${whole}(o))
-    .sort((a, b) => b.label.length - a.label.length || ${whole}(b) - ${whole}(a))[0]?.e`;
-  return `(${exact} ?? ${byText(scope, sel, text)} ?? ${labeled})`;
+    .filter((o) => ${js(name)}.startsWith(o.label + ' — '))
+    .sort((a, b) => b.label.length - a.label.length)[0]?.e`;
+  return `(${exact} ?? ${joined} ?? ${byText(scope, sel, text)} ?? ${labeled})`;
 };
