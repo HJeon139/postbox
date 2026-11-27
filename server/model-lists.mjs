@@ -5,6 +5,7 @@
 // apart, per host.
 
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { cutText } from '../shared/text-parts.mjs';
 import { httpError } from './helpers.mjs';
 
 /** How long a list is used before the harness is asked again. */
@@ -62,7 +63,7 @@ export class ModelLists {
    * @returns {Promise<{ models: string[], fresh: boolean, why?: NotListed }>}
    */
   async list(backend, hostId = null) {
-    if (!this.adapters.names().includes(backend)) throw httpError(404, `“${String(backend).slice(0, 40)}” isn’t one Postbox runs.`);
+    if (!this.adapters.names().includes(backend)) throw httpError(404, `“${cutText(String(backend), 40)}” isn’t one Postbox runs.`);
     if (hostId !== null && (typeof hostId !== 'string' || !/^[\w-]{1,64}$/.test(hostId)))
       throw httpError(400, 'hostId must be a host’s ID, or null for this computer.');
     const adapter = this.adapters.get(backend);

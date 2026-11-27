@@ -5,6 +5,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { cutText } from '../../shared/text-parts.mjs';
 import { releaseNeed } from '../card-needs.mjs';
 import { httpError } from '../helpers.mjs';
 import { STOPPED } from './browser.mjs';
@@ -105,7 +106,7 @@ export function settleDownloads(rt) {
  * @param {string|null} [reason]
  */
 function settle(rt, threadId, it, status, notice, reason = null) {
-  rt.threads.patchItem(threadId, it.id, { status, ...(reason ? { reason: String(reason).slice(0, 400) } : {}), settledAt: Date.now() });
+  rt.threads.patchItem(threadId, it.id, { status, ...(reason ? { reason: cutText(String(reason), 400) } : {}), settledAt: Date.now() });
   const se = rt.s.sessions[it.sessionId];
   if (!se) return { ok: true };
   releaseNeed(rt, se, it.id);

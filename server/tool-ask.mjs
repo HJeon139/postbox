@@ -4,6 +4,7 @@
 // points at ask_for_tool, which shows a card the person answers. Turning the tool on changes the persona, in every
 // conversation, from its next turn (Personas.forSession reads Tools from the persona, not the session’s snapshot).
 
+import { cutText } from '../shared/text-parts.mjs';
 import { REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
@@ -38,7 +39,7 @@ export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () =>
     turnId: rt.turns.get(sessionId)?.id ?? null,
     tool: id,
     label: LABELS.get(id),
-    why: String(why ?? '').slice(0, 600),
+    why: cutText(String(why ?? ''), 600),
     status: 'open',
   });
   return {

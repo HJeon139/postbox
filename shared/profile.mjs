@@ -4,6 +4,7 @@
 // turn, in the part that changes during a room (server/turn-input.mjs), so an edit reaches a session that’s already running.
 
 import { PROFILE } from './limits.mjs';
+import { cutText } from './text-parts.mjs';
 
 /** What an alias is, so an agent reading a commit or a pull request knows which name to match. */
 export const ALIAS_KINDS = ['nickname', 'github', 'git', 'email', 'other'];
@@ -16,10 +17,12 @@ const refuse = (/** @type {string} */ message) => Object.assign(new Error(messag
  * Postbox’s own, so no text of the person’s may start one.
  */
 const line = (/** @type {unknown} */ v, /** @type {number} */ max) =>
-  String(v ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, max);
+  cutText(
+    String(v ?? '')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    max,
+  );
 
 function aliasesOf(/** @type {unknown} */ list) {
   if (!Array.isArray(list)) throw refuse('Aliases are a list, each with what it is and its value.');
@@ -77,7 +80,7 @@ export function aboutThePerson(profile) {
   let room = PROFILE.note;
   for (const l of lines) {
     if (room <= 0) break;
-    kept.push(l.length <= room ? l : `${l.slice(0, room)}…`);
+    kept.push(l.length <= room ? l : `${cutText(l, room)}…`);
     room -= l.length + 1;
   }
   return [...kept, `(Cut to ${count(PROFILE.note)} of ${count(whole)} characters: the person’s profile is longer than a turn carries.)`];

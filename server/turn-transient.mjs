@@ -13,6 +13,7 @@
 // is handled as on any other failure (server/scheduled-wakes.mjs), so it raises no alarm at each try.
 
 import { TRANSIENT_RETRY } from '../shared/limits.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 
 /** What each status says the provider did. */
 const STATUS_WORDS = { 429: 'was rate limiting requests', 529: 'was overloaded' };
@@ -28,7 +29,7 @@ const didWhat = (status) => `${STATUS_WORDS[/** @type {429|529} */ (status)] ?? 
 const startedLabels = (/** @type {any} */ turn) => {
   const own = (turn.steps ?? [])
     .filter((/** @type {any} */ s) => !s.who && s.kind !== 'thought' && s.kind !== 'said' && !turn.postboxSteps?.has(s.id))
-    .map((/** @type {any} */ s) => String(s.label ?? s.tool ?? 'a tool').slice(0, 80));
+    .map((/** @type {any} */ s) => cutText(String(s.label ?? s.tool ?? 'a tool'), 80));
   // Postbox’s first: what posts and wakes in the room is what a repeat costs most, and five shell steps mustn’t hide it.
   return [...(turn.wrote ?? []), ...own].slice(0, 5);
 };

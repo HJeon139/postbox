@@ -13,6 +13,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { INVISIBLE } from '../shared/invisible.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { HOST_SOURCES, ISOLATED_SOURCES } from './adapters/setup.mjs';
 import { KEY_SHAPES } from './key-shapes.mjs';
 import { settingsFiles } from './permission-rules.mjs';
@@ -40,7 +41,7 @@ const marked = (v) =>
     .replace(INVISIBLE, '\uFFFD');
 
 /** Text past `max` cut with an ellipsis. @param {string} v @param {number} max */
-const cut = (v, max) => (v.length > max ? `${v.slice(0, max - 1)}…` : v);
+const cut = (v, max) => (v.length > max ? `${cutText(v, max - 1)}…` : v);
 
 /** A string as one line of text at most `max` long, marked as `marked` does. @param {unknown} v @param {number} max */
 const shown = (v, max) => (typeof v === 'string' ? cut(marked(v), max) : '');
