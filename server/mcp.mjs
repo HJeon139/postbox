@@ -1,5 +1,5 @@
 // The MCP server: Postbox’s UI tools over JSON-RPC 2.0 (MCP’s Streamable HTTP transport, JSON responses).
-// One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
+// One endpoint serves every backend. A Claude Code session connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
 // and gets show_block, update_block, review_block, show_app, update_app, retire_app, define_term, react, propose_agent, schedule_wake,
 // cancel_wake, open_topic, bring_to_conversation (in side and topic threads), read_conversation, search_conversation,

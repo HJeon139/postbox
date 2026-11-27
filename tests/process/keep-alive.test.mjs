@@ -46,7 +46,7 @@ test('#1726 a connection left idle past Node’s default 5 s (plus 1 s) still an
     quiet: true,
     hosts: null,
     claudeHome: dir,
-    probes: { claude: none, sdk: none, kiro: none, agy: none, codex: none },
+    probes: { claude: none, kiro: none, agy: none, codex: none },
   });
   t.after(() => app.close().catch(() => {}));
   const agent = new Agent({ keepAlive: true, maxSockets: 1 });

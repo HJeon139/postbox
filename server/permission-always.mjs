@@ -2,12 +2,11 @@
 // rule Postbox makes and saves itself, for this folder or for a host.
 
 import { hostWhere } from './host-rules.mjs';
-import { alwaysAllow, cleanRule, rulesFor } from './permission-rules.mjs';
+import { cleanRule, rulesFor } from './permission-rules.mjs';
 
 /**
  * What Always allow offers on a card, or null for none:
- * - none when Claude Code says a saved rule would grant more than this call (the SDK’s suppressAlwaysAllowRule);
- * - Claude Code’s own suggestions when it sends a list (the SDK does, and an empty list means none);
+ * - none when the harness says a saved rule would grant more than this call (suppressAlways);
  * - a harness’s own offer, `{ lines, updates, harness: true }`, as it is: the harness saves that rule itself (Codex’s,
  *   server/adapters/codex-always.mjs, #324). None on a host’s card: the rule would be saved on the host, and the card
  *   says this computer;
@@ -19,7 +18,6 @@ import { alwaysAllow, cleanRule, rulesFor } from './permission-rules.mjs';
  */
 export function alwaysFor(rt, se, { tool, input, suggestions, suppressAlways, hostId = null }) {
   if (suppressAlways) return null;
-  if (Array.isArray(suggestions)) return alwaysAllow(suggestions);
   if (isHarnessOffer(suggestions)) return hostId ? null : suggestions;
   if (suggestions !== null && suggestions !== undefined) return null;
   const persona = rt.persona(se.personaId);

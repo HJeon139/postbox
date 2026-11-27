@@ -9,7 +9,6 @@ import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, mock, test } from 'node:test';
-import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
@@ -82,28 +81,6 @@ const BACKENDS = [
       });
     },
     persona: { handle: 'dev', model: 'claude-opus-5-5', permissionMode: 'auto' },
-  },
-  {
-    name: 'Agent SDK',
-    make(children) {
-      const sdk = {
-        query({ options }) {
-          return (async function* () {
-            children.push(options.spawnClaudeCodeProcess({ command: 'claude', args: [], cwd: options.cwd, env: {}, signal: options.abortController.signal }));
-            yield { type: 'system', subtype: 'init', session_id: 'sdk-1' };
-            await new Promise((r) => options.abortController.signal.addEventListener('abort', r));
-          })();
-        },
-      };
-      return new AgentSdkAdapter({
-        sdk,
-        workRoot: tempDir('pb-unkilled-sdk-'),
-        spawnImpl: /** @type {any} */ (() => stuckChild(5102)),
-        kill: neverGone,
-        listProcesses: async () => [],
-      });
-    },
-    persona: { handle: 'sdk', model: 'claude-opus-5-5', permissionMode: 'auto' },
   },
   {
     name: 'Codex',

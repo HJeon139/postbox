@@ -61,7 +61,6 @@ export async function runPaths(dir, { root, main = root, tmp = tmpdir() }) {
     kiroStreams: join(dir, 'streams', 'kiro'),
     agyStreams: join(dir, 'streams', 'agy'),
     codexStreams: join(dir, 'streams', 'codex'),
-    sdkStreams: join(dir, 'streams', 'sdk'),
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });

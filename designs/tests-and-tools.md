@@ -62,7 +62,7 @@ The demo’s screenshots go to `screenshots/latest/`, which git ignores, and are
 bin/          the postbox command
 app/          the browser app: index.html, workbench.css (the one stylesheet), js/ modules, kit/ for app sandboxes
 server/       Node server, runtime, store, blobs, assets, MCP, sandbox pages
-  adapters/   mock, Claude Code, Agent SDK, Kiro CLI, Antigravity CLI, Codex, the shared guide and stream mapper, the terminal mirror
+  adapters/   mock, Claude Code, Kiro CLI, Antigravity CLI, Codex, the shared guide and stream mapper, the terminal mirror
   remote/     remote hosts: the ssh link, install, and host/, the daemon and turn runner that run there
   personas/   the seeded agents’ instructions
   view-app/   view_app: a picture of an agent’s app, in a pinned headless browser
@@ -81,4 +81,4 @@ designs/      product intent, architecture decisions, engineering practices and 
 screenshots/  generated pictures (git ignores them)
 ```
 
-Third-party code shipped with the app is limited to the vendored libraries in `app/kit/vendor/` (Mermaid, KaTeX and D3, each with its license). The optional packages (the Agent SDK and Kokoro) and the development tools (Biome, TypeScript and axe-core) install with `npm install` and are never needed to run the mock.
+Third-party code shipped with the app is limited to the vendored libraries in `app/kit/vendor/` (Mermaid, KaTeX and D3, each with its license). The optional packages (Kokoro and `playwright-core`) and the development tools (Biome, TypeScript and axe-core) install with `npm install` and are never needed to run the mock.

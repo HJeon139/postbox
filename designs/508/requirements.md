@@ -39,7 +39,7 @@ flowchart TD
 | DL-5 | When catch-up leaves items out, the agent is told how many, what kind, and how to read them in order. | The summary names what it left out and a `read_conversation` cursor. | #484 proposal 2 |
 | DL-6 | Messages waiting for a busy agent are delivered together in one turn, in order, with each sender and time. A waker’s newer post supersedes its own older queued wake. Superseded isn’t dropped: its content still reaches the agent. | Three queued wakes give one turn carrying all three; an overtaken wake is delivered once. | INT Conversation, “Messages sent mid-reply…”; #374 |
 | DL-7 | Any change to an item reaches the agents it concerns once, as a change, not as a new request (decision 8.5). It starts no turn, except an answer to a block, which wakes the agent that asked, as today. Changes: an answer, an edit shown as a diff, a review verdict, a thread outcome, a reply in its thread, and a reaction, 🚩 included. A reaction reaches the same agents today’s catch-up tells. | An edited message is reported once in other agents’ next turn; a reaction starts no turn. | #212; #472 table (#212 row); #382; decision 8.5; the person’s 🚩 decision |
-| DL-8 | Every rule above holds on every backend (Claude Code, Agent SDK, Kiro, Codex, Antigravity), local and remote. | Each backend passes the same delivery tests. | #470 item 5; INT Scope and order (remote hosts) |
+| DL-8 | Every rule above holds on every backend (Claude Code, Kiro, Codex, Antigravity), local and remote. | Each backend passes the same delivery tests. | #470 item 5; INT Scope and order (remote hosts) |
 
 ## 2. Ways to reach an agent
 

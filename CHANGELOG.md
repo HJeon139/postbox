@@ -2,6 +2,47 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.0.0 (2026-11-27)
+
+### Breaking changes
+
+- **backends:** remove the Agent SDK backend
+
+### Features
+
+- **backends:** run what a store holds on the Agent SDK on Claude Code
+- **app:** link to one message with m=, and Copy link under each
+
+### Fixes
+
+- **server:** give Postbox's Haiku calls only their own prompt
+- **nav:** a message's address with Work, opened in a window too narrow for it, leaves Work out
+- **css:** a message's Copy link wrapped to a line of its own lines up with the row
+- **nav:** a message's address focuses the message, and says at once when it isn't there
+- **nav:** a message's address opens the Work left open in its conversation
+- **app:** Copy link fits a side thread's row, so its actions stay on one line
+- **uat:** don’t count Postbox’s Haiku calls as the faulted agent’s turn
+- **server:** give Postbox’s Haiku calls a one-line system prompt, and record them
+- **app:** a row of a message's actions wraps between them, so the reactions stay on one line
+- **app:** the actions' drawn icons have their own attribute, so the reactions keep their pictures
+- **app:** every action's icon drawn by its action, shown in forced colors, and a copy glyph
+- **app:** a message's Copy link costs no element, an icon drawn by its button
+- **app:** make a message's Copy link when the message is wanted, first in its row
+- **app:** going to a message keeps Work's open item unless Work was full screen
+- **app:** going to a message keeps the item open in Work beside the thread
+- **app:** going to a message shows it beside full-screen Work, and says when it's gone
+- **app:** going to a message on purpose goes there every time, with Work kept
+- **app:** a message's address keeps the pane, and Back to it doesn't pull the view
+
+## 4.52.9 (2026-11-27)
+
+### Fixes
+
+- **personas:** a persona deleted after a shutdown stopped waiting is forgotten at once
+- **personas:** a shutdown that stops waiting for a deleted agent's turn forgets it then
+- **personas:** a deleted persona is forgotten only once its stopped turns have exited
+- **adapters:** Kiro CLI and Antigravity refuse /compact, with the reason
+
 ## 4.52.8 (2026-11-27)
 
 ### Fixes

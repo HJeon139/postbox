@@ -33,8 +33,8 @@ import { expectsOf } from './picture-choice.mjs';
 import { switchedTo } from './switch-triggers.mjs';
 import { judgeOf } from './visual-judge.mjs';
 
-/** The backends that run Claude. Every other one makes a scenario a compatibility run. */
-export const CLAUDE_BACKENDS = new Set(['claude-code', 'agent-sdk']);
+/** The backend that runs Claude. Every other one makes a scenario a compatibility run. */
+export const CLAUDE_BACKENDS = new Set(['claude-code']);
 
 /**
  * The backends other than Claude’s that a scenario puts agents on, at the start or by switching one there in a phase

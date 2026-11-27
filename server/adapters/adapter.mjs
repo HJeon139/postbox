@@ -95,9 +95,8 @@
 //                                       nothing, so it isn’t hung until shared/limits.mjs’s QUIET.backgroundMax (#847)
 //     signInError: { field: value } | null  the fields of a stream event that mean the host’s sign-in ran out, so
 //                                       the turn shows Sign-in needed rather than an error; null until one is recorded
-//   Left out, it can’t run on a remote host: the Agent SDK runs in Postbox’s own process, and the Antigravity CLI and
-//   the mock aren’t covered yet.
-// Left out, an adapter is taken to fork and read rules, with Claude’s models, as the Claude backends do, and to ask
+//   Left out, it can’t run on a remote host: the Antigravity CLI and the mock aren’t covered yet.
+// Left out, an adapter is taken to fork and read rules, with Claude’s models, as Claude Code does, and to ask
 // through permission_prompt, as the Claude Code CLI does. The page gets every adapter’s capabilities in /api/state
 // (config.backends).
 

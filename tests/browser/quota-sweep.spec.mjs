@@ -13,7 +13,7 @@ let app;
 const HOUR = 3_600_000;
 test.beforeAll(async () => {
   app = await startPostbox('quota-sweep');
-  for (const name of ['claude-code', 'agent-sdk', 'codex']) arrange.withAdapter(app.rt, { name, folderFor: async () => app.root, async deliver() {} });
+  for (const name of ['claude-code', 'antigravity-cli', 'codex']) arrange.withAdapter(app.rt, { name, folderFor: async () => app.root, async deliver() {} });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -29,12 +29,15 @@ const WIDE = 'build-workstation-in-the-basement';
 const CASES = [
   ['1 bar, fresh', [bar('claude-code', 1)]],
   ['1 bar, stale', [bar('claude-code', 1, true)]],
-  ['2 bars, fresh and stale', [bar('claude-code', 1), bar('agent-sdk', 0.11, true)]],
-  ['3 bars, fresh and stale', [bar('claude-code', 1), bar('agent-sdk', 0.11, true), bar('codex', 0.07)]],
-  ['4 bars, one on a host with a long name', [bar('claude-code', 1), bar('agent-sdk', 0.11, true), bar('codex', 0.07), bar('claude-code', 1, true, WIDE)]],
+  ['2 bars, fresh and stale', [bar('claude-code', 1), bar('antigravity-cli', 0.11, true)]],
+  ['3 bars, fresh and stale', [bar('claude-code', 1), bar('antigravity-cli', 0.11, true), bar('codex', 0.07)]],
+  [
+    '4 bars, one on a host with a long name',
+    [bar('claude-code', 1), bar('antigravity-cli', 0.11, true), bar('codex', 0.07), bar('claude-code', 1, true, WIDE)],
+  ],
   // Where 11% is the widest bar, so its measure decides each level.
-  ['2 bars at 11% and 7%', [bar('claude-code', 0.11), bar('agent-sdk', 0.07, true)]],
-  ['3 bars at 11%, 11% and 7%', [bar('claude-code', 0.11), bar('agent-sdk', 0.11, true), bar('codex', 0.07)]],
+  ['2 bars at 11% and 7%', [bar('claude-code', 0.11), bar('antigravity-cli', 0.07, true)]],
+  ['3 bars at 11%, 11% and 7%', [bar('claude-code', 0.11), bar('antigravity-cli', 0.11, true), bar('codex', 0.07)]],
   ['two hosts whose names start alike', [bar('claude-code', 0.11, false, 'workstation-1'), bar('claude-code', 0.07, true, 'workstation-2'), bar('codex', 1)]],
 ];
 

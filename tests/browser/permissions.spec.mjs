@@ -108,21 +108,6 @@ async function selectEditor(page) {
 
 // ── Cards ───────────────────────────────────────────────────────────────────────────────
 
-test('#66 Always allow shows the rule and where it’s saved before you click, and returns the suggestions', async ({ page }) => {
-  await open(page);
-  const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'make test:*' }], behavior: 'allow', destination: 'session' }];
-  const { c, answer } = await asking(page, { tool: 'Bash', summary: 'run the tests', detail: 'make test', input: { command: 'make test' }, suggestions });
-  const always = await words(c.locator('.perm-always'));
-  expect(always).toMatch(/Always allow Bash\(make test:\*\) in this folder \(\.claude\/settings\.local\.json\)/);
-  expect(always).toMatch(/session only.*local settings instead/);
-  await footButton(c, 'Always allow').click();
-  const a = await answer();
-  expect(a.allow).toBe(true);
-  expect(a.updatedPermissions[0].destination).toBe('localSettings');
-  await expect(c).toContainText(/Always allowed \(Bash\(make test:\*\)\)/);
-  await expect(page.locator('#composer-input'), 'focus goes back to the composer').toBeFocused();
-});
-
 test('#66 without suggestions (as the CLI asks), Always allow saves Postbox’s rule in the folder’s local settings', async ({ page }) => {
   await open(page);
   const { c, answer } = await asking(page, { tool: 'Bash', summary: 'run the linter', detail: 'npm run lint', input: { command: 'npm run lint' } });
@@ -131,6 +116,8 @@ test('#66 without suggestions (as the CLI asks), Always allow saves Postbox’s 
   expect(await answer()).toEqual({ allow: true });
   const local = JSON.parse(await readFile(join(work, '.claude', 'settings.local.json'), 'utf8'));
   expect(local.permissions.allow).toContain('Bash(npm run:*)');
+  await expect(c).toContainText(/Always allowed \(Bash\(npm run:\*\)\)/);
+  await expect(page.locator('#composer-input'), 'focus goes back to the composer').toBeFocused();
 });
 
 test('#10 Edit changes the command by keyboard, and the changed command is what runs', async ({ page }) => {

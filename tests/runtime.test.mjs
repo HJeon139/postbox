@@ -461,7 +461,7 @@ test('personas keep a permission mode and a model; real backends default to Clau
   assert.equal(rt.updatePersona(p.id, { permissionMode: 'bypass' }).permissionMode, 'bypass');
   assert.equal(rt.updatePersona(p.id, { permissionMode: 'acceptEdits' }).permissionMode, 'auto', 'a retired mode is Auto');
   assert.throws(() => rt.updatePersona(p.id, { permissionMode: 'yolo' }), /Permissions are one of/);
-  assert.throws(() => rt.createPersona({ handle: 'nope', backend: 'agent-sdk' }), /isn’t available on this computer/);
+  assert.throws(() => rt.createPersona({ handle: 'nope', backend: 'kiro-cli' }), /isn’t available on this computer/);
 });
 
 test('attachments resolve to stored files, and project files stay inside the project folder', () => {

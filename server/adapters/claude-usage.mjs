@@ -60,12 +60,12 @@ export function turnCost(totals, before, fork = null) {
 export const addTokens = (a, b) => (!a ? b : !b ? a : Object.fromEntries(Object.keys(a).map((k) => [k, a[k] + (b[k] ?? 0)])));
 
 /**
- * The session a turn forks, from the adapter’s state (claude-code.mjs forkPoint, agent-sdk.mjs): its id, and the
+ * The session a turn forks, from the adapter’s state (claude-code.mjs forkPoint): its id, and the
  * message it forks at, if any. Null for a turn that resumes or starts a session.
  * @param {any} state @returns {{ id: string|null, uuid: string|null }|null}
  */
 export function forkOf(state) {
   const f = state?.fork ?? state?.forkFrom ?? null;
-  const id = f?.claudeSessionId ?? f?.sdkSessionId ?? null;
+  const id = f?.claudeSessionId ?? null;
   return id ? { id, uuid: f?.uuid ?? null } : null;
 }

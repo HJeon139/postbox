@@ -47,7 +47,7 @@ test('#1307 a turn’s context lists a path to each file attached to the message
   assert.deepEqual(readFileSync(ctx.readFiles[0]), readFileSync(blob));
 });
 
-test('#1307 Claude Code and the Agent SDK may read each attached file with no card: an allow rule for its absolute path', async () => {
+test('#1307 Claude Code may read each attached file with no card: an allow rule for its absolute path', async () => {
   const { ctx, path } = await attachedTurn();
   const args = claudeArgs({ persona: ctx.persona, sessionId: 's', resume: false, guide: 'g', ...fromContext(ctx, '/mem') });
   assert.ok(args.includes(`Read(/${path})`), `no Read(/${path}) in ${args.join(' ')}`);
