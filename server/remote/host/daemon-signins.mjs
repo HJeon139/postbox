@@ -2,17 +2,13 @@
 // its own CLI and answered `signed`. Postbox asks after each welcome, so the person learns of a sign-in that ran out
 // when the host connects, not when a turn fails there.
 
+import { SIGN_IN_KEEP_MS, SIGN_IN_STATUS_MS } from '../../../shared/remote-protocol.mjs';
 import { turnEnv } from './daemon-login.mjs';
 import { send } from './daemon-reply.mjs';
 import { STATUS_COMMANDS, STATUS_OUTPUT_CHARS } from './harness-signin.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
 /** @typedef {import('./harness-signin.mjs').SignIn} SignIn */
-
-/** How long a status command may run before it’s stopped and its harness reads as unknown. */
-export const SIGN_IN_STATUS_MS = 15_000;
-/** How long an answer is kept, so welcomes close together run each command once. */
-export const SIGN_IN_KEEP_MS = 60_000;
 
 /**
  * `signins`: runs the status command of each harness the last hello found, at once, and answers `signed` with one

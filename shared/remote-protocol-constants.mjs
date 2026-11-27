@@ -9,6 +9,10 @@ export const PROTOCOL_VERSION = 3;
 
 /** How long the daemon lets the host’s signInCheck run before it kills it and answers that the check failed. */
 export const SIGN_IN_CHECK_MS = 30_000;
+/** How long the daemon lets a harness’s sign-in status command run before it’s stopped and reads as unknown (#1608). */
+export const SIGN_IN_STATUS_MS = 15_000;
+/** How long the daemon keeps a harness’s sign-in, so welcomes close together run each command once (#1608). */
+export const SIGN_IN_KEEP_MS = 60_000;
 
 const KiB = 1024;
 const MiB = 1024 * KiB;

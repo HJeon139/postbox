@@ -6,8 +6,8 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { SIGN_IN_KEEP_MS, SIGN_IN_STATUS_MS } from '../server/remote/host/daemon-signins.mjs';
 import { STATUS_OUTPUT_CHARS } from '../server/remote/host/harness-signin.mjs';
+import { SIGN_IN_KEEP_MS, SIGN_IN_STATUS_MS } from '../shared/remote-protocol.mjs';
 import { fakeClock, hello, PROGRAMS_FOUND, setup, until } from './remote-daemon-setup.mjs';
 
 /** @param {string} name */

@@ -4,8 +4,7 @@
 // (askNow), so it warns from the session it runs over, not one before it, and a sign-in the person fixed since is
 // heard (#1608). Each function takes the host manager’s state first (hosts-status.mjs).
 
-import { message, refusesType } from '../../shared/remote-protocol.mjs';
-import { SIGN_IN_STATUS_MS } from './host/daemon-signins.mjs';
+import { message, refusesType, SIGN_IN_STATUS_MS } from '../../shared/remote-protocol.mjs';
 import { need, release } from './hosts-links.mjs';
 import { update } from './hosts-status.mjs';
 
