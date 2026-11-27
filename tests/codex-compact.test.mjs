@@ -1,8 +1,9 @@
 // #425: /compact on a Codex agent runs Codex’s own compaction (app-server thread/compact/start), not a prompt, and the
 // room shows the compaction. Replayed from a recorded Codex 0.167.0 session (tests/fixtures/codex-app-server/
 // compact.jsonl: one turn, then thread/compact/start on its thread; account, rate-limit and MCP lines left out, ids
-// and paths replaced). The thread going on after it is replayed from a second session (compact-continue.jsonl: a turn,
-// thread/compact/start, then a turn that asks for a word from the first; tests/fixtures/codex-app-server/README.md).
+// and paths replaced). The thread going on after it is replayed from two more (compact-continue.jsonl: a turn and
+// thread/compact/start; compact-resume.jsonl: a new process that resumes that thread and asks for a word from the
+// first turn; tests/fixtures/codex-app-server/README.md).
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -57,29 +58,40 @@ function recordedServer(seen, { compact } = {}) {
 }
 
 /**
- * Spawns app-servers that answer as compact-continue.jsonl’s one session did, across the turns that each start one:
- * thread/start’s thread (and thread/resume’s, as Codex resumes it), each turn/start’s turn in order, and the compaction.
- * Each answer is followed by the notifications the recording had before its next answer.
- * @param {any[]} seen
+ * A recording’s answers by request id: each answer, then the notifications it had before its next answer.
+ * @param {string} name @returns {Map<number, any[]>}
  */
-function continuedServers(seen) {
-  const lines = readFileSync(new URL('fixtures/codex-app-server/compact-continue.jsonl', import.meta.url), 'utf8')
-    .trim()
-    .split('\n')
-    .map((l) => JSON.parse(l));
-  /** @type {Map<number, any[]>} the recorded answer to each request id, then what came before the next answer */
+function answersOf(name) {
   const after = new Map();
   let answered = /** @type {any[]} */ ([]);
-  for (const l of lines) {
-    if (l.id === undefined) answered.push(l);
-    else after.set(l.id, (answered = [l]));
+  for (const l of readFileSync(new URL(`fixtures/codex-app-server/${name}`, import.meta.url), 'utf8')
+    .trim()
+    .split('\n')) {
+    const line = JSON.parse(l);
+    if (line.id === undefined) answered.push(line);
+    else after.set(line.id, (answered = [line]));
   }
-  const turns = [3, 5]; // the recording’s turn/start ids, before and after its thread/compact/start (4)
-  const ids = /** @type {Record<string, number>} */ ({ initialize: 1, 'thread/start': 2, 'thread/compact/start': 4 });
-  /** What answers a request. The recording opened its thread once: a resume gets that answer, and none of what followed. */
-  const recorded = (/** @type {string} */ m) =>
-    m === 'thread/resume' ? (after.get(2) ?? []).slice(0, 1) : (after.get(m === 'turn/start' ? (turns.shift() ?? -1) : (ids[m] ?? -1)) ?? []);
+  return after;
+}
+
+/**
+ * Spawns app-servers for three turns, one process each, as Postbox runs them: the first message, /compact, and the
+ * next message. The first two answer from compact-continue.jsonl (thread/start and its turn, then the compaction); the
+ * third from compact-resume.jsonl, a new process that resumed the compacted thread and ran one turn on it. Nothing
+ * recorded the /compact turn’s own resume, so it gets the thread/resume answer compact-resume.jsonl recorded for the
+ * same thread, without the notifications after it: the turn reads only the thread’s id and model from it.
+ * The recording’s driver asked without excludeTurns, so its answer holds the history Postbox’s request leaves out.
+ * @param {any[]} seen what Postbox sent @param {any[]} answered what each request got, beside it
+ */
+function compactedServers(seen, answered) {
+  const [first, resumed] = [answersOf('compact-continue.jsonl'), answersOf('compact-resume.jsonl')];
+  const plays = [
+    { initialize: first.get(1), 'thread/start': first.get(2), 'turn/start': first.get(3) },
+    { initialize: first.get(1), 'thread/resume': resumed.get(2)?.slice(0, 1), 'thread/compact/start': first.get(4) },
+    { initialize: resumed.get(1), 'thread/resume': resumed.get(2), 'turn/start': resumed.get(3) },
+  ];
   return () => {
+    const play = /** @type {Record<string, any[] | undefined>} */ (plays.shift() ?? {});
     const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
     child.kill = () => child.emit('close', 0);
     const write = (/** @type {any} */ m) => child.stdout.write(`${JSON.stringify(m)}\n`);
@@ -91,7 +103,8 @@ function continuedServers(seen) {
         .map((l) => JSON.parse(l))) {
         seen.push(req);
         if (req.id === undefined) continue;
-        const [answer = { result: { data: [], nextCursor: null } }, ...notes] = recorded(req.method);
+        const [answer = { result: { data: [], nextCursor: null } }, ...notes] = play[req.method] ?? [];
+        answered.push([req.method, answer]);
         write({ ...answer, id: req.id });
         setImmediate(() => notes.forEach(write));
       }
@@ -139,15 +152,15 @@ test('#425 /compact on a Codex agent runs Codex’s compaction of its thread, an
   assert.equal(seen.text, '', 'the agent says nothing of its own');
 });
 
-test('#425 after a Codex /compact, the next message goes on the same thread as an ordinary turn, and its reply reaches the room', async () => {
-  const requests = /** @type {any[]} */ ([]);
-  const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: continuedServers(requests) });
+test('#425 after a Codex /compact, the next message resumes the compacted thread in a new app-server, and its reply reaches the room', async () => {
+  const [requests, answered] = [/** @type {any[]} */ ([]), /** @type {any[]} */ ([])];
+  const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: compactedServers(requests, answered) });
   const state = {};
   const first = context(state);
   await adapter.deliver({}, { kind: 'user', text: 'Remember the word heron. Reply with just OK.' }, first.ctx);
   const compact = context(state);
   await adapter.deliver({}, { kind: 'user', text: '/compact', slash: true }, compact.ctx);
-  const sentBefore = requests.length;
+  const [sentBefore, answeredBefore] = [requests.length, answered.length];
   const next = context(state);
   await adapter.deliver({}, { kind: 'user', text: 'What word did I ask you to remember? Reply with just the word.' }, next.ctx);
   const sent = requests.slice(sentBefore);
@@ -159,6 +172,9 @@ test('#425 after a Codex /compact, the next message goes on the same thread as a
     ],
     'the compacted thread, resumed, and an ordinary turn on it',
   );
+  const [, resume] = answered.slice(answeredBefore).find(([m]) => m === 'thread/resume');
+  assert.equal(resume.result.thread.id, 'thr-1', 'Codex’s recorded resume of it');
+  assert.equal(resume.result.thread.turns.length, 3, 'its history: the first turn, the compaction and the turn after it');
   assert.match(sent.find((r) => r.method === 'turn/start').params.input[0].text, /What word did I ask you to remember\?/);
   assert.equal(next.seen.text, 'heron', 'the reply after the compaction reaches the room');
   assert.deepEqual(

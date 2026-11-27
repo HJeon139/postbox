@@ -29,7 +29,39 @@ The file keeps 34 of the 39 lines the server sent.
   - the thread id with `thr-1`, the three turns’ ids with `turn-1` to `turn-3`, and the item ids (the user messages, the agent messages and the compaction) with `id-1` to `id-5`, each the same wherever it appears;
   - the temp folder with `/work`, and the home folder with `/home`;
   - `instructionSources` with an empty list;
-  - the user agent’s operating system version and terminal, as in `compact.jsonl`.
+  - the user agent’s operating system version and terminal, as in `compact.jsonl`;
+  - the local time in the rollout file’s name, as below.
 - **Kept:** both user messages, the agent’s words (“OK”, and “heron” in two deltas), the model’s name, the timestamps and the token counts.
 
 `checkFilePrivacy` in `tools/privacy-check.mjs` finds nothing in the file as committed, and in a copy it caught each planted string: a macOS home path, a Linux home path and an email address.
+
+## `compact-resume.jsonl`
+
+The second part of the same recording, made the same day for #425: a new `codex app-server` process, codex-cli 0.167.0, that resumes the thread `compact-continue.jsonl` compacted. Postbox starts a new app-server for each turn, so its turn after `/compact` resumes the thread in a new process, which the first part, all in one process, didn’t show. `tests/codex-compact.test.mjs` replays it as that turn.
+
+### What the driver did
+
+A second small Node script started the app-server with the same guards as the first part: `--disable plugins --disable apps`, each `config.toml` server turned off by name, a read-only sandbox and approvals set to `never`. It waited 4 seconds after the resume, counting MCP startup notices, and saw 0; the whole session had none. In order, it sent:
+1. `initialize`.
+2. `thread/resume` on the compacted thread. Codex answered with the thread and its 3 turns: the first turn, the compaction and the turn after it.
+3. A turn, “What word did I ask you to remember? Reply with just the word.” Codex answered “heron”.
+
+The driver sent `thread/resume` without `excludeTurns`, so the answer holds the thread’s history, and Codex sent a `deprecationNotice` about it. Postbox asks with `excludeTurns: true` (#1705), so its answer would have no history; the turn reads only the thread’s id and model from it.
+
+### What was dropped and replaced
+
+The file keeps 16 of the 21 lines the server sent.
+- **Dropped:** `account/updated`, `account/rateLimits/updated` and `remoteControl/status/changed`, as in the first part; `deprecationNotice`, Codex’s note about full-history hydration; and `thread/goal/cleared`, which Postbox doesn’t read. No test reads them.
+- **Replaced:**
+  - the thread id with `thr-1`, and its first three turns and their items with the same `turn-1` to `turn-3` and `id-1` to `id-5` as in `compact-continue.jsonl`, matched by the real ids in the first part’s stream. The new turn is `turn-4`, and its user message and agent message are `id-6` and `id-7`;
+  - both temp folders (the thread’s first one, and this process’s) with `/work`, and the home folder with `/home`;
+  - `instructionSources` with an empty list;
+  - the user agent’s operating system version and terminal;
+  - the local time in the rollout file’s name, as below.
+- **Kept:** the resumed thread’s history, the user message, the agent’s words (“heron”, in two deltas), the model’s name, the timestamps and the token counts.
+
+`checkFilePrivacy` finds nothing in the file as committed, and in a copy it caught each planted string: a macOS home path, a Linux home path and an email address.
+
+## The rollout file’s name
+
+Codex names a thread’s rollout file for the local time it started, as in `rollout-<date>T<hh-mm-ss>-<thread id>.jsonl`, while every other time in a recording, such as `createdAt`, is in UTC. Side by side they give away the computer’s time zone. In `compact.jsonl`, `compact-continue.jsonl` and `compact-resume.jsonl`, the time in that name is `00-00-00`, as in `/home/.codex/sessions/2026/11/27/rollout-2026-11-27T00-00-00-thr-1.jsonl`. The date stays: in each recording it’s also the UTC date of its `createdAt`. No other field in the three files holds a local time: the rest are Unix times.
