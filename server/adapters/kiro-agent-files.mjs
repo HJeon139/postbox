@@ -2,7 +2,7 @@
 // Postbox’s MCP URL for that conversation and its guide (kiro-cli.mjs). The turn removes it in a finally as it ends. A
 // Postbox killed mid-turn (SIGKILL, a crash, a power loss) never runs that finally, and the file stayed: with your own
 // Kiro setup, a dead agent in your kiro-cli agent list, a new one each turn. So each file is noted before it’s written,
-// in kiro-agents.json beside Postbox’s work root (its data folder: the work root holds only the agents’ folders), and
+// in kiro-agents.json in Postbox’s data folder, beside its work root (which holds only the agents’ folders), and
 // dropped once it’s gone, and as Postbox starts, before any turn, every one still noted is removed. Only a file named as
 // Postbox names one, in an agents folder, is ever removed, so the person’s other agents are never touched.
 
@@ -82,10 +82,20 @@ export async function sweepKiroAgents(root) {
   const left = [];
   for (const file of files) {
     if (!isOurs(file)) continue;
-    await rm(file, { force: true }).catch(() => {});
+    /** @type {unknown} */
+    let why = null;
+    await rm(file, { force: true }).catch((e) => {
+      why = e;
+    });
     if (await gone(file)) continue;
-    console.error(`Postbox couldn’t remove the Kiro agent a stopped turn left at ${file}. It tries again at the next start.`);
+    const reason = why instanceof Error ? why.message : 'it’s still there';
+    console.error(
+      `Postbox couldn’t remove the Kiro agent a stopped turn left at ${file} (${reason}). It tries again at the next start; you can delete the file yourself.`,
+    );
     left.push(file);
   }
-  await change(root, () => left);
+  // Cleaning up never stops Postbox from starting: a record it can’t rewrite is tried again at the next start.
+  await change(root, () => left).catch((e) =>
+    console.error(`Postbox couldn’t update its record of Kiro agent files (${e instanceof Error ? e.message : e}). It tries again at the next start.`),
+  );
 }

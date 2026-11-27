@@ -87,3 +87,18 @@ test('#1864 an agent file the turn couldn’t remove stays noted for the next st
   await sweepKiroAgents(p.workRoot);
   assert.equal(existsSync(p.file), false, 'removed at the next start');
 });
+
+test('#1864 a record the sweep can’t rewrite doesn’t stop Postbox from starting', {
+  skip: (process.platform === 'win32' || ROOT) && 'POSIX modes, not root',
+}, async () => {
+  const p = place();
+  await writeKiroAgent(p.file, '{}', p.workRoot);
+  // The data folder closed to writing: the agent file goes, but its record can’t be renamed over.
+  chmodSync(p.data, 0o555);
+  try {
+    await sweepKiroAgents(p.workRoot);
+  } finally {
+    chmodSync(p.data, 0o755);
+  }
+  assert.equal(existsSync(p.file), false, 'the agent file is still removed');
+});
