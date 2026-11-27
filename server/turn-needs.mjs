@@ -5,6 +5,9 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { clip } from './helpers.mjs';
 
+/** The needs that ring the person with a notice at a turn’s end: an ask only they can answer (#1868 adds the view request). */
+const NOTIFIED = new Set(['block', 'toolask', 'viewask']);
+
 /**
  * What the person needs after a turn that went well: this turn's open asks or the block it found waiting, the
  * session's state and unread count, and a notification. Returns what the checks and wakes after it read.
@@ -47,7 +50,7 @@ export function needsAfter(rt, se, turn, items) {
   // and falls through to the notices below (designs/developing.md, “Design habits”, 12). Asking it again gives it this
   // turn’s id (block-update.mjs, #69), which is a change the person hears of.
   const changed = needs && (needs.itemId !== se.keptId || waiting?.turnId === turn.id);
-  if (changed && (needs.kind === 'block' || needs.kind === 'toolask')) rt.threads.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
+  if (changed && NOTIFIED.has(needs.kind)) rt.threads.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
   else if (mentionsYou && !viewing) rt.threads.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
   else if (turn.said && !viewing) rt.threads.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);
   return { open, viewing, topic };
