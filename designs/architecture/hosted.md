@@ -239,6 +239,8 @@ The question for the owner is “AgentCore as a second way to run agents” unde
 - one Fargate task of the server’s image, with the data folder on an EFS file system, in subnets where **only the load balancer’s security group reaches its port** (the owner, 26 November 2026: “Network rules”);
 - one task at a time, the old one stopped before the new one starts, which is how the deployment keeps one writer (“One server, one disk”).
 
+**A dependency, and where it stops.** `infra/` depends on `aws-cdk-lib` and the `aws-cdk` command, in a `package.json` of its own. They build the deployment and never run in Postbox: the `postbox` package still lists no dependency and ships nothing from `infra/`, and the image installs none, since it is Node and Postbox’s own folders. The app is plain JavaScript, so there is still no build step.
+
 It is ECS, not the Kubernetes cluster this document’s first notes named, because it is the least to run for a test and the image is the same on either. Which a team’s deployment uses is “ECS or a Kubernetes cluster” under “Open questions for the owner”.
 
 ## One server, one disk
