@@ -115,7 +115,7 @@ test('#126: the Claude Code CLI starts in its own group, and Stop signals the gr
   const spawned = [];
   const adapter = new ClaudeCodeAdapter({
     bin: 'claude',
-    workRoot: '/tmp/pb-test-work',
+    workRoot: `${STOP_DIR}/work`,
     spawnImpl: /** @type {any} */ (
       (_bin, _args, opts) => {
         spawned.push(opts);
@@ -287,7 +287,7 @@ test('#126: the Kiro CLI starts in its own group too, and Stop signals the group
   const spawned = [];
   const adapter = new KiroCliAdapter({
     bin: 'kiro-cli',
-    workRoot: '/tmp/pb-test-work',
+    workRoot: `${STOP_DIR}/work`,
     isolatedHome: `${STOP_DIR}/kiro-home`,
     spawnImpl: /** @type {any} */ (
       (_bin, _args, opts) => {
@@ -345,7 +345,7 @@ test('#126: the Claude Code adapter ends a stopped turn only once the CLI’s wh
   };
   const adapter = new ClaudeCodeAdapter({
     bin: 'claude',
-    workRoot: '/tmp/pb-test-work',
+    workRoot: `${STOP_DIR}/work`,
     spawnImpl: /** @type {any} */ (() => child),
     kill,
     listProcesses: async () => [],
