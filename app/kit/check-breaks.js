@@ -51,7 +51,7 @@
     const hides = (e, el) => {
       if (e.contains(el) || !opaque(e)) return false;
       const other = el === control ? textEl : control;
-      return !(e === other || other.contains(e)) || covers(e, el) || floats(e);
+      return !(e === other || other.contains(e)) || covers(e, el) || floats(e, el);
     };
     const under = (el) => {
       const i = stack.indexOf(el);
@@ -60,9 +60,14 @@
     return !under(textEl) && !under(control);
   }
 
-  // Placed over the page with the window, not where the page’s flow put it: it, or what holds it, is fixed or sticky.
-  const floats = (e) => {
-    for (let a = e; a && a !== document.body; a = a.parentElement) if (/^(fixed|sticky)$/.test(getComputedStyle(a).position)) return true;
+  // Placed over what’s under it with the window, not where the page’s flow put it: it, or what holds it, is fixed or
+  // sticky, and what’s under it isn’t in that same box. A close button over its own dialog’s title doesn’t float over
+  // it: the dialog holds both.
+  const floats = (e, under) => {
+    for (let a = e; a && a !== document.body; a = a.parentElement) {
+      if (a.contains(under)) return false;
+      if (/^(fixed|sticky)$/.test(getComputedStyle(a).position)) return true;
+    }
     return false;
   };
 
