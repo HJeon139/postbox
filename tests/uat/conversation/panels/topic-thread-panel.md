@@ -11,7 +11,7 @@ Follow a side question without filling the conversation: the thread’s replies 
 ## Expected functionality
 
 - Shows the root message (clamped, Show all), the replies, and a composer.
-- Under its header, one line names who is in the thread (“@indexer and @researcher are in this thread.”): the agent it started with and those that answered there. It has no list of agents of its own (#228); their rows, and their [quick panel](../../shell/rail/agents-section.md), are in the sidebar.
+- Under its header, one line names who is in the thread (“indexer and researcher are in this thread.”): the agent it started with and those that answered there. It has no list of agents of its own (#228); their rows are in the [sidebar](../../shell/rail/agents-section.md), where an agent’s name opens its persona sheet.
 - An agent you @-mention there answers from its one session in the conversation, never a fork. A persona the conversation doesn’t have joins it, with “Joined when you @-mentioned it in a thread” under its row. Your message for an agent busy elsewhere waits in the thread’s queue.
 - The conversation’s other agents see that the thread has something new, as one line in their catch-up with a summary of a few words, written after its last reply by a separate Haiku call (no summary without a Claude backend). They read the thread only if they choose.
 - Summarize back posts a summary to the conversation; Send to conversation posts one reply. Summarize back and Copy link, side by side in the header, are both bordered buttons (#182).

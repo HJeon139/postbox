@@ -65,6 +65,8 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Refusal card](conversation/harness-cards/refusal-card.md)
     - [Wake-limit confirm](conversation/harness-cards/hop-confirm.md)
     - [New teammate proposal](conversation/harness-cards/proposal-card.md)
+    - [Requested call line](conversation/harness-cards/requested-call-line.md)
+    - [Tool request card](conversation/harness-cards/tool-request-card.md)
   - **agent-apps/**
     - [Agent-written app](conversation/agent-apps/app-frame.md)
     - [Kit charts](conversation/agent-apps/charts.md)
