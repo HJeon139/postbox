@@ -184,7 +184,8 @@ function img(alt, target, ctx) {
 }
 
 function link(label, target, ctx) {
-  const text = inline(label, { ...ctx, citations: 0, inLink: true });
+  // No glossary term inside a link’s text: it would be a term in a term, or in a link, each taking focus and a hover card.
+  const text = inline(label, { ...ctx, citations: 0, inLink: true, glossaryRe: null });
   const term = target.match(/^term:([A-Za-z0-9][A-Za-z0-9_.:-]{0,63})$/);
   if (term) return `<span class="term" tabindex="0" data-term="${escapeHtml(term[1])}">${text}</span>`;
   if (isSafeUrl(target)) return `<a href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
