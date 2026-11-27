@@ -3,7 +3,7 @@
 // - The agent file goes in `start.agentFile` (its name and text), which the daemon writes into the agents folder of
 //   the Kiro home the runner will use and removes when the turn ends: with your setup, the host’s own (its KIRO_HOME,
 //   else ~/.kiro), which only the daemon knows; for an Isolated persona a Kiro home of Postbox’s own,
-//   `~/.postbox-remote/kiro-home/<handle>`, with KIRO_HOME set to it (the one variable that crosses). Postbox’s server
+//   `~/.postbox-remote/kiro-home/<persona id>`, with KIRO_HOME set to it (the one variable that crosses). Postbox’s server
 //   in it is the host’s stdio shim, run by the daemon’s node, never the laptop’s MCP URL.
 // - The host turn is the runtime’s, ctx.remote.turn; the fresh start after a missing session is a second one, from
 //   ctx.remote.nextTurn(). The shim’s path is under ctx.remote.version, the Postbox code installed there.
@@ -17,6 +17,7 @@
 // - Stop goes through stopTurn’s remote branch: the daemon’s `stop`, never a local signal.
 // server/adapters/kiro-cli.mjs runs the turn; this module holds what only a host needs.
 
+import { memoryFolderName } from '../../shared/memory-folders.mjs';
 import { REMOTE_DIR } from '../../shared/remote-protocol.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { hostShim, startAttachments } from './remote-turn.mjs';
@@ -46,14 +47,15 @@ export const KIRO_CAPABILITIES = Object.freeze({
 /**
  * The variables that say which Kiro home a persona runs with on a remote host: none with your setup (the daemon finds
  * the host’s own, from its KIRO_HOME or ~/.kiro, and puts the agent file there), or KIRO_HOME set to one of Postbox’s
- * own per handle under ~/.postbox-remote when Isolated.
+ * own per persona under ~/.postbox-remote when Isolated. By the persona’s id, as its memory folder is named
+ * (shared/memory-folders.mjs), not its handle: Kiro keeps memory in its home, and a new persona given a deleted one’s
+ * handle would read the old one’s (#1661, #479’s problem on a host).
  * @param {any} persona @param {string} home  welcome.home
  * @returns {Record<string, string>}
  */
 export function kiroRemoteEnv(persona, home) {
   if (setupOf(persona).usesHostSetup) return {};
-  const handle = String(persona?.handle ?? '').replace(/[^a-z0-9_-]/gi, '') || 'agent';
-  return { KIRO_HOME: `${home === '/' ? '' : home}/${REMOTE_DIR}/kiro-home/${handle}` };
+  return { KIRO_HOME: `${home === '/' ? '' : home}/${REMOTE_DIR}/kiro-home/${memoryFolderName(persona.id)}` };
 }
 
 /**
