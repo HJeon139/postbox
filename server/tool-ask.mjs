@@ -22,9 +22,7 @@ const LABELS = new Map([...KNOWN_TOOLS, ...REAL_BACKEND_TOOLS].map(([id, label])
 export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () => {}, threadId = rt.session(sessionId).threadId) {
   const se = rt.session(sessionId);
   const persona = rt.persona(se.personaId);
-  const id = String(tool ?? '')
-    .trim()
-    .slice(0, 40);
+  const id = cutText(String(tool ?? '').trim(), 40);
   if (!LABELS.has(id)) return { ok: false, message: `There’s no tool “${id}” to turn on. The ids are ${[...LABELS.keys()].join(', ')}.` };
   if ((persona?.tools ?? []).includes(id))
     return { ok: false, message: `${id} is already on for you. Its tools are in your list from your next turn after it was turned on.` };
