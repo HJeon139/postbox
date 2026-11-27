@@ -42,7 +42,7 @@ test('#1856 a link on the way to a submodule’s folder isn’t followed: nothin
 test('#1856 a submodule’s worktree git didn’t finish making, as when Postbox stopped mid-add, is removed and made again', async () => {
   const w = await made('sub-unfinished');
   // Git’s own marker for a worktree it’s still making, and a file it had only half written.
-  await writeFile(join(git(w.mine, ['rev-parse', '--git-dir']).trim(), 'locked'), 'initializing\n');
+  await writeFile(join(git(w.mine, ['rev-parse', '--absolute-git-dir']).trim(), 'locked'), 'initializing\n');
   await writeFile(join(w.mine, 'README.md'), '');
   assert.deepEqual(await w.again(), []);
   assert.equal(await readFile(join(w.mine, 'README.md'), 'utf8'), 'hello\n', 'made again whole');
@@ -75,7 +75,7 @@ test('#1856 a submodule worktree whose own record names another folder to work i
   await writeFile(join(elsewhere, 'key'), 'from outside the agent’s folders\n');
   // A setting of this worktree’s own, which git reads once the repository keeps settings per worktree. The
   // repository’s shared config names the person’s checkout for every worktree, and that one doesn’t count.
-  const admin = git(w.mine, ['rev-parse', '--git-dir']).trim();
+  const admin = git(w.mine, ['rev-parse', '--absolute-git-dir']).trim();
   git(w.theirs, ['config', 'extensions.worktreeConfig', 'true']);
   await writeFile(join(admin, 'config.worktree'), `[core]\n\tworktree = ${elsewhere}\n`);
   await writeFile(join(w.mine, 'new.txt'), 'in the submodule\n');

@@ -78,7 +78,7 @@ test('#1709 a worktree git didn’t finish making, as when Postbox stopped mid-a
   const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
   // git worktree add marks a worktree it’s still making with a `locked` file in its admin folder, saying `initializing`
   // under LC_ALL=C (read from git 2.52 mid-add, held there by a slow smudge filter).
-  const admin = git(dir, ['rev-parse', '--git-dir']).trim();
+  const admin = git(dir, ['rev-parse', '--absolute-git-dir']).trim();
   await writeFile(join(admin, 'locked'), 'initializing\n');
   await writeFile(join(dir, 'README.md'), '');
   assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot), dir);
@@ -131,7 +131,7 @@ test('#1709 git’s record of a worktree still being made, its folder since dele
   const { project: p, workRoot } = await project('stopped-hard');
   const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
   // As after a hard stop mid-add (git’s marker, read from git 2.52 mid-add) and the half-made folder deleted by hand.
-  const admin = git(dir, ['rev-parse', '--git-dir']).trim();
+  const admin = git(dir, ['rev-parse', '--absolute-git-dir']).trim();
   await writeFile(join(admin, 'locked'), 'initializing\n');
   await rm(dir, { recursive: true, force: true });
   const quiet = { log: () => {} };
@@ -159,7 +159,7 @@ test('#1709 in Auto, routine git runs with no card in an agent’s real worktree
 test('#1709 an add stopped before git wrote its record’s HEAD is still removed and made again', async () => {
   const { project: p, workRoot } = await project('no-head');
   const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
-  const admin = git(dir, ['rev-parse', '--git-dir']).trim();
+  const admin = git(dir, ['rev-parse', '--absolute-git-dir']).trim();
   // As an add killed after it wrote the worktree’s .git and its marker, and before the record’s HEAD.
   await writeFile(join(admin, 'locked'), 'initializing\n');
   await rm(join(admin, 'HEAD'));
@@ -175,7 +175,7 @@ test('#1709 an add stopped before git wrote its record’s HEAD is still removed
 test('#1709 a worktree whose record in the repository is gone isn’t used: the agent works in the project’s folder, and the log says why', async () => {
   const { project: p, workRoot } = await project('recloned');
   const dir = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
-  const admin = git(dir, ['rev-parse', '--git-dir']).trim();
+  const admin = git(dir, ['rev-parse', '--absolute-git-dir']).trim();
   // As when the repository is cloned again at the same path: the worktree’s .git names a record that’s gone.
   await rm(admin, { recursive: true, force: true });
   /** @type {string[]} */
