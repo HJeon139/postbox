@@ -85,11 +85,13 @@ test('#1661 a kiro-home/ that is a link isn’t followed: nothing is removed, an
   mkdirSync(join(elsewhere, 'pe_gone'), { recursive: true });
   writeFileSync(join(elsewhere, 'pe_gone', 'keep'), 'keep\n');
   symlinkSync(elsewhere, join(p.root, 'kiro-home'));
+  remembered(join(p.root, 'memory'), 'pe_gone');
   send('forget', { persona: 'pe_gone' });
   const refused = await msgs.next('error');
   assert.equal(refused.persona, 'pe_gone');
   assert.match(refused.message, /kiro-home isn’t a folder/);
   assert.equal(existsSync(join(elsewhere, 'pe_gone', 'keep')), true);
+  assert.equal(existsSync(join(p.root, 'memory', 'pe_gone', 'pr_1', 'MEMORY.md')), true, 'its memory folder stays too, until it can all go');
 });
 
 test('#491 a persona with no memory there, or a host with no memory folder, is forgotten all the same', async (t) => {

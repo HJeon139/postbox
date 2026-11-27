@@ -24,33 +24,37 @@ export async function forget(d, c, m) {
     d.log(`Couldn’t remove the memory of a deleted agent (${m.persona}): ${text}`);
     void send(c, 'error', { code, message: text.slice(0, REMOTE_LIMITS.messageChars), re: 'forget', persona: m.persona });
   };
-  for (const parent of ['memory', 'kiro-home']) {
-    const why = await removeFrom(`${d.p.root}/${parent}`, m.persona);
-    if (why) return refuse('internal', why);
+  // Both checked before either is touched, so a refusal leaves the persona’s memory as it was, to be asked again.
+  const parents = [`${d.p.root}/memory`, `${d.p.root}/kiro-home`];
+  /** @type {string[]} */
+  const present = [];
+  for (const parent of parents) {
+    const seen = await folderAt(parent);
+    if (typeof seen === 'string') return refuse('internal', seen);
+    if (seen) present.push(parent);
+  }
+  for (const parent of present) {
+    try {
+      await fsp.rm(`${parent}/${m.persona}`, { recursive: true, force: true });
+    } catch (e) {
+      return refuse('internal', `The daemon couldn’t remove ${parent}/${m.persona}: ${/** @type {any} */ (e).message}.`);
+    }
   }
   d.log(`Removed the memory of a deleted agent (${m.persona}).`);
   await send(c, 'forgotten', { persona: m.persona });
 }
 
 /**
- * Removes one persona’s folder from a parent under ~/.postbox-remote. A parent that isn’t there holds nothing of it;
- * one that isn’t a real folder is left alone. Returns why it couldn’t, or null.
- * @param {string} parent @param {string} persona  a folder name, as forget checked
- * @returns {Promise<string | null>}
+ * Whether a parent under ~/.postbox-remote is a real folder: true, false when it isn’t there (it holds nothing of the
+ * persona), or why it can’t be used (a link, a file, or unreadable), which leaves it alone.
+ * @param {string} parent @returns {Promise<boolean | string>}
  */
-async function removeFrom(parent, persona) {
-  let kind;
+async function folderAt(parent) {
   try {
-    kind = await fsp.lstat(parent);
+    const kind = await fsp.lstat(parent);
+    return kind.isDirectory() ? true : `${parent} isn’t a folder, so the daemon removed nothing from it. Remove it on the host.`;
   } catch (e) {
-    if (/** @type {any} */ (e).code === 'ENOENT') return null;
+    if (/** @type {any} */ (e).code === 'ENOENT') return false;
     return `The daemon couldn’t read ${parent}: ${/** @type {any} */ (e).message}.`;
   }
-  if (!kind.isDirectory()) return `${parent} isn’t a folder, so the daemon removed nothing from it. Remove it on the host.`;
-  try {
-    await fsp.rm(`${parent}/${persona}`, { recursive: true, force: true });
-  } catch (e) {
-    return `The daemon couldn’t remove ${parent}/${persona}: ${/** @type {any} */ (e).message}.`;
-  }
-  return null;
 }
