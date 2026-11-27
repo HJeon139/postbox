@@ -133,6 +133,19 @@
     }
   }
 
+  // In review mode a click anywhere in a highlighted part pins a comment on it, as the review’s hint says, not only a
+  // click on its name tag. A click on one of the app’s own controls in the part still works the app. In nested parts,
+  // the innermost takes it.
+  const CONTROLS = 'a,button,input,select,textarea,label,summary,[tabindex],[contenteditable]';
+  addEventListener('click', (e) => {
+    if (!reviewing || e.defaultPrevented || !(e.target instanceof Element)) return;
+    const hits = Object.entries(anchorMap).filter(([, el]) => el?.isConnected && el.contains(e.target));
+    const inner = hits.find(([, el]) => !hits.some(([, other]) => other !== el && el.contains(other)));
+    const control = e.target.closest(CONTROLS);
+    if (!inner || (control && inner[1].contains(control))) return;
+    post({ type: 'pin', anchor: inner[0] });
+  });
+
   // Bundled libraries come from Postbox over the bridge and run as inline scripts. A sandboxed page can’t load
   // files in every browser (the Claude desktop app’s browser pane blocks them), and this way it never has to.
   const libs = {};

@@ -83,6 +83,27 @@ test('#855 an app that names parts keeps its tags, and a tag’s click opens a c
   await expect(page.getByRole('textbox', { name: 'Comment on chart' }), 'a comment box on the chart').toBeVisible();
 });
 
+test('a click anywhere in a highlighted part opens a comment on it, and a click on a control in the part still works the app', async ({ page }) => {
+  const PARTS = `<main style="padding:12px;color:var(--text)"><div id="c" style="height:120px;padding:8px">Chart<button id="b" type="button" style="color:var(--text);background:var(--panel)">Count</button><output id="o">0</output></div></main>
+<script>document.getElementById('b').onclick = () => { const o = document.getElementById('o'); o.textContent = String(+o.textContent + 1); };
+postbox.anchors({ chart: document.getElementById('c') });</script>`;
+  const { block } = await review(page, 'parts', PARTS);
+  const frame = block.frameLocator('iframe.app-iframe');
+  // A spot in the chart’s outline, well away from its name tag and its button.
+  const part = await frame.locator('#c').boundingBox();
+  if (!part) throw new Error('The chart has no box.');
+  const at = { x: part.x + part.width / 2, y: part.y + part.height - 12 };
+  await page.mouse.move(at.x, at.y, { steps: 4 });
+  await expect(block.locator('iframe.app-iframe'), 'the app takes the pointer').toHaveCSS('pointer-events', 'auto');
+  await page.mouse.click(at.x, at.y);
+  await expect(page.getByRole('textbox', { name: 'Comment on chart' }), 'a comment box on the chart').toBeVisible();
+  await page.getByRole('textbox', { name: 'Comment on chart' }).press('Escape');
+  // The app’s own button inside the part does what it does, and opens no comment.
+  await frame.getByRole('button', { name: 'Count' }).click();
+  await expect(frame.locator('#o')).toHaveText('1');
+  await expect(page.getByRole('textbox', { name: 'Comment on chart' }), 'no comment box from the app’s button').toHaveCount(0);
+});
+
 test('#855 an app that names its parts only after an await gets the hint for its parts, not “no parts”', async ({ page }) => {
   const { block } = await review(page, 'late', LATE);
   await expect(block.locator('.rv-pins p'), 'once it names its title').toHaveText('Or click a highlighted part of the app to comment on it.');
