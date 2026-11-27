@@ -6,41 +6,11 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { failure } from '../server/remote/ssh-failures.mjs';
 import { fireScheduledWake, rearmWakes } from '../server/scheduled-wakes.mjs';
 import { Store } from '../server/store.mjs';
 import { createFakeDaemon } from './fake-daemon.mjs';
-import { HOST, rig, running, starts, startUp, until } from './remote-turns-helpers.mjs';
-
-const unreachable = () => failure('unreachable', HOST, { code: 255, stderr: `ssh: connect to host ${HOST} port 22: Network is unreachable` });
-
-/** A wake whose own turn runs on the host, then Postbox stops with it still there and starts again on the same store. */
-async function wakeOnHostThenRestart({ removeHost = false } = {}) {
-  const d = createFakeDaemon({ autoEnd: false });
-  const first = rig({ store: new Store(null), d });
-  const sc = first.rt.schedule(first.se().id, { inMs: 60_000, note: 'Check the host.' });
-  clearTimeout(first.rt.timers.get(sc.id));
-  fireScheduledWake(first.rt, sc);
-  await until(() => starts(d).length === 1, 'the wake’s turn to start on the host');
-  await until(() => first.store.state.schedules[sc.id]?.turnId === first.se().remoteTurn?.rtTurn, 'the schedule to name its turn');
-  const hostTurn = starts(d)[0].turn;
-  first.rt.remote.close();
-  d.drop();
-  d.connect();
-  const r = rig({ store: first.store, d });
-  // The host removed while Postbox was down (after the rig, which would add one again): Postbox can’t reach it any more.
-  if (removeHost) r.store.emit('host', { id: r.host.id, removed: true });
-  // server/index.mjs’s order: the schedules are re-armed, then the host turns restored.
-  rearmWakes(r.rt);
-  return { r, sc, d, hostTurn };
-}
-
-const line = (r, sc) => r.store.item(sc.threadId, sc.itemId);
-/** The agent moved off its host, to run on this computer. @param {any} r */
-const moveOff = (r) => {
-  const p = r.rt.personas.forSession(r.se());
-  r.store.emit('persona', { ...p, remote: null });
-};
+import { rig, running, starts, startUp, until } from './remote-turns-helpers.mjs';
+import { line, moveOff, unreachable, wakeOnHostThenRestart } from './scheduled-wake-host-fixture.mjs';
 
 test('#466 a wake’s host turn attached again after a restart settles the wake when it ends, not at the restart', async () => {
   const { r, sc, d, hostTurn } = await wakeOnHostThenRestart();
