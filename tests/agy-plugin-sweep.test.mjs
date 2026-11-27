@@ -153,16 +153,24 @@ test('#314 a turn removes the plugin it wrote through a linked plugins folder', 
   assert.deepEqual(noted(workRoot), [], 'and unnoted');
 });
 
-test('#314 a link or a large file where mcp_config.json goes is left, without the start reading it', async () => {
+test('#314 a link or an oversized file where mcp_config.json goes is left, though its text matches the note', async () => {
   const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+  // Each holds the noted text, so only the regular-file and size check stands in the way. (A FIFO, which would hang the
+  // read: tests/process/agy-plugin-fifo.test.mjs.)
+  const target = join(tempDir('pb-agy-target-'), 'config.json');
+  writeFileSync(target, '{}');
   const linked = join(tempDir('pb-agy-folder-'), PLUGIN_DIR);
   mkdirSync(linked, { recursive: true });
-  symlinkSync('/dev/zero', join(linked, 'mcp_config.json'));
+  symlinkSync(target, join(linked, 'mcp_config.json'));
+  const text = 'x'.repeat(65 * 1024);
   const big = join(tempDir('pb-agy-folder-'), PLUGIN_DIR);
   mkdirSync(big, { recursive: true });
-  writeFileSync(join(big, 'mcp_config.json'), 'x'.repeat(65 * 1024));
-  // A read through the link to /dev/zero would never end: the sweep must not read it. (A FIFO: tests/process/agy-plugin-fifo.test.mjs.)
-  writeFileSync(join(workRoot, '..', 'agy-plugins.json'), `${JSON.stringify([linked, big].map((dir) => ({ dir, sha256: 'x' })))}\n`);
+  writeFileSync(join(big, 'mcp_config.json'), text);
+  const notes = [
+    { dir: linked, sha256: configHash('{}') },
+    { dir: big, sha256: configHash(text) },
+  ];
+  writeFileSync(join(workRoot, '..', 'agy-plugins.json'), `${JSON.stringify(notes)}\n`);
   await sweepAgyPlugins(workRoot);
   assert.ok(existsSync(linked) && existsSync(big), 'both left');
   assert.deepEqual(noted(workRoot), [], 'and dropped from the record');

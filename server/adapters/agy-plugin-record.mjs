@@ -106,6 +106,8 @@ async function stillOurs(note) {
   const config = join(note.dir, 'mcp_config.json');
   const st = await lstat(config).catch(() => null);
   if (!st?.isFile() || st.size > MOST) return false;
+  // A FIFO swapped in between the lstat and the read would still block; that needs a live writer in the agent’s folder
+  // as Postbox starts, and isn’t guarded.
   return readFile(config, 'utf8').then(
     (text) => configHash(text) === note.sha256,
     () => false,
