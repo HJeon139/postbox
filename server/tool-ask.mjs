@@ -30,7 +30,7 @@ export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () =>
   const open = rt.store.pending.items(threadId).find((x) => x.kind === 'toolask' && x.sessionId === sessionId && x.tool === id && x.status === 'open');
   if (open) return { ok: true, message: `You already asked for ${id}, and the card is waiting for the person. End your turn.` };
   endSegment();
-  rt.threads.addItem(threadId, {
+  const it = rt.threads.addItem(threadId, {
     kind: 'toolask',
     sessionId,
     handle: se.handle,
@@ -41,6 +41,8 @@ export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () =>
     why: String(why ?? '').slice(0, 600),
     status: 'open',
   });
+  // It is the agent’s need from now, while the turn runs on, as an asking block just shown is (#1868, card-needs.mjs offerShown).
+  rt.bus.emit('block.asking', { se, item: it, threadId });
   return {
     ok: true,
     message: `The person sees a card that can turn on ${id} for you. End your turn: their answer arrives as a message, and if they turn it on, its tools are yours from your next turn.`,

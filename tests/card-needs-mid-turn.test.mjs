@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { askToSee } from '../server/view-app/consent.mjs';
 import { needsYouNow } from '../shared/needs.mjs';
 import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
@@ -169,5 +170,34 @@ for (const kept of ['its turn', 'only the block']) {
     await until(() => !arrange.exiting(r.rt, r.alpha.id), 'the stopped turn to exit');
     await settle(r.rt);
     assert.equal(r.needs()?.itemId, older.id, 'the older form is the need again');
+  });
+}
+
+// #1868: a tool request and a view request a turn raises are turn-tied asks, as a form is, so each counts from when it’s
+// raised too. Before, each became the need mid-turn only when some other card was released, and otherwise at the
+// turn’s end, so whether the person saw it depended on what else happened in the turn.
+const raisers = {
+  toolask: (/** @type {any} */ _r, /** @type {any} */ tools) => tools.ask_for_tool({ tool: 'shell', why: 'To run the tests.' }),
+  viewask: (/** @type {any} */ r) => askToSee(r.rt, r.alpha.id, r.t.id, () => {}),
+};
+
+for (const [kind, raise] of Object.entries(raisers)) {
+  test(`a ${kind} raised mid-turn is the need at once, with no pulse or notice until the turn ends`, async () => {
+    const r = room();
+    /** @type {any[]} */
+    const heard = [];
+    r.rt.store.subscribe((/** @type {any} */ ev) => ev.type === 'notify' && heard.push(ev.data));
+    const release = holdTurn(r, (tools) => raise(r, tools));
+    await until(() => r.rt.s.items[r.t.id].some((it) => it.kind === kind), `the ${kind} card`);
+    const se = r.rt.s.sessions[r.alpha.id];
+    assert.ok(r.rt.turns.has(r.alpha.id), 'the turn is still running');
+    assert.equal(se.needs?.kind, kind, 'the card is the need while the turn runs on');
+    assert.ok(needsYouNow(se), 'the top bar counts it');
+    assert.notEqual(se.state, 'needs', 'no pulse: the agent is still working');
+    assert.deepEqual(heard, [], 'no notice while the turn runs on');
+    release();
+    await settle(r.rt);
+    assert.equal(r.rt.s.sessions[r.alpha.id].needs?.kind, kind, 'and the turn’s end keeps it');
+    assert.equal(r.rt.s.sessions[r.alpha.id].state, 'needs', 'the pulse comes at the turn’s end');
   });
 }

@@ -45,7 +45,9 @@ export function askToSee(rt, sessionId, threadId, endSegment) {
   const open = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && x.status === 'open');
   if (!open) {
     endSegment();
-    rt.threads.addItem(threadId, { kind: 'viewask', sessionId, handle: se.handle, turnId: rt.turns.get(sessionId)?.id ?? null, status: 'open' });
+    const it = rt.threads.addItem(threadId, { kind: 'viewask', sessionId, handle: se.handle, turnId: rt.turns.get(sessionId)?.id ?? null, status: 'open' });
+    // It is the agent’s need from now, while the turn runs on, as an asking block just shown is (#1868, card-needs.mjs offerShown).
+    rt.bus.emit('block.asking', { se, item: it, threadId });
   }
   return {
     ok: true,

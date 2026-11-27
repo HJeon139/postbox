@@ -163,8 +163,8 @@ export function offerNeed(rt, se, need, state) {
 }
 
 /**
- * An asking block an agent just showed (#1748): it is the agent's need from now, not only from its turn's end, so the
- * top bar counts it while the turn runs on. The session keeps its state, since its turn runs on, as a wake request's does.
+ * An asking block an agent just showed (#1748), or a tool or view request it raised (#1868): it is the agent’s need from
+ * now, not only from its turn’s end, so the top bar counts it while the turn runs on. The session keeps its state.
  * @param {any} rt @param {any} caller  the session, as the caller read it @param {any} it  the block's item @param {string} threadId
  */
 function offerShown(rt, caller, it, threadId) {
@@ -194,8 +194,8 @@ function stoppedNeed(rt, turn) {
 }
 
 /**
- * A block shown or withdrawn moves the need (Apps raises both on the bus): a withdrawn one is released, and an asking
- * one shown, or asked again by an update, is offered (#1748). A stopped turn drops the need its own block made.
+ * A card shown or withdrawn moves the need (raised on the bus): a withdrawn block is released, and an asking block shown
+ * or asked again (#1748), or a tool or view request raised (#1868), is offered. A stopped turn drops its own block’s need.
  * @param {any} rt
  */
 export function blockNeeds(rt) {
