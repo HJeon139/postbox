@@ -15,6 +15,8 @@ COPY app app
 COPY server server
 COPY shared shared
 COPY agent-plugin agent-plugin
+# How a deployment starts it: its settings and its agent host’s SSH files written from the environment, then Postbox.
+COPY --chmod=0755 infra/image/hosted-start.sh /usr/local/bin/postbox-hosted-start
 
 # The build shown in the sidebar: an image has no clone to read the commit from (server/build-info.mjs).
 ARG POSTBOX_COMMIT=
@@ -23,11 +25,12 @@ ENV POSTBOX_COMMIT=$POSTBOX_COMMIT NODE_ENV=production
 # The two places Postbox writes, each a volume owned by the user it runs as, so the rest of the disk can be read-only:
 # the data folder, which the deployment attaches because a container’s own disk is lost with it, and a scratch folder
 # for its settings file and temporary files.
-RUN mkdir /data /run/postbox && chown node:node /data /run/postbox
+# The scratch folder is also the user’s home, since ssh finds its files by the account’s home and not by $HOME.
+RUN mkdir /data /run/postbox && chown node:node /data /run/postbox && usermod --home /run/postbox node
 USER node
 VOLUME ["/data", "/run/postbox"]
 ENV HOME=/run/postbox TMPDIR=/run/postbox
 EXPOSE 8080
 
-# The deployment mounts the settings file, or overrides this command to write one (infra/lib/server.mjs).
+# The deployment mounts the settings file, or runs postbox-hosted-start instead, which writes one (infra/lib/server.mjs).
 CMD ["node", "bin/postbox.mjs", "--hosted", "/etc/postbox/hosted.json", "--data", "/data", "--port", "8080"]
