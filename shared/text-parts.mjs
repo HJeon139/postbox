@@ -41,6 +41,26 @@ export const cleanSaid = (text, n) =>
   );
 
 /**
+ * Words another program gave, for a card that shows them as preformatted lines (a permission card’s detail; #1937):
+ * cleaned as cleanSaid does, but its line breaks kept, since a line break there can’t hide or reorder anything. Every
+ * kind of line break and separator becomes one, runs of other space and control characters become one space, and no
+ * more than one blank line is kept in a row.
+ * @param {string} text @param {number} n
+ */
+export const cleanLines = (text, n) =>
+  cutText(
+    text
+      .replace(/\r\n?|[\u2028\u2029]/g, '\n')
+      .replace(INVISIBLE, '')
+      .replace(/[^\P{Cc}\n]/gu, ' ')
+      .replace(/[^\S\n]+/gu, ' ')
+      .replace(/ ?\n ?/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
+    n,
+  );
+
+/**
  * The last n characters of text, never starting inside a surrogate pair: one fewer where they would (#1686). The whole
  * text when it fits. n is a whole number of 1 or more.
  * @param {string} text @param {number} n

@@ -216,13 +216,13 @@ This keeps the rule that Postbox never reads, stores or passes a key: the role a
 flowchart LR
   B[Browser] -->|HTTPS| LB[Load balancer: TLS and sign-in]
   LB --> P[Postbox server: one task, one disk]
-  P -->|"ssh, as today"| H["Agent host: a long-lived task with the CLIs and a work folder"]
+  P -->|"ssh, as today"| H["Agent host: a long-lived machine with the CLIs and a work folder"]
   P -.->|"proposed: the daemon’s protocol over HTTPS"| R["AgentCore Runtime: one microVM per session"]
-  H -->|"task role"| M[Amazon Bedrock]
+  H -->|"its role"| M[Amazon Bedrock]
   R -->|"execution role"| M
 ```
 
-- **First, an agent host is a container of our own** on the same cluster: Node, an SSH server, the three CLIs and a work folder on a volume, with a role that may call Bedrock. Postbox dials it over `ssh` exactly as it dials any host, so nothing in the protocol changes and the local way to run is untouched. This is the “Cloud hosts” slice.
+- **First, an agent host is a machine of our own** in the same VPC: Node, an SSH server, the three CLIs and a work folder on a volume, with a role that may call Bedrock. Postbox dials it over `ssh` exactly as it dials any host, so nothing in the protocol changes and the local way to run is untouched. This is the “Cloud hosts” slice, and “What runs an agent host, weighed” says what the machine is.
 - **AgentCore Runtime doesn’t take SSH.** It runs an ARM64 container that answers `POST /invocations` and `GET /ping` on port 8080, one microVM per session, at most 8 hours a session and 60 minutes a stream, with a filesystem that is gone when the session ends unless session storage (a preview, 1 GB) or a volume is attached ([the service contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-service-contract.html), [sessions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-sessions.html), [filesystems](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-filesystem-configurations.html)). So it is not a host as Postbox knows one.
 - **What it would take:** the host daemon’s protocol, JSON lines that resume from a byte offset, carried over the runtime’s HTTP stream instead of `ssh`. That is the same split “What keeps bring your own agents possible” names: the protocol apart from the connection. A stream cut at 60 minutes is a disconnect the protocol already resumes from.
 - **What it would buy:** each agent’s session in its own microVM, which is the wall between rooms’ agents that one shared host doesn’t give (“What membership is not”); no SSH key for the server to hold; and pay for the seconds a turn runs.
@@ -230,6 +230,46 @@ flowchart LR
 - **AgentCore Identity, Gateway and Memory aren’t needed for this.** Identity’s outbound credentials are the natural answer to “Whose name is on a commit or a push from a host” in the table above, when that row is taken up.
 
 The question for the owner is “AgentCore as a second way to run agents” under “Open questions for the owner”.
+
+### What runs an agent host, weighed
+
+The owner, 27 November 2026, after a project couldn’t be made on the test deployment (“The test deployment on AWS”, “What a real sign-in showed”): “we need a hosting solution that works”, and “this is not like a typical web server. it’s more like a remote host machine”. Both are so, of two different parts:
+
+- **The server is a web server with one disk.** It answers pages, keeps the event log and dials hosts. Its read-only disk on the test deployment is a default this deployment set, not a limit of Fargate, and nothing it does needs more than its data folder.
+- **An agent host is a machine.** A CLI holds a session for hours, clones repositories, installs dependencies, runs builds, tests and browsers, and may need Docker. It needs a fast disk that outlives a restart, and the freedom a developer’s computer has.
+
+They stay apart for a reason that is a boundary, not tidiness: an agent has a shell, and a shell in the server’s container would hold the data folder, which is every room and each host’s daemon token, and the server’s SSH key beside it (“What everyone on one Postbox shares”). So “make the server writable and run agents in it” would end membership before it is built. What was missing on the test deployment is the second part, which this slice doesn’t build.
+
+| What would run the agent host | A disk that outlives a restart | Docker and builds as on a developer’s computer | What it adds to build and run | Fit |
+|---|---|---|---|---|
+| A Fargate task | EFS only. An EBS volume on a service’s task is “always deleted upon task termination”, and a task can’t attach an existing one ([EBS volumes with ECS](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ebs-volumes.html)) | No: “privileged containers or access are currently unavailable on Fargate” ([Fargate security considerations](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-security-considerations.html)) | The least: one more construct beside the server’s | Works for Claude Code and Codex editing and running tests; a network disk under `git` and `node_modules`, and no Docker |
+| **An EC2 instance (proposed)** | Its own EBS volume | Yes | One construct: an instance in the private subnets, a role that may call Bedrock, SSH admitted from the server’s security group alone | What “a remote host machine” means, and what Postbox’s hosts are already: a Linux account reached over `ssh` ([remote-hosts.md](remote-hosts.md)) |
+| Kubernetes (EKS on EC2), a StatefulSet a host | A volume claim per host | Yes, on nodes that allow it | A control plane at $0.10 an hour ([EKS pricing](https://aws.amazon.com/eks/pricing/)), node groups, and for hosts made on demand, Postbox calling the cluster’s API, which is new code and a new credential | Earns its cost when hosts are many and made per team or per room, or when the team runs a cluster already. With a fixed handful of hosts it runs the same container as the row above with more to operate |
+| Ray Serve | No: it is “a scalable model serving library for building online inference APIs”, scaled “by adjusting the number of replicas” ([Ray Serve](https://docs.ray.io/en/latest/serve/index.html)) | No | A Ray cluster, which on AWS is usually itself on Kubernetes, and Python in a project that has none | Not a fit. Its replicas are interchangeable and answer requests; an agent’s session is one process with one folder, which no other replica can pick up |
+| AgentCore Runtime | No, unless a volume is attached; a session ends at 8 hours | No | A second transport for the daemon’s protocol (above) | A wall between agents and pay by the second, for turns that fit in a session. Second, not first |
+
+**Proposed.** Keep the server on Fargate. Make the agent host an EC2 instance from a construct of its own, `PostboxAgentHost`: Node, the CLIs, a work folder on its own volume, Claude Code and Codex reaching Bedrock by the instance’s role, and the server’s key the only one it accepts. Nothing in Postbox’s protocol changes, the host is added in Settings › Hosts as any host is, and a project’s folder is set on that host, which is what the form on the test deployment had no answer for. What the host installs is written once, as a script an image can run too, so the same host can become a pod when a team wants a cluster. Kubernetes is taken up when hosts are made on demand; AgentCore Runtime after, as the second transport; Ray Serve isn’t.
+
+```mermaid
+flowchart LR
+  B([Browser]) -->|HTTPS| LB[Load balancer]
+  LB -->|sign-in| IdP[Identity provider]
+  subgraph private [Private subnets]
+    S[Postbox server]
+    D[(Data folder)]
+    H[Agent host]
+    W[(Work disk)]
+  end
+  LB -->|signed token| S
+  S --- D
+  S -->|"ssh, from the server alone"| H
+  H --- W
+  H -->|"its role, no key"| M[Amazon Bedrock]
+  S -.->|"later: the same protocol over HTTPS"| R[AgentCore Runtime]
+  R -.-> M
+```
+
+The question for the owner is “What runs an agent host” under “Open questions for the owner”.
 
 ## The test deployment on AWS
 
@@ -239,11 +279,13 @@ The question for the owner is “AgentCore as a second way to run agents” unde
 - one Fargate task of the server’s image, with no public address, with the data folder on an EFS file system only its role can mount, and a security group that admits its port from the load balancer’s alone (the owner, 26 November 2026: “Network rules”);
 - one task at a time, the old one stopped before the new one starts, which is how the deployment keeps one writer (“One server, one disk”).
 
+**What a real sign-in showed** (the owner, at the deployment, 27 November 2026: “sign in works. but path doesn’t seem writable”). A person on the allow list signed in at the team’s existing Cognito user pool and got Postbox’s page, so the check holds against a token a real load balancer signed and the key its endpoint serves, and the server’s log recorded no refusal. Without a sign-in, every request, `/health` included, was redirected to the provider. What didn’t work is a project: its root folder has to exist on the server’s disk (`server/projects.mjs`), and this server’s container has a read-only disk and no folder for work, since no agent runs in it. That is the “Project and agent folders” row of “What assumed one computer”: a hosted project needs its folder on an agent host, which is the “Cloud hosts” slice, and until then the form asks a hosted person for a path that means nothing there. The deployment was deleted after the test.
+
 **A dependency, and where it stops.** `infra/` depends on `aws-cdk-lib` and the `aws-cdk` command, in a `package.json` of its own. They build the deployment and never run in Postbox: the `postbox` package still lists no dependency and ships nothing from `infra/`, and the image installs none, since it is Node and Postbox’s own folders. The app is plain JavaScript, so there is still no build step.
 
 **Secure by default, and not by the network alone** (the owner, 27 November 2026, asking for an independent adversarial review: the construct “does not rely heavily on security perimeter”). What admits a person is three checks a request can’t skip by reaching the port: the load balancer’s sign-in, Postbox’s check of the signed token against this deployment’s own load balancer, client and provider, and Postbox’s allow list of subjects. The review found no way past them, and what it did find is fixed in the construct’s defaults: no admission by a claim a person could write for themselves, a verified email address, a stream that ends with its sign-in, a container with a read-only disk and no capability, and a disk no principal but the task’s role can mount. **Still leaning on the network:** the hop from the load balancer to the task is plain HTTP inside the VPC, as “The hop from the balancer is clear text unless Postbox serves TLS” proposes; AWS’s own guidance is HTTPS to the target, and it is “TLS on the hop from the load balancer” under “Open questions for the owner”.
 
-It is ECS, not the Kubernetes cluster this document’s first notes named, because it is the least to run for a test and the image is the same on either. Which a team’s deployment uses is “ECS or a Kubernetes cluster” under “Open questions for the owner”.
+It is ECS, not the Kubernetes cluster this document’s first notes named, because it is the least to run for a test and the image is the same on either. Whether a team’s deployment stays on ECS or moves to a Kubernetes cluster is “What runs an agent host” under “Open questions for the owner”.
 
 ## One server, one disk
 
@@ -294,7 +336,7 @@ The address, sign-in and membership slices change a security boundary and are re
 - **Postbox’s own browser.** Let it in over loopback with a secret made at each start, reading as no person, or build the view another way so nothing but a signed request is answered? The other way: the capture’s browser already routes every request through Postbox’s process (`server/view-app/browser.mjs`), so it can answer each from Postbox’s handler there, with no socket; a fulfilled request can’t stream, so the capture page reads state once instead of following the stream.
 - **AgentCore as a second way to run agents.** Build the agent host image first and reach it over SSH, as proposed, and take AgentCore Runtime up after as a second transport for the daemon’s protocol; or go to AgentCore first, which delays any agent running on AWS until that transport exists? And is Kiro, which can’t use Bedrock in your own account, wanted on a hosted Postbox with a Kiro key on the host?
 - **TLS on the hop from the load balancer.** Postbox speaks plain HTTP to the load balancer inside the VPC, so the signed token and the provider’s access token cross it unencrypted. Have Postbox serve TLS with a certificate made at each start, which the load balancer accepts without checking, so the hop is encrypted and nothing is held or renewed; or keep the clear hop inside private subnets?
-- **ECS or a Kubernetes cluster.** The test stack is ECS on Fargate. Should a team’s deployment be the same, or a Kubernetes cluster as first noted?
+- **What runs an agent host.** The test stack is ECS on Fargate, and it runs the server alone. “What runs an agent host, weighed” proposes that the server stays there and that an agent host is an EC2 instance with a disk of its own, with Kubernetes taken up only when hosts are made on demand, Ray Serve not at all, and AgentCore Runtime later as a second transport. Is that the order, or should a team’s deployment be a Kubernetes cluster from the start?
 - **Antigravity doesn’t run on a host yet.** A hosted Postbox offers Claude Code, Kiro and Codex; the Agent SDK, which runs in Postbox’s own process, is being removed ([#1834](https://github.com/HJeon139/postbox/pull/1834)). Leave Antigravity out of a hosted Postbox until a host runs it, which costs a team that backend, or make running it on a host part of the cloud hosts slice, which adds it to the daemon and needs a test on a host?
 
 ## Revisit when
