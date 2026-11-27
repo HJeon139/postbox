@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.7 (2026-11-27)
+
+### Fixes
+
+- **stop:** a job's Stop in flight is kept per reply, and focus holds when a stopped reply redraws
+- **stop:** a job's Stop stays pressed and focused across a refill of its reply
+
 ## 4.52.6 (2026-11-27)
 
 ### Fixes
