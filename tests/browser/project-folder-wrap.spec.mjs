@@ -9,6 +9,8 @@ let app;
 test.beforeAll(async () => {
   app = await startPostbox('project-folder-wrap');
   app.store.emit('project', { id: 'pr_long', name: 'UAT long', folder: `${app.root}/${'n'.repeat(120)}` });
+  // A name is cut at 80 characters (server/projects.mjs), and one with no space widened the page the same way.
+  app.store.emit('project', { id: 'pr_name', name: 'N'.repeat(80), folder: app.root });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -24,4 +26,17 @@ for (const width of [375, 1280])
     await settled(page);
     const wide = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(wide, `the page is ${wide} px wide`).toBeLessThanOrEqual(windowWidth(page));
+  });
+
+for (const width of [375, 1280])
+  test(`a project’s long name wraps on its page and its Threads page, in a ${width} px window`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    for (const at of ['#/p/pr_name', '#/p/pr_name/threads']) {
+      await page.goto(`${app.origin}/${at}`);
+      await synced(page, app);
+      await expect(page.locator('.ov-head h1')).toBeVisible();
+      await settled(page);
+      const wide = await page.evaluate(() => document.documentElement.scrollWidth);
+      expect.soft(wide, `${at} is ${wide} px wide`).toBeLessThanOrEqual(windowWidth(page));
+    }
   });

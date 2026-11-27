@@ -428,10 +428,7 @@ export function mountEmptyProject(projectId) {
   const el = h(
     'main.threads-view',
     { id: 'main', tabindex: '-1' },
-    h(
-      'div.ov-head',
-      h('div.grow', h('h1.title', { style: { fontSize: '20px' } }, project?.name ?? 'Project'), h('p.small.dim.mono.path', project?.folder ?? '')),
-    ),
+    h('div.ov-head', h('div.grow', h('h1.title', { style: { fontSize: '20px' } }, project?.name ?? 'Project'), h('p.small.dim.mono', project?.folder ?? ''))),
     h(
       'div.block',
       h('div.block-body', h('p', 'No conversations here yet. Start one with an agent, or create a new agent for this project.')),

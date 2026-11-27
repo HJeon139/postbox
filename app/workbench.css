@@ -1044,8 +1044,9 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .mention-menu { bottom: calc(100% + 6px); left: 0; width: 320px; }
 
 .ov-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-/* A folder path breaks anywhere: a long name with no space would widen the page past a narrow window (#1534’s class). */
-.path { overflow-wrap: anywhere; min-width: 0; }
+/* A head’s name and folder break anywhere: a project’s name (up to 80 characters) or folder with no space would widen
+   the page past a narrow window (#1534’s class). */
+.ov-head > .grow { overflow-wrap: anywhere; }
 
 /* Mock agents and demo mode, marked in words wherever an agent is named (#12). */
 /* The space before it is text (mockMarker), so it needs no margin. */
