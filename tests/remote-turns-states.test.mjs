@@ -6,8 +6,7 @@ import { test } from 'node:test';
 import { KIRO_CAPABILITIES, KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { RemoteTurns } from '../server/remote/turns.mjs';
 import { escapeRegExp } from '../shared/regex.mjs';
-import { fixtureLines } from './fake-daemon.mjs';
-import { HOST, MIN, messageOf, rig, running, settled, sleep, starts, until } from './remote-turns-helpers.mjs';
+import { HOST, MIN, messageOf, rig, running, settled, signInLines, sleep, starts, until } from './remote-turns-helpers.mjs';
 
 // ── 3. Turn states ───────────────────────────────────────────────────────────────────
 
@@ -73,16 +72,6 @@ test('#120 L5: an open tool call is a sign of work for an adapter that prints no
   await until(() => r.d.stops.includes(turn), 'the stop');
   await settled(r);
 });
-
-/** The fixture’s stream, ending with the sign-in error the adapter names (capabilities.remote.signInError) instead of
- * its result: no host has recorded one yet, so it’s the recorded result line with those fields. */
-const signInLines = () => {
-  const lines = fixtureLines();
-  const i = lines.findIndex((l) => JSON.parse(l).type === 'result');
-  const res = JSON.parse(lines[i]);
-  lines[i] = JSON.stringify({ ...res, is_error: true, error: 'authentication_failed', result: 'Failed to authenticate.' });
-  return lines.slice(0, i + 1);
-};
 
 test('#120 L5: the harness’s sign-in error is Sign-in needed; with no signInCheck it waits for the person’s Resume', async () => {
   const r = rig({ daemon: { lines: signInLines() } });

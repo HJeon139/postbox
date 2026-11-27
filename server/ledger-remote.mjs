@@ -21,11 +21,15 @@ export function hostOf(ledger, turn, se) {
   return { id, name: clip(ledger.s.hosts?.[id]?.name ?? 'its host', 200) };
 }
 
-/** The folder a host turn works in, once the runtime has given it one. @param {any} ledger @param {any} turn */
+/**
+ * The folder a host turn works in, once the runtime has given it one. From the session as written: a turn started
+ * behind a held commit has its folder there, and the edits it records resolve against it (#623, #1896).
+ * @param {any} ledger @param {any} turn
+ */
 export function hostFolder(ledger, turn) {
   const w = turn.work;
   if (!w.folder) {
-    const r = ledger.s.sessions?.[w.se.id]?.remoteTurn;
+    const r = ledger.store.pending.session(w.se.id)?.remoteTurn;
     if (r?.rtTurn === turn.id && typeof r.folder === 'string' && isAbsolute(r.folder)) w.folder = resolve(r.folder);
   }
   return w.folder;
