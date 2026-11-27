@@ -39,5 +39,11 @@ test('an answer longer than a key is refused once it passes the bound, without r
 test('an endpoint that doesn’t answer in time is given up on', async () => {
   const ask = (/** @type {any} */ _url, /** @type {any} */ init) =>
     new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true }));
-  await assert.rejects(fetchKeyText(URL_, { timeoutMs: 5, ask: /** @type {any} */ (ask) }), { name: 'TimeoutError' });
+  // The deadline’s own timer doesn’t keep a process alive, and here nothing else would: this one does, until it fires.
+  const alive = setTimeout(() => {}, 10_000);
+  try {
+    await assert.rejects(fetchKeyText(URL_, { timeoutMs: 5, ask: /** @type {any} */ (ask) }), { name: 'TimeoutError' });
+  } finally {
+    clearTimeout(alive);
+  }
 });

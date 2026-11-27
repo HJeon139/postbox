@@ -39,6 +39,7 @@ const PLACED = {
   'claude-once.mjs': 1, // ends a Haiku call through the claude CLI that took too long (a summary, the write check): no store
   'diagram-parse.mjs': 1, // ends a diagram parse that took too long, by ending its worker: no store (#731)
   'diagram-parse-worker.mjs': 2, // the timer functions the worker’s stand-in page hands Mermaid: another thread, no store (#731)
+  'identity/alb-key-fetch.mjs': 1, // the deadline on a hosted Postbox’s fetch of a sign-in key, which ends the fetch: no store
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
   'lint-delivery.mjs': 5, // an injected setTimer before a lint turn: a start, held by heldTurn while closed
   'live-buffer.mjs': 1, // a turn’s coalesced session frame, at the end of its tick: sendLive, which holds it behind the store’s held writes
