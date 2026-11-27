@@ -1,24 +1,22 @@
 // The layout check of Postbox’s own screens (#681, tools/text-layout.mjs): on a page built to draw text over text and
 // over a button, cut text off and break words a few letters a line, both the browser specs’ helper
 // (tests/browser/text-layout.mjs) and the UAT runner’s check of each whole-window screenshot (tools/uat/layout-probe.mjs,
-// tools/uat/checks-view.mjs) fail, at 375 and 1280 px; on a clean page, and on Postbox’s own first screen, both pass.
+// tools/uat/checks-view.mjs) fail, at 375 and 1280 px; on a clean page, and on Postbox’s own screens, both pass: its
+// first screen, a topic thread’s first message faded out above Show all, and Jump to latest over the transcript. A
+// running step’s long output, which its box cuts off at the end, is reported.
 
 import { expect, test } from '@playwright/test';
+import { TEXT_LAYOUT } from '../../tools/text-layout.mjs';
 import { runChecks } from '../../tools/uat/checks.mjs';
 import { failsRun } from '../../tools/uat/checks-postbox.mjs';
 import { recordLayout, sampleLayout } from '../../tools/uat/layout-probe.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import * as arrange from '../arrange.mjs';
+import { scriptedRoom } from './live-scripts.mjs';
+import { settled, synced } from './postbox.mjs';
 import { expectTidyText, textLayout } from './text-layout.mjs';
 
-/** @type {Awaited<ReturnType<typeof startPostbox>>} */
-let app;
-test.beforeAll(async () => {
-  app = await startPostbox('text-layout');
-});
-test.afterAll(async () => {
-  await app?.stop();
-});
-failOnPageErrors(test);
+// A Postbox with agents on a scripted backend, so a step can be held while its turn runs.
+const scripted = scriptedRoom(test, 'text-layout');
 
 // Sizes are in px and ch of a monospace face, so each page lays out the same at both widths.
 const STYLE = `<style>
@@ -37,15 +35,18 @@ const BAD = `${STYLE}
 </section>
 <section style="position: relative; height: 40px">
   <span>A sentence a button sits on</span>
-  <button style="position: absolute; left: 40px; top: 0">Send now</button>
+  <button style="position: absolute; left: 40px; top: 0; background: none">Send now</button>
 </section>
 <section style="width: 120px; overflow: hidden; white-space: nowrap">This label is far too long for its box</section>
 <section class="mono" style="width: 3ch; overflow-wrap: anywhere">Configuration</section>`;
 
 // The same kinds of text, laid out well: cut short with an ellipsis, a word broken four letters a line with its last
 // part shorter, a word broken at soft hyphens, a word set to break anywhere that fills the line before it breaks, a
-// button beside its text, a checkbox in its label, a button under a dialog that text in the dialog crosses, and a
-// hidden button under text.
+// button beside its text, a checkbox in its label, a button under a dialog that text in the dialog crosses, a hidden
+// button under text, an opaque button floating over a paragraph, and over part of
+// another button, as Jump to latest does over a reaction, a paragraph
+// the browser hyphenates, and text hidden for screen readers in a 1 px box, which breaks
+// a letter a line.
 const CLEAN = `${STYLE}
 <section style="width: 120px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">This label is far too long for its box</section>
 <section class="mono" style="width: 4ch; overflow-wrap: anywhere">Configuration</section>
@@ -60,6 +61,18 @@ const CLEAN = `${STYLE}
 <section style="position: relative">
   <span>Text over a hidden button</span>
   <button style="position: absolute; left: 0; top: 0; visibility: hidden">Hidden</button>
+</section>
+<section style="position: relative">
+  <p style="margin: 0">A paragraph with an opaque button floating over its words</p>
+  <button style="position: absolute; left: 40px; top: 0; background: Canvas">Jump</button>
+</section>
+<section style="position: relative">
+  <button>Good: react</button>
+  <button style="position: absolute; left: 30px; top: 0; background: Canvas">Jump to latest</button>
+</section>
+<section lang="en" class="mono" style="width: 6ch; hyphens: auto">internationalization</section>
+<section class="mono" style="overflow-wrap: anywhere">Read aloud:
+  <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Configuration</span>
 </section>`;
 
 const CODES = ['mid-word-break', 'text-cut-off', 'text-on-control', 'text-overlap'];
@@ -104,8 +117,119 @@ for (const width of [375, 1280]) {
 
   test(`#681 at ${width} px Postbox’s first screen passes the check`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
-    await page.goto(`${app.origin}/`);
-    await synced(page, app);
+    await page.goto(`${scripted.app.origin}/`);
+    await synced(page, scripted.app);
     await expectTidyText(page, 'Postbox’s first screen');
   });
+
+  // The step keeps the end of what the call returned, but its box clamps it from the top, so the last lines are the
+  // ones hidden: a defect the check finds on a real screen, kept here as one until the clamp keeps the end in view.
+  test(`#681 at ${width} px a running step’s long output, cut off at its end, is reported`, async ({ page }) => {
+    const who = `runner${width}`;
+    const t = scripted.room(`Clamped output at ${width}`, [who]);
+    scripted.scripts.set(who, async ({ emit }) => {
+      emit({ kind: 'tool_call', id: 'b1', name: 'Bash', input: { command: 'npm test' }, final: true });
+      emit({ kind: 'tool_result', id: 'b1', text: OUTPUT });
+      await scripted.hold(who, 1);
+    });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+    await synced(page, scripted.app);
+    scripted.app.rt.sendMessage(t.id, { text: 'Run the tests.' });
+    await expect.poll(() => scripted.at(who)).toBe(1);
+    const output = page.locator('.live-steps .step-output');
+    await expect(output).toContainText('test 30 passed');
+    expect(await output.evaluate((el) => el.scrollHeight > el.clientHeight + 10), 'the output is clamped').toBe(true);
+    const found = await textLayout(page);
+    expect(
+      found.map((p) => p.code),
+      'the step’s cut-off output',
+    ).toEqual(['text-cut-off']);
+    expect(found[0].message).toContain('span.step-output');
+    scripted.go(who);
+    await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
+  });
+
+  test(`#681 at ${width} px a topic thread’s long first message, clamped with Show all, passes the check`, async ({ page }) => {
+    const { rt } = scripted.app;
+    const t = scripted.room(`Clamped root at ${width}`, [`reader${width}`]);
+    const root = arrange.post(rt, t.id, { kind: 'user', text: ROOT });
+    const side = rt.startTopic(t.id, root.id).threadId;
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/#/t/${t.id}/side/${side}`);
+    await synced(page, scripted.app);
+    await expect(page.locator('.thread-root .md.clamped')).toContainText('The first paragraph');
+    await expect(page.locator('.thread-root').getByRole('button', { name: 'Show all' })).toBeVisible();
+    await expectTidyText(page, 'a topic thread’s clamped first message');
+  });
+
+  test(`#681 at ${width} px Jump to latest over the transcript’s text passes the check`, async ({ page }) => {
+    const { rt } = scripted.app;
+    const t = scripted.room(`Jump at ${width}`, [`talker${width}`]);
+    for (let i = 1; i <= 10; i++) arrange.post(rt, t.id, { kind: 'user', text: LONG(i) });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+    await synced(page, scripted.app);
+    await settled(page);
+    await page.mouse.move(width / 2, 300);
+    await page.mouse.wheel(0, -600);
+    await settled(page);
+    for (let i = 1; i <= 3; i++) arrange.post(rt, t.id, { kind: 'user', text: `Arrived while you read ${i}` });
+    const pill = page.getByRole('button', { name: /^Jump to latest/ });
+    await expect(pill).toBeVisible();
+    // The pill floats over the transcript, opaque: scrolled until a line of its text is under it.
+    expect(await page.evaluate(lineUnderPill), 'a line of text under the pill').toBe(true);
+    await expect(pill).toBeVisible();
+    await expectTidyText(page, 'Jump to latest over the transcript');
+  });
+}
+
+// The page isn’t a hidden frame: while the check measures, the page’s own animation frames run, so an id one of its
+// modules asked for is one it can cancel.
+test('#681 the check leaves the page’s animation frames its own while it measures', async ({ page }) => {
+  await page.goto(`${scripted.app.origin}/`);
+  await synced(page, scripted.app);
+  const own = await page.evaluate(`(async () => {
+    const raf = window.requestAnimationFrame;
+    const measuring = ${TEXT_LAYOUT};
+    const same = window.requestAnimationFrame === raf;
+    await measuring;
+    return same && window.requestAnimationFrame === raf;
+  })()`);
+  expect(own, 'requestAnimationFrame is the page’s own while the check runs, and after').toBe(true);
+});
+
+const OUTPUT = Array.from({ length: 30 }, (_, i) => `test ${i + 1} passed in 0.${i} s`).join('\n');
+const ROOT = [
+  'The first paragraph says what the thread is about, at some length, so that the message runs past the few lines a topic thread shows of it.',
+  'The second paragraph goes on with the details of the plan, which the thread’s replies are about, and adds a few more words.',
+  'The third paragraph adds what was tried before, and why it didn’t work, so the thread doesn’t try it again.',
+  'The fourth paragraph lists who is working on which part, and what each of them needs from the others.',
+  'The fifth paragraph is the end of it, which the panel shows only once you choose Show all.',
+].join('\n\n');
+const LONG = (n) => `Message ${n}. The loop alternates a thought, an action and an observation, so the plan stays grounded in what the agent saw.`;
+
+/**
+ * Whether a line of the transcript’s text is under Jump to latest, scrolled down a few pixels at a time until one is,
+ * as far as a message and its actions are tall.
+ */
+function lineUnderPill() {
+  const range = document.createRange();
+  const crosses = (/** @type {DOMRect} */ pill) => {
+    const walk = document.createTreeWalker(document.querySelector('.transcript') ?? document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      range.selectNodeContents(n);
+      for (const r of range.getClientRects()) {
+        const y = Math.min(r.bottom, pill.bottom) - Math.max(r.top, pill.top);
+        if (Math.min(r.right, pill.right) - Math.max(r.left, pill.left) > 2 && y >= r.height * 0.8) return true;
+      }
+    }
+    return false;
+  };
+  for (let i = 0; i < 50; i++) {
+    const pill = document.querySelector('.jump button')?.getBoundingClientRect();
+    if (pill && crosses(pill)) return true;
+    scrollBy({ top: 4, behavior: 'instant' });
+  }
+  return false;
 }
