@@ -162,7 +162,8 @@ function errorLine(stdout) {
 }
 
 /**
- * Why an install failed other than for code that differs: its known exit, else what the host said, quoted whole (#1686).
+ * Why an install failed other than exit 75, another Postbox running: its known exit, else what the host said, quoted
+ * whole (#1686).
  * @param {{ code: number | null, signal: string | null }} r @param {string | undefined} known @param {string} said @param {string} quote
  */
 function failedWhy(r, known, said, quote) {

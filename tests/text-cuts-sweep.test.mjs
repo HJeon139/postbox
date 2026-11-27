@@ -1,6 +1,7 @@
 // #1686, the reopened sweep: an app’s retirement, and names and text the person typed or reads, cut by length only at
 // a whole character (cutText), never between the two halves of a surrogate pair. Each case puts an emoji across its
-// site’s cut. The sites with no case here, and why, are listed in the sweep’s record on the issue.
+// site’s cut. The converted sites with no case here are listed under “Not done” in the pull request that added them
+// (#1686).
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -8,6 +9,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { runAgentCommand } from '../server/agent-commands.mjs';
 import { storedFolder } from '../server/folder-path.mjs';
+import { recordJob } from '../server/job-records.mjs';
 import { liveFields, liveSession } from '../server/live-buffer.mjs';
 import { ModelLists } from '../server/model-lists.mjs';
 import { readHookFile } from '../server/permission-hooks.mjs';
@@ -22,7 +24,7 @@ import { LIVE_CAPS } from '../shared/limits.mjs';
 import { aboutThePerson, profileOf } from '../shared/profile.mjs';
 import { anchorOf } from '../shared/review-comments.mjs';
 import { tempDir } from './temp-dirs.mjs';
-import { across, room, whole } from './text-cuts-fixture.mjs';
+import { across, EMOJI, room, whole } from './text-cuts-fixture.mjs';
 
 test('#1686 a retired app’s reason, and the title of the block that replaced it, are cut whole', () => {
   const r = room();
@@ -67,10 +69,15 @@ test('#1686 why the browser download failed is kept whole on view_app’s card',
 
 test('#1686 a hook’s command in the permissions panel, and a refused folder in its message, are cut whole', async () => {
   const file = join(tempDir('pb-cuts-hooks-'), 'settings.json');
-  const hook = { type: across(20), command: across(200 - 1) };
+  const hook = { type: across(20 - 1), command: across(200 - 1) };
   writeFileSync(file, JSON.stringify({ hooks: { PreToolUse: [{ matcher: across(100 - 1), hooks: [hook] }] } }));
   const read = await readHookFile(file);
   for (const k of ['type', 'text', 'matcher']) whole(read.hooks[0]?.[k], `the hook’s ${k}`);
+  // A token the panel redacts shrinks the text it scanned: the scan’s own cut, at 2,000, is what then shows.
+  const scanned = join(tempDir('pb-cuts-scan-'), 'settings.json');
+  const token = `echo glpat-${'a'.repeat(2000 - 1 - 'echo glpat-'.length)}${EMOJI}tail`;
+  writeFileSync(scanned, JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: token }] }] } }));
+  whole((await readHookFile(scanned)).hooks[0]?.text, 'the redacted command');
   // The folder is quoted as JSON, so its emoji is one later than in the folder.
   const refused = (() => {
     try {
@@ -140,4 +147,11 @@ test('#1686 a running turn’s live text past its cap is cut whole', () => {
   const turn = { id: 'tu1', sessionId: r.se.id, threadId: r.t.id, first: null };
   liveSession(r.rt, turn, { glimpse: across(LIVE_CAPS.string) });
   whole(liveFields(r.rt, turn).glimpse, 'the glimpse');
+});
+
+test('#1686 where a background job’s output is, as the agent is told it, is cut whole', () => {
+  const r = room();
+  const turn = { id: 'tu_job', sessionId: r.se.id, threadId: r.t.id, keepJobs: new Set(), stopReason: null };
+  recordJob(r.rt, turn, { id: 'job1', state: 'running', command: 'sleep 1', label: 'Sleep', outputFile: across(1000) });
+  whole(r.store.state.sessions[r.se.id].jobs?.[0]?.outputFile, 'the output file');
 });

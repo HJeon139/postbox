@@ -1,6 +1,7 @@
 // #1686, the reopened sweep: text the page cuts by length, only at a whole character (cutText). Each case puts an emoji
 // across its site’s cut. The page’s other cuts (a queued message’s button name, the raw block, a selection’s quote on
-// a comment’s meta line, an allowed call’s line) build DOM, so they’re checked in the browser only.
+// a comment’s meta line, an allowed call’s line) build DOM, and have no case yet: the pull request that converted them
+// lists them under “Not done” (#1686).
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { pageModule } from './page-module.mjs';

@@ -123,7 +123,7 @@ const keptName = (_match, name, other) => `${name ?? other}…`;
 
 /** `text`, cut to MAX_SCAN and marked, with the credentials found in it replaced by an ellipsis. @param {string} text */
 function redacted(text) {
-  const quoted = marked(text.slice(0, MAX_SCAN))
+  const quoted = marked(cutText(text, MAX_SCAN))
     .replace(AUTH_QUOTED, (_m, quote, name) => `${quote}${name}…`)
     .replace(USER_QUOTED, (_m, name) => `${name}…`)
     .replace(USER_BARE, keptName)
