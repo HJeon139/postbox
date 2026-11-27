@@ -268,10 +268,13 @@ test('#856 a region an agent numbers first while the person’s draft is open is
   await block.getByRole('button', { name: 'Mark a part of the app' }).click();
   await drag(page, block, [0.1, 0.5], [0.4, 0.9]);
   await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('The legend overlaps.');
-  await block.getByRole('button', { name: 'Add draft comment' }).click();
-  // The agent, which saw no region yet, comments on a place of its own as “region 1”.
+  // The agent, which saw no region yet, comments on a place of its own as “region 1”, while the person’s box is open.
   const theirs = { x: 0.6, y: 0.1, w: 0.2, h: 0.2, version: 1 };
   update({ threads: [{ id: 'a1', status: 'open', anchor: 'region 1', region: theirs, comments: [{ author: '@researcher', text: 'Is this axis right?' }] }] });
+  const open = page.getByRole('textbox', { name: 'Comment on region 2' });
+  await expect(open, 'the open box is on region 2 now').toHaveValue('The legend overlaps.');
+  await expect(open, 'and keeps the focus').toBeFocused();
+  await block.getByRole('button', { name: 'Add draft comment' }).click();
   const pins = block.locator('.rv-pins');
   await expect(pins.getByText('On region 1 · x 60%, y 10%, 20% × 20%, on v1'), 'the agent’s is listed where it is').toBeVisible();
   await expect(pins.getByText(/^On region 2 · x 10%, y 50%, 30% × 40%, on v1$/), 'the draft’s takes the next number').toBeVisible();
@@ -280,15 +283,33 @@ test('#856 a region an agent numbers first while the person’s draft is open is
     within(await drawnAt(block.locator('.rv-marks .rv-region[data-region="2"]')), { x: 0.1, y: 0.5, w: 0.3, h: 0.4, version: 1 }),
     'region 2 where the person marked it',
   ).toBe(true);
-  // A drawn region is a mark, not a control: it’s not in the interaction color.
+  // A drawn region is a mark, not a control: it’s in the text’s color, not amber, with a halo that sets it off the app.
   const colors = await block.locator('.rv-marks .rv-region[data-region="1"]').evaluate((el) => {
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-    const probe = document.body.appendChild(Object.assign(document.createElement('i'), { style: `color:${accent}` }));
-    const amber = getComputedStyle(probe).color;
-    probe.remove();
-    return { border: getComputedStyle(el).borderTopColor, amber };
+    const css = (/** @type {string} */ token) => {
+      const probe = document.body.appendChild(Object.assign(document.createElement('i'), { style: `color:var(${token})` }));
+      const c = getComputedStyle(probe).color;
+      probe.remove();
+      return c;
+    };
+    const s = getComputedStyle(el);
+    return { border: s.borderTopColor, text: css('--text'), amber: css('--accent'), panel: css('--panel'), halo: s.boxShadow };
   });
   expect(colors.border, 'a drawn region isn’t amber').not.toBe(colors.amber);
+  expect(colors.border, 'it’s in the text’s color').toBe(colors.text);
+  expect(colors.halo, 'with a halo in the panel’s color').toContain(colors.panel);
   await block.getByRole('button', { name: /^Submit/ }).click();
   await expect.poll(() => answer()?.map((c) => c.anchor), { message: 'the answer keeps the draft’s new number' }).toEqual(['region 2']);
+});
+
+test('#856 what was typed on a region stays as its draft comment when the person marks another', async ({ page }) => {
+  const { block } = await review(page);
+  await block.getByRole('button', { name: 'Mark a part of the app' }).click();
+  await drag(page, block, [0.1, 0.5], [0.4, 0.9]);
+  await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('The legend overlaps.');
+  await block.getByRole('button', { name: 'Mark a part of the app' }).click();
+  await drag(page, block, [0.6, 0.1], [0.8, 0.3]);
+  await expect(page.getByRole('textbox', { name: 'Comment on region 2' }), 'the new mark opens its box').toBeFocused();
+  const drafted = block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
+  await expect(drafted.filter({ hasText: 'The legend overlaps.' }), 'what was typed on region 1 is its draft').toHaveCount(1);
+  await expect(block.locator('.rv-marks .rv-region[data-region="1"]'), 'and region 1 is still drawn').toHaveCount(1);
 });

@@ -1216,6 +1216,8 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 /* A drawn region is a mark, not a control, so it’s in the text’s color; amber is the box being marked, which the
    keys and the pointer move. */
 .rv-region { position: absolute; box-sizing: border-box; border: 2px solid var(--text); border-radius: 2px; pointer-events: none; }
+/* A halo in the panel’s color, so the mark stands out from the app’s own text and lines under it, in either theme. */
+.rv-region, .rv-region.point { box-shadow: 0 0 0 1px var(--panel), inset 0 0 0 1px var(--panel); }
 .rv-region.marking { border: 2px dashed var(--accent); }
 .rv-region.point { width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--text); }
 .rv-region.point.marking { background: var(--accent); }

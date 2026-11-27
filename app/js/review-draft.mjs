@@ -33,8 +33,10 @@ export const newReviewDraft = (content) => ({
  * @param {any} key @param {any} [region]  the region of an app it’s on, when the person marked one (#856)
  */
 export function startComment(draft, key, region = null) {
-  // One box at a time: an edit open elsewhere keeps what was typed in it.
+  // One box at a time: an edit open elsewhere keeps what was typed in it, and so does a region’s box, which can’t be
+  // reopened, as a draft comment on its region (#856).
   saveEdit(draft);
+  if (draft.composingRegion && draft.composingText.trim()) addComposing(draft, true);
   // Only this place’s text comes back; text set aside for another place waits for its own.
   const at = draft.parked.findIndex((p) => samePlace(p.key, key) && samePlace(p.region ?? null, region));
   const parked = at < 0 ? null : draft.parked[at];
