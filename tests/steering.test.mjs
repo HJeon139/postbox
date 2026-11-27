@@ -191,30 +191,33 @@ test('#319 Codex: a data folder in no repository, or a project under the cloneâ€
 
 test('#319 Codex: a turn in the data folder inside a clone starts the app-server with the data folder as a root', async () => {
   const { data } = clone();
-  /** @type {string[][]} */
-  const seen = [];
-  const adapter = new CodexAdapter({
-    workRoot: join(data, 'workspaces'),
-    spawnImpl: (_bin, args) => {
-      seen.push(args);
-      return fakeAppServer([]);
-    },
-  });
-  const ctx = {
-    persona: { handle: 'dev', model: 'gpt-5.6-terra', effort: 'medium', permissionMode: 'acceptEdits' },
-    project: null,
-    handles: ['dev'],
-    state: {},
-    signal: new AbortController().signal,
-    mcpUrl: 'http://127.0.0.1:1/mcp?session=s1',
-    text: () => {},
-    activity: () => {},
-    status: () => {},
-    saveState: () => {},
-    checkpoint: () => {},
-    pathOf: () => null,
-  };
-  await adapter.deliver({}, { kind: 'user', text: 'Say hello.' }, ctx);
-  const i = seen[0].indexOf('project_root_markers=[".git","postbox.lock"]');
-  assert.ok(i > 0 && seen[0][i - 1] === '-c', seen[0].join(' '));
+  // An agent with no folder, in a workspace, and one whose project is in the data folder (the issueâ€™s own case).
+  for (const project of [null, { folder: join(data, 'research') }]) {
+    /** @type {string[][]} */
+    const seen = [];
+    const adapter = new CodexAdapter({
+      workRoot: join(data, 'workspaces'),
+      spawnImpl: (_bin, args) => {
+        seen.push(args);
+        return fakeAppServer([]);
+      },
+    });
+    const ctx = {
+      persona: { handle: 'dev', model: 'gpt-5.6-terra', effort: 'medium', permissionMode: 'acceptEdits' },
+      project,
+      handles: ['dev'],
+      state: {},
+      signal: new AbortController().signal,
+      mcpUrl: 'http://127.0.0.1:1/mcp?session=s1',
+      text: () => {},
+      activity: () => {},
+      status: () => {},
+      saveState: () => {},
+      checkpoint: () => {},
+      pathOf: () => null,
+    };
+    await adapter.deliver({}, { kind: 'user', text: 'Say hello.' }, ctx);
+    const i = seen[0].indexOf('project_root_markers=[".git","postbox.lock"]');
+    assert.ok(i > 0 && seen[0][i - 1] === '-c', `${JSON.stringify(project)}: ${seen[0].join(' ')}`);
+  }
 });
