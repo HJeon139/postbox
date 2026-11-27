@@ -178,7 +178,6 @@ test('#120: Claude Code, Kiro CLI and Codex are listed without their CLI here, m
   // Only Claude Code is on this computer; nothing is probed for real.
   const probes = {
     claude: async () => '2.1.296',
-    sdk: none,
     kiro: none,
     agy: none,
     codex: none,

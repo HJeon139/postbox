@@ -1,4 +1,4 @@
-// Plain summaries and details for Claude permission cards, shared by local, SDK and remote prompts.
+// Plain summaries and details for Claude permission cards, shared by local and remote prompts.
 
 import { cutText, tailText } from '../../shared/text-parts.mjs';
 

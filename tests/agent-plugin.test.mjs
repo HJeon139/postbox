@@ -9,7 +9,6 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { AGENT_PLUGIN, agentPlugins } from '../server/adapters/agent-plugin.mjs';
-import { sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { claudeArgs } from '../server/adapters/claude-code-args.mjs';
 import { deniedTools, fromContext, settingsFor } from '../server/adapters/setup.mjs';
 import { POSTBOX_SKILLS } from '../server/adapters/skill-config.mjs';
@@ -21,22 +20,11 @@ const ctx = (over = {}) => ({ persona: { id: 'p1', handle: 'coder', model: 'mock
 /** Each plugin folder Claude Code is given, from its arguments. @param {string[]} args */
 const pluginDirs = (args) => args.flatMap((a, i) => (a === '--plugin-dir' ? [args[i + 1]] : []));
 
-test('a turn here loads Postbox’s plugin in Claude Code and the Agent SDK, Isolated or not', () => {
+test('a turn here loads Postbox’s plugin in Claude Code, Isolated or not', () => {
   for (const usesHostSetup of [true, false]) {
     const c = ctx({ persona: { id: 'p1', handle: 'coder', model: 'mock', usesHostSetup } });
     const args = claudeArgs({ persona: c.persona, sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g', ...fromContext(c, '/mem') });
     assert.deepEqual(pluginDirs(args), [AGENT_PLUGIN], `Claude Code, usesHostSetup ${usesHostSetup}`);
-    const o = sdkOptions({
-      persona: c.persona,
-      cwd: '/w',
-      sessionId: 's',
-      resume: false,
-      mcpUrl: 'u',
-      guide: 'g',
-      abortController: new AbortController(),
-      ...fromContext(c, '/mem'),
-    });
-    assert.deepEqual(o.plugins, [{ type: 'local', path: AGENT_PLUGIN }], `the Agent SDK, usesHostSetup ${usesHostSetup}`);
   }
 });
 

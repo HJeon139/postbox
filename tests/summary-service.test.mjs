@@ -14,7 +14,7 @@ import { Summaries } from '../server/summary-service.mjs';
 import { Threads } from '../server/threads.mjs';
 
 /** Summaries over a conversation with beta, on `backend`, and a topic thread beta replied in. */
-function rig({ backend = 'claude-code', sdk = false } = {}) {
+function rig({ backend = 'claude-code', cli = false } = {}) {
   const store = new Store(null);
   store.emit('project', { id: 'p1', name: 'P', folder: '/work' });
   store.emit('thread', { id: 'th_c', projectId: 'p1', title: 'C', kind: 'thread', parentId: null, members: ['se_2'], queue: [], createdAt: 1 });
@@ -31,7 +31,7 @@ function rig({ backend = 'claude-code', sdk = false } = {}) {
     entry: (/** @type {string} */ _conv, /** @type {string} */ turnId) => (turnId === 'tu_1' ? { id: 'en_1', summaryCostUsd: 0.5 } : null),
     patch: (/** @type {string} */ conv, /** @type {string} */ id, /** @type {any} */ patch) => patched.push([conv, id, patch]),
   };
-  const adapters = { names: () => (sdk ? ['agent-sdk'] : []), get: () => ({ sdk: { query: async function* () {} } }) };
+  const adapters = { names: () => (cli ? ['claude-code'] : []), runsHere: () => cli, get: () => ({ bin: '/nowhere/claude' }) };
   /** @type {{ fn: () => void, ms: number }[]} */
   const timers = [];
   const config = { setTimer: (/** @type {() => void} */ fn, /** @type {number} */ ms) => timers.push({ fn, ms }) && { unref() {} } };
@@ -89,15 +89,15 @@ test('summarizeThread writes nothing while a turn speaks in the thread, or one s
   assert.equal(store.item('th_c', root.id).threadSummary, undefined);
 });
 
-test('summarizerOf is the seam when a test sets one, else none without a Claude agent or the Agent SDK registered here', () => {
+test('summarizerOf is the seam when a test sets one, else none without a Claude Code agent or Claude Code’s CLI on this computer', () => {
   const m = model('x');
-  const claude = rig({ sdk: true });
+  const claude = rig({ cli: true });
   claude.summaries.summarize = m.summarize;
   assert.equal(claude.summaries.summarizerOf('th_t'), m.summarize);
   claude.summaries.summarize = undefined;
-  assert.equal(typeof claude.summaries.summarizerOf('th_t'), 'function', 'Haiku, through the Agent SDK');
-  assert.equal(rig({ sdk: false }).summaries.summarizerOf('th_t'), null, 'no Agent SDK here');
-  assert.equal(rig({ backend: 'codex', sdk: true }).summaries.summarizerOf('th_t'), null, 'no agent on Claude');
+  assert.equal(typeof claude.summaries.summarizerOf('th_t'), 'function', 'Haiku, through Claude Code’s CLI');
+  assert.equal(rig({ cli: false }).summaries.summarizerOf('th_t'), null, 'no Claude Code here');
+  assert.equal(rig({ backend: 'codex', cli: true }).summaries.summarizerOf('th_t'), null, 'no agent on Claude');
 });
 
 test('settleThread waits for nothing in a conversation’s own thread, and stopTimers clears the summaries waiting', async () => {

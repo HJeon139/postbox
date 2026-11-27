@@ -115,7 +115,6 @@ before(async () => {
   const none = async () => null;
   const probes = {
     claude: async () => '2.1.308',
-    sdk: none,
     kiro: none,
     agy: none,
     codex: none,

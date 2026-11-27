@@ -1,9 +1,8 @@
-// What a run spent on Claude Code and the Agent SDK, from the results their sessions report: the two backends that
-// report dollars, the Agent SDK in the same result events, recorded in streams/sdk/ (#1674).
+// What a run spent on Claude Code, from the results its sessions report: the one backend that reports dollars.
 //
 // A result’s total_cost_usd is its Claude Code session’s running total, not the cost of that one call: a resumed
 // session continues from the total its transcript saved, so its first result already carries the earlier turns
-// (the Agent SDK’s sdk.d.ts, on total_cost_usd: “read the latest result rather than summing across results”). Every
+// (Claude Code’s published types, sdk.d.ts, on total_cost_usd: “read the latest result rather than summing across results”). Every
 // recorded run shows it: each agent session’s totals only grow, turn after turn. Agents resume their session every
 // turn, and the tester every step, so adding the totals counts every earlier turn again: the longresearch run of
 // 24 October added up to $17.64 for its agents, whose two sessions ended at $1.37 and $0.57.
@@ -43,14 +42,13 @@ export function turnCosts(streams) {
 export const agentsSpent = (streams) => turnCosts(streams).reduce((a, t) => a + t.usd, 0);
 
 /**
- * The run’s streams that report dollars: Claude Code’s and the Agent SDK’s, read as one, so a session resumed on the
- * other backend (a switch through the persona sheet) continues from its own running total.
- * @param {{ streams?: any[], sdkStreams?: any[] }} facts
+ * The run’s streams that report dollars: Claude Code’s.
+ * @param {{ streams?: any[] }} facts
  */
-export const dollarStreams = (facts) => [...(facts.streams ?? []), ...(facts.sdkStreams ?? [])];
+export const dollarStreams = (facts) => facts.streams ?? [];
 
-/** The folders those streams are recorded in, for streamResults. @param {{ streams: string, sdkStreams: string }} paths */
-export const dollarFolders = (paths) => [paths.streams, paths.sdkStreams];
+/** The folders those streams are recorded in, for streamResults. @param {{ streams: string }} paths */
+export const dollarFolders = (paths) => [paths.streams];
 
 /**
  * The tokens Codex used over a run’s turns, in and out. Codex reports no cost. Its count runs on for a thread from
@@ -73,7 +71,7 @@ export function codexTokens(streams) {
 
 /**
  * The harnesses a run had turns on that report no cost in dollars, so the agents’ cost a run states is Claude Code’s
- * and the Agent SDK’s alone: a run’s budget (--max-cost) doesn’t count their turns either.
+ * alone: a run’s budget (--max-cost) doesn’t count their turns either.
  * @param {{ codexStreams?: any[], kiroStreams?: any[], agyStreams?: any[] }} facts
  * @returns {string[]}
  */
@@ -88,7 +86,7 @@ export function uncosted(facts) {
  * A reader of the turns’ streams in `folders`, cut to their result events, for a budget that reads them every few
  * seconds: a file whose size hasn’t changed since it was last read isn’t read again. Each call returns every stream
  * in every folder, as readStreams (tools/uat/run-files.mjs) does, with only its results.
- * @param {...string} folders  the folders of the backends that report dollars: streams/ and streams/sdk/
+ * @param {...string} folders  the folders of the backends that report dollars: streams/
  * @returns {() => { handle: string, started: number|undefined, events: any[] }[]}
  */
 export function streamResults(...folders) {

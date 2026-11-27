@@ -158,7 +158,7 @@ The list refines the starting point from the data:
 Split from Memory in step 10 (“Risks”).
 - **Owns:** the short summary a model writes on a topic or side thread’s line once the thread is quiet (#228), and the timers that wait for it.
 - **Interface:** `settleThread(threadId)`, `summarizeThread(threadId, summarize)`, `summarizerOf(threadId)`, `stopTimers()`, and `summarize`, the model a test gives in place of Haiku.
-- **Depends on:** Store, Threads, Sessions, Personas, Running, and, from the inbox step, Delivery: a summary’s request is an entry Summaries sends with the source “command”, and its `turn.replied` listener posts the summary (step H of “The end of a turn”). It knows the turn that answered the request from the turn’s record of the entries it took. External: the ledger, which Work holds too, the adapter registry, for the Agent SDK, and the server’s settings (`config`), where a test shortens the wait.
+- **Depends on:** Store, Threads, Sessions, Personas, Running, and, from the inbox step, Delivery: a summary’s request is an entry Summaries sends with the source “command”, and its `turn.replied` listener posts the summary (step H of “The end of a turn”). It knows the turn that answered the request from the turn’s record of the entries it took. External: the ledger, which Work holds too, the adapter registry, for Claude Code’s CLI, and the server’s settings (`config`), where a test shortens the wait.
 
 ### Hosts
 

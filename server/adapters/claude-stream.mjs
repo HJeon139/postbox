@@ -1,5 +1,5 @@
-// Reads Claude Code’s stream-json output (claude -p --output-format stream-json --include-partial-messages), and the
-// Agent SDK’s messages, which are the same events, into the harness-event contract (server/harness-events.mjs): text,
+// Reads Claude Code’s stream-json output (claude -p --output-format stream-json --include-partial-messages)
+// into the harness-event contract (server/harness-events.mjs): text,
 // thinking, tool calls and results, background work, refusals, context use and the turn’s end. What Postbox builds
 // from them, the reply, the steps, the ledger’s calls and the ring, is built there, for every backend. Pure apart from
 // the ctx calls, so recorded streams can test it.
@@ -100,7 +100,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
   return {
     push,
     /**
-     * The subagent behind a permission prompt (#66), by the SDK’s agent id (a task id, as a refusal’s agent_id) or by
+     * The subagent behind a permission prompt (#66), by its agent id (a task id, as a refusal’s agent_id) or by
      * the call’s tool_use id. The CLI’s prompt tool sends only the call’s id (recorded:
      * tests/fixtures/claude-code/permission-subagent.jsonl), and the subagent’s tool_use streams before the prompt,
      * so the call is known by then, with the subagent that made it. Null for the agent’s own calls.
@@ -345,8 +345,8 @@ export function resultError(result) {
 
 /**
  * Whether a fork failed because Claude Code can’t find the message it was asked to start at
- * (--resume-session-at, or the SDK’s resumeSessionAt): that message is no longer on the session’s chain.
- * `also` is more text to look in, such as stderr or an error the SDK threw. A turn that succeeded never counts,
+ * (--resume-session-at): that message is no longer on the session’s chain.
+ * `also` is more text to look in, such as stderr. A turn that succeeded never counts,
  * whatever stderr says: its reply stands.
  */
 export function forkPointMissing(result, also = '') {

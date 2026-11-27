@@ -1,7 +1,7 @@
 // #1161: Claude Code’s init lists each MCP server with a status. When Postbox’s own server failed, as in the init
 // recorded on a host (fixtures/claude-code/host-mcp-init.jsonl), the turn ran with no Postbox tools and no one was
 // told. The person now sees a failed step, and the agent hears of it at its next turn, once. The status is read from
-// the init alone, so a local run and a host run are alike; the Agent SDK uses the same mapper.
+// the init alone, so a local run and a host run are alike.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

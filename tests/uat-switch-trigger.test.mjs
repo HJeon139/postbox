@@ -20,12 +20,11 @@ import { tempDir } from './temp-dirs.mjs';
 /** Each backend’s folder under a run’s streams/, its facts key, and a recorded turn of it. */
 const BACKENDS = {
   'claude-code': ['', 'streams', 'claude-code/block.jsonl'],
-  'agent-sdk': ['sdk', 'sdkStreams', 'claude-code/block.jsonl'],
   codex: ['codex', 'codexStreams', 'codex-app-server/ask-mcp-allow.jsonl'],
   'kiro-cli': ['kiro', 'kiroStreams', 'kiro-cli/auto-shell.jsonl'],
   'antigravity-cli': ['agy', 'agyStreams', 'antigravity-cli/first.jsonl'],
 };
-const NAMES = { 'claude-code': 'Claude Code', 'agent-sdk': 'Agent SDK', codex: 'Codex', 'kiro-cli': 'Kiro CLI', 'antigravity-cli': 'Antigravity CLI' };
+const NAMES = { 'claude-code': 'Claude Code', codex: 'Codex', 'kiro-cli': 'Kiro CLI', 'antigravity-cli': 'Antigravity CLI' };
 const fixture = (name) =>
   readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')
     .split('\n')
@@ -83,45 +82,45 @@ function room() {
 
 const fired = (id, f) => TRIGGERS[id].run(f);
 
-test('ran-sdk-sonnet-low fires when the turn after the switch is in streams/sdk and reports Sonnet at low effort', async () => {
+test('ran-cc-sonnet-low fires when the turn after the switch is in streams/ and reports Sonnet at low effort', async () => {
   const r = room();
   await r.turn('claude-code', { model: 'claude-opus-5-5', effort: 'medium' });
-  await r.save('agent-sdk', 'claude-sonnet-5-5', 'low');
-  await r.turn('agent-sdk', { model: 'claude-sonnet-5-5', effort: 'low' });
-  const [hit, ...rest] = fired('ran-sdk-sonnet-low', r.facts());
+  await r.save('claude-code', 'claude-sonnet-5-5', 'low');
+  await r.turn('claude-code', { model: 'claude-sonnet-5-5', effort: 'low' });
+  const [hit, ...rest] = fired('ran-cc-sonnet-low', r.facts());
   assert.deepEqual(rest, []);
   assert.equal(
     hit.evidence,
-    '@alpha saved agent-sdk · claude-sonnet-5-5 · low; its next turn is in streams/sdk/, which reported claude-sonnet-5-5 at low effort.',
+    '@alpha saved claude-code · claude-sonnet-5-5 · low; its next turn is in streams/, which reported claude-sonnet-5-5 at low effort.',
   );
 });
 
-test('ran-sdk-sonnet-low doesn’t fire when Claude Code recorded the turn after a switch to the Agent SDK', async () => {
+test('ran-cc-sonnet-low doesn’t fire when Kiro recorded the turn after a switch to Claude Code', async () => {
   const r = room();
-  await r.save('agent-sdk', 'claude-sonnet-5-5', 'low');
-  await r.turn('claude-code', { model: 'claude-sonnet-5-5', effort: 'low' });
-  assert.deepEqual(fired('ran-sdk-sonnet-low', r.facts()), []);
+  await r.save('claude-code', 'claude-sonnet-5-5', 'low');
+  await r.turn('kiro-cli', { model: 'claude-sonnet-5-5', effort: 'low' });
+  assert.deepEqual(fired('ran-cc-sonnet-low', r.facts()), []);
 });
 
-test('ran-sdk-sonnet-low doesn’t fire when the backend reported another model, or another effort', async () => {
+test('ran-cc-sonnet-low doesn’t fire when the backend reported another model, or another effort', async () => {
   const r = room();
-  await r.save('agent-sdk', 'claude-sonnet-5-5', 'low');
-  await r.turn('agent-sdk', { model: 'claude-opus-5-5', effort: 'low' });
-  assert.deepEqual(fired('ran-sdk-sonnet-low', r.facts()), [], 'Opus answered');
+  await r.save('claude-code', 'claude-sonnet-5-5', 'low');
+  await r.turn('claude-code', { model: 'claude-opus-5-5', effort: 'low' });
+  assert.deepEqual(fired('ran-cc-sonnet-low', r.facts()), [], 'Opus answered');
   const s = room();
-  await s.save('agent-sdk', 'claude-sonnet-5-5', 'low');
-  await s.turn('agent-sdk', { model: 'claude-sonnet-5-5', effort: 'medium' });
-  assert.deepEqual(fired('ran-sdk-sonnet-low', s.facts()), [], 'it ran at medium');
+  await s.save('claude-code', 'claude-sonnet-5-5', 'low');
+  await s.turn('claude-code', { model: 'claude-sonnet-5-5', effort: 'medium' });
+  assert.deepEqual(fired('ran-cc-sonnet-low', s.facts()), [], 'it ran at medium');
 });
 
 test('a turn counts only for the switch before it: one before the switch, or after the next switch, doesn’t', async () => {
   const r = room();
-  await r.turn('agent-sdk', { model: 'claude-sonnet-5-5', effort: 'low' });
-  await r.save('agent-sdk', 'claude-sonnet-5-5', 'low');
+  await r.turn('kiro-cli', null);
+  await r.save('kiro-cli', 'auto', 'high');
   await r.save('claude-code', 'claude-haiku-5-5', 'high');
-  await r.turn('agent-sdk', { model: 'claude-sonnet-5-5', effort: 'low' });
-  assert.deepEqual(fired('ran-sdk-sonnet-low', r.facts()), [], 'no turn came between the switch and the next one');
-  assert.deepEqual(fired('ran-cc-haiku-high', r.facts()), [], 'the turn after the Claude Code switch ran on the SDK');
+  await r.turn('kiro-cli', null);
+  assert.deepEqual(fired('ran-kiro-auto-high', r.facts()), [], 'no turn came between the switch and the next one');
+  assert.deepEqual(fired('ran-cc-haiku-high', r.facts()), [], 'the turn after the Claude Code switch ran on Kiro');
 });
 
 test('ran-kiro-auto-high fires on the backend alone, since Kiro reports no model on its router', async () => {
@@ -180,15 +179,15 @@ test('shown-kiro-auto-high doesn’t fire while the row still names the model of
   assert.equal(fired('shown-kiro-auto-high', r.facts()).length, 1);
 });
 
-test('shown-sdk-sonnet-low waits for a turn after the switch, and reads the row only for the agent’s latest switch', async () => {
+test('shown-cc-sonnet-low waits for a turn after the switch, and reads the row only for the agent’s latest switch', async () => {
   const r = room();
-  await r.save('agent-sdk', 'claude-sonnet-5-5', 'low');
+  await r.save('claude-code', 'claude-sonnet-5-5', 'low');
   r.row('alpha · idle Sonnet 5.5 · low effort');
-  assert.deepEqual(fired('shown-sdk-sonnet-low', r.facts()), [], 'no turn yet');
-  await r.turn('agent-sdk', { model: 'claude-sonnet-5-5', effort: 'low' });
-  assert.equal(fired('shown-sdk-sonnet-low', r.facts()).length, 1);
+  assert.deepEqual(fired('shown-cc-sonnet-low', r.facts()), [], 'no turn yet');
+  await r.turn('claude-code', { model: 'claude-sonnet-5-5', effort: 'low' });
+  assert.equal(fired('shown-cc-sonnet-low', r.facts()).length, 1);
   await r.save('claude-code', 'claude-haiku-5-5', 'high');
-  assert.deepEqual(fired('shown-sdk-sonnet-low', r.facts()), [], 'the row now belongs to the later switch');
+  assert.deepEqual(fired('shown-cc-sonnet-low', r.facts()), [], 'the row now belongs to the later switch');
 });
 
 test('the switch scenarios name only triggers that exist', () => {
@@ -213,18 +212,18 @@ const check = (id, f) => PANEL_CHECKS.find((c) => c.id === id).run(f);
 
 test('switch-takes-effect says which backend recorded the turn after a switch, and which model it reported, when they aren’t the ones saved', async () => {
   const r = room();
-  await r.save('agent-sdk', 'claude-sonnet-5-5', 'low');
-  await r.turn('claude-code', { model: 'claude-sonnet-5-5', effort: 'low' });
+  await r.save('claude-code', 'claude-sonnet-5-5', 'low');
+  await r.turn('kiro-cli', { model: 'claude-sonnet-5-5', effort: 'low' });
   assert.deepEqual(
     check('switch-takes-effect', r.facts()).map((x) => x.evidence),
-    ['@alpha saved agent-sdk · claude-sonnet-5-5 · low; its next turn is in streams/, where Claude Code records its turns.'],
+    ['@alpha saved claude-code · claude-sonnet-5-5 · low; its next turn is in streams/kiro/, where Kiro CLI records its turns.'],
   );
   const s = room();
-  await s.save('agent-sdk', 'claude-sonnet-5-5', 'low');
-  await s.turn('agent-sdk', { model: 'claude-opus-5-5', effort: 'low' });
+  await s.save('claude-code', 'claude-sonnet-5-5', 'low');
+  await s.turn('claude-code', { model: 'claude-opus-5-5', effort: 'low' });
   assert.deepEqual(
     check('switch-takes-effect', s.facts()).map((x) => x.evidence),
-    ['@alpha saved agent-sdk · claude-sonnet-5-5 · low; its next turn reported claude-opus-5-5.'],
+    ['@alpha saved claude-code · claude-sonnet-5-5 · low; its next turn reported claude-opus-5-5.'],
   );
   const ok = room();
   await ok.save('codex', 'auto', 'high');

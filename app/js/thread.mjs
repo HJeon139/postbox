@@ -624,7 +624,6 @@ function commandBlock(it, ctx) {
 
 const BACKEND_NAMES = {
   'claude-code': 'Claude Code',
-  'agent-sdk': 'Agent SDK',
   'kiro-cli': 'Kiro CLI',
   'antigravity-cli': 'Antigravity CLI',
   codex: 'Codex',
@@ -1509,7 +1508,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   }
   /**
    * Where `!` runs, as far as the page knows: the folder of the agent that replies here, else the project’s. A Claude
-   * Code or Agent SDK agent with neither works in a workspace of its own, which the server finds (its adapter’s folderFor).
+   * Code agent with neither works in a workspace of its own, which the server finds (its adapter’s folderFor).
    */
   function commandFolder() {
     const se = target();

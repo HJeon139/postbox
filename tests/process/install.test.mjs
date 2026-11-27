@@ -6,7 +6,7 @@
 //   writes only under HOME/.postbox: not in the package, not in the folder it was started from, nowhere else in HOME.
 // It runs npm and the installed postbox, which tests/guard.mjs keeps out of the unit tests, so it’s under
 // tests/process/ (npm run test:process). Everything happens in a temp folder. The install is a project install into
-// the prefix, offline and without the optional packages (the Agent SDK and Kokoro, about 750 MB): npm ignores
+// the prefix, offline and without the optional packages (Kokoro and Playwright’s driver): npm ignores
 // --omit=optional for a global install. Its `postbox` is still npm’s link to bin/postbox.mjs, as a global install’s
 // is. Moved from tools/check-install.mjs (#303).
 

@@ -1,5 +1,5 @@
 // Postbox’s own MCP server failing to start for a turn (#1161, #1162; #489 for Kiro). The backend reports it its own
-// way: Claude Code’s and the Agent SDK’s init list the server as failed, and the turn runs with none of Postbox’s
+// way: Claude Code’s init lists the server as failed, and the turn runs with none of Postbox’s
 // tools (claude-init.mjs); Codex, for which the server is required, refuses to open the turn (codex-thread.mjs); Kiro
 // sends a display_error (kiro-display-error.mjs). Either way the person sees a failed step that says so, and the agent
 // hears of it at its next turn, once, since it had no way to tell anyone (the runtime adds toolsDownNote). The rule

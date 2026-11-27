@@ -1,8 +1,8 @@
 // The files the person attached to the message a turn delivers, which its agent may read (#1307). An upload is stored
 // in Postbox’s data folder (server/blobs.mjs), outside every agent’s folders, so reading it would need a card, which
 // Kiro can’t ask for and Claude Code’s Auto may refuse. Attaching a file is the person’s ask that the agent read it, so
-// each backend is let read exactly these files, never edit them, and nothing else in the data folder: Claude Code and
-// the Agent SDK by an allow rule each (setup.mjs’s fromContext), Kiro by an fs_read allow (kiro-cli-agent.mjs), and
+// each backend is let read exactly these files, never edit them, and nothing else in the data folder: Claude Code
+// by an allow rule each (setup.mjs’s fromContext), Kiro by an fs_read allow (kiro-cli-agent.mjs), and
 // Antigravity through its hook (agy-hook.mjs). A project file needs none: it’s in the project’s folder. A turn on a
 // host reads its copies in the host turn’s folder (remote-turn.mjs), so it gets none.
 

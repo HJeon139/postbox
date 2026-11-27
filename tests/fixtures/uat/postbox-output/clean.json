@@ -12,7 +12,7 @@
     },
     {
       "stream": "stdout",
-      "text": "Backends: mock, claude-code, agent-sdk, kiro-cli, antigravity-cli, codex (Claude Code 2.1.318) (Kiro CLI 2.34.1) (Antigravity CLI 1.5.5) (Codex 0.167.0)",
+      "text": "Backends: mock, claude-code, kiro-cli, antigravity-cli, codex (Claude Code 2.1.318) (Kiro CLI 2.34.1) (Antigravity CLI 1.5.5) (Codex 0.167.0)",
       "step": null
     }
   ],
