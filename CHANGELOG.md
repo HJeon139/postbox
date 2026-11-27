@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.5 (2026-11-27)
+
+### Fixes
+
+- **view:** label an item by its words only while it has focus
+- **view:** each drawing of an item gets an id of its own, so a redraw doesn't take focus
+- **view:** an item is an article named by its own words, made so before it's on the page
+- **view:** a card that is already a group keeps its role, and the working rows don't recount
+- **view:** each transcript item says its place, so a screen reader reaches skipped ones
+
 ## 5.4.4 (2026-11-27)
 
 ### Fixes
