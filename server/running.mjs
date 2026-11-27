@@ -28,6 +28,8 @@ export class Running {
     this.left = new Map();
     /** @type {Map<string, (() => void)[]>} sessionId → what waits for its stopped turn to exit (afterExit) */
     this.exitWaits = new Map();
+    /** Whether a shutdown stopped waiting for stopped turns to exit (releaseWaits) */
+    this.released = false;
     this.shuttingDown = false;
   }
 
@@ -124,7 +126,8 @@ export class Running {
    * @param {string} sessionId @returns {Promise<void>}
    */
   afterExit(sessionId) {
-    if (!this.exiting.has(sessionId)) return Promise.resolve();
+    // Once a shutdown stopped waiting (releaseWaits), no wait would ever settle: none is made.
+    if (!this.exiting.has(sessionId) || this.released) return Promise.resolve();
     const waits = this.exitWaits.get(sessionId) ?? [];
     this.exitWaits.set(sessionId, waits);
     return new Promise((done) => waits.push(() => done()));
@@ -132,6 +135,7 @@ export class Running {
 
   /** Settles every wait for a stopped turn’s exit: Postbox, shutting down, waits for those processes no longer. */
   releaseWaits() {
+    this.released = true;
     for (const waits of this.exitWaits.values()) for (const done of waits) done();
     this.exitWaits.clear();
   }

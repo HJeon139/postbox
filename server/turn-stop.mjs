@@ -238,8 +238,8 @@ export async function stopTurns(rt, { graceMs = 4000 } = {}) {
   });
   await Promise.race([Promise.all([...rt.exiting.values()].map((x) => x.turn.exited)), late]);
   clearTimeout(timer);
-  // A deleted agent’s memory waits for its stopped turn to exit (#1797). Postbox waits no longer: it’s forgotten now,
-  // as a turn that never exits would otherwise keep it on disk for good.
+  // A deleted agent’s memory waits for its stopped turn to exit (#1797). Postbox waits no longer, so its forget starts
+  // now, unawaited: a turn that never exits would otherwise keep that memory on disk for good.
   rt.running.releaseWaits();
   // Last: a stopped turn’s end may have queued an archive pass, whose file mustn’t land after the store closes (#305).
   await rt.work.stopArchive();

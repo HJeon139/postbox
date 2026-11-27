@@ -68,3 +68,13 @@ test('#1797 a shutdown that stops waiting for a deleted agent’s turn forgets i
   await forgotten;
   assert.deepEqual(forgot, [p.id], 'forgotten once Postbox stopped waiting');
 });
+
+test('#1797 a persona deleted once a shutdown stopped waiting is forgotten at once', async () => {
+  const a = await slowExit();
+  await a.rt.stopTurns({ graceMs: 1 });
+  // Its turn was stopped by the shutdown and never exits; the delete comes after the shutdown stopped waiting.
+  const { forgotten } = a.rt.deletePersona(a.p.id);
+  await untilTurns(() => a.forgot.length > 0, 'it to be forgotten');
+  await forgotten;
+  assert.deepEqual(a.forgot, [a.p.id]);
+});
