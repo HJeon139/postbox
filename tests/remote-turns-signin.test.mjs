@@ -185,3 +185,62 @@ test('#1608: each harness’s notice names its own login command', async () => {
     assert.ok(notes[0][3].includes(`Run “${command}” on ${HOST}`), `${backend}: ${notes[0][3]}`);
   }
 });
+
+test('#1608: a turn stopped during signInCheck asks the host nothing of its sign-ins and never starts', async () => {
+  const r = rig();
+  /** @type {(v: any) => void} */
+  let answerCheck = () => {};
+  let checking = false;
+  r.hosts.signInCheck = () => {
+    checking = true;
+    return new Promise((res) => {
+      answerCheck = res;
+    });
+  };
+  let asked = 0;
+  r.hosts.signInsNow = async () => {
+    asked++;
+    return signIns([{ name: 'claude-code', state: 'signed-out' }]);
+  };
+  r.rt.sendMessage(r.t.id, { text: 'hi' });
+  await until(() => checking, 'the sign-in check');
+  r.rt.stop(r.se().id);
+  answerCheck({ ok: false, code: 1, at: 1 });
+  await settled(r);
+  await sleep(20);
+  assert.equal(asked, 0, 'no asking for a turn already stopped');
+  assert.equal(starts(r.d).length, 0);
+  assert.deepEqual(signInNotes(r), []);
+});
+
+test('#1608: a notice that throws as it’s raised is caught, not left as an unhandled rejection', async () => {
+  /** @type {unknown[]} */
+  const unhandled = [];
+  const onUnhandled = (/** @type {unknown} */ e) => unhandled.push(e);
+  process.on('unhandledRejection', onUnhandled);
+  const errors = [];
+  const { error } = console;
+  console.error = (/** @type {unknown[]} */ ...a) => errors.push(a.join(' '));
+  try {
+    const rts = /** @type {any} */ ({
+      hosts: { signInCheck: async () => null, signInsNow: async () => signIns([{ name: 'codex', state: 'signed-out' }]) },
+      rt: {
+        threads: {
+          notify: () => {
+            throw new Error('the store refused it');
+          },
+        },
+      },
+      now: () => 0,
+    });
+    const ctx = { signal: new AbortController().signal, persona: { backend: 'codex' } };
+    await warnSignIn(rts, { remote: { hostId: 'ho-throws' }, threadId: 'th' }, ctx, { handle: 'coder' }, { name: HOST });
+    await until(() => errors.length > 0, 'the failure said');
+    await sleep(10);
+    assert.match(errors[0], /the store refused it/);
+    assert.deepEqual(unhandled, []);
+  } finally {
+    console.error = error;
+    process.off('unhandledRejection', onUnhandled);
+  }
+});
