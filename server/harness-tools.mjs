@@ -209,12 +209,16 @@ export class HarnessTools {
     return [...this.st.tools].filter(([, t]) => t.async && !t.done).map(([id]) => id);
   }
 
-  /** The agent’s step while background jobs or subagents run on after its reply. @param {string[]} jobs @param {string[]} agents */
+  /**
+   * The agent’s step while background jobs or subagents run on after its reply. Its state stays “tool”, so delivery
+   * waits as it did; `background` lets its ring say it waits on background work rather than calls tools (#189).
+   * @param {string[]} jobs @param {string[]} agents
+   */
   waiting(jobs, agents) {
     const n = jobs.length || agents.length;
     if (!n) return;
     const what = jobs.length ? 'background job' : 'background subagent';
-    this.status({ state: 'tool', currentStep: n === 1 ? `Waiting for a ${what}` : `Waiting for ${n} ${what}s` });
+    this.status({ state: 'tool', background: true, currentStep: n === 1 ? `Waiting for a ${what}` : `Waiting for ${n} ${what}s` });
   }
 }
 
