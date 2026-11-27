@@ -151,8 +151,9 @@ test('#1709 a repository nested in the worktree isn’t committed, and runs noth
 
 /**
  * A worktree with a repository in an ignored folder, whose own config names a program for a file that has changed, and a
- * commit that puts it in the index as the turn-end commit runs, as a process the agent left running could:
- * before its status (when: 'status') or between its status and its add (when: 'add').
+ * commit that tries to put it in the worktree’s index as the turn-end commit runs, as a process the agent left running
+ * could: before its status (when: 'status') or between its status and its add (when: 'add'). git refuses it while
+ * Postbox holds the index’s lock (#1844); either way, `tries` counts that the process ran.
  * @param {string} name @param {'status'|'add'} when
  */
 async function slippedIn(name, when) {
@@ -169,24 +170,33 @@ async function slippedIn(name, when) {
   const marker = join(home, name, 'ran');
   writeFileSync(join(sub, '.git', 'config'), `${readFileSync(join(sub, '.git', 'config'), 'utf8')}[filter "x"]\n\tclean = "touch ${marker}; cat"\n`);
   writeFileSync(join(sub, 'f'), 'two\n');
-  const slip = () => git(w.dir, ['update-index', '--add', '--cacheinfo', `160000,${git(sub, ['rev-parse', 'HEAD']).trim()},sub`]);
+  const sha = git(sub, ['rev-parse', 'HEAD']).trim();
+  let tries = 0;
+  const slip = () => {
+    tries++;
+    try {
+      git(w.dir, ['update-index', '--add', '--cacheinfo', `160000,${sha},sub`]);
+    } catch {
+      // Refused on Postbox’s lock on the index: the process still ran, which is what the test needs.
+    }
+  };
   let statuses = 0;
-  const gitThen = async (/** @type {string} */ cwd, /** @type {string[]} */ args) => {
+  const gitThen = async (/** @type {string} */ cwd, /** @type {string[]} */ args, /** @type {{ index?: string }} */ o = {}) => {
     if (args.includes('status') && when === 'status') slip();
-    const out = await runGit(cwd, args, gitTimeoutFor(args));
+    const out = await runGit(cwd, args, { ...gitTimeoutFor(args), ...o });
     if (args.includes('status') && when === 'add' && statuses++ === 0) slip();
     return out;
   };
-  const made = await commitTurn(w.dir, agent, w.p, w.workRoot, { git: gitThen, log: (l) => w.logs.push(l) });
-  return { made, ran: existsSync(marker), logs: w.logs };
+  await commitTurn(w.dir, agent, w.p, w.workRoot, { git: gitThen, log: (l) => w.logs.push(l) });
+  return { tries, ran: existsSync(marker), branch: git(w.p.folder, ['ls-tree', '-r', `postbox/pr_${name}-gem-pe_a`]) };
 }
 
 test('#1709 a nested repository that reaches the index after the check runs nothing its own config names', async () => {
   for (const when of /** @type {const} */ (['status', 'add'])) {
     const r = await slippedIn(`slipped-${when}`, when);
+    assert.ok(r.tries > 0, `the process tried to stage the nested repository before the ${when}`);
     assert.equal(r.ran, false, `the nested repository’s filter didn’t run when it slipped in before the ${when}`);
-    assert.equal(r.made, false);
-    assert.match(r.logs.at(-1) ?? '', /holds a repository of its own/);
+    assert.doesNotMatch(r.branch, /^160000 /m, 'no nested repository on the agent’s branch');
   }
 });
 

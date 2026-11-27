@@ -6,7 +6,7 @@ import { access, mkdtemp, readdir, readFile, realpath, rm } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { runGit } from '../ledger-git.mjs';
-import { copyIndex } from './agent-index-copy.mjs';
+import { withIndexCopy } from './agent-index-copy.mjs';
 import { gitlinksAt } from './agent-submodules.mjs';
 import { branchFor, gitTimeoutFor, sharedFolder, worktreesRootFor } from './agent-worktree.mjs';
 
@@ -97,10 +97,10 @@ async function movedOn(g, named) {
 
 /**
  * Commits what’s uncommitted in one worktree, on the agent’s branch, from a copy of its index in a folder of Postbox’s
- * own outside the agent’s folders (#1844). A process the agent left running can still stage in the worktree’s own
- * index while the commit runs, and a gitlink it staged there would have the commit’s add start git inside that
- * repository; nothing it stages reaches the copy. Once committed, the worktree’s own index is set to the new commit,
- * by read-tree, which reads no file in the worktree, or the agent would see what was committed as staged to undo.
+ * own outside the agent’s folders, under git’s lock on the worktree’s own index (agent-index-copy.mjs, #1844). A
+ * process the agent left running can’t stage in the worktree’s index while the lock is held, and a gitlink it staged
+ * before the copy is checked there like any other; nothing reaches the copy but what was in the index when the lock
+ * was taken. Once committed, the copy, which the commit left matching the new commit, becomes the worktree’s index.
  * Returns whether it committed, or why it didn’t when that’s worth the log.
  * @param {Git} git @param {Place} place @param {Turn} turn
  * @returns {Promise<{ committed: boolean } | { why: string }>}
@@ -109,13 +109,7 @@ async function commitIn(git, place, turn) {
   const dir = await mkdtemp(join(tmpdir(), 'postbox-commit-')).catch(() => null);
   if (!dir) return { why: 'Postbox couldn’t make a folder for its copy of the index' };
   try {
-    const index = join(dir, 'index');
-    if (!(await copyIndex(join(place.admin, 'index'), index))) return { why: 'its index isn’t a file Postbox can copy' };
-    const done = await commitFrom(git, place, index, turn);
-    // --reset keeps what git knew of each file that already matches the commit, so the next status doesn’t read every
-    // file again, whatever else the worktree’s index held.
-    if ('committed' in done && done.committed) await pin(git, place)(['read-tree', '--reset', 'HEAD']);
-    return done;
+    return await withIndexCopy(place.admin, dir, (index) => commitFrom(git, place, index, turn));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -140,7 +134,8 @@ async function commitFrom(git, place, index, { branch, handle, theirs, subs = ne
   if (changed.code !== 0) return { committed: false };
   // Adding a gitlink starts git inside it too, and add takes no such flag, so the copy of the index is read just
   // before: every gitlink in it is kept out of the add, and one that’s neither a submodule Postbox put there nor one
-  // of the project’s own is refused. Nothing staged in the worktree’s own index after the copy reaches it (#1844).
+  // of the project’s own is refused. Nothing written to the worktree’s own index after the copy reaches it, and git
+  // refuses to write it at all while Postbox holds its lock (#1844).
   const links = await gitlinks(g);
   const turned = (links ?? []).filter((l) => subs.get(l.path) && subs.get(l.path) !== l.sha);
   if (entries.length === 0 && turned.length === 0) return { committed: false };

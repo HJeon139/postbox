@@ -1,7 +1,7 @@
 // #1844: the commit at the end of an Antigravity turn (#1709) is built from a copy of the worktree’s index that Postbox
-// keeps outside the agent’s folders, so what a process the agent left running stages in the worktree while the
-// commit runs doesn’t reach it. Against real git, in the shared temp home, with git’s runner wrapped to act at a
-// chosen command as such a process could.
+// keeps outside the agent’s folders, under git’s lock on that index, so what a process the agent left running stages
+// in the worktree while the commit runs is refused, and doesn’t reach it. Against real git, in the shared temp home,
+// with git’s runner wrapped to act at a chosen command as such a process could.
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -16,6 +16,18 @@ import { git, home, project } from './agent-worktree-fixture.mjs';
 
 const agent = { id: 'pe_a', handle: 'gem' };
 const branch = (/** @type {string} */ name) => `postbox/pr_${name}-gem-pe_a`;
+
+/**
+ * Stages as a process the agent left running would, while Postbox commits. git refuses it while Postbox holds the
+ * index’s lock (`index.lock`: File exists), and either way the process ran. @param {() => unknown} stage
+ */
+const tryStage = (stage) => {
+  try {
+    stage();
+  } catch {
+    // Refused on Postbox’s lock: the attempt is what the test needs, not that git took it.
+  }
+};
 
 /**
  * An agent’s worktree with a file it wrote, and git’s runner wrapped: `at(args)` runs before each command Postbox
@@ -65,12 +77,12 @@ test('#1844 a gitlink staged in the worktree as the commit’s add runs runs not
   let slipped = false;
   const w = await turn('staged-at-add', (args) => {
     if (!args.includes('add') || slipped) return;
-    slip();
+    tryStage(slip);
     slipped = true;
   });
   slip = await nestedWithFilter(w.dir, marker);
   assert.equal(await w.commit(), true, w.logs.join('\n'));
-  assert.equal(slipped, true, 'the gitlink was staged as the add ran');
+  assert.equal(slipped, true, 'the gitlink was staged, or refused on Postbox’s lock, as the add ran');
   assert.equal(existsSync(marker), false, 'the nested repository’s filter didn’t run');
   const files = git(w.p.folder, ['ls-tree', '-r', branch('staged-at-add')]);
   assert.doesNotMatch(files, /^160000 /m, 'no nested repository on the agent’s branch');
@@ -130,11 +142,11 @@ test('#1844 every step of the commit reads Postbox’s copy, not what’s staged
     // A conflict and a gitlink in the worktree’s own index, which neither the status nor the gitlink check may see.
     const blob = git(dir, ['rev-parse', 'HEAD:README.md']).trim();
     const unmerged = [1, 2, 3].map((n) => `100644 ${blob} ${n}\tREADME.md\n`).join('');
-    execFileSync('git', ['update-index', '--index-info'], { cwd: dir, input: `0 ${'0'.repeat(40)}\tREADME.md\n${unmerged}` });
-    git(dir, ['update-index', '--add', '--cacheinfo', `160000,${git(dir, ['rev-parse', 'HEAD']).trim()},ghost`]);
+    tryStage(() => execFileSync('git', ['update-index', '--index-info'], { cwd: dir, input: `0 ${'0'.repeat(40)}\tREADME.md\n${unmerged}`, stdio: 'pipe' }));
+    tryStage(() => git(dir, ['update-index', '--add', '--cacheinfo', `160000,${git(dir, ['rev-parse', 'HEAD']).trim()},ghost`]));
   });
   assert.equal(await w.commit(), true, w.logs.join('\n'));
-  assert.equal(staged, true, 'the worktree’s index changed as the status ran');
+  assert.equal(staged, true, 'the worktree’s index was staged in, or refused on Postbox’s lock, as the status ran');
   assert.equal(git(w.dir, ['show', 'HEAD:agent.txt']), 'the agent’s work\n');
   assert.doesNotMatch(git(w.p.folder, ['ls-tree', '-r', branch('staged-at-status')]), /^160000 /m, 'no gitlink on the agent’s branch');
 });
