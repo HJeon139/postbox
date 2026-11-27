@@ -21,8 +21,12 @@ const RECORDED = readFileSync(new URL('fixtures/codex-app-server/compact.jsonl',
   .split('\n')
   .map((l) => JSON.parse(l));
 
-/** An app-server that answers as the recording did: the thread it opened, and the compaction turn after its answer. */
-function recordedServer(/** @type {any[]} */ seen) {
+/**
+ * An app-server that answers as the recording did: the thread it opened, and the compaction turn after its answer.
+ * `compact`, when given, answers thread/compact/start instead, for a compaction that fails.
+ * @param {any[]} seen @param {{ compact?: (req: any, write: (m: any) => void) => void }} [opts]
+ */
+function recordedServer(seen, { compact } = {}) {
   const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
   child.kill = () => child.emit('close', 0);
   const answerAt = RECORDED.findIndex((l) => l.id === 4); // thread/compact/start’s answer
@@ -36,6 +40,10 @@ function recordedServer(/** @type {any[]} */ seen) {
       .map((l) => JSON.parse(l))) {
       seen.push(req);
       if (req.id === undefined) continue;
+      if (compact && req.method === 'thread/compact/start') {
+        compact(req, write);
+        continue;
+      }
       const recorded = RECORDED.find((l) => l.id === answer[req.method]);
       const prompt = req.method === 'turn/start' ? { id: req.id, result: { turn: { id: 'turn-prompt', status: 'inProgress' } } } : null;
       write(recorded ? { ...recorded, id: req.id } : (prompt ?? { id: req.id, result: { data: [], nextCursor: null } }));
@@ -111,6 +119,39 @@ test('#425 a /compact that still reaches a Codex turn with no conversation fails
   const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => recordedServer(requests) });
   await assert.rejects(adapter.deliver({}, { kind: 'user', text: '/compact', slash: true }, context({}).ctx), /nothing to compact yet/);
   assert.ok(!requests.some((r) => ['thread/start', 'thread/compact/start', 'turn/start'].includes(r.method)), 'no thread opened and no prompt sent');
+});
+
+// The failures’ shapes are Codex 0.167.0’s (`codex app-server generate-json-schema`): a JSON-RPC error answer; and an
+// ErrorNotification { error: TurnError, willRetry, threadId, turnId } followed by a TurnCompletedNotification whose
+// turn has status "failed".
+test('#425 a /compact Codex refuses fails with Codex’s reason, and shows no compaction', async () => {
+  const requests = /** @type {any[]} */ ([]);
+  const refuse = (/** @type {any} */ req, /** @type {any} */ write) => write({ id: req.id, error: { code: -32600, message: 'thread thr-1 is busy' } });
+  const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => recordedServer(requests, { compact: refuse }) });
+  const { ctx, seen } = context();
+  await assert.rejects(adapter.deliver({}, { kind: 'user', text: '/compact', slash: true }, ctx), /thread thr-1 is busy/);
+  assert.equal(seen.compactions.length, 0, 'nothing was compacted, so none is shown');
+  assert.ok(!requests.some((r) => r.method === 'turn/start'), 'no prompt goes to the model instead');
+});
+
+test('#425 a Codex compaction turn that fails before its item completes shows no compaction', async () => {
+  const requests = /** @type {any[]} */ ([]);
+  const failTurn = (/** @type {any} */ req, /** @type {any} */ write) => {
+    write({ id: req.id, result: {} });
+    const turn = { id: 'id-3', status: 'inProgress', error: null };
+    setImmediate(() => {
+      write({ method: 'turn/started', params: { threadId: 'thr-1', turn } });
+      write({ method: 'item/started', params: { item: { type: 'contextCompaction', id: 'id-4' }, threadId: 'thr-1', turnId: 'id-3' } });
+      const error = { message: 'the summary request was rejected' };
+      write({ method: 'error', params: { error, willRetry: false, threadId: 'thr-1', turnId: 'id-3' } });
+      write({ method: 'turn/completed', params: { threadId: 'thr-1', turn: { ...turn, status: 'failed', error } } });
+    });
+  };
+  const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => recordedServer(requests, { compact: failTurn }) });
+  const { ctx, seen } = context();
+  await assert.rejects(adapter.deliver({}, { kind: 'user', text: '/compact', slash: true }, ctx), /the summary request was rejected/);
+  assert.equal(seen.compactions.length, 0, 'a compaction shows only once Codex completes its item');
+  assert.ok(seen.steps.includes('Summarizing the conversation'), 'its step showed while it ran');
 });
 
 test('#425 /compact for a Codex agent with no conversation yet is refused before anything is posted or started', () => {
