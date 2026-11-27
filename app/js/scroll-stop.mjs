@@ -5,13 +5,13 @@
 const boxes = new ResizeObserver((entries) => {
   for (const { target } of entries) {
     const box = /** @type {HTMLElement} */ (target);
-    if (box.isConnected) fit(box);
+    if (box.isConnected) fitStop(box);
     else boxes.unobserve(box);
   }
 });
 
-/** Sets the box’s tab stop by whether it scrolls now. @param {HTMLElement} box */
-function fit(box) {
+/** Sets a box’s tab stop by whether it scrolls now: the one decision, here and for a dialog’s body (ui.mjs). @param {HTMLElement} box */
+export function fitStop(box) {
   if (box.scrollHeight > box.clientHeight || box.scrollWidth > box.clientWidth) box.setAttribute('tabindex', '0');
   else box.removeAttribute('tabindex');
 }
