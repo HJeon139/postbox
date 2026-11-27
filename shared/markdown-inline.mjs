@@ -234,7 +234,8 @@ function textRun(raw, ctx) {
             p.startsWith('<')
               ? p
               : p.replace(ctx.glossaryRe.re, (m) => {
-                  const key = ctx.glossaryRe.keys.get(m.toLowerCase());
+                  const key = ctx.glossaryRe.keyOf(m);
+                  if (!key) return m;
                   return `<span class="term" tabindex="0" data-term="${escapeHtml(key)}">${m}</span>`;
                 }),
           )
