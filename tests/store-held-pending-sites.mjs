@@ -71,6 +71,9 @@ export const PENDING = {
     'settleScheduledWake',
     'cancelWakeSchedule',
     'noteScheduledTurn',
+    // retryHostWake: the session’s host turn and the wake that names it, either maybe written behind a held commit (#466)
+    'retryHostWake',
+    'retryHostWake',
     'dropSchedulesOf',
     'dropScheduledWake',
   ],

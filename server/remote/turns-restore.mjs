@@ -4,6 +4,7 @@
 // the host give up on what waits to attach or to resume.
 
 import { clockStopConfirmed } from '../run-clock.mjs';
+import { retryHostWake } from '../scheduled-wakes.mjs';
 import { needHost, releaseHost } from './turns-need.mjs';
 import { openCards } from './turns-prompt-cards.mjs';
 import { endCard } from './turns-prompts.mjs';
@@ -34,6 +35,8 @@ export function restore(rts) {
     if (r.state === 'stopping' && !rts.stopping.has(r.turn)) updateRemote(rts, se.id, { state: 'done', at: rts.now() });
     if (ON_HOST.has(r.state)) {
       if (!rts.hosts || !rts.rt.s.hosts?.[r.hostId]) {
+        // A wake’s own turn there is lost to a host Postbox can’t reach, so the wake retries as from a network failure (#466).
+        retryHostWake(rts.rt, se.id);
         interrupted(rts, se.id, 'Postbox can’t reach that host any more');
         continue;
       }
@@ -94,6 +97,8 @@ export function cancel(rts, sessionId) {
   const onHost = pending || ON_HOST.has(r.state);
   if (!onHost && !r.resume) return false;
   if (onHost) {
+    // A wake left to this turn isn’t left running with nothing to settle it: it retries, as at a restart (#466).
+    retryHostWake(rts.rt, sessionId);
     for (const card of openCards(rts, r.turn)) {
       rts.endedPrompts.add(key(r.turn, card.it.remote.prompt));
       endCard(rts, card, 'expired', '', rts.now());

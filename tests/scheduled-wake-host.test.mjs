@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { fireScheduledWake, rearmWakes } from '../server/scheduled-wakes.mjs';
+import { fireScheduledWake, rearmWakes, retryHostWake } from '../server/scheduled-wakes.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
 import { createFakeDaemon } from './fake-daemon.mjs';
@@ -46,16 +46,33 @@ test('#466 a scheduled wake whose own turn still runs on a host at a restart is 
   assert.equal(first.store.state.schedules[sc.id].turnId, first.se().remoteTurn.rtTurn, 'the schedule names its own turn');
   const r = restart(first);
   assert.equal(r.rt.timers.has(sc.id), false, 'no second turn is armed');
-  assert.equal(r.store.state.schedules[sc.id], undefined);
+  // Kept running for the turn attached again, which settles it (tests/scheduled-wake-host-restart.test.mjs).
+  assert.equal(r.store.state.schedules[sc.id]?.running, true);
+  assert.notEqual(r.store.item(sc.threadId, sc.itemId).status, 'done');
 });
 
 for (const state of ['waiting', 'lost'])
   test(`#466 a scheduled wake whose own host turn is ${state} at a restart is left to that host turn, not started again`, () => {
     const f = setup();
     const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the host.' });
+    // Fired: a running wake has no timer.
+    arrange.cancelScheduledTimer(f.rt, sc.id);
     f.store.emit('schedule', { ...f.store.state.schedules[sc.id], running: true, turnId: 'turn_wake' });
     arrange.setSession(f.rt, f.alpha.id, { remoteTurn: { state, turn: 'host-turn-1', rtTurn: 'turn_wake' } });
     rearmWakes(f.rt);
     assert.equal(f.rt.timers.has(sc.id), false, 'no second turn is armed');
-    assert.equal(f.store.state.schedules[sc.id], undefined);
+    assert.equal(f.store.state.schedules[sc.id]?.running, true, 'kept running for the turn attached again');
+    assert.notEqual(f.store.item(sc.threadId, sc.itemId).status, 'done');
   });
+
+test('#466 a host turn that names no runtime turn isn’t taken for a wake’s own, so its wake isn’t retried for it', () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the host.' });
+  // Fired and queued: running, with no turn of its own yet.
+  arrange.cancelScheduledTimer(f.rt, sc.id);
+  f.store.emit('schedule', { ...f.store.state.schedules[sc.id], running: true });
+  arrange.setSession(f.rt, f.alpha.id, { remoteTurn: { state: 'waiting', turn: 'host-turn-1' } });
+  retryHostWake(f.rt, f.alpha.id);
+  assert.equal(f.store.state.schedules[sc.id].attempt, undefined);
+  assert.equal(f.rt.timers.has(sc.id), false);
+});

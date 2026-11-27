@@ -192,6 +192,8 @@ function attachTo(rts, live, se, turn, attach, remote) {
   if (rts.restoring.delete(attach)) releaseHost(rts, live.hostId);
   rts.noteAttach(se.id);
   updateRemote(rts, se.id, { state: 'running', rtTurn: turn.id, at: rts.now() });
+  // The wake it continues names it as its own now, so a second restart leaves the wake to it too (rearmWakes, #466).
+  noteScheduledTurn(rts.rt, turn);
   // Before the prompts that came meanwhile: a card shown before the restart still holds its call.
   claimShown(rts, live, attach);
   for (const m of rts.early.get(attach) ?? []) rts.onHostMessage(live.hostId, m);
