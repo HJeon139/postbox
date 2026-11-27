@@ -294,7 +294,7 @@ const HANDLERS = {
     await a.say(
       m.kind === 'agent'
         ? `Thanks ${String(m.from).replace('@', '')}. I’ve noted that.`
-        : 'I’m a new agent running on the mock backend, so my replies are scripted. To use a real model, pick Claude Code or the Agent SDK for an agent in the new-agent sheet.',
+        : 'I’m a new agent running on the mock backend, so my replies are scripted. To use a real model, pick a backend such as Claude Code for an agent in the new-agent sheet.',
     );
   },
 };

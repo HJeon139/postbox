@@ -14,7 +14,7 @@ export { rememberWork, workRemembered } from './work-memory.mjs';
 // Routes: #/ (home: the conversation you were last in, #320), #/t/<threadId>, and #/t/<threadId>/side/<sideThreadId> with a thread in the right pane.
 // After either, what else the pane shows (#132): ?work opens the conversation’s Work, turn=<turnId> scrolls it to a
 // turn, full=work or full=thread shows that view full screen (Work on that turn alone, with turn), and at=<id> opens
-// one item in full-screen Work. The Work page #138 had, #/t/<threadId>/work or /work/<turnId>, is read as oldWork,
+// one item in full-screen Work. m=<itemId> goes to one message in the thread the path names (#168). The Work page #138 had, #/t/<threadId>/work or /work/<turnId>, is read as oldWork,
 // and main.mjs sends it to the pane.
 
 export function route() {
@@ -34,6 +34,8 @@ export function route() {
       turn: q.get('turn') || m[4] || null,
       full,
       at: q.get('at') || null,
+      // A message in the thread the path names, to go to (#168).
+      item: q.get('m') || null,
       oldWork: Boolean(m[3]),
     };
   }
@@ -49,17 +51,19 @@ export function navigate(hash, { replace = false } = {}) {
 
 /**
  * A conversation’s address with its right pane: a thread (side), and its Work, scrolled to a turn, either view full
- * screen (full: 'work' or 'thread'; true means Work), or full-screen Work with one item open (at).
+ * screen (full: 'work' or 'thread'; true means Work), or full-screen Work with one item open (at), and a message to go
+ * to in the thread (item, m=, #168).
  * @param {string} threadId
- * @param {{ side?: string|null, work?: boolean, turn?: string|null, full?: boolean|string|null, at?: string|null }} [pane]
+ * @param {{ side?: string|null, work?: boolean, turn?: string|null, full?: boolean|string|null, at?: string|null, item?: string|null }} [pane]
  */
-export function paneHref(threadId, { side = null, work = false, turn = null, full = null, at = null } = {}) {
+export function paneHref(threadId, { side = null, work = false, turn = null, full = null, at = null, item = null } = {}) {
   const f = full === true ? 'work' : full || null;
   const q = [
     work || f === 'work' ? 'work' : '',
     turn ? `turn=${encodeURIComponent(turn)}` : '',
     f ? `full=${f}` : '',
     at ? `at=${encodeURIComponent(at)}` : '',
+    item ? `m=${encodeURIComponent(item)}` : '',
   ].filter(Boolean);
   return `#/t/${threadId}${side ? `/side/${side}` : ''}${q.length ? `?${q.join('&')}` : ''}`;
 }

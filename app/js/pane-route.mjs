@@ -38,6 +38,14 @@ export function canonical(r, current = null) {
   if (r.sideId) rememberSide(r.threadId, r.sideId);
   else if (here) rememberSide(r.threadId, null);
   if (r.work) rememberWork(r.threadId, true);
+  // An address to a message opens its thread beside the conversation, never one remembered, and the Work left open
+  // there, as messagePane says (#168).
+  if (r.item) {
+    // One that comes in with Work, made in a wider window, leaves it out where Work would cover the message (#197).
+    if (r.work && !besideFits()) return paneHref(r.threadId, { side: r.sideId, full: r.full === 'thread' ? r.full : null, item: r.item });
+    if (r.work || !messagePane(current ?? {}, r.threadId, r.sideId ?? null).work) return null;
+    return paneHref(r.threadId, { ...r, side: r.sideId, work: true, item: r.item });
+  }
   // In a window with no room for the pane beside the conversation, coming back opens the conversation, not a view
   // over it (#197).
   if (!besideFits()) return null;
@@ -45,4 +53,25 @@ export function canonical(r, current = null) {
   const work = r.work || workRemembered(r.threadId);
   if (side === r.sideId && work === r.work) return null;
   return paneHref(r.threadId, { side, work, turn: r.turn, full: r.full, at: r.at });
+}
+
+/**
+ * What a message’s address opens beside it (#168), from the route on screen: the one place that decides, for an address
+ * made here (goToAddress, needs-nav.mjs) and one that comes in (canonical). Work is the conversation’s, so it stays open,
+ * or opens as it was left in another conversation (#122), where the window has room for it beside the conversation: in
+ * one too narrow, it would cover the message (#197). The side is the message’s thread. In the conversation on screen,
+ * Work keeps its turn and an item open beside the thread, and a full view stays only if it’s the message’s own thread:
+ * full-screen Work, or another thread, would cover the message.
+ * @param {any} r  the route on screen @param {string} conv  the message’s conversation @param {string | null} side  its thread, if not the conversation
+ */
+export function messagePane(r, conv, side) {
+  const here = r.view === 'thread' && r.threadId === conv;
+  const work = besideFits() && (here ? !!r.work : workRemembered(conv));
+  return {
+    side,
+    work,
+    turn: here && work ? r.turn : null,
+    full: here && r.full === 'thread' && r.sideId === side ? r.full : null,
+    at: here && work && r.full !== 'work' ? r.at : null,
+  };
 }

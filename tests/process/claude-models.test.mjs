@@ -1,4 +1,4 @@
-// Listing Claude Code’s models with real processes (server/adapters/claude-models.mjs): no hook of the person’s runs,
+// Listing Claude Code’s models with real processes (server/remote/host/harness-models.mjs): no hook of the person’s runs,
 // and a CLI that traps SIGTERM doesn’t outlive its listing. The first needs Claude Code installed, and runs no model:
 // it asks the CLI with initialize alone, in a config folder of its own whose settings hold a SessionStart hook.
 
@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { claudeModels } from '../../server/adapters/claude-models.mjs';
+import { claudeModels } from '../../server/remote/host/harness-models.mjs';
 import { removeListing } from './listing-folder.mjs';
 
 const claudeHere = spawnSync('claude', ['--version'], { timeout: 20_000 }).status === 0;

@@ -12,7 +12,6 @@ import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { commandsOf, createStreamMapper } from '../server/adapters/claude-stream.mjs';
-import { listCommands } from '../server/adapters/sdk-commands.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { isLoopback, runShell } from '../server/shell.mjs';
 import { Store } from '../server/store.mjs';
@@ -335,30 +334,6 @@ test('#67: an init’s skills and commands are kept per session, without the ter
   assert.equal(se.commands.list[0].name, 'ok');
   assert.equal(se.commands.list[0].description.length, 200);
   assert.equal(se.commands.list[0].argumentHint, '<file>');
-});
-
-test('#67: the Agent SDK’s supportedCommands() adds descriptions and hints, keeps init’s skill marks, and failing is fine', async () => {
-  const init = { slash_commands: ['review', 'doctor', 'deploy'], skills: ['review'], terminal_slash_commands: ['doctor'] };
-  const got = [];
-  const ctx = { commands: (l) => got.push(l) };
-  const q = {
-    supportedCommands: async () => [
-      { name: 'review', description: 'Review a file', argumentHint: '<file>' },
-      { name: 'doctor', description: 'Terminal only', argumentHint: '' },
-      { name: 'deploy', description: 'Deploy', argumentHint: '[env]' },
-    ],
-  };
-  listCommands(q, init, ctx);
-  await sleep(5);
-  assert.deepEqual(got[0], [
-    { name: 'review', description: 'Review a file', argumentHint: '<file>', skill: true },
-    { name: 'deploy', description: 'Deploy', argumentHint: '[env]' },
-  ]);
-  // The SDK documents it for streaming input only: a refusal leaves init’s list.
-  listCommands({ supportedCommands: () => Promise.reject(new Error('Only available in streaming input mode')) }, init, ctx);
-  listCommands({}, init, ctx);
-  await sleep(5);
-  assert.equal(got.length, 1);
 });
 
 test('#67: the recorded /compact turn compacted the session (Claude Code runs it in print mode)', () => {

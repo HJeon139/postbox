@@ -1,6 +1,6 @@
 # Engineering practices
 
-What good code looks like in Postbox, what to avoid, and what enforces each rule. It covers the tools Postbox is built with: Node, Biome (in place of ESLint), TypeScript, axe, and Kokoro. It also covers Anthropic’s guidance for building on Claude Code and the Agent SDK, and Postbox’s own rules. The antipatterns come from this repo’s own bug history, with the issue that taught each one.
+What good code looks like in Postbox, what to avoid, and what enforces each rule. It covers the tools Postbox is built with: Node, Biome (in place of ESLint), TypeScript, axe, and Kokoro. It also covers Anthropic’s guidance for building on Claude Code, and Postbox’s own rules. The antipatterns come from this repo’s own bug history, with the issue that taught each one.
 
 Every change is checked against this page before review. `npm run check` enforces what a tool can, and the rest is the reviewer’s job.
 
@@ -39,7 +39,7 @@ The required checks run on each merge group of GitHub’s merge queue too (`merg
 
 **Do**
 - Use ES modules (`.mjs`), and import built-ins with the `node:` prefix.
-- Keep runtime dependencies at zero. Anything heavy is an `optionalDependency` that Postbox works without (the Agent SDK, `kokoro-js`), loaded with a dynamic `import()` inside `try`.
+- Keep runtime dependencies at zero. Anything heavy is an `optionalDependency` that Postbox works without (`kokoro-js`, `playwright-core`), loaded with a dynamic `import()` inside `try`.
 - Spawn processes with an argument array, never through a shell. Handle the child’s `error` event, and give long work an `AbortSignal` or a kill path. Stop is SIGINT, then SIGKILL.
 - Call `unref()` on timers that shouldn’t keep the process alive. A test suite that waits on a 10-second timer has a bug.
 - Write files atomically: write a temporary file, then `rename`. Never overwrite a file the person owns that you couldn’t parse.
@@ -84,15 +84,15 @@ Postbox is JavaScript, typed with JSDoc and checked by `tsc` with `checkJs` and 
 
 **Enforced by:** `npm run typecheck`.
 
-## Building on Claude Code and the Agent SDK (Anthropic)
+## Building on Claude Code (Anthropic)
 
-Postbox runs real agents through the `claude` CLI and the Claude Agent SDK. These rules follow Anthropic’s documentation for both: settings, permissions, headless mode, MCP, and subagents. They also follow its guidance on prompts and tool descriptions.
+Postbox runs Claude agents through the `claude` CLI. These rules follow Anthropic’s documentation for it: settings, permissions, headless mode, MCP, and subagents. They also follow its guidance on prompts and tool descriptions.
 
 **Do**
 - **Never handle credentials.** Agents use the person’s own Claude Code sign-in. Postbox never reads, stores or passes an API key or token.
 - **Pass everything that shapes a turn explicitly:** the permission mode, model, setting sources, allowed tools and MCP config. Anything left out is taken from the person’s own settings. Their output style once steered every agent turn (#57), and their artifact tool published work outside Postbox.
 - **Treat everything an agent or app sends as data:** text in, text out, never markup or commands. Validate it against the catalog at the MCP boundary.
-- **Record before you guess.** Stream shapes come from real turns, saved as test fixtures (`POSTBOX_CLAUDE_RECORD`) and read in the SDK’s shipped type definitions (`sdk.d.ts`). Don’t write code against a field you haven’t seen.
+- **Record before you guess.** Stream shapes come from real turns, saved as test fixtures (`POSTBOX_CLAUDE_RECORD`) and read in Claude Code’s published type definitions (`sdk.d.ts` in Anthropic’s Agent SDK package on npm, which Postbox doesn’t install). Don’t write code against a field you haven’t seen.
 - **Surface what the harness decides.** Permission prompts, refusals (`permission_denied`, `result.permission_denials`), compaction, subagent tasks and errors all reach the person (#65, #68).
 - **Write the agent guide like any good prompt:**
   - Say what to do, and when.

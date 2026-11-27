@@ -179,7 +179,7 @@ test('PUT /api/me saves the profile of whoever is asking, refuses a bad one whol
   assert.deepEqual(app.rt.s.people[me.id].profile, { name: 'Robin' });
 });
 
-test('every backend is given the note as the turn has it: one function words a turn’s input for all five, here and on a host', async () => {
+test('every backend is given the note as the turn has it: one function words a turn’s input for all four, here and on a host', async () => {
   const { formatMessage } = await import('../server/adapters/guide.mjs');
   const { readFileSync } = await import('node:fs');
   const note = `${HEAD}\n- Name: Robin\n- Also written as: robin-example (github)`;
@@ -196,10 +196,6 @@ test('every backend is given the note as the turn has it: one function words a t
   const dir = new URL('../server/adapters/', import.meta.url);
   const adapters = readdirSync(dir).filter((f) => f.endsWith('.mjs') && /\basync deliver\(/.test(readFileSync(new URL(f, dir), 'utf8')));
   const real = adapters.filter((f) => f !== 'mock.mjs');
-  assert.deepEqual(
-    real.sort(),
-    ['agent-sdk.mjs', 'antigravity-cli.mjs', 'claude-code.mjs', 'codex.mjs', 'kiro-cli.mjs'],
-    'a new adapter: check it here, and it joins the list',
-  );
+  assert.deepEqual(real.sort(), ['antigravity-cli.mjs', 'claude-code.mjs', 'codex.mjs', 'kiro-cli.mjs'], 'a new adapter: check it here, and it joins the list');
   for (const f of real) assert.match(readFileSync(new URL(f, dir), 'utf8'), /\bformatMessage\(/, `${f} words its prompt with formatMessage`);
 });

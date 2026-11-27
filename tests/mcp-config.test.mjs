@@ -4,7 +4,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { claudeArgs } from '../server/adapters/claude-code.mjs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { mcpServerList, yourMcpServers } from '../server/adapters/mcp-config.mjs';
@@ -156,7 +155,6 @@ test('the publishing deny list holds once connectors and plugin servers load, an
 });
 
 const base = { sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g' };
-const sdkBase = { cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g', abortController: new AbortController() };
 const after = (args, flag) => args[args.indexOf(flag) + 1];
 // #217: permission_prompt waits for the person’s answer, and Claude Code cut an HTTP server’s call at 60 s without
 // a per-server timeout (claude 2.1.308). 25 hours, in ms, so a card can wait a day.
@@ -170,9 +168,6 @@ test('personas that use your setup load your MCP servers next to Postbox’s; Is
     assert.deepEqual(JSON.parse(after(args, '--mcp-config')), {
       mcpServers: { postbox: { type: 'http', url: 'http://x/mcp', alwaysLoad: true, timeout: DAY_AND_AN_HOUR } },
     });
-    const o = sdkOptions({ ...sdkBase, persona });
-    assert.equal(o.strictMcpConfig, undefined);
-    assert.deepEqual(o.mcpServers, { postbox: { type: 'http', url: 'http://x/mcp', alwaysLoad: true, timeout: DAY_AND_AN_HOUR } });
   }
   const isolated = { model: 'mock', usesHostSetup: false, mcpOff: ['search'] };
   const args = claudeArgs({ ...base, persona: isolated });
@@ -180,18 +175,14 @@ test('personas that use your setup load your MCP servers next to Postbox’s; Is
   // Nothing else loads, so nothing to deny; and in Auto, Postbox adds no ask rules of its own (harness first), and
   // turns none of the person’s hooks off (#806).
   assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default' });
-  const o = sdkOptions({ ...sdkBase, persona: isolated });
-  assert.equal(o.strictMcpConfig, true);
-  assert.deepEqual(o.settings, { outputStyle: 'default' });
 });
 
-test('a permission card can wait a day: Postbox’s server is passed with a 25-hour timeout, in both backends (#217)', () => {
+test('a permission card can wait a day: Postbox’s server is passed with a 25-hour timeout (#217)', () => {
   for (const usesHostSetup of [true, false]) {
     const persona = { model: 'mock', usesHostSetup, permissionMode: 'ask' };
     const args = claudeArgs({ ...base, persona });
     assert.ok(args.includes('--permission-prompt-tool'));
     assert.equal(JSON.parse(after(args, '--mcp-config')).mcpServers.postbox.timeout, DAY_AND_AN_HOUR);
-    assert.equal(sdkOptions({ ...sdkBase, persona }).mcpServers.postbox.timeout, DAY_AND_AN_HOUR);
   }
 });
 
@@ -211,14 +202,13 @@ test('the recording behind #217: without a timeout, Claude Code cut each permiss
   assert.ok(DAY_AND_AN_HOUR > 24 * 60 * 60 * 1000, 'the timeout Postbox passes is longer than a day’s wait');
 });
 
-test('servers a persona turned off are denied by name in both backends; Postbox’s own never is', () => {
+test('servers a persona turned off are denied by name; Postbox’s own never is', () => {
   const persona = { model: 'mock', mcpOff: ['search', 'claude.ai Google Drive', 'postbox'] };
   const want = {
     outputStyle: 'default',
     deniedMcpServers: [{ serverName: 'search' }, { serverName: 'claude.ai Google Drive' }],
   };
   assert.deepEqual(JSON.parse(after(claudeArgs({ ...base, persona }), '--settings')), want);
-  assert.deepEqual(sdkOptions({ ...sdkBase, persona }).settings, want);
 });
 
 test('the stream reports the MCP servers an init lists, for the sheet’s status', () => {

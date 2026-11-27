@@ -3,12 +3,11 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { claudeModels, sdkModels } from '../server/adapters/claude-models.mjs';
+import { claudeModels } from '../server/remote/host/harness-models.mjs';
 
 // `claude -p --input-format stream-json` answering an initialize request, recorded from Claude Code 2.1.318 with
 // the account fields left out: only the models it listed.
 const ANSWER = readFileSync(new URL('./fixtures/claude-code/initialize-models.jsonl', import.meta.url), 'utf8').trim();
-const ROWS = JSON.parse(ANSWER).response.response.models;
 
 /** A fake claude that answers initialize with the recorded line, or exits without a word when answer is null. */
 function fakeClaude(answer, seen) {
@@ -66,55 +65,12 @@ test('claudeModels is empty when the CLI can’t start', async () => {
   assert.deepEqual(await claudeModels('claude', { spawnImpl: /** @type {any} */ (spawnImpl) }), []);
 });
 
-test('sdkModels reads the SDK’s supportedModels, sends no message, and closes the query', async () => {
-  const calls = { closed: false, sent: 0 };
-  /** @type {Promise<void> | undefined} */
-  let reading;
-  const sdk = {
-    query: ({ prompt }) => {
-      reading = (async () => {
-        for await (const _ of prompt) calls.sent++;
-      })();
-      return {
-        supportedModels: async () => ROWS,
-        close: () => {
-          calls.closed = true;
-        },
-      };
-    },
-  };
-  const models = await sdkModels(sdk);
-  assert.equal(models[0], 'claude-opus-5-5');
-  assert.ok(models.includes('claude-fable-5-2'));
-  assert.equal(calls.closed, true);
-  await reading; // the query’s input ends once it’s closed, so the SDK’s CLI isn’t left waiting for a message
-  assert.equal(calls.sent, 0);
-});
-
-test('sdkModels is empty when the SDK can’t list', async () => {
-  const sdk = { query: () => ({ supportedModels: async () => Promise.reject(new Error('not signed in')), close: () => {} }) };
-  assert.deepEqual(await sdkModels(sdk), []);
-});
-
 test('claudeModels turns hooks off for the listing, so none of the person’s SessionStart hooks run', async () => {
   const seen = [];
   await claudeModels('claude', { spawnImpl: /** @type {any} */ (fakeClaude(ANSWER, seen)) });
   const at = seen[0].args.indexOf('--settings');
   assert.ok(at >= 0, 'settings of its own, over the person’s');
   assert.deepEqual(JSON.parse(seen[0].args[at + 1]), { disableAllHooks: true });
-});
-
-test('sdkModels turns hooks off for the listing, so none of the person’s SessionStart hooks run (#1486)', async () => {
-  /** @type {any} */
-  let options;
-  const sdk = {
-    query: (/** @type {any} */ q) => {
-      options = q.options;
-      return { supportedModels: async () => ROWS, close: () => {} };
-    },
-  };
-  await sdkModels(sdk);
-  assert.deepEqual(options.settings, { disableAllHooks: true });
 });
 
 test('a CLI that traps SIGTERM when its listing runs out of time gets SIGKILL after the grace', async (t) => {

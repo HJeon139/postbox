@@ -19,18 +19,17 @@ import { quotaLine, releaseQuotaLine } from './composer-quota.mjs';
 import { runsIn } from './composer-runs-in.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, hintMode, placeholderFor, refusal } from './composer-to.mjs';
-import { $, ago, fill, h, icon, plural, syncList, trusted } from './dom.mjs';
+import { fill, h, icon, syncList, trusted } from './dom.mjs';
 import { draftAttachments } from './draft-attachments.mjs';
 import { appSig, drawnApp } from './drawn-app.mjs';
 import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { beyondItem } from './item-ranges.mjs';
+import { messageActions } from './message-actions.mjs';
 import { closeThread, grow, loaded, more, openThread, refresh, toFirst, toLast } from './open-threads.mjs';
-import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions } from './permissions.mjs';
-import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
 import { stoppedSaid, stoppedTag } from './reply-stop.mjs';
 import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
@@ -43,7 +42,7 @@ import { moveSpeakerLine, who } from './speaker-who.mjs';
 import { systemLine } from './system-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, markRemote, ranHere } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
-import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
+import { announceStreaming, openMenu, say, toast } from './ui.mjs';
 import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
 import { welcome } from './welcome.mjs';
@@ -322,75 +321,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   };
 }
 
-// Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
-// topic or side thread (#128): “Send to conversation”. React, under every one (#251), on the left (#378). They appear on hover and focus, and always on touch.
-function messageActions(node, it, ctx) {
-  if (!['user', 'agent', 'block', 'shared'].includes(it.kind) || it.status === 'streaming' || it.deletedAgent || (it.kind === 'block' && !it.valid)) return;
-  if (it.status === 'replaced') return;
-  const bar = h('div.msg-actions');
-  if (ctx.kind === 'thread' || ctx.kind === 'room') {
-    const topic = it.topicId && S().threads[it.topicId];
-    if (topic) {
-      const unread = topic.unread ?? 0;
-      bar.append(
-        h(
-          'a.replies',
-          { href: hrefOf(topic.id) },
-          icon('thread', 'i-sm'),
-          it.replies ? plural(it.replies, 'reply', 'replies') : 'Thread',
-          it.lastReplyAt ? h('span.dim', ` · last reply ${ago(it.lastReplyAt)}`) : null,
-          unread ? h('span.badge', { 'aria-label': `${unread} new` }, String(unread)) : null,
-        ),
-      );
-    } else
-      bar.append(
-        h(
-          'button.btn.sm.ghost.reveal',
-          {
-            type: 'button',
-            onclick: () =>
-              api(`/api/threads/${ctx.threadId}/items/${it.id}/topic`, {})
-                .then((r) => {
-                  navigate(`#/t/${ctx.threadId}/side/${r.threadId}`);
-                  // Focus goes to the thread’s composer only if the person hasn’t moved it meanwhile (#887).
-                  setTimeout(() => {
-                    if (focusUntouched(it.id)) $('#side-input')?.focus();
-                  }, 150);
-                })
-                .catch((e) => toast({ title: 'Couldn’t start a thread', text: e.message, level: 'blocking' })),
-          },
-          icon('thread', 'i-sm'),
-          'Reply in thread',
-        ),
-      );
-  } else if ((ctx.kind === 'topic' || ctx.kind === 'side') && (it.kind === 'agent' || it.kind === 'user') && it.text) {
-    bar.append(
-      it.sharedAt
-        ? h('span.small.dim', icon('check', 'i-sm'), ' Sent to the conversation')
-        : h(
-            'button.btn.sm.ghost.reveal',
-            {
-              type: 'button',
-              // Once: the button waits for its answer, and the reply then shows it was sent (#93).
-              onclick: (e) => {
-                const b = e.currentTarget;
-                b.disabled = true;
-                api(`/api/threads/${ctx.threadId}/items/${it.id}/share`, {})
-                  .then(() => toast({ title: 'Sent to the conversation', text: 'Its agents read it at the start of their next turn.' }))
-                  .catch((err) => {
-                    b.disabled = false;
-                    toast({ title: 'Couldn’t send it', text: err.message, level: 'blocking' });
-                  });
-              },
-            },
-            icon('right', 'i-sm'),
-            'Send to conversation',
-          ),
-    );
-  }
-  node.append(reactTo(bar, node, it, ctx));
-}
-
 function renderItem(it, prev, ctx) {
   const showWho = namesSpeaker(it, prev, ctx.threadId);
   switch (it.kind) {
@@ -624,7 +554,6 @@ function commandBlock(it, ctx) {
 
 const BACKEND_NAMES = {
   'claude-code': 'Claude Code',
-  'agent-sdk': 'Agent SDK',
   'kiro-cli': 'Kiro CLI',
   'antigravity-cli': 'Antigravity CLI',
   codex: 'Codex',
@@ -1509,7 +1438,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   }
   /**
    * Where `!` runs, as far as the page knows: the folder of the agent that replies here, else the project’s. A Claude
-   * Code or Agent SDK agent with neither works in a workspace of its own, which the server finds (its adapter’s folderFor).
+   * Code agent with neither works in a workspace of its own, which the server finds (its adapter’s folderFor).
    */
   function commandFolder() {
     const se = target();

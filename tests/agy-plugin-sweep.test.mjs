@@ -50,7 +50,7 @@ test('#314 Postbox’s start sweeps the plugins its work root notes, before any 
   await writeAgyPlugin(plugin, files(), join(dataDir, 'workspaces'));
   // A start with no CLI found: what’s swept doesn’t depend on agy being installed now.
   const none = async () => null;
-  await registerBackends(new AdapterRegistry(), { dataDir, demo: false, probes: { claude: none, sdk: none, kiro: none, agy: none, codex: none } });
+  await registerBackends(new AdapterRegistry(), { dataDir, demo: false, probes: { claude: none, kiro: none, agy: none, codex: none } });
   assert.equal(existsSync(join(folder, '.agents')), false, 'gone once Postbox has started');
 });
 

@@ -50,8 +50,8 @@ export async function workFolder(adapter, persona, project) {
 export const memoryRootFor = (workRoot) => join(dirname(workRoot), 'memory');
 
 /**
- * Removes a deleted persona’s memory folders on this computer (#208), for the Claude Code and Agent SDK adapters,
- * which share them. On a host they stay, in Postbox’s folder there: nothing removes a host’s files yet.
+ * Removes a deleted persona’s memory folders on this computer (#208), for the Claude Code adapter.
+ * On a host they stay, in Postbox’s folder there: nothing removes a host’s files yet.
  * @param {string} workRoot @param {{ id?: string, handle: string }} persona
  */
 export const forgetMemory = (workRoot, persona) => rm(personaMemory(memoryRootFor(workRoot), persona), { recursive: true, force: true });

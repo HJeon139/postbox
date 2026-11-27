@@ -15,7 +15,7 @@ export async function codexApproval(ctx, msg) {
     if (meta.codex_approval_kind === 'mcp_tool_call' || named) {
       const server = String(p.serverName ?? 'mcp').slice(0, 80);
       const name = String(meta.tool_name ?? meta.toolName ?? named ?? 'tool').slice(0, 80);
-      // Postbox tools only update the current conversation. Like the Agent SDK, let those run directly;
+      // Postbox tools only update the current conversation. Let those run directly;
       // the MCP endpoint still validates every call and the UI actions are intentionally user-scoped.
       if (server === POSTBOX_SERVER) return { action: 'accept', content: {} };
       const tool = `mcp__${server}__${name}`;

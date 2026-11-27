@@ -6,7 +6,6 @@ import { olderThan } from './versions.mjs';
 
 export const BACKEND_NAMES = {
   'claude-code': 'Claude Code',
-  'agent-sdk': 'Agent SDK',
   'kiro-cli': 'Kiro CLI',
   'antigravity-cli': 'Antigravity CLI',
   codex: 'Codex',
@@ -14,7 +13,6 @@ export const BACKEND_NAMES = {
 };
 export const BACKENDS = [
   ['claude-code', 'Claude Code', 'Runs the claude CLI you’re signed in to.'],
-  ['agent-sdk', 'Agent SDK', 'Runs the Claude Agent SDK in Postbox’s server.'],
   ['kiro-cli', 'Kiro CLI', 'Runs the kiro-cli you’re signed in to. It can’t ask you: what would need asking is refused.'],
   [
     'antigravity-cli',
@@ -182,7 +180,7 @@ export function installNote({ realBackends, versions, adapters = [] }) {
     return `Claude Code ${versions.claudeCode.split(' ')[0]} keeps one memory for every agent in a project. Update it to ${MEMORY_CLAUDE_MIN} or later (claude update), so each agent keeps its own.`;
   if (!realBackends || versions?.claudeCode) return null;
   return adapters.some((a) => a !== 'mock')
-    ? 'Claude Code isn’t installed here, so agents run on the Agent SDK or the mock until it is.'
+    ? 'Claude Code isn’t installed here, so agents run on the other backends here or the mock until it is.'
     : 'Claude Code isn’t installed here, so agents run on the mock until it is: scripted replies, not a model.';
 }
 

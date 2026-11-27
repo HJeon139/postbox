@@ -4,7 +4,7 @@ The high-level design of Postbox: what it’s made of, how data moves through it
 
 ## What Postbox is
 
-Postbox is a local web app where one person directs a team of AI agents on their own computer. They talk to the agents in conversations; the agents answer in Markdown, in blocks from a fixed catalog that Postbox renders, and in apps they write that run sandboxed in the conversation. The agents run on real harnesses (Claude Code, the Agent SDK, Kiro, Codex and Antigravity), on this computer or on a remote host, and work together without waiting on the person. Postbox is Node with zero required runtime dependencies (the Agent SDK, the local voice and view_app’s browser are optional ones), plain ES modules and no build step. Its quality bar is intent.md’s: the loop right before the looks, nothing lost or applied twice, and what’s checked today in intent.md, “Quality bar”.
+Postbox is a local web app where one person directs a team of AI agents on their own computer. They talk to the agents in conversations; the agents answer in Markdown, in blocks from a fixed catalog that Postbox renders, and in apps they write that run sandboxed in the conversation. The agents run on real harnesses (Claude Code, Kiro, Codex and Antigravity), on this computer or on a remote host, and work together without waiting on the person. Postbox is Node with zero required runtime dependencies (the local voice and view_app’s browser are optional ones), plain ES modules and no build step. Its quality bar is intent.md’s: the loop right before the looks, nothing lost or applied twice, and what’s checked today in intent.md, “Quality bar”.
 
 ## The system at a glance
 
@@ -39,7 +39,7 @@ What each box holds is under “The main components”; what moves along the arr
 
 **The store** (`server/store.mjs`). An append-only event log in JSON Lines plus periodic snapshots, in the person’s data folder, with every read served from an in-memory projection of it. Files go to a content-addressed blob store beside it, and agents’ published files to an asset folder. One Postbox writes it at a time. The folder records the data format of the last Postbox to load it (`format.json`), a number that goes up only when an older Postbox couldn’t replay what a newer one keeps, and a Postbox of an older format refuses the folder, changing nothing in it (#683). See [store.md](architecture/store.md) and [assets.md](architecture/assets.md).
 
-**The adapters and backends** (`server/adapters/`). One adapter per backend behind one interface: Claude Code, the Agent SDK, Kiro CLI, Antigravity CLI and Codex, plus the mock agent. Each starts its harness for a turn with everything that shapes the turn passed explicitly, reads the harness’s own stream, and reports it through the harness-event contract, from which Postbox builds the reply, the steps, the work ledger and the ring. See [adapters.md](architecture/adapters.md) and [agent-setup.md](architecture/agent-setup.md).
+**The adapters and backends** (`server/adapters/`). One adapter per backend behind one interface: Claude Code, Kiro CLI, Antigravity CLI and Codex, plus the mock agent. Each starts its harness for a turn with everything that shapes the turn passed explicitly, reads the harness’s own stream, and reports it through the harness-event contract, from which Postbox builds the reply, the steps, the work ledger and the ring. See [adapters.md](architecture/adapters.md) and [agent-setup.md](architecture/agent-setup.md).
 
 **Permissions** (`server/permission-*.mjs`). Each persona has a mode, and the harness decides in it; when the harness asks, the call waits on a card in the thread for the person’s answer. In Auto and Run everything Postbox adds no ask rules of its own; in Ask me and Accept edits it adds ask rules for writes outside Postbox (`gh` writes, `git push` and tools named for writing), and turns hooks off so a hook can’t approve past them ([agent-setup.md](architecture/agent-setup.md), “Writes outside Postbox”). See [permissions.md](architecture/permissions.md).
 
@@ -100,7 +100,7 @@ Each is one line: the decision, why, and where its detail is.
 - **An event log with snapshots, not a database:** the event model needs a numbered, append-only sequence and one person needs no server to run ([store.md](architecture/store.md)).
 - **A commit is whole and fsynced before anything sees it:** a turn’s records and marker land together or not at all ([store.md](architecture/store.md)).
 - **No framework and no build step:** the app needs nothing but Node to run, and its hot paths don’t depend on a framework ([front-end.md](architecture/front-end.md)).
-- **One harness-event contract for every backend:** a behavior fixed once is fixed for all five, and a new backend maps only its stream ([adapters.md](architecture/adapters.md)).
+- **One harness-event contract for every backend:** a behavior fixed once is fixed for all four, and a new backend maps only its stream ([adapters.md](architecture/adapters.md)).
 - **Everything that shapes a turn is passed explicitly:** an agent gets the person’s own setup, with only the overrides Postbox needs ([agent-setup.md](architecture/agent-setup.md)).
 - **The harness decides, in the mode the person set:** Postbox shows what agents did, and adds ask rules only for writes outside it, only in Ask me and Accept edits ([permissions.md](architecture/permissions.md), [agent-setup.md](architecture/agent-setup.md)).
 - **One session per agent per conversation:** agents never fork themselves, and the person chooses what an agent remembers by where they talk to it ([shared-memory.md](architecture/shared-memory.md)).
@@ -144,7 +144,7 @@ Each is one line: the decision, why, and where its detail is.
 | [assets.md](architecture/assets.md) | Attachments, agents’ assets, their retention and their search |
 | [background-processes.md](architecture/background-processes.md) | Background work that outlives a turn: an agent with a job running takes messages right away, the job’s end wakes it, and the order the backends and hosts get that in (proposed, #1614) |
 | [front-end.md](architecture/front-end.md) | The page without a framework or build, the transcript window, and the right pane |
-| [adapters.md](architecture/adapters.md) | The five backends, the harness-event contract, the guide and the shared limits |
+| [adapters.md](architecture/adapters.md) | The four backends, the harness-event contract, the guide and the shared limits |
 | [agent-setup.md](architecture/agent-setup.md) | What a turn is given: setting sources, publishing tools, writes outside Postbox, MCP servers, skills, hooks, tools, model and effort |
 | [permissions.md](architecture/permissions.md) | Modes, permission cards, prompts bound to their calls, refusals, answers and the permissions panel |
 | [shared-memory.md](architecture/shared-memory.md) | Catch-up, the turn envelope, deliveries and topic threads |
