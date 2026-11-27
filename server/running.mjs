@@ -26,6 +26,8 @@ export class Running {
      * One per session, replaced by the next, and never read to decide whether the session is busy.
      */
     this.left = new Map();
+    /** @type {Map<string, (() => void)[]>} sessionId → what waits for its stopped turn to exit (afterExit) */
+    this.exitWaits = new Map();
     this.shuttingDown = false;
   }
 
@@ -111,6 +113,18 @@ export class Running {
   /** The session’s stopped turn has exited. @param {string} sessionId */
   exited(sessionId) {
     this.exiting.delete(sessionId);
+    for (const done of this.exitWaits.get(sessionId) ?? []) done();
+    this.exitWaits.delete(sessionId);
+  }
+
+  /**
+   * Settles once the session’s stopped turn has exited, or at once if none is exiting: what forgetting a deleted
+   * persona waits for, since its CLI may write the memory being removed as it exits (#1797). The stop’s watchdog
+   * (turn-stop.mjs) ends the wait for a process that never exits. @param {string} sessionId @returns {Promise<void>}
+   */
+  afterExit(sessionId) {
+    if (!this.exiting.has(sessionId)) return Promise.resolve();
+    return new Promise((done) => this.exitWaits.set(sessionId, [...(this.exitWaits.get(sessionId) ?? []), () => done()]));
   }
 
   /** The session’s turn on a host waits to be attached again (#1135). @param {string} sessionId @param {string} hostId */

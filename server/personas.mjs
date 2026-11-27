@@ -193,15 +193,17 @@ export class Personas {
   /**
    * Removes a persona at once, with no Undo window, and each backend forgets what it remembered (an adapter’s forget,
    * such as the Claude adapters’ memory folders, #208). A new persona with the same name starts clean, since memory is
-   * kept by id. Its sessions go first, in the facade’s deletePersona.
-   * @param {string} id @returns {{ handle: string, forgotten: Promise<void> }}  forgotten settles once every backend has forgotten it
+   * kept by id. Its sessions go first, in the facade’s deletePersona, and the backends forget it once `after` settles:
+   * when its stopped turns have exited, which could otherwise write the memory again (#1797).
+   * @param {string} id @param {Promise<unknown> | null} [after]
+   * @returns {{ handle: string, forgotten: Promise<void> }}  forgotten settles once every backend has forgotten it
    */
-  remove(id) {
+  remove(id, after = null) {
     // Pending: an agent made behind a held commit can be removed.
     const p = this.store.pending.persona(id);
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
     this.store.emit('remove', { kind: 'persona', id });
-    return { handle: p.handle, forgotten: this.forget(p) };
+    return { handle: p.handle, forgotten: Promise.resolve(after).then(() => this.forget(p)) };
   }
 
   /**
