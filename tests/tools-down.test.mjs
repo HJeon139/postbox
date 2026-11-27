@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { saveBackendState, toolsDownBack } from '../server/store-outage.mjs';
 import * as arrange from './arrange.mjs';
 
 const told = /^\[Postbox\] In your last turn, Postbox’s tool server didn’t start/;
@@ -18,6 +19,7 @@ function room() {
   const store = new Store(null);
   /** @type {any[]} */
   const sent = [];
+  const fail = { next: false, downAgain: /** @type {string | null} */ (null), afterWords: false, silent: false, hang: false };
   const adapter = {
     name: 'mock',
     async folderFor() {
@@ -25,6 +27,27 @@ function room() {
     },
     async deliver(/** @type {any} */ _se, /** @type {any} */ message, /** @type {any} */ ctx) {
       sent.push(message);
+      // A turn whose backend has emitted nothing yet, stopped there.
+      if (fail.hang) {
+        fail.hang = false;
+        // Stopped after it reached the agent: it wrote words first.
+        if (fail.afterWords) ctx.text('Working on it.');
+        await new Promise((_, reject) => ctx.signal.addEventListener('abort', () => reject(ctx.signal.reason)));
+      }
+      // A CLI that ran to its end and wrote nothing: an empty reply.
+      if (fail.silent) {
+        fail.silent = false;
+        return;
+      }
+      // A CLI that couldn’t start: the turn never reached the agent.
+      if (fail.next) {
+        fail.next = false;
+        // As a backend whose tools failed to load again before it failed: a newer note than the one this turn took.
+        if (fail.downAgain) ctx.saveState({ postboxToolsDown: fail.downAgain });
+        // A turn that reached the agent and then failed: it wrote words first.
+        if (fail.afterWords) ctx.text('Working on it.');
+        throw Object.assign(new Error('spawn kiro-cli ENOENT'), { code: 'ENOENT' });
+      }
       ctx.text('Done.');
     },
   };
@@ -44,7 +67,7 @@ function room() {
   };
   const down = (/** @type {string|null} */ how) =>
     arrange.setSession(rt, se.id, { backendState: { ...store.state.sessions[se.id].backendState, postboxToolsDown: how } });
-  return { rt, store, se, sent, turn, down, t };
+  return { rt, store, se, sent, turn, down, t, fail };
 }
 
 test('the next turn is told among its notices that Postbox’s tools didn’t load, and only once', async () => {
@@ -73,4 +96,85 @@ test('a slash command doesn’t carry the note, which waits for the next turn', 
   assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'ran', 'the note is still owed');
   await r.turn('Try again.');
   assert.match(noteIn(r.sent[1]), told);
+});
+
+// #1171: the note was taken as the turn’s message was built, so a turn that then failed to start lost it, and the agent
+// was told at most once, not exactly once.
+test('#1171 a turn that fails before it runs keeps the note for the next', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.next = true;
+  await r.turn('Try again.');
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'ran', 'still owed after the failed turn');
+  await r.turn('Once more.');
+  assert.match(noteIn(r.sent[1]), told, 'and the next turn is told');
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null, 'then taken');
+});
+
+test('#1171 a failed turn that set a newer note keeps that one, not the one it took', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.next = true;
+  r.fail.downAgain = 'refused';
+  await r.turn('Try again.');
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'refused');
+});
+
+test('#1171 a turn that reached the agent and then failed doesn’t give the note back, so it isn’t told twice', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.next = true;
+  r.fail.afterWords = true;
+  await r.turn('Try again.');
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null, 'the agent read it in the turn that ran');
+});
+
+test('#1171 a turn that ran to its end with no reply doesn’t give the note back: its agent had it', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.silent = true;
+  await r.turn('Try again.');
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null);
+});
+
+test('#1171 a turn stopped before its backend emitted anything keeps the note for the next', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.hang = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  r.rt.stop(r.se.id);
+  for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'ran');
+});
+
+test('#1171 a turn stopped after it reached the agent doesn’t give the note back', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.hang = true;
+  r.fail.afterWords = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  r.rt.stop(r.se.id);
+  for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null);
+});
+
+test('#1171 a turn the store’s outage stopped before its backend emitted anything keeps the note for the next', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.hang = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  r.store.writable = false;
+  r.store.tellStatus();
+  assert.equal(r.rt.backendWait.get(r.se.id)?.postboxToolsDown, 'ran', 'given back, waiting for writes to reopen');
+});
+
+test('#1171 a newer note still waiting for writes to reopen stands against the one a turn gives back', () => {
+  const r = room();
+  r.store.writable = false;
+  saveBackendState(r.rt, r.se.id, { postboxToolsDown: 'refused' });
+  toolsDownBack(r.rt, r.se.id, { toolsDownTaken: 'ran' });
+  assert.equal(r.rt.backendWait.get(r.se.id)?.postboxToolsDown, 'refused');
 });
