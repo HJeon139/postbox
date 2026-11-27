@@ -799,7 +799,6 @@ Each module under `server/` that reaches `Runtime`, with the `rt.x` names it use
 | `remote/turns-stops.mjs`* | 3 | `patchItem`, `personaFor`, `s` |
 | `remote/turns.mjs` | 3 | `personaFor`, `s`, `store` |
 | `review-files.mjs` | 3 | `agentFile`, `blobs`, `store` |
-| `room-chain-limit.mjs` | 3 | `lineage`, `renameThread`, `store` |
 | `session-write.mjs` | 3 | `s`, `store`, `updateSession` |
 | `turn-marks.mjs` | 3 | `blobs`, `s`, `store` |
 | `unarchive.mjs` | 3 | `s`, `store`, `updateSession` |
