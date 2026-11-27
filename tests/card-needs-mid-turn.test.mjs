@@ -225,3 +225,23 @@ for (const [kind, raise] of Object.entries(raisers)) {
     );
   });
 }
+
+for (const [kind, raise] of Object.entries(raisers)) {
+  test(`a ${kind} asked again in a later turn, its card still open, is that turn’s need at once`, async () => {
+    const r = room();
+    const first = holdTurn(r, (tools) => raise(r, tools));
+    await until(() => r.rt.s.sessions[r.alpha.id].needs?.kind === kind, `the ${kind} as the need`);
+    first();
+    await settle(r.rt);
+    // The person writes again: moving on clears the turn-tied need, and the card stays open to answer.
+    const again = holdTurn(r, (tools) => raise(r, tools));
+    await until(() => r.rt.s.items[r.t.id].filter((it) => it.kind === kind).length === 1 && r.rt.turns.has(r.alpha.id), 'the second turn');
+    await until(() => r.rt.s.sessions[r.alpha.id].needs?.kind === kind, `the ${kind} as the need again`);
+    const cards = r.rt.s.items[r.t.id].filter((it) => it.kind === kind);
+    assert.equal(cards.length, 1, 'the same card, not a second one');
+    assert.equal(r.rt.s.sessions[r.alpha.id].needs.itemId, cards[0].id);
+    assert.ok(r.rt.turns.has(r.alpha.id), 'while the turn runs on');
+    again();
+    await settle(r.rt);
+  });
+}

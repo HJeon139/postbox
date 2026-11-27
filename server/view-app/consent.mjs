@@ -5,6 +5,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { askAgain } from '../ask-again.mjs';
 import { releaseNeed } from '../card-needs.mjs';
 import { httpError } from '../helpers.mjs';
 import { STOPPED } from './browser.mjs';
@@ -43,6 +44,8 @@ export function keepAnswer(dir, answer) {
 export function askToSee(rt, sessionId, threadId, endSegment) {
   const se = rt.session(sessionId);
   const open = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && x.status === 'open');
+  // One card per conversation: another agent's call waits on it too, and only the agent that asked is told again.
+  if (open?.sessionId === sessionId) askAgain(rt, se, open, threadId);
   if (!open) {
     endSegment();
     const it = rt.threads.addItem(threadId, { kind: 'viewask', sessionId, handle: se.handle, turnId: rt.turns.get(sessionId)?.id ?? null, status: 'open' });

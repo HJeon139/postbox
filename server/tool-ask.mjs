@@ -5,6 +5,7 @@
 // conversation, from its next turn (Personas.forSession reads Tools from the persona, not the session’s snapshot).
 
 import { REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
+import { askAgain } from './ask-again.mjs';
 import { releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
 import { KNOWN_TOOLS } from './seed.mjs';
@@ -28,7 +29,10 @@ export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () =>
   if ((persona?.tools ?? []).includes(id))
     return { ok: false, message: `${id} is already on for you. Its tools are in your list from your next turn after it was turned on.` };
   const open = rt.store.pending.items(threadId).find((x) => x.kind === 'toolask' && x.sessionId === sessionId && x.tool === id && x.status === 'open');
-  if (open) return { ok: true, message: `You already asked for ${id}, and the card is waiting for the person. End your turn.` };
+  if (open) {
+    askAgain(rt, se, open, threadId);
+    return { ok: true, message: `You already asked for ${id}, and the card is waiting for the person. End your turn.` };
+  }
   endSegment();
   const it = rt.threads.addItem(threadId, {
     kind: 'toolask',
