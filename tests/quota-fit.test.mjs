@@ -3,7 +3,9 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { fitBars, namesAt } from '../app/js/quota-fit.mjs';
+import { pageModule } from './page-module.mjs';
+
+const { fitBars, namesAt } = await pageModule('quota-fit.mjs');
 
 const bar = (backend, full, host = null) => ({ backend, full, host });
 

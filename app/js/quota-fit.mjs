@@ -5,6 +5,8 @@
 // track lies above the words and fills the bar’s part, so it never costs them width (#1463). Two bars that would read
 // the same get the shortest start of their hosts’ names that tells them apart; a level where nothing can is passed over.
 
+import { cutText } from '/shared/text-parts.mjs';
+
 /** Short backend names, for a narrow line. */
 const SHORT = { 'claude-code': 'Claude', codex: 'Codex', 'kiro-cli': 'Kiro', 'antigravity-cli': 'agy', mock: 'Mock' };
 /** The gap between bars (workbench.css, .quota-line). */
@@ -13,7 +15,7 @@ export const LINE_GAP = 12;
 const SLACK = 2;
 
 /** A host name’s first n characters, without the hyphen, dot or underscore they may end on. @param {string} host @param {number} n */
-const startOf = (host, n) => host.slice(0, n).replace(/[-_.\s]+$/, '');
+const startOf = (host, n) => cutText(host, n).replace(/[-_.\s]+$/, '');
 
 /**
  * The names bars show at one level, each distinct: bars that share a name get the shortest start of their hosts’ names

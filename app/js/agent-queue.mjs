@@ -1,5 +1,6 @@
 // Queued messages for one agent (#427): a counted mail button in its row, and a bounded dialog with each message’s actions.
 
+import { cutText } from '/shared/text-parts.mjs';
 import { api, client, itemIn } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
 import { onChangeWhileAlive } from './held-weakly.mjs';
@@ -98,7 +99,7 @@ function fillRow(row, entry, at, of) {
   if (!row.querySelector('.agent-queue-actions')) buildRow(row, entry);
   const { thread, q } = entry;
   // Each button’s name starts with what it shows and says which message, so identical messages differ (V5).
-  const which = `message ${at} of ${of}, “${q.text.replace(/\s+/g, ' ').slice(0, 40)}”`;
+  const which = `message ${at} of ${of}, “${cutText(q.text.replace(/\s+/g, ' '), 40)}”`;
   const set = (el, text) => {
     if (el && el.textContent !== text) el.textContent = text;
   };
