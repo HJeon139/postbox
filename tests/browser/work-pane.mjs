@@ -3,6 +3,7 @@
 
 import { expect } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { startPostbox, synced } from './postbox.mjs';
 
 export const WORK = 'aside.workpane';
@@ -83,15 +84,15 @@ export const hash = (page) => page.evaluate(() => location.hash);
 
 /** Nothing scrolls sideways: not the page, not the pane, not the expanded view. @param {import('@playwright/test').Page} page */
 export async function noSideways(page, where) {
-  const over = await page.evaluate(() => {
+  const wide = await pageWidth(page);
+  const over = await page.evaluate((w) => {
     const out = [];
-    const d = document.documentElement;
-    if (d.scrollWidth > innerWidth + 1) out.push(`the page by ${d.scrollWidth - innerWidth} px`);
+    if (w > innerWidth + 1) out.push(`the page by ${w - innerWidth} px`);
     for (const sel of ['.wp-body', '.sp-body', '.rpane', '.pane-full']) {
       const el = document.querySelector(sel);
       if (el && el.scrollWidth > el.clientWidth + 1) out.push(`${sel} by ${el.scrollWidth - el.clientWidth} px`);
     }
     return out;
-  });
+  }, wide);
   expect(over, `scrolls sideways ${where}`).toEqual([]);
 }

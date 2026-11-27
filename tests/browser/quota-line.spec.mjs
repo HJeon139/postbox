@@ -5,6 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -237,7 +238,7 @@ async function fitsThePhone(page) {
   expect.soft(await barsHigh(page), 'one row').toBeLessThanOrEqual(20);
   const wide = await line(page).evaluate((el) => [el.scrollWidth, el.clientWidth]);
   expect.soft(wide[0], 'the line doesn’t overflow').toBeLessThanOrEqual(wide[1]);
-  expect.soft(await page.evaluate(() => document.documentElement.scrollWidth), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(windowWidth(page));
+  expect.soft(await pageWidth(page), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(windowWidth(page));
 }
 
 test('#442 at 375 px three backends share the line, each with its backend and percent whole', async ({ page }) => {

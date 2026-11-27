@@ -8,6 +8,7 @@ import { writeAsset } from '../../server/assets.mjs';
 import { VIEWER } from '../../shared/limits.mjs';
 import * as arrange from '../arrange.mjs';
 import { png } from '../review-files-fixture.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, PHONE, startPostbox, synced } from './postbox.mjs';
 
 let app;
@@ -202,9 +203,13 @@ test.describe('on a phone', () => {
   test('the viewer shows in the pane over the conversation, and nothing scrolls sideways', async ({ page }) => {
     await open(page, `?work&at=${ids.file}`);
     await expect(page.locator('#work-pane .wv pre.wv-pre')).toHaveText(SCRIPT.trimEnd());
-    const over = await page.evaluate(() =>
-      [document.documentElement, document.querySelector('.wp-body')].map((el) => (el ? el.scrollWidth - el.clientWidth : 0)),
-    );
+    const over = [
+      (await pageWidth(page)) - (await page.evaluate(() => document.documentElement.clientWidth)),
+      await page.evaluate(() => {
+        const el = document.querySelector('.wp-body');
+        return el ? el.scrollWidth - el.clientWidth : 0;
+      }),
+    ];
     expect(over).toEqual([0, 0]);
     await page.locator('#wv-back').click();
     await expect(page.locator('#work-pane #wc-assets-h')).toBeVisible();
