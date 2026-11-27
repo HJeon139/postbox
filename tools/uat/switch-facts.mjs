@@ -9,7 +9,6 @@ import { BACKEND_NAMES, codexDefault, sameModel } from '../../shared/agent-facts
 /** Where each backend’s turns are recorded (tools/uat/workspace.mjs, runPaths), as the run’s facts hold them. */
 const RECORDED = /** @type {const} */ ([
   ['streams', 'claude-code'],
-  ['sdkStreams', 'agent-sdk'],
   ['codexStreams', 'codex'],
   ['kiroStreams', 'kiro-cli'],
   ['agyStreams', 'antigravity-cli'],
@@ -18,7 +17,6 @@ const RECORDED = /** @type {const} */ ([
 /** The folder a backend’s turns are recorded in, for evidence. */
 export const FOLDER = {
   'claude-code': 'streams/',
-  'agent-sdk': 'streams/sdk/',
   codex: 'streams/codex/',
   'kiro-cli': 'streams/kiro/',
   'antigravity-cli': 'streams/agy/',
@@ -75,7 +73,7 @@ export function switchesOf(f) {
   });
 }
 
-/** What a switch saved, for evidence: “agent-sdk · claude-sonnet-5-5 · low”. @param {Switch} s */
+/** What a switch saved, for evidence: “claude-code · claude-sonnet-5-5 · low”. @param {Switch} s */
 export const chosenText = (s) => `${s.chosen.backend} · ${s.chosen.model} · ${s.chosen.effort}`;
 
 /**

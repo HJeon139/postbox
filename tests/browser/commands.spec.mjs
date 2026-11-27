@@ -61,7 +61,7 @@ async function room(page, title) {
   const { rt } = app;
   const t = rt.createThread({ projectId: 'pr_cmd', title, personaIds: [alpha.id, beta.id] });
   const [seA, seB] = arrange.sessionsIn(rt, t.id);
-  // As an init or the SDK’s supportedCommands() would give them.
+  // As an init, or a list the harness sends later, would give them.
   arrange.offerCommands(rt, seA.id, [{ name: 'review', description: 'Review a file', argumentHint: '<file>', skill: true }, { name: 'compact' }]);
   arrange.offerCommands(rt, seB.id, [{ name: 'release-notes', description: 'Draft release notes', argumentHint: '[version]' }]);
   await page.goto(`${app.origin}/#/t/${t.id}`);

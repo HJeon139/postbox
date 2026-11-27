@@ -1,14 +1,13 @@
-// #208: each Claude Code and Agent SDK persona remembers only what it learned. Claude Code keys its auto memory by
+// #208: each Claude Code persona remembers only what it learned. Claude Code keys its auto memory by
 // working folder (~/.claude/projects/<project>/memory/), and every persona in a project runs in the project’s folder,
 // so two personas, and the person’s own sessions there, shared one memory (reproduced with two real agents on
-// 26 October 2026, #208). Each turn now passes `autoMemoryDirectory` in the `--settings` overlay (the SDK’s `settings`):
+// 26 October 2026, #208). Each turn now passes `autoMemoryDirectory` in the `--settings` overlay:
 // a folder per persona and project in Postbox’s data folder, or on a host, in Postbox’s folder there.
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { argOf, HOME, remoteCtx, starts } from './claude-code-remote-fixture.mjs';
 import { createFakeDaemon, fixtureLines } from './fake-daemon.mjs';
@@ -69,25 +68,6 @@ test('#208: two Claude Code personas in one project each get a memory folder of 
   const dirs = runs.map((args) => JSON.parse(argOf(args, '--settings')).autoMemoryDirectory);
   // Isolated (beta) and “Uses your setup” (alpha) alike: that setting is for tooling, not the person’s memory.
   assert.deepEqual(dirs, [`${DATA}/memory/pe_alpha/pr_one`, `${DATA}/memory/pe_beta/pr_one`, `${DATA}/memory/pe_alpha/pr_two`]);
-});
-
-test('#208: an Agent SDK persona gets its own memory folder too, in the SDK’s settings', async () => {
-  const calls = [];
-  const sdk = {
-    query({ options }) {
-      calls.push(options);
-      return (async function* () {
-        for (const l of LINES) yield JSON.parse(l);
-      })();
-    },
-  };
-  const adapter = new AgentSdkAdapter({ sdk, workRoot: `${DATA}/workspaces` });
-  await adapter.deliver({}, { kind: 'user', text: 'Hi' }, ctxFor(ALPHA, PROJECT));
-  await adapter.deliver({}, { kind: 'user', text: 'Hi' }, ctxFor(BETA, PROJECT));
-  assert.deepEqual(
-    calls.map((o) => o.settings.autoMemoryDirectory),
-    [`${DATA}/memory/pe_alpha/pr_one`, `${DATA}/memory/pe_beta/pr_one`],
-  );
 });
 
 test('#208: on a host, the persona’s memory folder is in Postbox’s folder there, never a path on this computer', async () => {

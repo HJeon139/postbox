@@ -216,3 +216,27 @@ test('a job kept while a commit is held is one the kept-jobs poll watches (#623,
   assert.deepEqual(kept, ['job1'], 'the held kept job is watched');
   await env.close();
 });
+
+test('a form shown while a commit holds its agent’s state keeps that state (#623, card-needs offerShown)', async () => {
+  /** @type {any} */
+  let tools = null;
+  const env = await heldRoom(async (ctx) => {
+    tools = ctx.tools;
+  });
+  env.rt.sendMessage(env.t.id, { text: 'Go on.' });
+  await until(() => tools, 'the turn to start');
+  await env.store.flush();
+  const release = await env.hold();
+  arrange.setSession(env.rt, env.se.id, { state: 'tool' });
+  tools.show_block({
+    block: { id: 'f1', type: 'form', version: 1, title: 'Which window?', fallback: 'Which window?', fields: [{ id: 'w', label: 'Window', kind: 'text' }] },
+  });
+  await release();
+  const se = env.store.state.sessions[env.se.id];
+  assert.equal(se.needs?.kind, 'block', 'the form is the need');
+  assert.equal(se.state, 'tool', 'and the state written behind the held commit stays');
+  arrange.stopTurn(env.rt, env.se.id);
+  await until(() => !arrange.exiting(env.rt, env.se.id), 'the stopped turn to exit');
+  await env.store.flush();
+  await env.close();
+});

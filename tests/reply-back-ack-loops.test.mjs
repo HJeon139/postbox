@@ -13,30 +13,32 @@ import { heldOnCard, playsFrom, playsWith, room, settle } from './bounce-loop-fi
 const replies = (store, t) => store.items(t.id).filter((i) => i.kind === 'agent' && i.text?.trim());
 const turnsOf = (adapter) => adapter.calls.map((c) => c.handle).join(' ');
 
-test('#1591: an agent that reacts, then names the agent it reacted to, doesn’t wake it again (assets-room)', async () => {
-  // From turn 44: researcher answers the person, critic acknowledges, and from there researcher reacts ✅ to each
-  // acknowledgment and writes “I reacted ✅ to @critic’s acknowledgment.”, which woke critic by its mention, 20 times.
-  const { store, rt, adapter, t } = room({ researcher: playsFrom('assets-room', 'researcher', 44), critic: playsFrom('assets-room', 'critic', 45) });
-  rt.sendMessage(t.id, { text: '@researcher quote Postbox’s refusal of your stale write word for word' });
-  await settle(rt);
-  assert.ok(!heldOnCard(store, t), `the exchange ended before the room’s limit: ${turnsOf(adapter)}`);
-  assert.equal(turnsOf(adapter), 'researcher critic researcher');
-  const last = replies(store, t).at(-1);
-  assert.equal(last.text, "I reacted ✅ to @critic's message. The plan stays at v2.", 'the line still posts');
-  assert.equal(last.wentBack, undefined);
-});
-
-test('#1591: the same loop between two of three agents ends on the reaction (holdstill)', async () => {
-  // developer and researcher: developer reacted ✅ to each of researcher’s replies and wrote “I reacted ✅ to
-  // @researcher’s message and didn’t reply.”, 47 times, and researcher’s answer to that mention went back each time.
-  const plays = { developer: playsWith('holdstill', 'developer', 'researcher', 9), researcher: playsWith('holdstill', 'researcher', 'developer', 10) };
-  const { store, rt, adapter, t } = room(plays);
-  rt.sendMessage(t.id, { text: '@developer show a small app' });
-  await settle(rt);
-  assert.ok(!heldOnCard(store, t), `the exchange ended before the room’s limit: ${turnsOf(adapter)}`);
-  // Two direct mentions each way, which are requests as far as Postbox can tell; then the reply that came back, and the reaction.
-  assert.equal(turnsOf(adapter), 'developer researcher developer researcher developer');
-});
+// Two of the recorded loops were an agent reacting ✅ and then naming the agent it reacted to, in “I reacted ✅ to
+// @critic’s acknowledgment.” Postbox held that name until the owner ruled that an @-mention always wakes (26 November
+// 2026), so now every one wakes, and only the room’s chain limit ends these two. The player repeats an agent’s last
+// recorded reply once they run out.
+for (const [room_, plays, ask, named] of [
+  [
+    'assets-room',
+    () => ({ researcher: playsFrom('assets-room', 'researcher', 44), critic: playsFrom('assets-room', 'critic', 45) }),
+    '@researcher quote Postbox’s refusal of your stale write word for word',
+    'critic',
+  ],
+  [
+    'holdstill',
+    () => ({ developer: playsWith('holdstill', 'developer', 'researcher', 9), researcher: playsWith('holdstill', 'researcher', 'developer', 10) }),
+    '@developer show a small app',
+    'researcher',
+  ],
+]) {
+  test(`#1591: an agent that reacts, then names the agent it reacted to, wakes it, up to the chain limit (${room_})`, async () => {
+    const { store, rt, adapter, t } = room(plays());
+    rt.sendMessage(t.id, { text: ask });
+    await settle(rt);
+    assert.ok(heldOnCard(store, t), turnsOf(adapter));
+    assert.ok(adapter.calls.filter((c) => c.handle === named).length > 5, turnsOf(adapter));
+  });
+}
 
 test('#1591: after a reaction to one agent’s reply, an @-mention of another agent still hands off', async () => {
   const plays = {
@@ -54,7 +56,7 @@ test('#1591: after a reaction to one agent’s reply, an @-mention of another ag
 });
 
 test('#1591: a 👍 on a direct request doesn’t stop a question to the agent that asked', async () => {
-  // Only a reaction to a reply that came back ends an exchange: critic was asked, so its mention of alpha is an answer.
+  // critic was asked, and its mention of alpha wakes it, as every mention does.
   const plays = {
     alpha: [{ text: '@critic please review wordcount.py.' }, { text: 'The one in src/.' }],
     critic: [{ text: '@alpha which wordcount.py, the one in src/ or in tools/?', react: true }, { text: '' }],
@@ -100,7 +102,10 @@ test('#1591: an agent is told when its next reply that only writes will wake no 
   assert.match(asked, /Your reply posts there and goes back to @researcher\. @-mention another agent to hand off to them instead\.\n/);
   // Its first reply after one came back goes back as any does, and a reaction or nothing at all ends the exchange.
   assert.match(back, /Your reply posts there and goes back to @critic\. @-mention another agent to hand off to them instead\. If the exchange is done, /);
-  assert.match(back, /react to the reply: then nothing you write this turn wakes its sender, even by name\. You can also end without writing anything\.\n/);
+  assert.match(
+    back,
+    /react to the reply: then your reply this turn doesn’t go back to its sender\. An @-mention still wakes whom it names\. You can also end without writing anything\.\n/,
+  );
   assert.match(again, /Your reply posts there\. Your last reply to @critic only wrote, so this one goes back to @critic only if you do work this turn /);
   assert.match(
     again,

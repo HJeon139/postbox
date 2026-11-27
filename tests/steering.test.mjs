@@ -7,7 +7,6 @@ import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } fro
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { claudeArgs } from '../server/adapters/claude-code-args.mjs';
 import { checkoutSteering, withSteering } from '../server/adapters/steering.mjs';
@@ -153,20 +152,6 @@ test('#319 a Claude Code turn from a persona with no folder, in a clone’s data
   await new ClaudeCodeAdapter({ bin: 'claude', workRoot: join(data, 'workspaces'), spawnImpl }).deliver({}, { kind: 'user', text: 'Hi' }, ctxFor());
   const settings = JSON.parse(runs[0][runs[0].indexOf('--settings') + 1]);
   assert.ok(settings.claudeMdExcludes?.includes(join(checkout, 'AGENTS.md')), JSON.stringify(settings.claudeMdExcludes));
-});
-
-test('#319 so does an Agent SDK turn', async () => {
-  const { checkout, data } = clone();
-  /** @type {any} */
-  let options = null;
-  const sdk = {
-    query(/** @type {any} */ q) {
-      options = q.options;
-      throw new Error('stop here: only the options are checked');
-    },
-  };
-  await assert.rejects(new AgentSdkAdapter({ sdk, workRoot: join(data, 'workspaces') }).deliver({}, { kind: 'user', text: 'Hi' }, ctxFor()));
-  assert.ok(options?.settings?.claudeMdExcludes?.includes(join(checkout, 'AGENTS.md')), JSON.stringify(options?.settings));
 });
 
 test('#319 a turn on a host is given none: its folder is the host’s, and this computer’s paths never cross', async () => {

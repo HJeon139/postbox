@@ -129,7 +129,9 @@ test('an app check’s note after the turn ended is scoped to the session’s la
   assert.ok(scoped[0].turnId);
 });
 
-test('mid-turn, a block the running turn itself showed isn’t the need when a permission is released', async () => {
+// Reversed by #1748: on main the turn's end decided its own block, so a mid-turn release left no need while the form
+// still waited. The block the turn before showed still doesn't come back (#69, the spec above).
+test('mid-turn, a block the running turn itself showed is the need again when a permission is released', async () => {
   const r = room();
   const work = held();
   r.adapter.next.push(async (c, m, se) => {
@@ -148,7 +150,8 @@ test('mid-turn, a block the running turn itself showed isn’t the need when a p
   const p = r.permission();
   r.setNeed('permission', p.id);
   r.rt.settlePermission(p.id, 'allowed');
-  assert.equal(r.needs(), null, 'the turn’s end decides its own block');
+  assert.equal(r.needs()?.itemId, r.rt.s.items[r.t.id].find((it) => it.block?.id === 'b_now').id, 'its own open block waits');
+  assert.equal(r.rt.s.sessions[r.alpha.id].state, 'tool', 'and the agent is still working');
   work.release();
   await settle(r.rt);
 });

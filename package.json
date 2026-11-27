@@ -1,6 +1,6 @@
 {
   "name": "postbox",
-  "version": "4.52.8",
+  "version": "5.2.0",
   "description": "A chat room for directing several AI agents, where agents reply with software they write.",
   "license": "Apache-2.0",
   "type": "module",
@@ -32,6 +32,7 @@
     "check:contrast": "node tools/contrast.mjs",
     "test:process": "node tools/heavy-lock.mjs test:process -- node --test --test-timeout=120000 tests/process/*.test.mjs",
     "check": "node tools/check.mjs",
+    "signoff": "node tools/signoff.mjs",
     "signoff:checks": "node tools/signoff-checks.mjs",
     "signoff:cited-commits": "node tools/cited-commits.mjs",
     "shoot:app": "node tools/shoot-app.mjs",
@@ -49,7 +50,6 @@
     "typescript": "7.0.2"
   },
   "optionalDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.306",
     "kokoro-js": "1.2.1",
     "playwright-core": "1.64.1"
   },

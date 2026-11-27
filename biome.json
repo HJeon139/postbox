@@ -214,15 +214,6 @@
       }
     },
     {
-      "includes": ["server/adapters/agent-sdk.mjs"],
-      "linter": {
-        "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 301 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 110 } } }
-        }
-      }
-    },
-    {
       "includes": ["server/adapters/antigravity-cli.mjs"],
       "linter": {
         "rules": {

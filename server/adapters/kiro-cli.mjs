@@ -42,7 +42,6 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { HarnessEvents } from '../harness-events.mjs';
@@ -51,14 +50,17 @@ import { checkRemoteContext } from './adapter.mjs';
 import { tooLongForArg } from './arg-prompt.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
+import { removeKiroAgent, writeKiroAgent } from './kiro-agent-files.mjs';
 import { KIRO_TOOL_RULES, kiroAgent, kiroSystemPrompt } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn, remoteKiroHome } from './kiro-cli-remote.mjs';
 import { failOverLimit, kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
 import { kiroHomeFor } from './kiro-home.mjs';
 import { kiroMemoryOff } from './kiro-memory.mjs';
+import { kiroResult, REFUSED } from './kiro-result.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
 import { KINDS, toolOf } from './kiro-tools.mjs';
+import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned, recordOnceWritten } from './prompt-sent.mjs';
 import { effortOf, modelOf, recorderFor, setupOf } from './setup.mjs';
@@ -67,6 +69,8 @@ export { KIRO_PUBLISHING, KIRO_TOOL_RULES, kiroAgent, kiroRules } from './kiro-c
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
 export { KIRO_CAPABILITIES, kiroRemoteEnv } from './kiro-cli-remote.mjs';
 export { kiroExitError as exitError } from './kiro-errors.mjs';
+// Moved to kiro-result.mjs; kept here for those that import it from this module (tools/uat/room-checks-backends.mjs).
+export { REFUSED };
 
 /**
  * The CLI arguments for one turn. Pure, so the tests can check them.
@@ -96,18 +100,6 @@ export function kiroArgs({ persona, agent, sessionId = null, prompt, stdin = fal
   ];
 }
 
-const contentText = (content) =>
-  (Array.isArray(content) ? content : [])
-    .map((c) => (c?.type === 'content' ? c.content : c))
-    .filter((c) => c?.type === 'text')
-    .map((c) => c.text)
-    .join(' ');
-// How v3 refuses a call it would ask about (recorded): a pending_interaction (tool_approval) for the call, then
-// lint-allow spelling: “cancelled” is Kiro’s value, as it sends it.
-// interaction_resolved with outcome “cancelled”, then the call fails with “The user rejected this tool call.” The
-// turn itself still succeeds, so the stream is the only record. The text is the fallback, and v2’s wording. The
-// UAT’s checks read recorded streams with it too (tools/uat/checks.mjs).
-export const REFUSED = /The user rejected this tool call|permission approval is not supported/;
 /**
  * Turns kiro-cli’s stream-json output into Postbox’s turn context. Every line is { type, data }: runStarted, then
  * sessionUpdate (an ACP session/update: agentclientprotocol.com/protocol/prompt-turn), then runFinished or runError.
@@ -237,26 +229,10 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
   };
 }
 
-/**
- * How a call ended: what it returned, or why it failed. One Kiro refused for want of an answer (an ask no one could
- * take), or by a deny rule, which v3 reports as _meta.kiro.policyDenial (recorded: “Tool call denied by user's
- * permissions. Rule: deny mcp matching …”), is refused, and says what happened: Kiro words it as the person’s answer,
- * but nobody was asked. @param {any} u @param {{ refused: Set<string>, asked: Map<string, string> }} st
- */
-function kiroResult(u, st) {
-  const failed = u.status === 'failed';
-  const why = failed ? (contentText(u.content) || String(u.rawOutput?.message ?? '')).replace(/^Output:\s*/, '') : contentText(u.content);
-  const unanswered = failed && (st.refused.has(u.toolCallId) || REFUSED.test(why));
-  const refused = unanswered || (failed && Boolean(u._meta?.kiro?.policyDenial));
-  const asked = st.asked.get(u.toolCallId);
-  const reason = unanswered
-    ? `Kiro asks before this${asked ? ` (“${clip(asked, 80)}”)` : ''}, and can’t ask you from Postbox, so it was refused.`
-    : 'Its permissions in Postbox don’t allow this.';
-  return { kind: 'tool_result', id: u.toolCallId, isError: failed, text: why, ...(refused ? { refused: reason } : {}) };
-}
-
 export class KiroCliAdapter {
   name = 'kiro-cli';
+  /** /compact has nothing to run here, so it’s refused before it’s posted (#1811). */
+  refuses = noCompaction('Kiro CLI');
 
   /**
    * @param {{ bin?: string, workRoot: string, isolatedHome: string, models?: string[], spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv,
@@ -351,12 +327,12 @@ export class KiroCliAdapter {
     } else {
       const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
       file = join(home, 'agents', `${agent}.json`);
-      await mkdir(join(home, 'agents'), { recursive: true });
       // The home Postbox owns, which every Isolated persona shares, keeps no memory (#479).
       if (!setupOf(persona).usesHostSetup) await kiroMemoryOff(home);
-      await writeFile(
+      await writeKiroAgent(
         file,
         JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders, reads: ctx.readFiles ?? [], kiroHome: home }), null, 2),
+        this.workRoot,
       );
       env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
     }
@@ -434,7 +410,7 @@ export class KiroCliAdapter {
           }
           resolve({});
         };
-        // A stopped turn ends once the CLI’s whole group has exited, as for the Claude backends (#126).
+        // A stopped turn ends once the CLI’s whole group has exited, as for Claude Code (#126).
         const settle = (code) => stop.settle(() => done(code));
         child.on('close', settle);
         child.on('exit', (code) => {
@@ -443,7 +419,7 @@ export class KiroCliAdapter {
       });
     } finally {
       // A remote turn’s file is the daemon’s to remove.
-      if (file) await rm(file, { force: true }).catch(() => {});
+      if (file) await removeKiroAgent(file, this.workRoot);
     }
   }
 }

@@ -2,6 +2,117 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.2.0 (2026-11-27)
+
+### Features
+
+- **identity:** a provider for whoever a load balancer signed in, with an allow list
+- **identity:** check the sign-in token a load balancer forwards
+
+### Fixes
+
+- **identity:** a signed-in person whose token lacks the named claims is told why
+- **identity:** refuse an allow list with a part that can't be read, and test exact matching
+- **identity:** a key in use stays the newest in the key store
+- **identity:** the settings and the key lookup share one rule for a region
+- **identity:** bound what made-up key ids can make the sign-in check do
+
+## 5.1.1 (2026-11-27)
+
+### Fixes
+
+- **kiro:** sweep a long persona's agent file too, and write it new and private
+- **backends:** don't follow a link the agent put at a submodule's folder
+- **backends:** run the person's commands in the project's folder for an agent that starts beside it
+- **kiro:** the start's sweep hashes only a regular file, so a FIFO or a device can't hang it
+- **kiro:** the start's sweep follows a linked agents folder, as the turn's own files do
+- **kiro:** the start's sweep never follows a link at agents, and removes only its turn's file
+- **kiro:** the record's log line names it and what to check, and the test reads both
+- **kiro:** a record the start can't rewrite doesn't stop Postbox, and the log says why
+- **kiro:** an agent file a killed Postbox left in a Kiro home is removed at start
+- **backends:** give Antigravity agents worktrees with the project's submodules
+- **backends:** start each Antigravity agent in a folder of its own where it has no worktree
+
+## 5.1.0 (2026-11-27)
+
+### Features
+
+- **tools:** a local sign-off script that fails loudly and talks while it waits
+
+### Fixes
+
+- **antigravity:** the plugin is written and removed only in a plain folder Postbox owns
+- **antigravity:** the start's sweep hashes only a regular mcp_config.json, so a FIFO can't hang it
+- **tools:** signoff names the git version merge-tree needs when git is too old
+- **tools:** signoff's Biome at each commit skips merge commits
+- **tools:** signoff's base fetch fails rather than waiting on a credential prompt
+- **tools:** a gh call that hangs fails the sign-off after two minutes
+- **tools:** signoff drops the toolchain step, which only the local gate needed
+- **antigravity:** the start's sweep never follows a link, and removes only the plugin its turn wrote
+- **tools:** signoff reads the browser passes from CI and runs no local gate
+- **tools:** step 2 reads workflows with Windows line endings, and the docs' Node sentence is back
+- **tools:** step 4's base-comparing lints use the fetched base, not origin/<base>
+- **antigravity:** a plugin is unnoted only when it's truly gone, and the mode test skips as root
+- **antigravity:** a plugin the turn couldn't remove stays noted for the next start
+- **antigravity:** a plugin a killed Postbox left in an agent's folder is removed at start
+- **tools:** signoff reads step 3's changed files with -z and passes them after --
+- **tools:** signoff's clean check counts untracked files whatever git's config says
+- **tools:** signoff fetches the base from the pull request's base repository
+- **tools:** signoff's step 2 fails on any node-version it can't read
+- **tools:** a signal during the sign-off's long parts reaches the command, then cleans up
+- **tools:** step 2 reads a matrix's block lists and include entries, and fails on what it can't read
+- **tools:** the gate log is written only when the tree and HEAD held through the run
+- **tools:** step 6's failure names GitHub's checks once, not twice
+
+## 5.0.1 (2026-11-27)
+
+### Fixes
+
+- **needs:** Stop keeps the block a woken turn kept as the need
+- **needs:** an asking block counts from when its turn shows or asks it again (#1748)
+- **threads:** wake an agent an @-mention names, after a reaction to its reply too
+
+## 5.0.0 (2026-11-27)
+
+### Breaking changes
+
+- **backends:** remove the Agent SDK backend
+
+### Features
+
+- **backends:** run what a store holds on the Agent SDK on Claude Code
+- **app:** link to one message with m=, and Copy link under each
+
+### Fixes
+
+- **server:** give Postbox's Haiku calls only their own prompt
+- **nav:** a message's address with Work, opened in a window too narrow for it, leaves Work out
+- **css:** a message's Copy link wrapped to a line of its own lines up with the row
+- **nav:** a message's address focuses the message, and says at once when it isn't there
+- **nav:** a message's address opens the Work left open in its conversation
+- **app:** Copy link fits a side thread's row, so its actions stay on one line
+- **uat:** don’t count Postbox’s Haiku calls as the faulted agent’s turn
+- **server:** give Postbox’s Haiku calls a one-line system prompt, and record them
+- **app:** a row of a message's actions wraps between them, so the reactions stay on one line
+- **app:** the actions' drawn icons have their own attribute, so the reactions keep their pictures
+- **app:** every action's icon drawn by its action, shown in forced colors, and a copy glyph
+- **app:** a message's Copy link costs no element, an icon drawn by its button
+- **app:** make a message's Copy link when the message is wanted, first in its row
+- **app:** going to a message keeps Work's open item unless Work was full screen
+- **app:** going to a message keeps the item open in Work beside the thread
+- **app:** going to a message shows it beside full-screen Work, and says when it's gone
+- **app:** going to a message on purpose goes there every time, with Work kept
+- **app:** a message's address keeps the pane, and Back to it doesn't pull the view
+
+## 4.52.9 (2026-11-27)
+
+### Fixes
+
+- **personas:** a persona deleted after a shutdown stopped waiting is forgotten at once
+- **personas:** a shutdown that stops waiting for a deleted agent's turn forgets it then
+- **personas:** a deleted persona is forgotten only once its stopped turns have exited
+- **adapters:** Kiro CLI and Antigravity refuse /compact, with the reason
+
 ## 4.52.8 (2026-11-27)
 
 ### Fixes

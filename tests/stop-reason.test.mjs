@@ -30,7 +30,7 @@ test('#249: after Stop with Keep running, the reply says its jobs kept running, 
   // Before #249 it read “…is still running: the person kept it running when your last turn was stopped. Its output…”.
   // Claude Code, resumed, then told the agent the job was “marked stopped”: with no end recorded for a background
   // command, it says it “may have been stopped … or it may have been running when the previous Claude Code process
-  // exited” (its resume notice, in the CLI the Agent SDK 0.3.306 ships).
+  // exited” (its resume notice, in Claude Code 2.1.306).
   assert.deepEqual(next.context, [
     `[Postbox] Your background job bgR (\`${JOB.command}\`) is still running: the person stopped your last turn and kept this job running. If your CLI says it was stopped, that’s only because the process that started it has ended: it wasn’t stopped. Its output is in /tmp/out.txt. They can stop it from the conversation. If a progress step follows it, leave that step running while the job runs: when it ends, Postbox tells you on your next turn.`,
   ]);

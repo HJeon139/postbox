@@ -11,8 +11,23 @@ export const PENDING = {
   // dismissFailed: whether the reply dismissed is the one the agent waits to try again, which ends that wait (#1713).
   // threadsOf: the agent’s side and topic threads, whose cards decide its need, a topic opened behind a held commit too (#623).
   // offerNeed and releaseNeed: the session whose need is offered or released, its need and state maybe set behind a
-  // held commit (#623).
-  'card-needs.mjs': ['threadsOf', 'keptBlock', 'keptTurns', 'nextNeed', 'offerNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'releaseNeed', 'dismissFailed'],
+  // held commit (#623). offerShown and stoppedNeed: the same, for a block shown mid-turn and a turn stopped (#1748),
+  // and stoppedNeed's block, maybe shown behind one.
+  'card-needs.mjs': [
+    'threadsOf',
+    'keptBlock',
+    'keptTurns',
+    'nextNeed',
+    'offerNeed',
+    'offerShown',
+    'stoppedNeed',
+    'stoppedNeed',
+    'takesNeed',
+    'takesNeed',
+    'releaseNeed',
+    'releaseNeed',
+    'dismissFailed',
+  ],
   // The project a session is attached into, maybe deleted behind a held commit (#119); the mirrored reply a terminal
   // line adds to, maybe held behind a commit; and the session attachClaudeSession just made, whose transcript mirror
   // starts following. A session already attached, and the session a poll follows, maybe made or deleted behind one (#623).

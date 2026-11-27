@@ -42,7 +42,7 @@ export const PANEL_CHECKS = [
   },
   {
     id: 'switch-takes-effect',
-    inputs: ['probes', 'streams', 'sdkStreams', 'codexStreams', 'kiroStreams', 'agyStreams', 'events'],
+    inputs: ['probes', 'streams', 'codexStreams', 'kiroStreams', 'agyStreams', 'events'],
     issue: 1315,
     run: (f) =>
       switchesOf(f).flatMap((s) => {

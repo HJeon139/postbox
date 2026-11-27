@@ -113,15 +113,15 @@ test('#1758 a turn’s stream with no call is an empty file, read with its agent
   ]);
 });
 
-test('#1758 an agent whose streams another backend recorded, in streams/sdk/, has its calls from its steps', () => {
-  // The run as if the developer ran on the Agent SDK: its streams are in streams/sdk/, which the exporter doesn’t read.
-  const dir = tempDir('pb-atif-sdk-');
-  mkdirSync(join(dir, 'streams', 'sdk'), { recursive: true });
+test('#1758 an agent whose streams another backend recorded, in streams/kiro/, has its calls from its steps', () => {
+  // The run as if the developer ran on Kiro: its streams are in streams/kiro/, which the exporter doesn’t read.
+  const dir = tempDir('pb-atif-kiro-');
+  mkdirSync(join(dir, 'streams', 'kiro'), { recursive: true });
   copyFileSync(join(DIR, 'events.jsonl'), join(dir, 'events.jsonl'));
   for (const f of readdirSync(join(DIR, 'streams')))
-    copyFileSync(join(DIR, 'streams', f), join(dir, 'streams', ...(f.endsWith('-developer.jsonl') ? ['sdk', f] : [f])));
+    copyFileSync(join(DIR, 'streams', f), join(dir, 'streams', ...(f.endsWith('-developer.jsonl') ? ['kiro', f] : [f])));
   const run = readRecording(dir);
-  assert.deepEqual([...new Set(run.streams?.map((s) => s.handle))], ['critic'], 'streams/sdk/ isn’t read');
+  assert.deepEqual([...new Set(run.streams?.map((s) => s.handle))], ['critic'], 'streams/kiro/ isn’t read');
   const { developer, critic } = byHandle(run.events, run.streams);
   assert.equal(developer.extra.calls_from, 'steps');
   assert.match(developer.notes, /since the run has no Claude Code stream of this agent’s turns\.$/);

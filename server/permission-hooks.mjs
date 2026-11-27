@@ -24,7 +24,7 @@ const MAX_TYPE = 20;
 
 // The hook events that can approve a tool call or change its input, in the order the panel lists them. A PreToolUse
 // hook answers with permissionDecision and updatedInput; a PermissionRequest hook with decision.behavior allow and
-// updatedInput (PreToolUseHookSpecificOutput and PermissionRequestHookSpecificOutput in the Agent SDK’s sdk.d.ts).
+// updatedInput (PreToolUseHookSpecificOutput and PermissionRequestHookSpecificOutput in Claude Code’s published types, sdk.d.ts).
 const APPROVING_EVENTS = /** @type {const} */ (['PreToolUse', 'PermissionRequest']);
 
 /**

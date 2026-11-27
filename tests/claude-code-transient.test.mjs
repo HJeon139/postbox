@@ -1,5 +1,5 @@
 // #1713: a turn Anthropic’s API failed for a while (529 Overloaded) is marked as one that passes, from the result’s
-// structured `api_error_status`, never from its words, by Claude Code’s adapter and the Agent SDK’s alike.
+// structured `api_error_status`, never from its words, by Claude Code’s adapter.
 //
 // No recorded turn has been overloaded yet, so its stream is built from a recorded one: model-effort.jsonl (claude
 // 2.1.296, tests/claude-code.test.mjs), its init line and its result line, which carries `api_error_status: null` as
@@ -13,7 +13,6 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { failureClass } from '../server/harness-failure.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -79,20 +78,4 @@ test('#1713 Claude Code: a result the API refused as a bad request (400) fails t
   const err = await claudeThrows(failedWith(400, 'API Error: 400 {"type":"error","error":{"type":"invalid_request_error"}}'));
   assert.match(err.message, /^API Error: 400/, 'the result’s own failure');
   assert.equal(failureClass(err), null);
-});
-
-test('#1713 Agent SDK: the same overloaded result fails the turn as one that passes', async () => {
-  const sdk = {
-    query: () =>
-      (async function* () {
-        for (const e of OVERLOADED) yield e;
-      })(),
-  };
-  const adapter = new AgentSdkAdapter({ sdk, workRoot: tempDir('pb-test-529-sdk-') });
-  const err = await adapter.deliver({}, { kind: 'user', text: 'Hi' }, quietCtx()).then(
-    () => assert.fail('the turn failed'),
-    (e) => e,
-  );
-  assert.match(err.message, /^API Error: 529/);
-  assert.deepEqual(failureClass(err), { kind: 'transient', status: 529 });
 });

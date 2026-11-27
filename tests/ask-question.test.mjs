@@ -1,5 +1,5 @@
-// #521: Claude Code’s AskUserQuestion reaches Postbox as a permission prompt (the CLI’s permission_prompt, the SDK’s
-// canUseTool, a host’s prompt), and every one goes through requestPermission. Postbox shows each question as its own
+// #521: Claude Code’s AskUserQuestion reaches Postbox as a permission prompt (the CLI’s permission_prompt,
+// a host’s prompt), and every one goes through requestPermission. Postbox shows each question as its own
 // choice block, one at a time, and the person’s answers are the tool’s result: updatedInput { questions, answers },
 // keyed by each question’s text, several labels joined with “, ”, as the recorded turns show
 // (fixtures/claude-code/ask-user-question-prompts.json).
@@ -9,12 +9,12 @@ import { readFileSync } from 'node:fs';
 import { mock, test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
-import { canUseTool } from '../server/adapters/sdk-permission.mjs';
 import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { STILL_OPEN } from '../shared/question-words.mjs';
 import * as arrange from './arrange.mjs';
+import { promptFor } from './ask-prompt.mjs';
 import { untilTurns } from './until-turns.mjs';
 
 const RECORDED = JSON.parse(readFileSync(new URL('fixtures/claude-code/ask-user-question-prompts.json', import.meta.url), 'utf8')).prompts;
@@ -52,14 +52,14 @@ function setup() {
   const se = () => arrange.sessionsIn(rt, t.id)[0];
   const items = () => store.items(t.id);
   const questions = () => items().filter((i) => i.kind === 'block' && i.question);
-  /** Starts a turn that asks with AskUserQuestion through the SDK’s canUseTool, and returns its answer. */
+  /** Starts a turn that asks with AskUserQuestion as a permission prompt, and returns its answer. */
   function ask(input) {
     let answer;
     const asked = new Promise((r) => {
       answer = r;
     });
     adapter.next.push(async (c) => {
-      answer(await canUseTool(c, 'AskUserQuestion', input, { toolUseID: 'toolu_ask_1' }));
+      answer(await promptFor(c, 'AskUserQuestion', input, 'toolu_ask_1'));
       c.text('Done.');
     });
     rt.sendMessage(t.id, { text: 'Ask me.' });
@@ -148,7 +148,7 @@ test('#521 a card answered while a question waits gives the need back to the que
   let card;
   const asked = new Promise((done) => {
     s.adapter.next.push(async (c) => {
-      const question = canUseTool(c, 'AskUserQuestion', inputOf('one-auto'), { toolUseID: 'toolu_ask_2' });
+      const question = promptFor(c, 'AskUserQuestion', inputOf('one-auto'), 'toolu_ask_2');
       await until(() => s.questions().length === 1, 'the question');
       // A subagent asks permission while the question waits: its card takes the need, as a permission does.
       card = c.askPermission({ tool: 'Bash', summary: 'run a command', input: { command: 'ls' }, agentId: 'sub-1' });
@@ -269,10 +269,10 @@ test('#521 a question nobody answers within CARD_WAIT_MS stays open, and the age
     goOn = r;
   });
   try {
-    // The turn goes on after the call is refused, as an SDK turn does, until the test lets it end.
+    // The turn goes on after the call is refused, until the test lets it end.
     const asked = new Promise((r) => {
       s.adapter.next.push(async (c) => {
-        r(await canUseTool(c, 'AskUserQuestion', inputOf('one-auto'), { toolUseID: 'toolu_ask_9' }));
+        r(await promptFor(c, 'AskUserQuestion', inputOf('one-auto'), 'toolu_ask_9'));
         await held;
         c.text('Done.');
       });
@@ -286,11 +286,15 @@ test('#521 a question nobody answers within CARD_WAIT_MS stays open, and the age
     mock.timers.reset();
   }
   assert.ok(s.rt.turns.size, 'the turn still runs');
-  assert.notEqual(s.se().needs?.itemId, s.questions()[0].id, 'no call waits on it now, so it isn’t what the running turn needs');
+  // #1748: no call waits on it now, but the block still asks, as it does once the turn ends (main counted it only then),
+  // so it stays the need while the turn runs on, and the agent keeps working.
+  assert.equal(s.se().needs?.itemId, s.questions()[0].id, 'the open question is still the need');
+  assert.notEqual(s.se().state, 'needs', 'and the agent is still working');
   goOn();
   await until(() => !s.rt.turns.size, 'the turn to end');
   assert.equal(answer.behavior, 'deny');
   assert.ok(answer.message.includes(STILL_OPEN), answer.message);
   assert.ok(!/ask again if/i.test(answer.message), `no “ask again” beside “don’t ask it again”: ${answer.message}`);
   assert.equal(s.store.item(s.t.id, s.questions()[0].id).answered, false, 'the block stays asking');
+  assert.equal(s.se().needs?.itemId, s.questions()[0].id, 'and the need at the turn’s end, as on main');
 });
