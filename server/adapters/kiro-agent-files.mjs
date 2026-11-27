@@ -54,12 +54,21 @@ async function noted(root) {
   }
 }
 
-/** Whether the file is still the one noted, by its text. @param {Note} note */
-const stillOurs = (note) =>
-  readFile(note.file, 'utf8').then(
+/** The most an agent file’s text runs to: the guide and the persona’s rules, well under this. */
+const MOST = 64 * 1024;
+
+/**
+ * Whether the file is still the one noted, by its text. Read only when it’s a regular file of a sane size, never a link,
+ * a FIFO or a device: a read of one could hang Postbox’s start, or never end. @param {Note} note
+ */
+async function stillOurs(note) {
+  const st = await lstat(note.file).catch(() => null);
+  if (!st?.isFile() || st.size > MOST) return false;
+  return readFile(note.file, 'utf8').then(
     (text) => hashOf(text) === note.sha256,
     () => false,
   );
+}
 
 /** Whether a file is gone: only a missing one is, not one that can’t be looked at. @param {string} file */
 const gone = (file) =>

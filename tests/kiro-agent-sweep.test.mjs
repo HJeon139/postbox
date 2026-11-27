@@ -161,3 +161,16 @@ test('#1864 an agent file the sweep can’t remove stays noted, and one it remov
   await sweepKiroAgents(p.workRoot);
   assert.deepEqual(record(p.data), [], 'gone, and no longer noted');
 });
+
+test('#1864 a link or a large file at the noted path is left, without the start reading it', async () => {
+  const p = place();
+  const link = join(p.home, 'agents', 'postbox-kiro-1e1e1e1e.json');
+  symlinkSync('/dev/zero', link);
+  const big = join(p.home, 'agents', 'postbox-kiro-2d2d2d2d.json');
+  writeFileSync(big, 'x'.repeat(65 * 1024));
+  writeFileSync(join(p.data, 'kiro-agents.json'), `${JSON.stringify([link, big].map((file) => ({ file, sha256: 'x' })))}\n`);
+  // A read through the link to /dev/zero would never end: the sweep must not read it. (A FIFO: tests/process/kiro-agent-fifo.test.mjs.)
+  await sweepKiroAgents(p.workRoot);
+  assert.ok(existsSync(link) && existsSync(big), 'both left');
+  assert.deepEqual(record(p.data), [], 'and dropped from the record');
+});
