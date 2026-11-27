@@ -2,7 +2,8 @@
 // for the person to merge (the person’s decision of 26 November 2026), in the project’s repository and in each of its
 // submodules’ (#1856).
 
-import { access, copyFile, mkdtemp, readdir, readFile, realpath, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { runGit } from '../ledger-git.mjs';
@@ -109,17 +110,37 @@ async function commitIn(git, place, turn) {
   if (!dir) return { why: 'Postbox couldn’t make a folder for its copy of the index' };
   try {
     const index = join(dir, 'index');
-    // No index at all is read as an empty one, by the worktree and by the copy alike.
-    const copied = await copyFile(join(place.admin, 'index'), index).then(
-      () => true,
-      (/** @type {any} */ e) => e?.code === 'ENOENT',
-    );
-    if (!copied) return { why: 'Postbox couldn’t copy its index' };
+    if (!(await copyIndex(join(place.admin, 'index'), index))) return { why: 'its index isn’t a file Postbox can copy' };
     const done = await commitFrom(git, place, index, turn);
-    if ('committed' in done && done.committed) await pin(git, place)(['read-tree', 'HEAD']);
+    if ('committed' in done && done.committed) {
+      // With -m, an entry that already matches the commit keeps what git knew of its file, so the next status doesn’t
+      // read every file again; an index -m can’t take (one with a conflict) is set to the commit outright.
+      const synced = await pin(git, place)(['read-tree', '-m', 'HEAD']);
+      if (synced.code !== 0) await pin(git, place)(['read-tree', 'HEAD']);
+    }
     return done;
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Copies a worktree’s index to Postbox’s own file. Only a regular file is copied, opened without following a link and
+ * without waiting, so an index replaced by anything else (a link, a pipe) leaves the turn uncommitted rather than
+ * holding it (#1844). No index at all is read as an empty one, by the worktree and by the copy alike.
+ * @param {string} from @param {string} to @returns {Promise<boolean>}
+ */
+async function copyIndex(from, to) {
+  const fh = await open(from, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch((/** @type {any} */ e) => e);
+  if (!fh || typeof fh.close !== 'function') return fh?.code === 'ENOENT';
+  try {
+    if (!(await fh.stat()).isFile()) return false;
+    await writeFile(to, await fh.readFile());
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await fh.close();
   }
 }
 

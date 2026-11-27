@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -137,4 +137,24 @@ test('#1844 every step of the commit reads Postbox’s copy, not what’s staged
   assert.equal(staged, true, 'the worktree’s index changed as the status ran');
   assert.equal(git(w.dir, ['show', 'HEAD:agent.txt']), 'the agent’s work\n');
   assert.doesNotMatch(git(w.p.folder, ['ls-tree', '-r', branch('staged-at-status')]), /^160000 /m, 'no gitlink on the agent’s branch');
+});
+
+test('#1844 an index replaced by a pipe or a link leaves the turn uncommitted, without waiting on it', async () => {
+  for (const kind of ['pipe', 'link']) {
+    const w = await turn(`index-${kind}`);
+    const admin = git(w.dir, ['rev-parse', '--absolute-git-dir']).trim();
+    const index = join(admin, 'index');
+    rmSync(index, { force: true });
+    if (kind === 'pipe') execFileSync('mkfifo', [index]);
+    else symlinkSync(join(w.p.folder, 'README.md'), index);
+    assert.equal(await w.commit(), false, `an index that’s a ${kind} isn’t copied`);
+    assert.match(w.logs.at(-1) ?? '', /index isn’t a file Postbox can copy/);
+  }
+});
+
+test('#1844 after the commit, what git knew of each unchanged file stays in the worktree’s index', async () => {
+  const w = await turn('index-stat');
+  assert.equal(await w.commit(), true, w.logs.join('\n'));
+  const debug = git(w.dir, ['ls-files', '--debug', 'README.md']);
+  assert.doesNotMatch(debug, /size: 0\b/, 'its size is still known, so the next status needn’t read it again');
 });
