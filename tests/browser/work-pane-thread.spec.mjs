@@ -174,6 +174,62 @@ async function threadEndAfterGrow(page, { width, height }) {
   expect(await place(page), 'and still follows it once the window is back').toEqual({ gap: 0, mode: 'following' });
 }
 
+/**
+ * #966: at 375 px, a widening that only a forced layout sees, here a 440 px box appended to the page, measured and
+ * removed in one task, clamps the transcript to the shorter, wider layout’s end; it then rewraps taller, and the
+ * clamp’s scroll event read as you scrolling up, so the view stopped following. The probe of 26 November.
+ */
+async function threadWidenedForALayout(page, { phone }) {
+  test.skip(!phone, 'a phone viewport sizes the page from its content (#966)');
+  await open(page, `/side/${topic}?work`);
+  await settled(page);
+  expect(await place(page), 'opened at the end').toEqual({ gap: 0, mode: 'following' });
+  await page.evaluate(async () => {
+    await new Promise((r) => requestAnimationFrame(r));
+    const wide = document.body.appendChild(Object.assign(document.createElement('div'), { style: 'width: 440px; height: 1px' }));
+    void document.documentElement.scrollWidth; // a forced layout at the wider width
+    void document.querySelector('.sp-body')?.scrollHeight;
+    wide.remove();
+  });
+  await settled(page);
+  expect(await place(page), 'still at the end once the rewrap settles').toEqual({ gap: 0, mode: 'following' });
+  await keepsFollowing(page);
+}
+
+/**
+ * #966’s real source: the top bar measures itself as it’s fitted (fitTopbar, shell.mjs), comparing its scrollWidth
+ * with its clientWidth while it may still be too wide. Here the bar is made too wide by a 600 px box and measured so,
+ * in one task. Its own overflow-x: clip (#866) and the page’s keep that from laying the page out wider.
+ */
+async function threadUnderAWideTopbar(page, { phone }) {
+  test.skip(!phone, 'a phone viewport sizes the page from its content (#966)');
+  await open(page, `/side/${topic}?work`);
+  await settled(page);
+  expect(await place(page), 'opened at the end').toEqual({ gap: 0, mode: 'following' });
+  const wider = await page.evaluate(async () => {
+    await new Promise((r) => requestAnimationFrame(r));
+    const bar = /** @type {HTMLElement} */ (document.querySelector('.topbar'));
+    const wide = bar.appendChild(Object.assign(document.createElement('span'), { style: 'flex: none; width: 600px; height: 1px' }));
+    const over = bar.scrollWidth > bar.clientWidth; // as fitTopbar measures it
+    void document.querySelector('.sp-body')?.scrollHeight;
+    wide.remove();
+    return over;
+  });
+  expect(wider, 'the bar was too wide when measured').toBe(true);
+  await settled(page);
+  expect(await place(page), 'still at the end once the bar is fitted').toEqual({ gap: 0, mode: 'following' });
+  await keepsFollowing(page);
+}
+
+/** That the next item appended is followed to the end too. */
+async function keepsFollowing(page) {
+  const said = `Note: after the rewrap ${Date.now()}`;
+  app.rt.threads.addItem(topic, { kind: 'user', text: said });
+  await expect(page.locator(`${THREAD} .transcript`).getByText(said)).toBeVisible();
+  await settled(page);
+  expect(await place(page), 'and follows the next item').toEqual({ gap: 0, mode: 'following' });
+}
+
 /** #837’s other side: following the end, full screen and back still follows it. */
 async function threadFollows(page) {
   await open(page, `/side/${topic}?work`);
@@ -243,6 +299,8 @@ const CASES = [
   ['read a little way up from the end, full screen and back keeps the place (#837)', threadNearEnd],
   ['following the end, full screen and back still follows it (#837)', threadFollows],
   ['after the window grows, wheeling down to the end follows it (#837)', threadEndAfterGrow],
+  ['a widening only a forced layout sees keeps following the end (#966)', threadWidenedForALayout],
+  ['a top bar measured while too wide keeps following the end (#966)', threadUnderAWideTopbar],
   [
     'read a little way up, the clamp’s scroll event late, full screen and back keeps the place (#837)',
     (page, size) => threadNearEnd(page, size, { lateScroll: true }),
