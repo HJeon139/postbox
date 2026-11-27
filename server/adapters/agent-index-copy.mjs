@@ -1,8 +1,8 @@
 // Postbox’s copy of an agent worktree’s index, which the commit at the end of an Antigravity turn is built from
 // (agent-worktree-commit.mjs, #1844), and git’s lock on that worktree’s index, held while it is.
 
-import { constants } from 'node:fs';
-import { open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { constants, createReadStream } from 'node:fs';
+import { open, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** @typedef {{ committed: boolean } | { why: string }} Outcome  whether it committed, or why it didn’t */
@@ -35,7 +35,8 @@ export async function withIndexCopy(admin, dir, commit) {
     if (!(await copyIndex(join(admin, 'index'), index))) return { why: 'its index isn’t a file Postbox can copy' };
     const done = await commit(index);
     if ('committed' in done && done.committed) {
-      await lock.writeFile(await readFile(index));
+      // Streamed, as the copy was, so a large index isn’t held in memory whole.
+      await lock.writeFile(createReadStream(index));
       written = true;
     }
     return done;
