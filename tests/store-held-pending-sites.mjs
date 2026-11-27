@@ -37,6 +37,7 @@ export const PENDING = {
   'app-check-wait.mjs': ['waitForCheck'], // whether a version’s check already settled before the reply’s wait started (#337)
   'archive-runtime.mjs': ['running'], // a job kept behind a held commit, whose turn the archive pass must not move (#623)
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
+  'ask-again.mjs': ['askAgain'], // the agent’s kept turns, set at its turn’s start maybe behind a held commit, which decide whether its card is re-tied (#1868)
   'ask-question.mjs': ['handOver'], // a host question’s blocks this turn answered, whose answers go on when the host ends its call (#1059)
   'apps.mjs': ['appCheck', 'endFixes', 'showApp', 'updateApp'], // the check just recorded, for the reply waiting on it (#337); an agent’s apps left fixing, a sweep that writes back (#1664); show_app and update_app of an app the turn may have just shown
   'app-entries.mjs': ['lostEvent'], // the voice line an app’s event posted, maybe behind a held commit, read when its turn starts (#1425)
@@ -71,6 +72,9 @@ export const PENDING = {
     'settleScheduledWake',
     'cancelWakeSchedule',
     'noteScheduledTurn',
+    // retryHostWake: the session’s host turn and the wake that names it, either maybe written behind a held commit (#466)
+    'retryHostWake',
+    'retryHostWake',
     'dropSchedulesOf',
     'dropScheduledWake',
   ],
@@ -225,7 +229,7 @@ export const PENDING = {
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left
   'turn-end-work.mjs': ['workLine'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'turn-finish.mjs': ['endTurn', 'endTurn'], // a turn’s end: its session and its own items, maybe held behind a commit (#796, #623)
-  'turn-needs.mjs': ['needsAfter'], // the thread a turn’s reply count goes to, maybe held behind a commit (#796)
+  'turn-needs.mjs': ['needsAfter', 'needsAfter'], // the thread a turn’s reply count goes to, maybe held behind a commit (#796); the need’s card, whose turn says whether it rang before (#1868)
   // The quota marks that decide a mark or its clearing, and the persona that says whose quota it is, each maybe held
   // behind a commit (#442).
   'turn-quota.mjs': ['quotaKey', 'sessionsOn', 'quotaName', 'quotaMoved'],

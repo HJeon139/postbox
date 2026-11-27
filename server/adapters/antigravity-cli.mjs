@@ -55,6 +55,7 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL, modelDefault } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
+import { cleanSaid } from '../../shared/text-parts.mjs';
 import { HarnessEvents } from '../harness-events.mjs';
 import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
@@ -441,7 +442,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           // Only an error agy gave words to: a bare status such as ERROR says nothing that could repeat.
           const repeated = repeatsLastError(ctx, st.sessionId ?? resumed, r.status === 'SUCCESS' || !r.error ? null : String(r.error));
           if (error === null) return;
-          const why = clip(error, 400);
+          const why = cleanSaid(error, 400);
           // agy’s ERROR doesn’t say how the turn ended. Recorded in the Gemini room UAT: ERROR after a model call it
           // retried and went on from, once with the review written in full and once ending at a refused command;
           // and ERROR (“API error (attempt 2)”) on a turn with no failed call in its stream, which a refused read
