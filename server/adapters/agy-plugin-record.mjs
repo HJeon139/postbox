@@ -95,12 +95,22 @@ export async function removePluginFolder(dir, { throughLinks }) {
   return gone(dir);
 }
 
-/** Whether the folder is still the plugin noted, by its mcp_config.json. @param {Note} note */
-const stillOurs = (note) =>
-  readFile(join(note.dir, 'mcp_config.json'), 'utf8').then(
+/** The most a plugin’s mcp_config.json runs to: one server and its URL, well under this. */
+const MOST = 64 * 1024;
+
+/**
+ * Whether the folder is still the plugin noted, by its mcp_config.json. Read only when that’s a regular file of a sane
+ * size, never a link, a FIFO or a device: a read of one could hang Postbox’s start, or never end. @param {Note} note
+ */
+async function stillOurs(note) {
+  const config = join(note.dir, 'mcp_config.json');
+  const st = await lstat(config).catch(() => null);
+  if (!st?.isFile() || st.size > MOST) return false;
+  return readFile(config, 'utf8').then(
     (text) => configHash(text) === note.sha256,
     () => false,
   );
+}
 
 /**
  * Removes every plugin still noted, as Postbox starts, that is still the one its turn wrote. Only a path that ends in
