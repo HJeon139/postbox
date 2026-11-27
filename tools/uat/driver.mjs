@@ -266,7 +266,15 @@ export function driver(page, hooks = {}) {
           math: !!n.querySelector('.katex'),
           images: n.querySelectorAll('.me-card img, .attachments img').length,
           attachments: n.querySelectorAll('.attachments .att').length,
-          buttons: [...n.querySelectorAll('button')].filter((b) => b.offsetParent !== null && !b.closest('.msg-actions')).map((b) => (b.textContent.trim() || b.getAttribute('aria-label') || '').slice(0, 60)).filter(Boolean),
+          // A chip as “label — description”, not the two run together (#1782): the tester names an option as it reads it,
+          // and the runner matches that whole. Its label is never cut, so the name always starts “label — ”, and its
+          // description only past 120 characters, so two chips with one label stay apart unless they differ only past it.
+          buttons: [...n.querySelectorAll('button')].filter((b) => b.offsetParent !== null && !b.closest('.msg-actions')).map((b) => {
+            const label = b.querySelector('.chip-text > span')?.textContent.trim();
+            const desc = b.querySelector('.chip-desc')?.textContent.trim();
+            if (label) return desc ? label + ' — ' + desc.slice(0, 120) : label;
+            return (b.textContent.trim() || b.getAttribute('aria-label') || '').slice(0, 60);
+          }).filter(Boolean),
           fields: [...n.querySelectorAll('label')].map((l) => l.textContent.trim().slice(0, 60)).filter(Boolean),
         }));
         const main = document.querySelector('#main.transcript');
