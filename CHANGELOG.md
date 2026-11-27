@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.9 (2026-11-27)
+
+### Fixes
+
+- **turns:** only this turn's own host link giving up keeps what it took
+- **turns:** one rule for a turn that never reached its agent, keeping a host turn that runs on there
+- **claude:** Claude Code's API-error line isn't reply text, so its turn reads as never reached
+- **turns:** a turn that never reaches its agent gives back its waiting notices and folded lint
+
 ## 5.4.8 (2026-11-27)
 
 ### Fixes
