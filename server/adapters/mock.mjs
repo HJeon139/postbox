@@ -638,30 +638,34 @@ async function failingReply(a) {
 async function brokenBlocks(a) {
   await a.think(400);
   await a.say('Here’s the timeline:');
-  a.block({
-    id: 'chapters-1',
-    type: 'timeline',
-    title: 'Chapters by book',
-    fallback: 'Chapters by length: Moby-Dick 135, Middlemarch 86, Emma 55, Persuasion 24, Walden 18.',
-    items: [{ book: 'Moby-Dick', chapters: 135 }],
-  });
-  a.block({
-    id: 'rebuild-steps',
-    type: 'progress',
-    version: 3,
-    title: 'Rebuild steps',
-    fallback: 'Steps: drop prefaces (done), rebuild BM25 (running), re-embed 3 books (waiting).',
-    steps: [],
-    lanes: 2,
-  });
-  a.block({
-    id: 'pick-book',
-    type: 'choice',
-    title: 'Pick a book',
-    fallback: 'Which book should I rebuild first: Middlemarch, Emma or Persuasion? Reply in the chat.',
-    options: [{ id: 'mm', label: 'Middlemarch' }, { id: 'emma' }, { id: 'pers', label: 'Persuasion' }],
-  });
-  await a.say('\nIf any of those can’t be shown, you’ll see my plain-text version instead.');
+  const blocks = [
+    {
+      id: 'chapters-1',
+      type: 'timeline',
+      title: 'Chapters by book',
+      fallback: 'Chapters by length: Moby-Dick 135, Middlemarch 86, Emma 55, Persuasion 24, Walden 18.',
+      items: [{ book: 'Moby-Dick', chapters: 135 }],
+    },
+    {
+      id: 'rebuild-steps',
+      type: 'progress',
+      version: 3,
+      title: 'Rebuild steps',
+      fallback: 'Steps: drop prefaces (done), rebuild BM25 (running), re-embed 3 books (waiting).',
+      steps: [],
+      lanes: 2,
+    },
+    {
+      id: 'pick-book',
+      type: 'choice',
+      title: 'Pick a book',
+      fallback: 'Which book should I rebuild first: Middlemarch, Emma or Persuasion? Reply in the chat.',
+      options: [{ id: 'mm', label: 'Middlemarch' }, { id: 'emma' }, { id: 'pers', label: 'Persuasion' }],
+    },
+  ];
+  // Invalid blocks are refused outright (#1319), so the agent says in words what each refused one held.
+  const refused = blocks.filter((b) => a.block(b)?.ok === false);
+  if (refused.length) await a.say(`\n${refused.map((b) => `${b.title} wasn’t shown, so in words: ${b.fallback}`).join('\n\n')}`);
 }
 
 async function brokenMap(a, _mem) {
