@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.12 (2026-11-27)
+
+### Fixes
+
+- **kiro:** skip the marker scan when nothing is held and a chunk can't start one
+- **kiro:** match a possible marker only where a run of space starts, so a long run is linear
+- **kiro:** hold back what could become DeepSeek's tool-call marker, so a split one never shows
+
 ## 5.4.11 (2026-11-27)
 
 ### Fixes
