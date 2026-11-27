@@ -857,6 +857,11 @@
   },
   "codex-app-server/ask-mcp-allow.jsonl": {},
   "codex-app-server/ask-mcp-deny.jsonl": {},
+  "codex-app-server/compact-continue.jsonl": {
+    "9": "OK",
+    "28": "her",
+    "29": "on"
+  },
   "codex-app-server/compact.jsonl": {
     "9": "OK"
   },
