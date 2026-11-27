@@ -1,5 +1,5 @@
 // Findings of an app’s check that only its agent hears (#952): with no other finding, the version passes, and the person
-// sees no note. Moved from server/apps.mjs.
+// sees no note.
 
 import { awaited } from './app-check-wait.mjs';
 

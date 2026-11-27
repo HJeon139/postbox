@@ -3,7 +3,8 @@
 // label (isPointInFill, isPointInStroke), not their boxes, so a label beside a line whose box it shares passes, and
 // only the band of its letters, so a mark grazing the space above or below them passes too. An axis, its ticks, a grid
 // and a legend are left out, and so are a count inside its own dot, a name inside its own node, a label with a halo
-// that keeps it legible, and one on a backing. Postbox inlines it into a check frame’s page after check-boxes.js.
+// that keeps it legible, and one on a backing drawn over the marks. Postbox inlines it into a check frame’s page after
+// check-boxes.js.
 // biome-ignore lint/suspicious/noRedundantUseStrict: the page runs this as a classic script, which isn’t strict without it.
 'use strict';
 {
@@ -159,10 +160,7 @@
     const halos = [];
     for (const el of svg.querySelectorAll('text')) {
       if (el.parentElement.closest('text') || el.closest(OUT) || hidden(el)) continue;
-      // Its lines, as tspans or text nodes, joined with a space, as the person reads them.
-      const t = [...el.querySelectorAll('tspan')].length
-        ? [...el.querySelectorAll('tspan')].map((n) => n.textContent.trim()).filter(Boolean).join(' ')
-        : el.textContent.trim();
+      const t = textOf(el);
       const r = el.getBoundingClientRect();
       if (!t || r.width < 2 * EDGE + 1 || r.height < 2 * EDGE + 1) continue;
       const cs = getComputedStyle(el);
@@ -185,6 +183,13 @@
     }
     return out;
   }
+
+  /** A label’s text: its own text nodes and tspans, each once, joined with a space, as the person reads its lines. */
+  const textOf = (el) =>
+    [...el.childNodes]
+      .map((n) => (n.nodeType === Node.TEXT_NODE || n.nodeName === 'tspan' ? n.textContent.trim() : ''))
+      .filter(Boolean)
+      .join(' ');
 
   /** Opaque rectangles a label can sit on, under a third of the SVG: a backing, a bar, a box. */
   function backings(svg) {

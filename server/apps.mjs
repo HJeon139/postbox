@@ -19,9 +19,9 @@ import { newId } from './store.mjs';
 
 /**
  * App check problems that are warnings: the app is shown, with notes, and the agent is told, except the hints
- * (app-hints.mjs), which alone leave no note. Text under 12 px holds a version back at 1000 × 680, as the critique’s floor does (#997):
- * agents shipped the labels this flagged when it was a warning. At 375 px it stays a warning: an SVG scaled to fit a
- * narrow pane draws its labels small.
+ * (app-hints.mjs), which alone leave no note. Text under 12 px holds a version back at 1000 × 680, as the critique’s
+ * floor does (#997): agents shipped the labels this flagged when it was a warning. At 375 px it stays a warning: an SVG
+ * scaled to fit a narrow pane draws its labels small.
  */
 const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small-375', 'dashes-too-fine', 'only-error', 'text-over-marks']);
 

@@ -105,9 +105,9 @@ export function checkLine(version, check, appId = 'the app') {
     return `v${version}’s check found problems, so the person doesn’t see it yet. Fix them in a new version. ${wait}\n${listed(check)}`;
   if (check.status === 'replaced') return `v${version} was replaced by a newer version before its check ran.`;
   if (check.status === 'retired') return `The app was retired before v${version}’s check ran.`;
-  if (check.status === 'crashed') return `v${version} still fails with a script error, so it shows as crashed:\n${listed(check)}`;
-  if (!check.notes) return `v${version} still has problems from its check, so it is shown with a note:\n${listed(check)}`;
-  return `v${version} is shown, with these notes from its check:\n${listed(check)}`;
+  if (check.status === 'crashed') return `v${version} still fails with a script error, so it shows as crashed:\n${listed(check)}${told(check)}`;
+  if (!check.notes) return `v${version} still has problems from its check, so it is shown with a note:\n${listed(check)}${told(check)}`;
+  return `v${version} is shown, with these notes from its check:\n${listed(check)}${told(check)}`;
 }
 
 /**

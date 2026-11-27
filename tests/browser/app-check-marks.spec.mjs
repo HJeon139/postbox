@@ -93,6 +93,8 @@ const APPS = {
     .join(''),
   // A tick label rotated −45°, with a dot in the empty corner of its box on screen, clear of its letters.
   rotated: `<svg id="rotated" width="300" height="160" role="img" aria-label="Runs"><text x="100" y="100" transform="rotate(-45 100 100)" ${T}>September</text><circle cx="104" cy="60" r="4" fill="var(--s1)"/></svg>`,
+  // The same rotated label with a dot on its letters: on the dot.
+  rotatedOn: `<svg id="rotatedOn" width="300" height="160" role="img" aria-label="Runs"><text x="100" y="100" transform="rotate(-45 100 100)" ${T}>September</text><circle cx="121" cy="75" r="5" fill="var(--s1)"/></svg>`,
   // Data dots in a group whose id starts with “key”, and labels on them: a key is furniture, “key-events” isn’t.
   keyGroup: `<svg id="keyGroup" width="300" height="120" role="img" aria-label="Events"><g id="key-events"><circle cx="60" cy="60" r="6" fill="var(--s1)"/><text x="50" y="64" ${T}>Launch</text></g></svg>`,
   // An axis in a group named “x-axis”, its title on its line: furniture, with its prefix.
@@ -205,6 +207,11 @@ test('#952 a label on the edge of a region larger than a node, or of a small are
 test('#952 a dot on the first line of a three-line callout is under it', () => {
   // The warning quotes the label’s lines joined with a space, as the person reads them.
   expect(overMarks('callout')[0], says('callout')).toContain('“Best week of the year, after rest” (on a dot)');
+});
+
+test('#952 a rotated label is tested on its letters: a dot on them is under it, one in its box’s empty corner isn’t', () => {
+  expect(overMarks('rotatedOn')[0], says('rotatedOn')).toMatch(/“September” \(on a dot\)/);
+  expect(overMarks('rotated'), says('rotated')).toEqual([]);
 });
 
 test('#952 a label on a data dot in a group named “key-events” is on the dot: only a whole key is furniture', () => {

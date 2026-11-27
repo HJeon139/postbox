@@ -9,7 +9,7 @@ import { withCheck } from '../server/app-check-wait.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 
-const HINT = { code: 'text-over-marks', message: 'In svg#runs, 1 label sits on the chart’s marks, such as “6:25” (on a dot).' };
+const HINT = { code: 'text-over-marks', message: 'In svg#runs, 1 label sits on the chart’s marks, hiding them. On marks: “6:25” (on a dot).' };
 const WARNING = { code: 'marks-too-small', message: 'Some marks are smaller than 8 px.' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -118,4 +118,15 @@ test('#952 a reply waiting for the check names the hint, and no lint turn repeat
   assert.equal(check.status, 'passed');
   assert.match(reply, /v1 passed its check, and the person sees it\.\nOnly you are told:\n- text-over-marks: In svg#runs/);
   assert.deepEqual(lints, [], 'nothing queued for a lint turn');
+});
+
+test('#952 a reply waiting for a check that didn’t finish names the hint beside its note', async () => {
+  const unanswered = { code: 'no-answer', message: 'The frame never answered.' };
+  const { check, reply, lints } = await checkedInTurn([HINT, unanswered], { waiting: true });
+  assert.deepEqual(
+    check.problems.map((p) => p.code),
+    ['no-answer'],
+  );
+  assert.match(reply, /- no-answer: The frame never answered\.\nOnly you are told:\n- text-over-marks/);
+  assert.deepEqual(lints, [], 'the reply told it, so no lint turn repeats it');
 });
