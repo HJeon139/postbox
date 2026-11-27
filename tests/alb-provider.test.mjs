@@ -58,6 +58,21 @@ test('the allow list names people by subject, or by a group in a claim: either l
   await assert.rejects(identify(byGroup)(from({ 'x-amzn-oidc-data': tokenFor() })), (/** @type {any} */ e) => e.code === 'not-allowed');
 });
 
+test('the allow list matches exactly: a subject or a group that differs in case or spacing is someone else’s', async () => {
+  const byGroup = { allow: { groups: { claim: 'groups', any: ['postbox-team'] } } };
+  for (const [over, payload] of /** @type {[Record<string, any>, Record<string, unknown>][]} */ ([
+    [{}, { sub: 'U-1' }],
+    [{}, { sub: 'u-1 ' }],
+    [byGroup, { groups: ['Postbox-Team'] }],
+    [byGroup, { groups: 'ops postbox-team' }],
+  ]))
+    await assert.rejects(
+      identify(over)(from({ 'x-amzn-oidc-data': tokenFor({ payload }) })),
+      (/** @type {any} */ e) => e.code === 'not-allowed',
+      JSON.stringify(payload),
+    );
+});
+
 test('a token whose claims don’t name the person as the deployment says is refused: no principal is made up', async () => {
   for (const payload of [{ preferred_username: undefined }, { preferred_username: '' }, { preferred_username: 42 }, { name: undefined }])
     await assert.rejects(identify()(from({ 'x-amzn-oidc-data': tokenFor({ payload }) })), (/** @type {any} */ e) => {
@@ -85,6 +100,10 @@ test('settings are refused whole, saying what is missing: a hosted Postbox doesn
     [{ allow: { subjects: [] } }, /needs an allow list/],
     [{ allow: { groups: { claim: 'groups', any: [] } } }, /needs an allow list/],
     [{ allow: { groups: { claim: '', any: ['a'] } } }, /needs an allow list/],
+    // A part given that can’t be read refuses the whole list, rather than leaving out the people it named.
+    [{ allow: { subjects: ['u-1'], groups: { claim: 'groups', any: 'postbox-team' } } }, /needs an allow list/],
+    [{ allow: { subjects: ['u-1'], group: { claim: 'groups', any: ['postbox-team'] } } }, /needs an allow list/],
+    [{ allow: { subjects: [''], groups: { claim: 'groups', any: ['postbox-team'] } } }, /needs an allow list/],
     [{ region: 'nowhere' }, /“region”/],
     [{ region: 'us-gov-west-1' }, /“region”.*GovCloud and China aren’t supported yet/],
     [{ signer: '' }, /“signer”/],

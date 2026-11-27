@@ -48,9 +48,13 @@ test('with no sign-in, no route answers: the page, the state, the stream, a room
     '/media/favicon.svg',
     '/favicon.svg',
     '/app/js/main.mjs',
+    '/shared/limits.mjs',
+    '/kit/kit.js',
+    '/sandbox/mermaid',
   ]) {
     const answer = await ask(hosted, PORT, { path });
     assert.deepEqual([path, answer.status, answer.json], [path, 401, { error: 'Sign in to use this Postbox.', code: 'sign-in' }]);
+    assert.equal((await ask(hosted, PORT, { method: 'HEAD', path })).status, 401, `HEAD ${path}`);
   }
   // Why a token was refused is never sent: an expired one reads as none at all.
   const expired = await ask(hosted, PORT, { path: '/api/state', headers: signed({ header: { exp: NOW / 1000 - 1 } }) });

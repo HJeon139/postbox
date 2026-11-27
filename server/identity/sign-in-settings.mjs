@@ -15,9 +15,12 @@ const names = (list) => (Array.isArray(list) && list.length && list.every((x) =>
  * @param {any} allow @returns {{ subjects: string[], groups: { claim: string, any: string[] } | null } | null}
  */
 function allowList(allow) {
+  // Checked whole: a part given that can’t be read refuses the start, rather than leaving out the people it named.
+  for (const key of Object.keys(allow ?? {})) if (key !== 'subjects' && key !== 'groups') return null;
   const subjects = names(allow?.subjects);
   const any = names(allow?.groups?.any);
   const groups = any && typeof allow.groups.claim === 'string' && allow.groups.claim ? { claim: allow.groups.claim, any } : null;
+  if ((allow?.subjects !== undefined && !subjects) || (allow?.groups !== undefined && !groups)) return null;
   return subjects || groups ? { subjects: subjects ?? [], groups } : null;
 }
 
@@ -48,7 +51,7 @@ export function signInSettings(given) {
   const allow = allowList(s.allow);
   if (!allow)
     throw new Error(
-      'A hosted Postbox needs an allow list, and its sign-in settings have none. Set “allow” to who may sign in: “subjects”, a list of people by their subject, or “groups”, a claim and the groups in it.',
+      'A hosted Postbox needs an allow list, and its sign-in settings have none it can read. Set “allow” to who may sign in: “subjects”, a list of people by their subject, or “groups”, a claim and a list of the groups in it, and nothing else.',
     );
   return {
     provider: 'alb',
