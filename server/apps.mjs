@@ -8,6 +8,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { cutText } from '../shared/text-parts.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { awaited, settleUnchecked, settleWaits } from './app-check-wait.mjs';
+import { APP_HINTS, passed } from './app-hints.mjs';
 import { intentOf, withIntentNote } from './app-intent.mjs';
 import { notYours } from './app-retire.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
@@ -23,12 +24,6 @@ import { newId } from './store.mjs';
  * warning. At 375 px it stays a warning: an SVG scaled to fit a narrow pane draws its labels small.
  */
 const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small-375', 'dashes-too-fine', 'only-error', 'text-over-marks']);
-/**
- * Of the warnings, those only the agent hears: alone, they leave the version passed, with no note for the person. Labels
- * on a chart’s marks (#952) are one: in a sample of real apps, half of what it flagged was a legible touch, which isn’t
- * worth the person’s attention, and the person chose that the agent alone hears it.
- */
-const APP_HINTS = new Set(['text-over-marks']);
 
 // ── Apps ───────────────────────────────────────────────────────────────────────────
 
@@ -40,26 +35,6 @@ export function appCheck(apps, appId, report) {
   const r = checked(apps, appId, report);
   if (!r.ignored) settleWaits(apps, appId, report.version, apps.store.pending.apps()[appId]?.check);
   return r;
-}
-
-/**
- * A version that passed, or whose only findings are hints for the agent alone: those go to it through the lint pipeline
- * of the turn that made the version, and stay on the check for it to read; the person sees the version as passed.
- * @param {any} apps @param {any} app  the app as checked() read it @param {number} version @param {any[]} hints
- */
-function passed(apps, app, version, hints) {
-  if (hints.length) {
-    const turnId = apps.running.turnOf(app.sessionId)?.id ?? apps.store.state.sessions[app.sessionId]?.lastTurnId;
-    const scope = { kind: 'app', id: app.id, title: app.title };
-    apps.checks.lint(
-      app.sessionId,
-      turnId,
-      hints.map((p) => ({ ...p, scope })),
-    );
-  }
-  const check = { status: 'passed', attempt: app.check.attempt, problems: [], ...(hints.length ? { hints } : {}) };
-  apps.store.emit('app', { ...app, lastShown: version, check });
-  return { status: 'passed' };
 }
 
 /** The check’s result, recorded. @param {any} apps @param {string} appId @param {{ version: number, problems?: any[] }} report */
