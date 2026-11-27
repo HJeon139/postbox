@@ -3,6 +3,7 @@
 import { cutText } from '../shared/text-parts.mjs';
 import { isNetworkFailure } from './harness-failure.mjs';
 import { httpError } from './helpers.mjs';
+import { hostOf } from './remote/placement.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
 import { newId } from './store.mjs';
 import { whenWritable } from './store-wait.mjs';
@@ -100,7 +101,8 @@ const addTool = (rt, turn, name, id) => {
   if (turn.scheduledTools.includes(clipped) || turn.scheduledTools.length >= TOOL_LIMIT) return;
   turn.scheduledTools.push(clipped);
   const sc = rt.store.pending.schedule(scheduleId);
-  if (sc) rt.store.emit('schedule', { ...sc, startedTools: [...turn.scheduledTools] });
+  // Kept with the tools an earlier turn of the same wake started, for a turn attached again after a restart (#466).
+  if (sc) rt.store.emit('schedule', { ...sc, startedTools: [...new Set([...(sc.startedTools ?? []), ...turn.scheduledTools])].slice(0, TOOL_LIMIT) });
 };
 
 /** Records a tool start, by toolUse or by activity, including what scheduled-wake recovery will need. */
@@ -142,9 +144,25 @@ export function settleScheduledWake(rt, turn, err) {
   const sc = rt.store.pending.schedule(id);
   if (!sc) return;
   if (!err || err.name === 'AbortError') return finishSchedule(rt, sc, err ? 'canceled' : 'done');
-  // A host turn marked lost is still running there and RemoteTurns will attach it again; no second recovery is armed.
-  if (rt.store.pending.session(turn.sessionId)?.remoteTurn?.state === 'lost') return finishSchedule(rt, sc, 'done');
+  // A host turn marked lost is still running there and RemoteTurns will attach it again: no second recovery is armed,
+  // and the schedule stays running for the turn attached again, which carries the wake and settles it (#466).
+  const r = rt.store.pending.session(turn.sessionId)?.remoteTurn;
+  if (r?.state === 'lost') return;
+  // Nor while the wake’s own host turn still waits to be attached, or to be resumed, when that attach’s or resume’s own
+  // start failed: the attach or the resume that comes once the host is back carries the wake (#466).
+  const waits = ON_HOST.has(r?.state) || Boolean(r?.resume);
+  if (waits && typeof sc.turnId === 'string' && r.rtTurn === sc.turnId && sc.turnId !== turn.id) return;
   if (!isNetworkFailure(err)) return finishSchedule(rt, sc, 'done');
+  // With the tools the wake’s earlier turn started too, as a turn attached again may not report them again (#466).
+  retryWake(rt, sc, turn, [...(sc.startedTools ?? []), ...(turn.scheduledTools ?? [])]);
+}
+
+/**
+ * A wake whose turn the network took: due again under the same id after the bounded backoff, as a recovery when a tool
+ * had started, until the retry window runs out (#466). @param {any} rt @param {any} sc @param {any} turn  null when
+ * the turn isn’t here to name @param {string[]} started  the tools its turn started @param {string} [why]
+ */
+function retryWake(rt, sc, turn, started, why) {
   const now = Date.now();
   const attempt = (sc.attempt ?? 0) + 1;
   const firstFailureAt = sc.firstFailureAt ?? now;
@@ -152,7 +170,7 @@ export function settleScheduledWake(rt, turn, err) {
     finishSchedule(rt, sc, 'stopped', { retryAttempt: attempt, retryStopped: true });
     return;
   }
-  const tools = [...new Set([...(sc.recoveryTools ?? []), ...(turn.scheduledTools ?? [])])].slice(0, TOOL_LIMIT);
+  const tools = [...new Set([...(sc.recoveryTools ?? []), ...started])].slice(0, TOOL_LIMIT);
   const next = {
     ...sc,
     running: false,
@@ -160,7 +178,7 @@ export function settleScheduledWake(rt, turn, err) {
     at: now + retryDelay(attempt),
     attempt,
     firstFailureAt,
-    ...(tools.length ? { recoveryTools: tools, recoveryNote: recoveryText(turn, tools) } : {}),
+    ...(tools.length ? { recoveryTools: tools, recoveryNote: recoveryText(turn, tools, why) } : {}),
   };
   rt.store.emit('schedule', next);
   // The line keeps the recovery too, for a Retry after you cancel the schedule (prepareScheduledRetry).
@@ -201,6 +219,23 @@ export function noteScheduledTurn(rt, turn) {
   if (sc && sc.turnId !== turn.id) rt.store.emit('schedule', { ...sc, turnId: turn.id });
 }
 
+/**
+ * A wake whose own turn on a host Postbox gives up attaching again (#466). Its agent moved off that host, so the wake
+ * is retried as one whose turn the network took, there where it runs now. Still placed on a host Postbox can’t reach
+ * any more (removed, or no hosts at all), a retry could only fail there, so the wake stops, and its line says so.
+ * @param {any} rt @param {string} sessionId
+ */
+export function retryHostWake(rt, sessionId) {
+  const se = rt.store.pending.session(sessionId);
+  const r = se?.remoteTurn;
+  // Only a running wake names its turn: a retry, a re-arm and a finish each drop it.
+  const own = (/** @type {any} */ sc) => sc.sessionId === sessionId && typeof sc.turnId === 'string' && sc.turnId === r?.rtTurn;
+  const sc = Object.values(rt.store.pending.schedules()).find(own);
+  if (!sc) return;
+  if (hostOf(rt.personas.forSession(se)) === r.hostId) return finishSchedule(rt, sc, 'stopped');
+  retryWake(rt, sc, null, sc.startedTools ?? [], 'was cut off from its host');
+}
+
 /** Whether a running schedule’s own turn is still on its host, in any state RemoteTurns attaches again. */
 const onHost = (rt, sc) => {
   const r = rt.s.sessions[sc.sessionId]?.remoteTurn;
@@ -209,18 +244,16 @@ const onHost = (rt, sc) => {
 
 /**
  * Re-arms schedules after restart. One interrupted while running becomes due again, as a recovery if a tool had started,
- * so its instruction isn’t replayed. One whose own turn is still on a host is that turn’s: RemoteTurns attaches it
- * again. One queued behind another turn there never started its own, so it’s due again too.
+ * so its instruction isn’t replayed. One whose own turn is still on a host is that turn’s: it stays running, unarmed,
+ * and the turn RemoteTurns attaches again carries the wake and settles it, retried on a network failure as the first
+ * turn would have been (#466). One queued behind another turn there never started its own, so it’s due again too.
  */
 export function rearmWakes(rt) {
   for (const sc of Object.values(rt.s.schedules)) {
     // The schedule owns its wake across a restart: an entry its last fire left is stopped, and the wake fires again,
     // with the recovery when a tool had started, rather than the inbox resending the instruction (#466).
     leftOver(rt, sc);
-    if (sc.running && onHost(rt, sc)) {
-      finishSchedule(rt, sc, 'done');
-      continue;
-    }
+    if (sc.running && onHost(rt, sc)) continue;
     const tools = [...new Set([...(sc.recoveryTools ?? []), ...(sc.startedTools ?? [])])].slice(0, TOOL_LIMIT);
     const interrupted = tools.length ? { recoveryTools: tools, recoveryNote: recoveryText(null, tools, 'was interrupted when Postbox stopped') } : {};
     const pending = sc.running ? { ...sc, running: false, at: Date.now(), startedTools: undefined, turnId: undefined, ...interrupted } : sc;
