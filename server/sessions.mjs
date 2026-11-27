@@ -224,9 +224,15 @@ export class Sessions {
     for (const se of this.pendingIn(threadId)) if (se.unread) this.update(se.id, { unread: 0 });
   }
 
-  /** Removes a session, as a delete does once its turn, wakes and jobs are dealt with. @param {string} id */
+  /**
+   * Removes a session, as a delete does once its turn, wakes and jobs are dealt with. It signals session.removing
+   * first, while the session is there: its stops still waiting on a host are kept by the host then (#1796).
+   * @param {string} id
+   */
   remove(id) {
-    if (this.store.pending.session(id)) this.store.emit('remove', { kind: 'session', id });
+    if (!this.store.pending.session(id)) return;
+    this.bus.emit('session.removing', { id });
+    this.store.emit('remove', { kind: 'session', id });
   }
 
   /**
