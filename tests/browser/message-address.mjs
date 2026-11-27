@@ -1,5 +1,5 @@
-// What the #168 specs share (message-address.spec.mjs and message-address-pane.spec.mjs): a long room, and whether a
-// message has been gone to.
+// What the #168 specs share (message-address.spec.mjs and message-address-pane.spec.mjs): a long room, whether a
+// message has been gone to, and a record of what moves the page around a press of End (#1884).
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
@@ -134,8 +134,11 @@ function recordEvents(/** @type {any} */ r, /** @type {(end: KeyboardEvent) => v
   });
   for (const type of ['focusin', 'focusout', 'pointerdown']) addEventListener(type, (e) => r.note(`${type} ${r.named(e.target)}`), true);
   addEventListener('hashchange', () => r.note(`hashchange ${location.hash}`));
+  // The page losing or getting focus: a blur ends the pointer’s aim, and the view holds its anchor a frame later
+  // (pointer-rest.mjs), so a write’s caller alone doesn’t say whether a blur or a pointer move started it.
+  for (const type of ['blur', 'focus']) addEventListener(type, () => r.note(`window ${type}`));
   const pressed = (/** @type {KeyboardEvent} */ e) => {
-    r.note(`keydown ${e.key} on ${r.named(e.target)}, top ${Math.round(r.root()?.scrollTop ?? -1)}`);
+    r.note(`keydown ${e.key} on ${r.named(e.target)}, top ${Math.round(r.root()?.scrollTop ?? -1)}, page focused ${document.hasFocus()}`);
     if (e.key === 'End') watch(e);
   };
   addEventListener('keydown', pressed, true);
