@@ -34,7 +34,7 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
 import { cutText } from '../../shared/text-parts.mjs';
-import { withQuota, withTransient } from '../harness-failure.mjs';
+import { withNetwork, withQuota, withTransient } from '../harness-failure.mjs';
 import { claudeModels } from '../remote/host/harness-models.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { claudeArgs, claudeEnv } from './claude-code-args.mjs';
@@ -279,8 +279,9 @@ export class ClaudeCodeAdapter {
         if (failure) {
           const why = cutText(stderr.trim().split('\n').slice(-3).join(' '), 400);
           const error = withQuota(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`), mapper.quota);
-          // A provider error that passes, such as 529 Overloaded, by the result’s HTTP status (#1713).
-          return reject(withTransient(error, mapper.result?.api_error_status));
+          // A provider error that passes, such as 529 Overloaded, by the result’s HTTP status (#1713); an API Claude
+          // Code couldn’t reach, by the result’s own word for it, so a scheduled wake retries (#466).
+          return reject(withNetwork(withTransient(error, mapper.result?.api_error_status), mapper.result?.api_error === 'connection_failed'));
         }
         resolve({});
       };
