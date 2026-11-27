@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { installOutcome, tokenOutcome } from '../server/remote/install.mjs';
 import { classifyExit } from '../server/remote/ssh.mjs';
+import { classifyRefusal } from '../server/remote/ssh-failures.mjs';
 
 const HIDDEN = /[‪-‮⁦-⁩​-‏]|\p{Cc}|\p{Cs}/u;
 const SAID = 'banner: ‮detaf‬ ​the \u0007host\uD800 is down';
@@ -39,4 +40,10 @@ test('#1938 what the host said when an install or its token run failed is cleane
     assert.match(said, /banner: detaf the host is down/, what);
     assert.doesNotMatch(said, HIDDEN, what);
   }
+});
+
+test('#1938 the daemon’s refusal quoted in a connection failure is cleaned', () => {
+  const said = classifyRefusal('h', { code: 'version', message: SAID }).message;
+  assert.match(said, /banner: detaf the host is down/);
+  assert.doesNotMatch(said, HIDDEN);
 });
