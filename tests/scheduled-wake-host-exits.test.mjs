@@ -6,8 +6,11 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { fireScheduledWake } from '../server/scheduled-wakes.mjs';
+import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
-import { starts, startUp, until } from './remote-turns-helpers.mjs';
+import { createFakeDaemon } from './fake-daemon.mjs';
+import { rig, starts, startUp, until } from './remote-turns-helpers.mjs';
 import { line, moveOff, unreachable, wakeOnHostThenRestart } from './scheduled-wake-host-fixture.mjs';
 
 /** A wake whose host turn is interrupted, waiting on its resume, as when its backend isn’t registered here (#909). */
@@ -50,9 +53,9 @@ test('#466 a wake left to its host turn’s resume is settled when a new turn st
   const before = starts(d).length;
   r.rt.sendMessage(r.t.id, { text: 'Something else.' });
   await until(() => starts(d).length === before + 1, 'the new turn to start on the host');
-  assert.notEqual(r.store.state.schedules[sc.id]?.running, true, 'the wake isn’t left to a turn that will never run');
-  assert.notEqual(line(r, sc).status, 'running');
-  assert.equal(starts(d).length, before + 1, 'the wake didn’t start a turn of its own beside the new one');
+  // Its agent is still placed on that host, so the wake stops rather than retrying beside the new turn.
+  assert.equal(r.store.state.schedules[sc.id], undefined, 'the wake isn’t left to a turn that will never run');
+  assert.equal(line(r, sc).status, 'stopped');
 });
 
 test('#466 a wake whose host turn the host has no record of at a restart is carried by the resume, not stopped', async () => {
@@ -70,4 +73,51 @@ test('#466 a wake whose host turn the host has no record of at a restart is carr
   assert.equal(r.store.state.schedules[sc.id].running, true);
   d.end(starts(d)[1].turn, { code: 0, signal: null });
   await until(() => line(r, sc).status === 'done', 'the wake to settle as done');
+});
+
+test('#466 a wake’s fresh host turn that starts over on a second host turn keeps its wake running, then settles it', async () => {
+  const d = createFakeDaemon({ autoEnd: false });
+  const r = rig({ store: new Store(null), d });
+  const sc = r.rt.schedule(r.se().id, { inMs: 60_000, note: 'Check the host.' });
+  clearTimeout(r.rt.timers.get(sc.id));
+  // Claude Code finds no session to resume, so the turn starts over on a second host turn (nextTurn, allocate again).
+  const adapter = r.rt.adapters.get('claude-code');
+  const run = adapter.run.bind(adapter);
+  let first = true;
+  adapter.run = (/** @type {any} */ o) => {
+    if (!first) return run(o);
+    first = false;
+    return Promise.resolve({ missingSession: true });
+  };
+  fireScheduledWake(r.rt, sc);
+  await until(() => starts(d).length === 1, 'the second host turn to start');
+  assert.equal(r.store.state.schedules[sc.id]?.running, true, 'its own wake, still running');
+  assert.equal(line(r, sc).status, 'running');
+  d.end(starts(d)[0].turn, { code: 0, signal: null });
+  await until(() => line(r, sc).status === 'done', 'the wake to settle as done');
+});
+
+test('#466 a resume whose own start lost the network leaves the wake to the resume that comes once the host is back', async () => {
+  const { r, sc, d, hostTurn } = await wakeOnHostThenRestart();
+  // The welcome doesn’t list the turn, so the attach gives up and the turn resumes; the resume’s own start then can’t
+  // reach the host; later the host is back.
+  const ensure = r.hosts.ensureWelcome;
+  let calls = 0;
+  r.hosts.ensureWelcome = async (...a) => {
+    calls++;
+    if (calls === 2) throw unreachable();
+    const w = await ensure(...a);
+    return calls === 1 ? { ...w, turns: (w.turns ?? []).filter((t) => t.turn !== hostTurn) } : w;
+  };
+  startUp(r);
+  await until(() => calls >= 2 && !r.rt.turns.size, 'the resume’s start to fail');
+  assert.equal(r.store.state.schedules[sc.id]?.attempt, undefined, 'not retried: the resume to come carries it');
+  assert.equal(r.rt.timers.has(sc.id), false);
+  r.hosts.emit('status', r.host.id, r.hosts.status(r.host.id));
+  await until(() => starts(d).length === 2, 'the resume to start on the host');
+  d.end(starts(d)[1].turn, { code: 0, signal: null });
+  await until(() => line(r, sc).status === 'done', 'the wake to settle as done');
+  await until(() => !r.rt.turns.size && !r.rt.exiting.size, 'the turn to end');
+  assert.equal(r.store.state.schedules[sc.id], undefined);
+  assert.equal(starts(d).length, 2, 'the wake ran once, through the resume');
 });

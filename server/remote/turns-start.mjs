@@ -241,8 +241,9 @@ function allocate(rts, live, folder) {
   const id = randomUUID();
   adopt(rts, live, id);
   leaveMoved(rts, live.sessionId, live.hostId);
-  // A turn that doesn’t continue the last one there ends the resume that carried a wake (#466).
-  if (!live.rt.origin) retryHostWake(rts.rt, live.sessionId);
+  // A turn that doesn’t continue the last one there ends the resume that carried a wake (#466). Not this turn’s own
+  // second host turn (nextTurn, a fresh start after a missing session), whose wake is its own and still runs.
+  if (!live.rt.origin && remoteOf(rts, live.sessionId)?.remoteTurn?.rtTurn !== live.rt.id) retryHostWake(rts.rt, live.sessionId);
   // Built from the session as written, so a resume’s count, a kept reply or a stop held behind a commit carries over (#623).
   rts.rt.sessions.update(live.sessionId, (se) => {
     const prior = se.remoteTurn ?? {};

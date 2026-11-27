@@ -1,5 +1,5 @@
 // The rig for a scheduled wake whose own turn is on a host across a restart (#466; tests/scheduled-wake-host-*.test.mjs):
-// tests/remote-turns-helpers.mjs's remote rig, a wake fired onto its host, and Postbox started again on the same store.
+// tests/remote-turns-helpers.mjs’s remote rig, a wake fired onto its host, and Postbox started again on the same store.
 
 import { failure } from '../server/remote/ssh-failures.mjs';
 import { fireScheduledWake, rearmWakes } from '../server/scheduled-wakes.mjs';
