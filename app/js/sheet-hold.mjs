@@ -14,6 +14,17 @@ function pathOf(/** @type {Element} */ body, /** @type {Element} */ n) {
 }
 
 /**
+ * The element at that place under the body again, if it’s the same kind of element saying the same thing.
+ * @param {Element} body @param {{ path: number[], tag: string, text: string | null }} held
+ */
+function findAgain(body, held) {
+  /** @type {Element | undefined} */
+  let n = body;
+  for (const i of held.path) n = n?.children[i];
+  return n && n.tagName === held.tag && n.textContent === held.text ? n : null;
+}
+
+/**
  * Gives a sheet the most height the window gives it, or lets it fit what it shows again (.dialog.held, workbench.css):
  * an agent’s form, whose lists come late, and Settings on every tab, so its tabs stay where they are (#1735).
  * @param {HTMLElement | null | undefined} dialog @param {boolean} on
@@ -39,15 +50,8 @@ export function holdSheet(dialog) {
     if (!n || n === body || !body.contains(n)) return;
     held = { path: pathOf(body, n), tag: n.tagName, text: n.textContent, at: n.getBoundingClientRect().top };
   };
-  const find = () => {
-    if (!held) return null;
-    /** @type {Element | undefined} */
-    let n = body;
-    for (const i of held.path) n = n?.children[i];
-    return n && n.tagName === held.tag && n.textContent === held.text ? n : null;
-  };
   const hold = () => {
-    const n = find();
+    const n = held && findAgain(body, held);
     if (n && held) {
       const d = n.getBoundingClientRect().top - held.at;
       if (Math.abs(d) >= 1) body.scrollTop += d;
