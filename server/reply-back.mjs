@@ -94,7 +94,8 @@ export function wroteOnlyTo(rt, se, threadId, turnId = null) {
  * Whether the agent ended its exchange with this one by a reaction (#1553): everything from it that woke this turn is a
  * reply that came back on its own, and the agent reacted to it. Its words, if it wrote any, then post and don’t go
  * back to it. They still wake whom they @-mention, that agent too: no rule holds a wake an @-mention asks for (#1591,
- * the owner’s ruling of 26 November 2026: “A @mention always wakes. no matter what rule”). In two UAT runs of 21 November 2026, agents reacted ✅ and also wrote “Acknowledged.”, and each
+ * the owner’s ruling of 26 November 2026: “A @mention always wakes. no matter what rule”). In two UAT runs of
+ * 21 November 2026, agents reacted ✅ and also wrote “Acknowledged.”, and each
  * acknowledgment went back, up to hop 262. Only a reply that came back counts: a direct @-mention is a request, and a
  * 👍 on it may come before the report, so a batch with one from that agent still goes back. Only a reaction made since
  * this turn began counts: one from a failed attempt the person retried doesn’t stop the Retry’s answer (critic’s review
