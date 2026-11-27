@@ -1,0 +1,9 @@
+{
+  "recorded": "2026-11-27",
+  "version": "codex-cli 0.167.0",
+  "command": ["codex", "login", "status"],
+  "config": "signed in as the recording computer was",
+  "exit": 0,
+  "stdout": "",
+  "stderr": "Logged in using ChatGPT\n"
+}

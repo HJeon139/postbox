@@ -2,7 +2,11 @@
 // with each of Postbox’s messages, and the turns’ logs it reads them from. Every function takes the fake’s state
 // first, `d` (FakeState).
 
+import { readFileSync } from 'node:fs';
 import { encode, HARNESSES, message, PROTOCOL_VERSION, utf8Bytes } from '../shared/remote-protocol.mjs';
+
+/** What a daemon from before `signins` answers it (#1608), as recorded. */
+const BEFORE_SIGNINS = JSON.parse(readFileSync(new URL('./fixtures/remote/signin/signins-before-1608.json', import.meta.url), 'utf8'));
 
 /**
  * @typedef {{ offset: number, next: number, text: string }} Line
@@ -17,7 +21,7 @@ import { encode, HARNESSES, message, PROTOCOL_VERSION, utf8Bytes } from '../shar
  * The fake’s state: createFakeDaemon’s options, and what it holds and records.
  * @typedef {{ token: string, lines: string[], autoEnd: boolean, exit: { code: number | null, signal: string | null },
  *   stopExit: { code: number | null, signal: string | null } | null, home: string, now: () => number, harnesses: string[],
- *   problems: { code: string, message: string }[], holdCaughtUp: string[], callLines: boolean,
+ *   problems: { code: string, message: string }[], holdCaughtUp: string[], callLines: boolean, signins: any,
  *   check: (argv: string[]) => { code: number | null } | Promise<{ code: number | null }>, removing: string,
  *   turns: Map<string, FakeTurn>, pending: Map<string, object>,
  *   tools: Map<string, { turn: string, id: string, name: string, args: object }>,
@@ -109,6 +113,13 @@ export const HANDLERS = {
     d.pending.delete(m.turn);
     send(d, c, 'started', { turn: m.turn });
     if (d.autoEnd) finish(d, t, d.exit);
+  },
+  // As daemon-signins.mjs answers (#1608): one entry per harness the host has.
+  signins(d, c) {
+    const how = typeof d.signins === 'function' ? d.signins() : d.signins;
+    if (how === 'silent') return;
+    if (how === 'refuse') return fail(d, c, BEFORE_SIGNINS.code, BEFORE_SIGNINS.message);
+    send(d, c, 'signed', { harnesses: d.harnesses.map((name) => ({ name, state: 'signed-in', ...how[name] })) });
   },
   // As daemon-forget.mjs answers a persona whose memory folder it removed (#491); the fake keeps no folders.
   forget(d, c, m) {

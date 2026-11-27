@@ -5,7 +5,7 @@
 
 import { pressKey } from './keys.mjs';
 
-const KEYS = Object.freeze({ up: 'PageUp', down: 'PageDown', end: 'End', start: 'Home' });
+export const KEYS = Object.freeze({ up: 'PageUp', down: 'PageDown', end: 'End', start: 'Home' });
 
 /**
  * @param {{ page: any, facts: any, step: number }} ctx  @param {{ by?: string }} a

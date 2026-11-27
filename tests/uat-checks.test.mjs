@@ -1182,13 +1182,13 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     const action = SCHEMA.properties.action.properties;
     assert.ok(action.type.enum.includes('jobs'));
     assert.deepEqual(action.answer.enum, ['stop', 'keep']);
-    assert.deepEqual(action.interrupt.properties.do.enum, ['stop', 'send_now', 'answer', 'fault', 'conversation', 'look']);
+    assert.deepEqual(action.interrupt.properties.do.enum, ['stop', 'send_now', 'answer', 'fault', 'conversation', 'look', 'scroll']);
     assert.deepEqual(action.interrupt.required, ['after', 'do']);
     // The decision’s words for the two answers (#126).
     assert.deepEqual(JOBS_ANSWERS, { stop: ['Stop it too', 'Stop them too'], keep: ['Keep running'] });
     const prompt = systemPrompt({ scenario: parseScenario('# T\n'), issues: [] });
     assert.match(prompt, /jobs \{answer\}/);
-    assert.match(prompt, /an interrupt \{after, do, jobs\?, text\?\}/);
+    assert.match(prompt, /an interrupt \{after, do, jobs\?, text\?, moves\?\}/);
     assert.match(prompt, /A request to add an agent to the room \(“Add critic to this conversation\?”\) is a card/);
   });
 });

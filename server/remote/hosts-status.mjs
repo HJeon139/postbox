@@ -18,8 +18,12 @@ export const HEARD_EVERY_MS = 10_000;
  * @typedef {import('./ssh.mjs').SshFailure} SshFailure
  * @typedef {'connected' | 'reconnecting' | 'disconnected' | 'failed' | 'not-installed'} HostState
  * @typedef {{ state: HostState, failure: SshFailure | null, welcome: any, lastHeard: number | null, keepUpdated: boolean,
- *   update: ReturnType<typeof updateOf> }} HostStatus
+ *   update: ReturnType<typeof updateOf>, signIns: SignIns | null }} HostStatus
  *   keepUpdated and update: the person’s consent to install by itself, and its newest try (install-record.mjs).
+ *   signIns: what the host last said of each harness’s sign-in, null before it first said (hosts-signins.mjs, #1608).
+ * @typedef {{ at: number, harnesses: { name: string, state: import('../../shared/remote-protocol.mjs').SignInState,
+ *   method?: string, expiresAt?: number | null }[] }} SignIns
+ *   at: when the host first gave this answer, on this laptop’s clock: the same answer again keeps it. harnesses: one per harness its welcome found.
  * @typedef {{ ok: boolean, code: number | null, at: number }} SignInCheck
  * @typedef {{ link: HostLink, name: string, token: string, idleTimer: any, sent: string[] | null, session: string[] | null }} Entry
  *   sent: the signInCheck the last session opened sent in hello; session: the one the current session sent.
@@ -35,13 +39,14 @@ export const HEARD_EVERY_MS = 10_000;
  *   checks: Map<string, Promise<SignInCheck | null>>, removals: Map<string, Promise<void>>, closed: boolean,
  *   instance?: string | null, updating: Map<string, import('./hosts-update.mjs').Updating>,
  *   installRecords: Map<string, import('./install-record.mjs').KeptRecord>, recordWrites: Map<string, Promise<unknown>>,
- *   consentAsked: Map<string, { on: boolean }>,
+ *   consentAsked: Map<string, { on: boolean }>, signIns: Map<string, { welcome: any, value: SignIns | null, pending?: Promise<SignIns | null> | null }>,
  *   onFailure: (id: string, failure: any) => void }} Manager
  *   reasons: per host, each reason it’s needed and how many times. tokens: tokens read from dataDir. emitted: the last
  *   'status' emitted, per host. heardTimers: a 'status' held back for lastHeard alone. checks and removals: the sign-in
  *   check and the removal under way, per host. updating: the install under way, per host (hosts-update.mjs).
  *   installRecords and recordWrites: each host’s install record as kept, and its writes in order (install-record.mjs).
  *   onFailure: told of each link failure before anything else hears it (hosts-update.mjs’s maybeUpdate).
+ *   signIns: per host, the welcome it last asked after and the answer kept (hosts-signins.mjs).
  */
 
 /** @param {Manager} m @param {string} id @returns {Host} */
@@ -142,9 +147,10 @@ function cutOff(m, id, update) {
 /** @param {Manager} m @param {string} id @returns {HostStatus} */
 export function statusOf(m, id) {
   const lastHeard = m.heard.get(id) ?? null;
-  if (!m.getHost(id)) return { state: 'disconnected', failure: null, welcome: null, lastHeard, keepUpdated: false, update: null };
+  if (!m.getHost(id)) return { state: 'disconnected', failure: null, welcome: null, lastHeard, keepUpdated: false, update: null, signIns: null };
   const record = recordOf(m, id);
-  const installs = { keepUpdated: record.keepUpdated, update: cutOff(m, id, thisVersion(m, updateOf(record))) };
+  const signIns = m.signIns.get(id)?.value ?? null;
+  const installs = { keepUpdated: record.keepUpdated, update: cutOff(m, id, thisVersion(m, updateOf(record))), signIns };
   const e = m.links.get(id);
   if (!e) return { state: tokenOf(m, id) ? 'disconnected' : 'not-installed', failure: null, welcome: null, lastHeard, ...installs };
   const l = e.link;
@@ -161,7 +167,8 @@ export function statusOf(m, id) {
 /** Whether two statuses say the same, but for lastHeard. @param {HostStatus} a @param {HostStatus} b */
 function sameStatus(a, b) {
   const sameInstalls = a.keepUpdated === b.keepUpdated && JSON.stringify(a.update) === JSON.stringify(b.update);
-  return a.state === b.state && a.failure === b.failure && a.welcome === b.welcome && sameInstalls;
+  const sameSignIns = a.signIns === b.signIns;
+  return a.state === b.state && a.failure === b.failure && a.welcome === b.welcome && sameInstalls && sameSignIns;
 }
 
 /** Emits 'status' if it changed; a change to lastHeard alone at most every HEARD_EVERY_MS. @param {Manager} m @param {string} id */

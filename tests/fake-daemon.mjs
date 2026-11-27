@@ -69,7 +69,8 @@ export const callLine = (request) => (typeof request?.tool_use_id === 'string' &
  *           stopExit?: { code: number | null, signal: string | null } | null, home?: string, now?: () => number,
  *           harnesses?: string[], problems?: { code: string, message: string }[], holdCaughtUp?: ('out' | 'in')[],
  *           check?: (argv: string[]) => { code: number | null } | Promise<{ code: number | null }>,
- *           remove?: 'removed' | 'refuse' | 'silent' | 'drop', callLines?: boolean }} [opts]
+ *           remove?: 'removed' | 'refuse' | 'silent' | 'drop', callLines?: boolean,
+ *           signins?: SignInsHow | (() => SignInsHow) }} [opts]
  *   lines: what each started turn’s out.jsonl holds (the fixture by default). autoEnd: a started turn has already
  *   exited with `exit` (true by default); false keeps it running until end() or a stop. stopExit: how a stopped turn
  *   ends (SIGINT, C5), or null for one that hears the stop and runs on until end(), as a turn handling its SIGINT in
@@ -79,6 +80,9 @@ export const callLine = (request) => (typeof request?.tool_use_id === 'string' &
  *   remove: how `remove` goes: removed (the default, as the real daemon’s: turns stopped, `removed`, closed), refuse
  *   (the daemon’s error when it won’t delete the folder), silent (no answer) or drop (the connection ends first).
  *   callLines: a prompt for a recorded call comes after that call’s line, as the CLI asks (false by default).
+ *   signins: how `signins` is answered (#1608): each harness the host has signed in, but as this says per harness;
+ *   refuse, as a daemon from before it; or silent, not at all. A function says it afresh at each asking.
+ * @typedef {Record<string, { state: string, method?: string, expiresAt?: number | null }> | 'refuse' | 'silent'} SignInsHow
  */
 export function createFakeDaemon(opts = {}) {
   const d = fakeState(opts);
@@ -134,9 +138,11 @@ function fakeState({
   check = () => ({ code: 0 }),
   remove: removing = 'removed',
   callLines = false,
+  signins = {},
 } = {}) {
   return {
     callLines,
+    signins,
     token,
     lines,
     autoEnd,
