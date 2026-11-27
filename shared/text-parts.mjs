@@ -1,6 +1,7 @@
 // Reading a long text in parts (#109): where a part starts and ends, and the line under it that says how much it holds
 // and how to read on. read_message cuts an item and an app's code this way, and the host's copy can too (#675).
 
+import { INVISIBLE } from './invisible.mjs';
 import { READING } from './limits.mjs';
 
 const count = (/** @type {number} */ n) => n.toLocaleString('en-US');
@@ -22,6 +23,22 @@ export function partEnd(text, end) {
  * @param {string} text @param {number} n
  */
 export const cutText = (text, n) => (text.length > n ? text.slice(0, partEnd(text, n)) : text);
+
+/**
+ * Words another program gave, such as a backend’s error, cleaned before they reach a step, its label or an agent’s note
+ * (#1171, #1905): every character that hides or reorders text (INVISIBLE) goes, line and paragraph separators, control
+ * characters and runs of space become one space, and the cut to `n` never splits a character.
+ * @param {string} text @param {number} n
+ */
+export const cleanSaid = (text, n) =>
+  cutText(
+    text
+      .replace(/[\u2028\u2029]/g, ' ')
+      .replace(INVISIBLE, '')
+      .replace(/[\p{Cc}\s]+/gu, ' ')
+      .trim(),
+    n,
+  );
 
 /**
  * The last n characters of text, never starting inside a surrogate pair: one fewer where they would (#1686). The whole
