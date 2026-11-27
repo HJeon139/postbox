@@ -93,6 +93,9 @@ test('#189: a change of state that doesn’t say it waits on background work cle
   assert.deepEqual(sessionPatch(waiting, { state: 'tool', currentStep: 'Run the tests' }).patch, { background: false, currentStep: 'Run the tests' });
   // Its turn ends.
   assert.deepEqual(sessionPatch(waiting, { state: 'idle' }).patch, { state: 'idle', background: false });
+  // It writes again, or thinks, before its own next call.
+  assert.deepEqual(sessionPatch(waiting, { state: 'gen' }).patch, { state: 'gen', background: false });
+  assert.deepEqual(sessionPatch(waiting, { state: 'think' }).patch, { state: 'think', background: false });
   // It waits again, and a change of something other than its state leaves the wait.
   assert.deepEqual(sessionPatch(waiting, { state: 'tool', background: true }).patch, {});
   assert.deepEqual(sessionPatch(waiting, { ctx: 40 }).patch, { ctx: 40 });
