@@ -15,6 +15,7 @@
 // the reload doesn’t recreate: an entry owned by a timer is dropped at the reload, whose re-arm is its one owner (S1).
 // A restart while the store is closed starts again from what the disk holds, as any restart does.
 
+import { toolsDownLost } from './adapters/tools-down.mjs';
 import { settledNeed } from './restart-sweep.mjs';
 import { rearmWakes } from './scheduled-wakes.mjs';
 import { recordStopped } from './stop-record.mjs';
@@ -153,6 +154,18 @@ export function saveBackendState(rt, sessionId, patch) {
   );
 }
 
+/**
+ * Gives back the tools-down note a turn took and never passed on (#1171). A newer note stands, one still waiting for
+ * writes to reopen too.
+ * @param {Runtime} rt @param {string} sessionId @param {any} turn
+ */
+export function toolsDownBack(rt, sessionId, turn) {
+  const waiting = rt.backendWait.get(sessionId);
+  const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
+  const now = waiting && 'postboxToolsDown' in waiting ? { backendState: waiting } : se;
+  toolsDownLost(now, turn.toolsDownTaken, (patch) => saveBackendState(rt, sessionId, patch));
+}
+
 /** @param {Runtime} rt @param {string} sessionId @param {Record<string, any>} patch */
 function writeBackendState(rt, sessionId, patch) {
   // From the pending session: a resume id saved behind a held commit, then the model, kept only the model (#796's class).
@@ -192,6 +205,7 @@ function stopForStore(rt, sessionId) {
   rt.running.exit(sessionId, { turn, held: turn.pending.splice(0), silent: false });
   turn.abort.abort(Object.assign(new Error(WHY), { name: 'AbortError' }));
   turn.closed = true;
+  if (!turn.first) toolsDownBack(rt, sessionId, turn); // as any Stop does (turn-stop.mjs)
   rt.running.end(sessionId);
   console.error(`@${rt.s.sessions[sessionId]?.handle ?? sessionId}’s turn stopped: Postbox can’t save changes right now.`);
   rt.storeWait.push(Object.assign(() => recordStop(rt, turn), { stopOf: sessionId })); // settleOrphanTurns reads stopOf

@@ -3,28 +3,17 @@
 // Moved from server/runtime.mjs (#1236); Runtime keeps a method of each name its callers use, and each function here
 // takes the runtime first.
 
-import { toolsDownLost } from './adapters/tools-down.mjs';
 import { runningJobs, runningProgress, settleJobs } from './job-records.mjs';
 import * as queue from './message-queue.mjs';
 import { clockStopConfirmed } from './run-clock.mjs';
 import { dropScheduledWake } from './scheduled-wakes.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { recordStopped } from './stop-record.mjs';
-import { STORE_STOPPED, saveBackendState } from './store-outage.mjs';
+import { STORE_STOPPED, toolsDownBack } from './store-outage.mjs';
 import { whenWritable } from './store-wait.mjs';
 import { endSubagent } from './subagent-end.mjs';
 import { forgetWait } from './turn-transient.mjs';
 import { entriesFirst } from './turns.mjs';
-
-/**
- * A turn stopped before it left a reply part or step gives the tools-down note back, as a failed one does (#1171).
- * @param {any} rt @param {string} sessionId @param {any} turn
- */
-function toolsDownBack(rt, sessionId, turn) {
-  if (turn.first) return;
-  const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
-  toolsDownLost(se, turn.toolsDownTaken, (patch) => saveBackendState(rt, sessionId, patch));
-}
 
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;
@@ -87,7 +76,8 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   // The adapter reads which jobs to keep from the reason; anything else only sees that the turn was aborted.
   turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
   turn.closed = true;
-  toolsDownBack(rt, sessionId, turn);
+  // Stopped before it left a reply part or step, it gives the tools-down note back, as a failed one does (#1171).
+  if (!turn.first) toolsDownBack(rt, sessionId, turn);
   rt.running.end(sessionId);
   recordStopped(rt, turn, ended, { by, why: by === 'clock' || by === 'pause' ? STOP_WHY[by] : STOP_WHY.you });
   // What the turn took was given to the agent, so it isn't handed over again (designs/architecture/services.md, “The

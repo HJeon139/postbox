@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { saveBackendState, toolsDownBack } from '../server/store-outage.mjs';
 import * as arrange from './arrange.mjs';
 
 const told = /^\[Postbox\] In your last turn, Postbox’s tool server didn’t start/;
@@ -157,4 +158,23 @@ test('#1171 a turn stopped after it reached the agent doesn’t give the note ba
   r.rt.stop(r.se.id);
   for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
   assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null);
+});
+
+test('#1171 a turn the store’s outage stopped before its backend emitted anything keeps the note for the next', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.hang = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  r.store.writable = false;
+  r.store.tellStatus();
+  assert.equal(r.rt.backendWait.get(r.se.id)?.postboxToolsDown, 'ran', 'given back, waiting for writes to reopen');
+});
+
+test('#1171 a newer note still waiting for writes to reopen stands against the one a turn gives back', () => {
+  const r = room();
+  r.store.writable = false;
+  saveBackendState(r.rt, r.se.id, { postboxToolsDown: 'refused' });
+  toolsDownBack(r.rt, r.se.id, { toolsDownTaken: 'ran' });
+  assert.equal(r.rt.backendWait.get(r.se.id)?.postboxToolsDown, 'refused');
 });
