@@ -64,6 +64,8 @@ const MOST = 64 * 1024;
 async function stillOurs(note) {
   const st = await lstat(note.file).catch(() => null);
   if (!st?.isFile() || st.size > MOST) return false;
+  // A FIFO swapped in between the lstat and the read would still block; that needs a live writer in the Kiro home as
+  // Postbox starts, and isn’t guarded.
   return readFile(note.file, 'utf8').then(
     (text) => hashOf(text) === note.sha256,
     () => false,
