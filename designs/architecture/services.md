@@ -670,7 +670,7 @@ Each step is its own pull request, and is done when:
     - The add-agent card stands in front of Delivery until Asks replaces it, so `chainHeld` stays unbound. Nothing is held at the chain cap since #1623: the wake past it is refused.
     - A host turn’s replay keys its mentions by the host turn and their order, as the retry id (#1138’s class).
     - Entries carry an arrival number, so they sort with the queue’s messages in the same millisecond (#733).
-    - Stop closes a turn without `endTurn`, so it raises `turn.stopping`, and Delivery marks what the turn took as delivered. A shutdown’s stop doesn’t: the restart reopens those entries once, as a resend. A reply the person stopped hands its mentions to no one, as before.
+    - Stop closes a turn without `endTurn`, so it raises `turn.stopping` with `{ turn, by }`, and Delivery marks what the turn took as delivered. A stop the person made (`by: 'you'`) also marks the session’s `stoppedTurnId`, so that turn’s cards stay quiet after other answers and restarts; Postbox’s own stops (`'pause'`, `'clock'`, `'hung'`) don’t (#1928). A shutdown’s stop doesn’t: the restart reopens those entries once, as a resend. A reply the person stopped hands its mentions to no one, as before.
   - **`wake_agent` is gone** (#481):
     - It left the tool list. A call to it by name gets `GONE_TOOLS`’ answer, “wake_agent is gone. Post a message that @-mentions the agent; that wakes it.”, from Postbox’s MCP server and from a host’s calls, whose route table keeps the name for that.
     - `open_topic` lost `mentions`: its first message’s own @-mentions wake, as prose, as a reply’s do.
