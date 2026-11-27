@@ -21,6 +21,8 @@
       "tools/**",
       "tests/**",
       "playwright.config.mjs",
+      "infra/*.mjs",
+      "infra/lib/**",
       "!.claude",
       "!app/kit/vendor"
     ]

@@ -61,7 +61,7 @@ import { checkStalls, onHostStatus, resume, tick } from './turns-resume.mjs';
 import { ON_HOST, TICK_MS } from './turns-shared.mjs';
 import { flushSnapshots, onStoreEvent } from './turns-snapshot.mjs';
 import { begin, leaveMoved, prepare } from './turns-start.mjs';
-import { busyOn, confirmStops } from './turns-stops.mjs';
+import { busyOn, confirmStops, keepStops } from './turns-stops.mjs';
 
 export { AUTO_RESUMES, OFFSET_SAVE_MS, SIGN_IN_RECHECK_MS, SNAPSHOT_FLUSH_MS, STOPPED_TEXT, TICK_MS, whyLine } from './turns-shared.mjs';
 
@@ -113,6 +113,9 @@ export class RemoteTurns {
     this.stopsEnded = new Set();
     this.closed = false;
     this.unsubscribe = rt.store.subscribe((/** @type {any} */ ev) => onStoreEvent(this, ev));
+    // A removed session’s stops still waiting on a host outlive it in the host’s record (#1796). The bus has no off(),
+    // so this stays for the runtime’s life, which one RemoteTurns has; a second one only walks its own stops.
+    rt.bus?.on('session.removing', (/** @type {{ id: string }} */ { id }) => keepStops(this, id));
     // The manager emits 'status' with (hostId, status) when a host’s connection changes.
     this.onStatus = (/** @type {string} */ hostId, /** @type {any} */ status) => onHostStatus(this, hostId, status);
     hosts?.on?.('status', this.onStatus);
