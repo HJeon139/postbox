@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { escapeRegExp } from '../../shared/regex.mjs';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -186,6 +187,6 @@ test.describe('at 375 px', () => {
       return out;
     }, width);
     expect(wide, 'nothing sticks out of the dialog, or the dialog out of the window').toEqual([]);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(width + 1);
+    expect(await pageWidth(page), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(width + 1);
   });
 });
