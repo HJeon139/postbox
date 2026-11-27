@@ -107,7 +107,9 @@ function autoResume(rts, sessionId) {
 /** The person’s Resume, after Sign-in needed or Interrupted. @param {RemoteTurns} rts @param {string} sessionId */
 export function resume(rts, sessionId) {
   const rt = rts.rt;
-  const se = rt.session(sessionId);
+  // As written: a resume Postbox already started, or a stop asked, behind a held commit decides it, and the resume
+  // and the turn it continues are built from it (#623).
+  const se = remoteOf(rts, sessionId) ?? rt.session(sessionId);
   const r = se.remoteTurn;
   if (!r?.resume) return { ok: false, message: `@${se.handle} has no stopped turn on a host to resume.` };
   if (rt.turns.has(sessionId)) return { ok: false, message: `@${se.handle} is already at work.` };
@@ -119,7 +121,7 @@ export function resume(rts, sessionId) {
     return { ok: false, message: `@${se.handle}’s last turn on ${name} hasn’t confirmed it stopped. Resume once it has.` };
   }
   updateRemote(rts, sessionId, { resume: { ...r.resume, auto: false }, autoResumes: 0 });
-  const go = continuing(rt, rt.s.sessions[sessionId], { kind: 'notice', text: 'The person asked you to resume. Carry on where you left off.' });
+  const go = continuing(rt, remoteOf(rts, sessionId), { kind: 'notice', text: 'The person asked you to resume. Carry on where you left off.' });
   rt.turnService.resume(sessionId, go.message, go.opts);
   return { ok: true };
 }

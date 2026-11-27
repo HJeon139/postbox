@@ -1,6 +1,7 @@
 // The rig for a remote turn’s writes behind a held commit (#623; tests/remote-turns-held*.test.mjs): the remote rig of
 // tests/remote-turns-helpers.mjs, on a store whose commit can be held (tests/stop-reply-fixture.mjs, heldStore).
 
+import { after } from 'node:test';
 import { rig } from './remote-turns-helpers.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -22,7 +23,11 @@ export async function heldRig(o = {}) {
       await h.store.flush();
     };
   };
-  return { ...r, hold, close: () => h.store.close() };
+  let closed = null;
+  // Closed once, at the test’s end or the file’s, so a failed assertion doesn’t leave the store open.
+  const close = () => (closed ??= h.store.close());
+  after(close);
+  return { ...r, hold, close };
 }
 
 /** The session’s remoteTurn as published. @param {any} r */

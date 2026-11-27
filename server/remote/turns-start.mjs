@@ -88,7 +88,8 @@ export async function prepare(rts, turn, ctx, message) {
   if (!attach) await warnSignIn(rts, turn, ctx, se, host);
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
   const folder = project?.hostFolders?.[live.hostId] ?? `${welcome.home === '/' ? '' : welcome.home}/postbox-work/${persona.handle}`;
-  const prior = se.remoteTurn ?? null;
+  // As written: the resume ended wrote, maybe still held behind a commit, makes this turn a resume (#623).
+  const prior = remoteOf(rts, turn.sessionId)?.remoteTurn ?? null;
   const resume = !attach && prior?.resume ? prior.resume : null;
   // What it was asked, a large request written to Postbox’s store first, so the record allocate saves never names a
   // copy that isn’t there (turns-origin.mjs).

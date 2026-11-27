@@ -20,8 +20,8 @@ const DECIDED_PUBLISHED = {
 
 /** A published read of one session or of a thread's: what a deciding read reads. */
 const PUBLISHED_READ = new RegExp(`${PUBLISHED_SESSION.source}|\\bsessions\\.in\\(`);
-/** A session write: Sessions.update, a put, or a raw session emit. */
-const ANY_WRITE = /\bsessions\.update\(|\bthis\.update\(|\bsessions\.put\(|\bemit\(\s*['"`]session(?:\.patch)?['"`]/;
+/** A session write: Sessions.update, a remote turn's updateRemote (#623), a put, or a raw session emit. */
+const ANY_WRITE = /\bupdateRemote\(|\bsessions\.update\(|\bthis\.update\(|\bsessions\.put\(|\bemit\(\s*['"`]session(?:\.patch)?['"`]/;
 
 /** file → the function of each session write whose condition reads a published session. @param {string[]} [extra] */
 function decidedByPublished(extra = []) {
@@ -72,7 +72,9 @@ test('the guard finds a write a published read decides, on its line, the line ab
     'export function zz7(rt, id, on) {\n  const se = rt.s.sessions[id];\n  if (on) rt.sessions.update(id, { currentStep: se.handle });\n}',
     // A parameter's s.sessions, as setupFor reads the state it's given: found.
     'export function zz8(rt, s, id) { if (s.sessions[id].sideTurn) rt.sessions.update(id, { sideTurn: null }); }',
+    // A remote turn's write through updateRemote, which a published read decides, as offsetAt's was (#623): found.
+    'export function zz9(rts, id, turn) {\n  const se = rts.rt.s.sessions[id];\n  if (se?.remoteTurn?.turn === turn) updateRemote(rts, id, { offset: 1 });\n}',
   ];
   const found = Object.keys(decidedByPublished(probes)).filter((k) => k.startsWith('extra-'));
-  assert.deepEqual(found, ['extra-0.mjs', 'extra-1.mjs', 'extra-2.mjs', 'extra-3.mjs', 'extra-7.mjs']);
+  assert.deepEqual(found, ['extra-0.mjs', 'extra-1.mjs', 'extra-2.mjs', 'extra-3.mjs', 'extra-7.mjs', 'extra-8.mjs']);
 });

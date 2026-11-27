@@ -26,7 +26,7 @@ export function askStop(rts, sessionId, hostId, turn, { send: now = true, state 
   if (!rts.hosts) return false;
   let s = rts.stopping.get(turn);
   if (!s) {
-    s = { sessionId, hostId, waiters: [], unconfirmed, personaId: rts.rt.s.sessions[sessionId]?.personaId };
+    s = { sessionId, hostId, waiters: [], unconfirmed, personaId: remoteOf(rts, sessionId)?.personaId };
     rts.stopping.set(turn, s);
     needHost(rts, hostId);
   }

@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { heldRig, remoteTurn } from './remote-turns-held-fixture.mjs';
-import { running, settled, signInLines, starts, until } from './remote-turns-helpers.mjs';
+import { messageOf, running, settled, signInLines, starts, until } from './remote-turns-helpers.mjs';
 
 /** A rig whose turn runs on the host, with the host away so an interruption waits for it, and a session ID. */
 async function awayRig() {
@@ -26,6 +26,7 @@ test('a turn interrupted behind a held commit resumes once the host is back, and
   r.hosts.emit('status', r.host.id, { state: 'connected' });
   await until(() => starts(r.d).length === 2 && r.d.turns.has(starts(r.d)[1].turn), 'the first resume');
   await until(() => r.d.received.some((m) => m.type === 'read' && m.turn === starts(r.d)[1].turn), 'the first resume to be read');
+  assert.match(messageOf(starts(r.d)[1]), /was interrupted before it finished/, 'it starts as a resume, saying why the last turn stopped');
   r.d.interrupt(starts(r.d)[1].turn);
   await until(() => starts(r.d).length === 3, 'the second resume');
   await release();
@@ -57,9 +58,29 @@ test('a turn that needs sign-in behind a held commit resumes once the host’s c
   await settled(r);
   r.rt.remote.tick();
   await until(() => starts(r.d).length === 2, 'the resumed turn');
+  assert.match(messageOf(starts(r.d)[1]), /sign-in on that host had run out/, 'it starts as a resume, saying why the last turn stopped');
   await release();
   assert.equal(remoteTurn(r).state, 'running', 'the check passed, so the turn goes on');
   r.d.end(starts(r.d)[1].turn);
   await settled(r);
+  await r.close();
+});
+
+test('the person’s Resume after Postbox already resumed behind a held commit starts nothing more (#623, resume)', async () => {
+  const { r, turn } = await awayRig();
+  // Interrupted and published, then resumed by Postbox and finished, all behind the held commit.
+  r.d.interrupt(turn);
+  await settled(r);
+  const release = await r.hold();
+  r.hosts.state = null;
+  r.hosts.emit('status', r.host.id, { state: 'connected' });
+  await until(() => starts(r.d).length === 2 && r.d.turns.has(starts(r.d)[1].turn), 'Postbox’s own resume');
+  await until(() => r.d.received.some((m) => m.type === 'read' && m.turn === starts(r.d)[1].turn), 'the resume to be read');
+  r.d.end(starts(r.d)[1].turn);
+  await settled(r);
+  const asked = r.rt.remote.resume(r.se().id);
+  await release();
+  assert.equal(asked.ok, false, 'the stopped turn was already resumed and finished');
+  assert.equal(starts(r.d).length, 2, 'no third turn continues the one already finished');
   await r.close();
 });
