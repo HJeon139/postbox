@@ -16,8 +16,8 @@
 //
 // and removes it when the turn ends. Checked with agy 1.4.5: the plugin’s server loads as `postbox_postbox` (plugin,
 // then server), and the plugin’s rules reach the model. Two turns in one folder would overwrite each other’s
-// plugin, so a turn waits for the one before it in the same folder (folder-queue.mjs’s FolderQueue); each agent gets its own worktree,
-// so agents don’t share one (agent-worktree.mjs, #1709). In a git repo the plugin folder
+// plugin, so a turn waits for the one before it in the same folder (folder-queue.mjs’s FolderQueue); each agent starts in its own
+// worktree, or its own folder beside the project, so agents don’t share one (agent-worktree.mjs, #1709, #1856). In a git repo the plugin folder
 // goes in .git/info/exclude, so it never shows in git status.
 //
 // Headless, agy refuses every call it would ask about, Postbox’s own tools included (recorded: “user denied
@@ -60,7 +60,8 @@ import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
-import { agentWorktree, turnFolders, worktreeNote } from './agent-worktree.mjs';
+import { besideNote, noWorktreeStep } from './agent-own-folder.mjs';
+import { agentPlace, agentWorktree, turnFolders, worktreeNote } from './agent-worktree.mjs';
 import { commitTurn } from './agent-worktree-commit.mjs';
 import { agyArgs, agyBypassWebOff } from './agy-args.mjs';
 import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
@@ -191,7 +192,7 @@ export const toolsNote = (dir) =>
  * What it says about approval follows how agy runs: with the PreToolUse hook, calls ask through a card (HOOK_NOTE); in Run
  * everything, nothing is asked; without the hook (agy before 1.4.7), headless agy refuses them (HEADLESS_NOTE).
  * @param {{ persona: any, guide: string, schemas?: string|null, hooked?: boolean, place?: string }} turn  schemas: agy’s
- *   schema folder for Postbox’s server; hooked: the PreToolUse hook runs this turn; place: where it works (worktreeNote)
+ *   schema folder for Postbox’s server; hooked: the PreToolUse hook runs this turn; place: where it works (worktreeNote, besideNote)
  */
 export function agyRules({ persona, guide, schemas = null, hooked = false, place = '' }) {
   const ids = toolsOff(persona, TOOL_WORDS);
@@ -540,14 +541,16 @@ export class AntigravityCliAdapter {
     return hookPromptCard(call?.raw, args);
   }
 
-  /** The folder the agent works in: its own worktree of the project’s repository, else every backend’s (agent-worktree.mjs, #1709). */
+  /** The folder the agent’s turn starts in: its own worktree of the project’s repository, or a folder of its own (agent-worktree.mjs, #1709, #1856). */
   folderFor(persona, project) {
     return agentWorktree(persona, project, this.workRoot, { git: this.git });
   }
 
   async deliver(session, message, ctx) {
     const persona = ctx.persona;
-    const cwd = await this.folderFor(persona, ctx.project);
+    const at = await agentPlace(persona, ctx.project, this.workRoot, { git: this.git });
+    const cwd = at.folder;
+    noWorktreeStep(ctx, persona, ctx.project, at.why); // in the room, not only the server log (#1856)
     // Once a run, on the first turn rather than at startup, so your settings change only when you use this backend.
     this.allowed ??= allowPostbox(this.settingsFile).catch((e) => {
       console.error(`Postbox couldn’t add its allow rule to ${this.settingsFile}: ${e.message}`);
@@ -561,7 +564,7 @@ export class AntigravityCliAdapter {
     const { guide, message: turnMessage } = turnGuide(message, { ...ctx, persona, brief: session?.brief, toolRules: null, setup: false });
     const prompt = formatMessage(turnMessage, ctx.pathOf);
     const useHook = agySupportsHooks(this.version) && (persona?.permissionMode !== 'bypass' || agyBypassWebOff(persona));
-    const place = worktreeNote(cwd, persona, ctx.project, this.workRoot);
+    const place = worktreeNote(cwd, persona, ctx.project, this.workRoot) || besideNote(cwd, ctx.project, this.workRoot, at.why);
     // Not without the hook, where agy refuses the reads it promises and has no room; Run everything refuses nothing.
     const rulesWith = (hooked) =>
       agyRules({

@@ -11,6 +11,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { ownFolderFor } from '../server/adapters/agent-own-folder.mjs';
 import { agentWorktree, branchFor, gitTimeoutFor, sharedFolder, worktreesRootFor } from '../server/adapters/agent-worktree.mjs';
 import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
 import { FolderQueue } from '../server/adapters/folder-queue.mjs';
@@ -138,7 +139,7 @@ test('#1709 a project folder below its repository’s top is the same folder wit
   assert.ok(existsSync(join(r.wtOf(A), 'apps', 'web')));
 });
 
-test('#1709 elsewhere the folder is as it was: its own folder, a project with none, or one not in git', async (t) => {
+test('#1709 elsewhere the folder is as it was: its own folder, or a project with none; one not in git gets a folder of its own (#1856)', async (t) => {
   const r = rig(t);
   const own = join(r.workRoot, '..', 'own');
   assert.equal(await r.folderOf({ ...A, folder: own }), own);
@@ -146,20 +147,20 @@ test('#1709 elsewhere the folder is as it was: its own folder, a project with no
   const none = await agentWorktree(A, { id: 'pr_x', folder: null }, r.workRoot, { git: async () => assert.fail('no git') });
   assert.equal(none, join(r.workRoot, 'a'));
   const plain = rig(t, { repo: false });
-  assert.equal(await plain.folderOf(A), plain.project.folder);
+  assert.equal(await plain.folderOf(A), ownFolderFor(plain.workRoot, plain.project, A));
   assert.equal(plain.adds().length, 0);
 });
 
-test('#1709 a worktree git refuses leaves the agent in the project’s folder, and the log says why', async (t) => {
+test('#1709 a worktree git refuses leaves the agent out of the project’s folder, in one of its own (#1856), and the log says why', async (t) => {
   const r = rig(t, { refuse: true });
-  assert.equal(await r.folderOf(A), r.project.folder);
+  assert.equal(await r.folderOf(A), ownFolderFor(r.workRoot, r.project, A));
   assert.equal(r.logs.length, 1);
   assert.match(r.logs[0], /couldn’t make a worktree for @a .*already checked out/);
 });
 
 test('#1709 a refusal is logged once for its folder, not at every call', async (t) => {
   const r = rig(t, { refuse: true });
-  for (let i = 0; i < 3; i++) assert.equal(await r.folderOf(A), r.project.folder);
+  for (let i = 0; i < 3; i++) assert.equal(await r.folderOf(A), ownFolderFor(r.workRoot, r.project, A));
   assert.equal(r.logs.length, 1);
 });
 
@@ -230,7 +231,7 @@ test('#1709 a worktree add git stops partway leaves no folder behind, and the lo
     }
     return git(cwd, given);
   };
-  assert.equal(await agentWorktree(A, r.project, r.workRoot, { git: half, log: (l) => logs.push(l) }), r.project.folder);
+  assert.equal(await agentWorktree(A, r.project, r.workRoot, { git: half, log: (l) => logs.push(l) }), ownFolderFor(r.workRoot, r.project, A));
   assert.equal(existsSync(r.wtOf(A)), false, 'the half-made folder is gone, so the next add can make it');
   assert.match(logs[0], /\(fatal: could not create work tree dir\)/);
   assert.equal(await r.folderOf(A), r.wtOf(A), 'the next turn gets its worktree');
@@ -267,7 +268,7 @@ test('#1709 a folder already at the worktree’s place, not a worktree, is left 
   };
   /** @type {string[]} */
   const logs = [];
-  assert.equal(await agentWorktree(A, r.project, r.workRoot, { git: refuse, log: (l) => logs.push(l) }), r.project.folder);
+  assert.equal(await agentWorktree(A, r.project, r.workRoot, { git: refuse, log: (l) => logs.push(l) }), ownFolderFor(r.workRoot, r.project, A));
   assert.equal(existsSync(join(r.wtOf(A), 'work.txt')), true, 'the work is kept');
   assert.match(logs[0], /already exists/);
 });
@@ -290,7 +291,7 @@ test('#1709 an add git stopped after making the worktree’s .git is removed thr
     }
     return git(cwd, given);
   };
-  assert.equal(await agentWorktree(A, r.project, r.workRoot, { git: stopped, log: () => {} }), r.project.folder);
+  assert.equal(await agentWorktree(A, r.project, r.workRoot, { git: stopped, log: () => {} }), ownFolderFor(r.workRoot, r.project, A));
   assert.deepEqual(
     calls.findLast((c) => c[1] === 'remove'),
     ['worktree', 'remove', '--force', '--force', r.wtOf(A)],

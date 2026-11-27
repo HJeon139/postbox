@@ -1,8 +1,9 @@
-// An Antigravity agent’s own git worktree (#1709). Each turn writes Postbox’s plugin into the agent’s folder, so two
-// turns in one folder can’t run at once (folder-queue.mjs’s FolderQueue). Agents without a folder of their own all
-// shared the project’s folder, so they waited behind each other. Decided by the person on 23 November 2026: each
-// agent gets its own worktree. So an agent with no folder of its own, in a project whose folder is in a git
-// repository, works in a worktree of that repository made for it on its first turn: a branch of its own,
+// An Antigravity agent’s own git worktree (#1709). Each turn writes Postbox’s plugin into the folder agy starts in, so
+// two turns can’t start in one folder (folder-queue.mjs’s FolderQueue). Agents without a folder of their own all
+// shared the project’s folder, so they waited behind each other. Decided by the person on 23 November 2026, and again
+// on 26 November (#1856): each agent gets its own worktree, shares nothing with other agents, and waits for no
+// reason. So an agent with no folder of its own, in a project whose folder is in a git repository with a commit, works
+// in a worktree of that repository made for it on its first turn: a branch of its own,
 // `postbox/<project id>-<handle>-<persona id>`, started from the project’s current commit, in Postbox’s data folder:
 //
 //   <data>/worktrees/<project id>/<persona id>-<repo>/     the worktree, kept across turns and restarts; <repo> is
@@ -10,15 +11,17 @@
 //
 // If the project’s folder is below the repository’s top, the agent works in the same folder within its worktree. Its
 // changes land on its branch, not in the project’s folder, until they’re merged. Files the repository doesn’t track,
-// such as node_modules, .env and build output, aren’t in it. An agent that ran in the project’s folder before starts
-// its agy conversation over once, since agy keeps a conversation per folder. Every git command runs with an
-// argument array and with the repository’s hooks and filters off (ledger-git.mjs’s runGit), so making a worktree runs
-// nothing the repository’s config names.
+// such as node_modules, .env and build output, aren’t in it. An
+// agent that ran in the project’s folder before starts its agy conversation over once, since agy keeps a conversation
+// per folder. Every git command runs with an argument array and with the repository’s hooks and filters off
+// (ledger-git.mjs’s runGit), so making a worktree runs nothing the repository’s config names.
 //
-// Everywhere else the folder is as it was (folder.mjs’s agentFolder): an agent with its own folder, a project with no
-// folder, one not in a git repository, one with no commit yet, or one whose repository has submodules. So is a worktree git refuses (a branch checked out
-// elsewhere), and the server log says why. Turns in one folder still take turns there: one agent’s turns in two
-// conversations, and every turn in a folder that isn’t in git.
+// Where there’s nothing to make a worktree from (a project folder not in a git repository, one with no commit yet,
+// or one whose repository has submodules), and where git refuses one (a branch checked out elsewhere), the agent starts in a folder of its own beside
+// the project and works in the project’s folder (agent-own-folder.mjs, #1856); a refusal is also logged, told to the
+// agent and shown in the room. An agent whose persona names a folder keeps it, and one in a project with no folder
+// keeps its workspace (folder.mjs’s agentFolder). So turns wait only where they’d start in one folder: one agent’s
+// turns in two conversations, and two personas that name the same folder.
 
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -26,14 +29,12 @@ import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { storedFolder } from '../folder-path.mjs';
 import { runGit } from '../ledger-git.mjs';
+import { folderName, ownFolderFor } from './agent-own-folder.mjs';
 import { gitPointer } from './agy-git-dir.mjs';
 import { agentFolder } from './folder.mjs';
-import { exists, gitsOwnLock, removeWorktree, stateOf } from './worktree-state.mjs';
+import { exists, gitsOwnLock, gitsReason, removeWorktree, stateOf } from './worktree-state.mjs';
 
 /** @typedef {(cwd: string, args: string[]) => Promise<{ code: number, stdout: string, stderr: string }>} Git */
-
-/** An id as one folder’s name: anything but letters, digits, _ and - replaced, as setup.mjs names memory folders. @param {string} v */
-const folderName = (v) => String(v).replace(/[^\w-]/g, '_');
 
 /** Where agents’ worktrees go: `worktrees` in Postbox’s data folder, beside the workspaces at workRoot. @param {string} workRoot */
 export const worktreesRootFor = (workRoot) => join(dirname(workRoot), 'worktrees');
@@ -54,7 +55,7 @@ export const gitTimeoutFor = (args) => (args.includes('worktree') && args.includ
 /** git as Postbox runs it (ledger-git.mjs): an argument array, the repository’s hooks and filters off. @type {Git} */
 const defaultGit = (cwd, args) => runGit(cwd, args, gitTimeoutFor(args));
 
-/** Worktrees being made now, by folder, so two turns starting at once make one. @type {Map<string, Promise<{ dir: string } | { why: string }>>} */
+/** Worktrees being made now, by folder, so two turns starting at once make one. @type {Map<string, ReturnType<typeof worktree>>} */
 const making = new Map();
 /**
  * The folder each agent’s worktree gave for a project’s folder, once made, so the next call (each turn, the
@@ -66,50 +67,58 @@ const known = new Map();
 const logged = new Set();
 
 /**
- * The folder an Antigravity agent works in: its own worktree of the project’s repository (above), else the folder
- * every backend uses (agentFolder).
+ * Where an Antigravity agent’s turn starts: its own worktree of the project’s repository (above); with nothing to make
+ * one from, or one git refused, a folder of its own beside the project (agent-own-folder.mjs), with git’s reason for a
+ * refusal; else the folder every backend uses (agentFolder). Never the project’s own folder, where its turns would
+ * wait for other agents’.
  * @param {{ id?: string, handle: string, folder?: string|null }} persona
  * @param {{ id?: string, folder?: string|null } | null | undefined} project
  * @param {string} workRoot
  * @param {{ git?: Git, log?: (line: string) => void }} [o]
- * @returns {Promise<string>}
+ * @returns {Promise<{ folder: string, why?: string }>}
  */
-export async function agentWorktree(persona, project, workRoot, { git = defaultGit, log = (l) => console.error(l) } = {}) {
-  const shared = () => agentFolder(persona, project, workRoot);
-  if (storedFolder(persona) || !project?.folder || !project.id) return shared();
+export async function agentPlace(persona, project, workRoot, { git = defaultGit, log = (l) => console.error(l) } = {}) {
+  // A project in the store always has an id; one without can’t name a folder for the agent.
+  if (storedFolder(persona) || !project?.folder || !project.id) return { folder: await agentFolder(persona, project, workRoot) };
   const key = JSON.stringify([workRoot, project.id, project.folder, persona.id || persona.handle]);
   const seen = known.get(key);
   // Its folder below the repository’s top can go with a checkout: then it’s worked out, and made, again.
-  if (seen && (await stateOf(seen.dir)) === 'finished' && (await exists(seen.folder))) return seen.folder;
+  if (seen && (await stateOf(seen.dir)) === 'finished' && (await exists(seen.folder))) return { folder: seen.folder };
+  const beside = () => agentFolder({ ...persona, folder: ownFolderFor(workRoot, project, persona) }, project, workRoot);
   const top = await git(project.folder, ['rev-parse', '--show-toplevel', '--show-prefix']);
-  if (top.code !== 0) return shared();
-  // A repository with no commit yet would give an empty worktree, without the project’s files.
-  if ((await git(project.folder, ['rev-parse', '--verify', '--quiet', 'HEAD'])).code !== 0) return shared();
-  // One with submodules keeps the project’s folder too: a worktree holds them empty, and the turn-end commit leaves a
-  // worktree with a repository in its index uncommitted (agent-worktree-commit.mjs), so the work would stay there unseen.
-  if ((await git(project.folder, ['rev-parse', '--verify', '--quiet', 'HEAD:.gitmodules'])).code === 0) return shared();
-  const [repo = '', line = ''] = top.stdout.split('\n');
+  // Not in a repository, or in one with no commit yet, which would give an empty worktree without the project’s files.
+  if (top.code !== 0 || (await git(project.folder, ['rev-parse', '--verify', '--quiet', 'HEAD'])).code !== 0) return { folder: await beside() };
+  // One with submodules has none yet either: a worktree holds them empty, and the turn-end commit leaves a worktree
+  // with a repository in its index uncommitted (agent-worktree-commit.mjs), so the work would stay there unseen.
+  if ((await git(project.folder, ['rev-parse', '--verify', '--quiet', 'HEAD:.gitmodules'])).code === 0) return { folder: await beside() };
+  const [first = '', line = ''] = top.stdout.split('\n');
+  const repo = first.trim();
   // Where the project’s folder sits below the repository’s top, as git prints it: `apps/web/`, or empty.
   const prefix = line.trim().replace(/\/+$/, '');
   // Keyed by the repository too, so a project pointed at another one gets a worktree of that one.
-  const which = createHash('sha256').update(repo.trim()).digest('hex').slice(0, 8);
+  const which = createHash('sha256').update(repo).digest('hex').slice(0, 8);
   const dir = join(worktreesRootFor(workRoot), folderName(project.id), `${folderName(persona.id || persona.handle)}-${which}`);
+  const once = (/** @type {string} */ line) => !logged.has(`${dir}\n${line}`) && logged.add(`${dir}\n${line}`) && log(line);
   const made = making.get(dir) ?? worktree(git, project.folder, dir, branchFor(persona, project));
   making.set(dir, made);
   const ready = await made.finally(() => making.get(dir) === made && making.delete(dir));
-  if ('dir' in ready) {
-    const folder = prefix ? await agentFolder({ ...persona, folder: join(ready.dir, prefix) }, project, workRoot) : ready.dir;
-    known.set(key, { dir: ready.dir, folder });
-    return folder;
-  }
-  if (!logged.has(`${dir}\n${ready.why}`)) {
-    logged.add(`${dir}\n${ready.why}`);
-    log(
-      `Postbox couldn’t make a worktree for @${persona.handle} in ${project.folder} (${ready.why}), so it works in the project’s folder and waits for other Antigravity turns there.`,
+  if ('why' in ready) {
+    once(
+      `Postbox couldn’t make a worktree for @${persona.handle} in ${project.folder} (${ready.why}), so it starts in a folder of its own and works in the project’s folder.`,
     );
+    return { folder: await beside(), why: ready.why };
   }
-  return shared();
+  const folder = prefix ? await agentFolder({ ...persona, folder: join(ready.dir, prefix) }, project, workRoot) : ready.dir;
+  known.set(key, { dir: ready.dir, folder });
+  return { folder };
 }
+
+/**
+ * The folder an Antigravity agent’s turn starts in (agentPlace), for whatever asks only where: the permissions panel,
+ * the files it names, its `!` commands.
+ * @param {Parameters<typeof agentPlace>} args @returns {Promise<string>}
+ */
+export const agentWorktree = async (...args) => (await agentPlace(...args)).folder;
 
 /**
  * The worktree at dir, made if it isn’t there: on its branch if that exists, else on a new one from HEAD. Git’s reason
@@ -140,14 +149,13 @@ async function worktree(git, repo, dir, branch) {
   // folder there, git’s record of one still being made goes too (a hard stop mid-add, its folder deleted after), since
   // prune keeps it; a record someone locked stays, as for a locked worktree whose folder they moved.
   if (!there && ((await exists(dir)) || (await gitsOwnLock(git, repo, dir)))) await removeWorktree(git, repo, dir);
-  const lines = added.stderr.trim().split('\n');
-  // Git prints progress before its reason, which starts `fatal:`.
-  return { why: (lines.find((l) => l.startsWith('fatal:')) ?? lines[0])?.slice(0, 200) || `git exited with ${added.code}` };
+  return { why: gitsReason(added) };
 }
 
 /**
  * The project’s folder to add to a turn that runs in cwd (agy’s --add-dir), or null for an agent in its own worktree,
- * which works there rather than in the shared folder.
+ * which works there rather than in the shared folder. An agent that starts in a folder of its own beside the project
+ * (agent-own-folder.mjs) is given the project’s folder, where it works.
  * @param {string} cwd @param {{ folder?: string|null } | null | undefined} project @param {string} workRoot
  */
 export const sharedFolder = (cwd, project, workRoot) =>

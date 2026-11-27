@@ -60,3 +60,12 @@ export async function removeWorktree(git, repo, dir) {
   await git(repo, ['worktree', 'remove', '--force', '--force', dir]);
   await rm(dir, { recursive: true, force: true }).catch(() => {});
 }
+
+/**
+ * Why git refused, from what it printed: its progress comes before its reason, which starts `fatal:`.
+ * @param {{ code: number, stderr: string }} result
+ */
+export function gitsReason(result) {
+  const lines = result.stderr.trim().split('\n');
+  return (lines.find((l) => l.startsWith('fatal:')) ?? lines[0])?.slice(0, 200) || `git exited with ${result.code}`;
+}
