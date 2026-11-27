@@ -199,7 +199,8 @@ async function threadWidenedForALayout(page, { phone }) {
 /**
  * #966’s real source: the top bar measures itself as it’s fitted (fitTopbar, shell.mjs), comparing its scrollWidth
  * with its clientWidth while it may still be too wide. Here the bar is made too wide by a 600 px box and measured so,
- * in one task. Its own overflow-x: clip (#866) and the page’s keep that from laying the page out wider.
+ * in one task. The bar’s own overflow-x: clip (#866) keeps that from laying the page out wider; this case passes
+ * without the page’s clip, and guards the bar’s.
  */
 async function threadUnderAWideTopbar(page, { phone }) {
   test.skip(!phone, 'a phone viewport sizes the page from its content (#966)');
