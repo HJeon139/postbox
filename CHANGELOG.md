@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.4 (2026-11-27)
+
+### Fixes
+
+- **needs:** a view request kept through another agent's wake doesn't ring again at its end
+- **needs:** a request asked again during a wake stays its kept turn's
+- **needs:** a tool or view request asked again in a later turn is that turn's need
+- **needs:** a view request is turn-tied, as a tool request is
+- **needs:** stopping a turn drops the need its tool or view request made
+- **needs:** a host question shown at its call's end is the need at once
+- **needs:** a view request rings with a notice at its turn's end
+- **needs:** a tool or view request raised mid-turn is the need at once
+
 ## 5.4.3 (2026-11-27)
 
 ### Fixes
