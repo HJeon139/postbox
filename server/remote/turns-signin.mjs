@@ -59,11 +59,12 @@ function warnFrom(rts, turn, se, host, harness, check, now) {
   if (signedOut(now, harness)) {
     if (!firstTelling(hostId, /** @type {string} */ (harness), now.at)) return;
     const name = BACKEND_NAMES[harness] ?? harness;
+    const login = LOGIN_COMMANDS[/** @type {keyof typeof LOGIN_COMMANDS} */ (harness)]; // signedOut found it there
     rts.rt.threads.notify(
       'blocking',
       se,
       `${name} on ${host.name} isn’t signed in`,
-      `${host.name} says ${name} there isn’t signed in, so @${se.handle}’s turn there may stop with “Sign-in needed”. Run “${LOGIN_COMMANDS[harness]}” on ${host.name}, then carry on.`,
+      `${host.name} says ${name} there isn’t signed in, so @${se.handle}’s turn there may stop with “Sign-in needed”. Run “${login}” on ${host.name}, then carry on.`,
       turn.threadId,
     );
     return;
