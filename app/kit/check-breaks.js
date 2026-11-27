@@ -53,10 +53,11 @@
       const other = el === control ? textEl : control;
       return !(e === other || other.contains(e)) || covers(e, el) || floats(e, el);
     };
-    // Not drawn at the point at all (the corner a button’s radius cuts away) is not showing there either (#681).
+    // A control not drawn at the point at all (the corner its radius cuts away) isn’t showing there either (#681).
+    // Text missing there is left counted as showing: it may have no box of its own (display: contents).
     const under = (el) => {
       const i = stack.indexOf(el);
-      return i < 0 || (i > 0 && stack.slice(0, i).some((e) => hides(e, el)));
+      return (i < 0 && el === control) || (i > 0 && stack.slice(0, i).some((e) => hides(e, el)));
     };
     return !under(textEl) && !under(control);
   }
