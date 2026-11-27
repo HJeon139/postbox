@@ -158,6 +158,11 @@ export function offerNeed(rt, se, need, state) {
   return true;
 }
 
+/** A block withdrawn moves the need (Apps raises it on the bus): its need is released. @param {any} rt */
+export function blockNeeds(rt) {
+  rt.bus.on('block.withdrawn', ({ se, itemId }) => releaseNeed(rt, se, itemId));
+}
+
 /**
  * Whether an offered need takes the agent’s current one (offerNeed). Both cards’ times are read from pending; when
  * either card isn’t there, rank alone decides, as before #711. On equal rank, a card that loses only for being older
