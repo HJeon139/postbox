@@ -24,6 +24,12 @@ test('#1916 only a marker that ends a chunk goes: a reply that mentions it keeps
   assert.equal(withoutToolMarkup('<｜DSML｜function_calls'), '');
   // DeepSeek-V3.2’s tag in full closes with `>`; the recording has it without.
   assert.equal(withoutToolMarkup('Done.\n\n<｜DSML｜function_calls>'), 'Done.');
-  for (const kept of ['DeepSeek writes `<｜DSML｜function_calls` before a call.', 'Plain words.', 'A <tag> at the end', 'Ends with <｜DSML｜'])
+  for (const kept of [
+    'DeepSeek writes `<｜DSML｜function_calls` before a call.',
+    'Plain words.',
+    'A <tag> at the end',
+    'Ends with <｜DSML｜',
+    'The log shows `<｜DSML｜function_calls',
+  ])
     assert.equal(withoutToolMarkup(kept), kept, kept);
 });
