@@ -6,6 +6,7 @@
 import { expect } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { plainOf } from '../turn-parts.mjs';
+import { synced } from './postbox.mjs';
 
 /**
  * Registers the fake backend on a spec’s Postbox and moves @indexer and @researcher to it. turns lists every turn it
@@ -105,3 +106,10 @@ export const row = (page, handle) => page.locator('.rail .agent-row').filter({ h
 export const words = async (locator) => (await locator.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
 /** A side thread’s line in its conversation. @param {import('@playwright/test').Page} page */
 export const sideLine = (page) => page.locator('#main .pill', { hasText: 'asked' });
+
+/** Opens Postbox at `hash` and waits for it to sync and draw its top bar. Moved from side-threads.spec.mjs. */
+export async function openAt(page, app, hash) {
+  await page.goto(`${app.origin}/${hash}`);
+  await synced(page, app);
+  await expect(page.locator('header.topbar')).toBeVisible();
+}
