@@ -2,8 +2,8 @@
 // over a button, cut text off and break words a few letters a line, both the browser specs’ helper
 // (tests/browser/text-layout.mjs) and the UAT runner’s check of each whole-window screenshot (tools/uat/layout-probe.mjs,
 // tools/uat/checks-view.mjs) fail, at 375 and 1280 px; on a clean page, and on Postbox’s own screens, both pass: its
-// first screen, a long room whose items off screen are skipped, a topic thread’s first message faded out above Show
-// all, and Jump to latest over the transcript. A running step’s long output, which its box cuts off at the end, is
+// first screen, a long room whose items off screen are skipped, a finished turn’s folded steps, a topic thread’s first
+// message faded out above Show all, and Jump to latest over the transcript. A running step’s long output, which its box cuts off at the end, is
 // reported.
 
 import { expect, test } from '@playwright/test';
@@ -57,8 +57,8 @@ const BAD = `${STYLE}
 // part shorter, a word broken at soft hyphens, a word set to break anywhere that fills the line before it breaks, a
 // button beside its text, a checkbox in its label, a button under a dialog that text in the dialog crosses, a hidden
 // button under text, an opaque button floating with the window over a paragraph and over part of another button, as
-// Jump to latest does over the transcript, a word set to hyphenate and break anywhere, and text hidden for screen
-// readers in a 1 px box, which breaks a letter a line.
+// Jump to latest does over the transcript, folded steps in a closed details over the paragraph under it, a word set
+// to hyphenate and break anywhere, and text hidden for screen readers in a 1 px box, which breaks a letter a line.
 const CLEAN = `${STYLE}
 <section style="width: 120px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">This label is far too long for its box</section>
 <section class="mono" style="width: 4ch; overflow-wrap: anywhere">Configuration</section>
@@ -82,6 +82,7 @@ const CLEAN = `${STYLE}
   <div style="position: sticky; top: 0; height: 0"><button style="position: absolute; left: 30px; background: Canvas">Jump to latest</button></div>
   <button>Good: react</button>
 </section>
+<section><details><summary>3 steps</summary><div>read books/manifest.json</div><a href="#">Open this turn in Work</a></details><p style="margin: 0">The reply’s first paragraph, right under the folded steps.</p></section>
 <section lang="en" class="mono" style="width: 3ch; hyphens: auto; overflow-wrap: anywhere">Configuration</section>
 <section class="mono" style="overflow-wrap: anywhere">Read aloud:
   <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Configuration</span>
@@ -166,6 +167,26 @@ for (const width of [375, 1280]) {
       return s.scrollHeight - s.scrollTop - s.clientHeight;
     });
     expect(gap, 'at the end, within the view’s 2 px').toBeLessThanOrEqual(2);
+  });
+
+  // A finished turn folds its steps into a closed details above its reply: laid out, but not drawn.
+  test(`#681 at ${width} px a finished turn’s folded steps over its reply pass the check`, async ({ page }) => {
+    const who = `folder${width}`;
+    const t = scripted.room(`Folded steps at ${width}`, [who]);
+    scripted.scripts.set(who, async ({ emit }) => {
+      emit({ kind: 'tool_call', id: 'r1', name: 'Bash', input: { command: 'ls books' }, final: true });
+      emit({ kind: 'tool_result', id: 'r1', text: 'manifest.json' });
+      emit({ kind: 'text', text: 'I found 11 papers on agent memory, and the manifest lists each one with its year.' });
+    });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+    await synced(page, scripted.app);
+    scripted.app.rt.sendMessage(t.id, { text: 'List the books.' });
+    await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
+    const folded = page.locator('details.activity:not([open])');
+    await expect(folded, 'the turn’s steps fold').toHaveCount(1);
+    await settled(page);
+    await expectTidyText(page, 'a finished turn’s folded steps');
   });
 
   // The step keeps the end of what the call returned, but its box clamps it from the top, so the last lines are the
