@@ -107,3 +107,8 @@ test('#1171 the words and type are read from either place Kiro puts them, when o
     assert.equal(ctx.calls.saved.postboxToolsDown, 'ran', `and noted, from ${from} alone`);
   }
 });
+
+test('#1905 a connection error that starts with a line break or a hidden character still names its server', () => {
+  const { ctx } = replay(withError(changed({ message: '\n​ MCP server "postbox" failed to connect: refused' })));
+  assert.ok(postboxStep(ctx), 'read as Postbox’s server once its words are cleaned');
+});

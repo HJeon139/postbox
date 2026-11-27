@@ -1,4 +1,4 @@
-import { cutText } from '../../shared/text-parts.mjs';
+import { cleanSaid } from '../../shared/text-parts.mjs';
 import { agentSkills } from './agent-plugin.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 import { POSTBOX_SKILLS, postboxSkillsOn } from './skill-config.mjs';
@@ -62,7 +62,7 @@ const SAID_MAX = 400; // of Codex’s error shown in the step, as for Kiro’s (
  */
 export function codexRefusal(ctx, err) {
   if (!REQUIRED_FAILED.test(String(err?.message ?? ''))) return err;
-  const said = cutText(String(err.message), SAID_MAX);
+  const said = cleanSaid(String(err.message), SAID_MAX);
   toolsDown(ctx, `Codex couldn’t start Postbox’s tool server, which it needs, so it didn’t start the turn. Codex said: “${said}”`, { ran: false });
   return Object.assign(
     new Error('Postbox’s tools didn’t load: Codex couldn’t start Postbox’s tool server, so it didn’t start this turn. Retry to try again.'),

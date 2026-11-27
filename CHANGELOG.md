@@ -2,6 +2,40 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.6 (2026-11-27)
+
+### Fixes
+
+- **adapters:** give the installed index the time git gave it, and test the copy around the lock
+- **adapters:** stream the commit's index into the worktree's lock
+- **adapters:** hold the worktree's index lock while committing, and install the commit's index
+- **adapters:** set an agent's index to its turn-end commit with read-tree --reset
+- **adapters:** copy an agent's index only from a regular file, and keep what git knew of each file
+- **adapters:** build an agent's turn-end commit from Postbox's own copy of its index
+
+## 5.4.5 (2026-11-27)
+
+### Fixes
+
+- **view:** label an item by its words only while it has focus
+- **view:** each drawing of an item gets an id of its own, so a redraw doesn't take focus
+- **view:** an item is an article named by its own words, made so before it's on the page
+- **view:** a card that is already a group keeps its role, and the working rows don't recount
+- **view:** each transcript item says its place, so a screen reader reaches skipped ones
+
+## 5.4.4 (2026-11-27)
+
+### Fixes
+
+- **needs:** a view request kept through another agent's wake doesn't ring again at its end
+- **needs:** a request asked again during a wake stays its kept turn's
+- **needs:** a tool or view request asked again in a later turn is that turn's need
+- **needs:** a view request is turn-tied, as a tool request is
+- **needs:** stopping a turn drops the need its tool or view request made
+- **needs:** a host question shown at its call's end is the need at once
+- **needs:** a view request rings with a notice at its turn's end
+- **needs:** a tool or view request raised mid-turn is the need at once
+
 ## 5.4.3 (2026-11-27)
 
 ### Fixes
