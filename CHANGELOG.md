@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.8 (2026-11-27)
+
+### Fixes
+
+- **uat:** a chip pressed as a button goes by the name the tester reads
+- **uat:** a whole label and description is matched before any part of a chip's text
+- **uat:** a chip's label is never cut in what the tester reads
+- **uat:** a chip reads as "label — description", and a whole label picks its chip first
+- **uat:** a choice's option named with a newline, a colon or another dash is found
+
 ## 4.52.7 (2026-11-27)
 
 ### Fixes
