@@ -197,11 +197,13 @@
     }
     return { left, top, right, bottom, width: right - left, height: bottom - top };
   }
-  // Cut short on purpose: an ellipsis, or a clamp to a number of lines.
+  // Cut short on purpose: an ellipsis, a clamp to a number of lines, or a fade, as a topic thread’s long first message
+  // fades out above its Show all (#681).
+  const faded = (cs) => (cs.maskImage && cs.maskImage !== 'none') || (cs.webkitMaskImage && cs.webkitMaskImage !== 'none');
   const shortened = (el) => {
     for (let e = el; e && e !== document.body; e = e.parentElement) {
       const cs = getComputedStyle(e);
-      if (cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none')) return true;
+      if (cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') || faded(cs)) return true;
     }
     return false;
   };
@@ -248,5 +250,6 @@
     lowContrast: guard('contrast', lowContrast),
     smallText: (w, code = 'text-too-small') => guard(code, (x) => smallText(x, code))(w),
     cutOff: guard('text-cut-off', cutOff),
+    shown,
   });
 }
