@@ -1,7 +1,8 @@
 // Math that streamed into a freshly loaded page came out garbled: `$t$` read “ttt” and a display formula was drawn three
-// times on one line (UAT of 26 Nov). The page draws math once KaTeX has loaded, and each redraw of the streaming reply
-// asked again while it loaded; each ask then drew the same formula, reading the one before’s drawing as its source.
-// Here KaTeX is held back until the reply has been drawn several times, and each formula is drawn once from its source.
+// times on one line (UAT of 26 Nov). The page draws math once KaTeX has loaded, and a reply is drawn more than once
+// after it ends, each draw asking again while KaTeX loaded; each ask then drew the same formula, reading the one
+// before’s drawing as its source. Here KaTeX is held back while the reply streams, ends and is drawn again, and each
+// formula is drawn once from its source.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
