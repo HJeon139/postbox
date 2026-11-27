@@ -36,3 +36,19 @@ test('Alt+↑ and Alt+↓ step over a reply that draws nothing, to the message o
   await page.keyboard.press('Alt+ArrowDown');
   await expect(after, 'and one press back').toBeFocused();
 });
+
+test('Alt+↑ from the composer reaches the newest shown item when the newest draws nothing', async ({ page }) => {
+  const { rt, store } = app;
+  const project = /** @type {any} */ (Object.values(store.state.projects)[0]);
+  const t = rt.createThread({ projectId: project.id, title: 'Hidden last', personaIds: [arrange.persona(rt, 'researcher').id] });
+  const [se] = arrange.sessionsIn(rt, t.id);
+  rt.threads.addItem(t.id, { kind: 'user', text: 'Note: the newest one shown.' });
+  rt.threads.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, text: 'Replaced.', status: 'replaced' });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(page.locator('#main > .item').last()).toHaveAttribute('hidden', '');
+
+  await page.locator('#composer-input').focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(page.locator('#main > .item').filter({ hasText: 'Note: the newest one shown.' })).toBeFocused();
+});
