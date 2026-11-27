@@ -55,6 +55,7 @@ const PLACED = {
   'remote/host-admin.mjs': 1, // a wait: no store
   'remote/host-status.mjs': 1, // a microtask after a host event publishes host status: an emit, memory-only while closed like stream text (I1)
   'remote/hosts-models.mjs': 3, // the wait for a host’s model list: a connection, no store
+  'remote/turns-signin.mjs': 1, // a turn’s start waits a bounded time for the host’s sign-ins (#1608): a connection, no store
   'remote/hosts-signins.mjs': 2, // a microtask after a welcome, and the wait for the host’s sign-ins (#1608): a connection; the answer is a host status emit
   'remote/host-forget.mjs': 6, // the wait for a host to answer its memory removals (#491): a connection, no store
   'remote/hosts-links.mjs': 5, // a link’s idle timer and listener microtasks: connections, no store

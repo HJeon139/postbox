@@ -132,3 +132,30 @@ test('a new session keeps the last answer until its own comes', async () => {
     s.done();
   }
 });
+
+test('asked now, the host answers over its session as it is, again within one session, and one asking is shared', async () => {
+  let how = /** @type {any} */ ({ codex: { state: 'signed-out' } });
+  const s = setup({ daemon: createFakeDaemon({ autoEnd: false, signins: () => how }) });
+  try {
+    s.mgr.need('h1', 'turn:t1');
+    await until(() => s.mgr.status('h1').signIns !== null, 'the first answer');
+    const before = asked(s);
+    how = { codex: { state: 'signed-in' } };
+    const [a, b] = await Promise.all([s.mgr.signInsNow('h1'), s.mgr.signInsNow('h1')]);
+    assert.equal(asked(s), before + 1, 'one asking for both');
+    assert.equal(a, b);
+    assert.equal(a.harnesses.find((h) => h.name === 'codex').state, 'signed-in', 'the answer now, in the same session');
+    assert.equal(s.mgr.status('h1').signIns, a, 'and the status carries it');
+  } finally {
+    s.done();
+  }
+});
+
+test('asked now while the host isn’t connected, the answer is null', async () => {
+  const s = setup({ daemon: createFakeDaemon({ autoEnd: false }) });
+  try {
+    assert.equal(await s.mgr.signInsNow('h1'), null);
+  } finally {
+    s.done();
+  }
+});

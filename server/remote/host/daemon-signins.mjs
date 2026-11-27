@@ -35,6 +35,11 @@ function kept(d, name, path) {
   if (hit && d.mono() - hit.at < SIGN_IN_KEEP_MS) return hit.answer;
   const answer = runStatus(d, name, path);
   d.signIns.set(key, { at: d.mono(), answer });
+  // Only a sign-in is kept: a sign-out or unknown is asked again next time, so a sign-in the person fixed is heard at
+  // once (#1608).
+  void answer.then((a) => {
+    if (a.state !== 'signed-in' && d.signIns.get(key)?.answer === answer) d.signIns.delete(key);
+  });
   return answer;
 }
 
@@ -68,8 +73,9 @@ function runStatus(d, name, path) {
       return finish({ state: 'unknown' }, `couldn’t start: ${e.message}`);
     }
     d.checking.add(child);
-    child.stdout?.on('data', (/** @type {Buffer} */ b) => {
-      if (stdout.length < STATUS_OUTPUT_CHARS) stdout += String(b);
+    child.stdout?.setEncoding('utf8');
+    child.stdout?.on('data', (/** @type {string} */ b) => {
+      if (stdout.length < STATUS_OUTPUT_CHARS) stdout += b;
     });
     child.on('error', (/** @type {Error} */ e) => finish({ state: 'unknown' }, `couldn’t start: ${e.message}`));
     child.on('close', (/** @type {number | null} */ code, /** @type {string | null} */ signal) =>

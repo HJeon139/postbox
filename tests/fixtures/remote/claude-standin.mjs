@@ -5,7 +5,7 @@
 //
 // What it does, as Claude Code does in a print-mode turn:
 // - `--version` prints “2.1.308 (Claude Code)”, the version of the latest recording here (permission-timeout.json).
-// - `auth status`, which the daemon runs after each hello (#1608), prints and exits as the recorded signed-in run
+// - `auth status`, which the daemon runs when Postbox asks it for sign-ins (#1608), prints and exits as the recorded signed-in run
 //   (tests/fixtures/remote/signin/claude-signed-in.json), and isn’t traced: it’s no turn.
 // - Otherwise it reads its message from stdin (the turn’s message file) and Postbox’s server from `--mcp-config`, and
 //   starts that server exactly as configured: its command and arguments (the host’s node and shim.mjs with the turn’s

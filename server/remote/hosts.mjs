@@ -46,7 +46,7 @@
 import { EventEmitter } from 'node:events';
 import { connectNow, disconnected, dropLink, dropRenamed, ensureWelcome, isRenamed, linkOf, need, release } from './hosts-links.mjs';
 import { removeFromHost, signInCheck } from './hosts-requests.mjs';
-import { watchSignIns } from './hosts-signins.mjs';
+import { askNow, watchSignIns } from './hosts-signins.mjs';
 import { hostOf, statusOf, tokenOf, update } from './hosts-status.mjs';
 import { installNow, maybeUpdate, setKeepUpdated, supersedeTry, track } from './hosts-update.mjs';
 import { describeInstall, forgetToken } from './install.mjs';
@@ -214,6 +214,8 @@ function hostMethods(m) {
      * @param {string} hostId @returns {Promise<SignInCheck | null>}
      */
     signInCheck: (hostId) => signInCheck(m, hostId),
+    /** Asks the host now whether each harness there is signed in (#1608); null when it isn’t connected. */
+    signInsNow: (hostId) => askNow(m, hostId),
     /**
      * Removes Postbox from the host: connects if need be, sends the daemon `remove` (it stops every turn still running
      * there, deletes ~/.postbox-remote, its code, token, logs and turn records, and exits), and resolves once it says

@@ -16,16 +16,16 @@ import { abortError } from './turns-shared.mjs';
  * @param {RemoteTurns} rts @param {any} turn @param {any} ctx @param {any} se @param {any} host
  */
 export async function warnSignIn(rts, turn, ctx, se, host) {
-  const check = await signInCheck(rts, turn.remote.hostId);
+  const [check, now] = await Promise.all([signInCheck(rts, turn.remote.hostId), signInsNow(rts, turn.remote.hostId)]);
   if (ctx.signal.aborted) throw abortError();
   const harness = ctx.persona?.backend;
-  if (signedOut(rts, turn.remote.hostId, harness)) {
+  if (signedOut(now, harness)) {
     const name = BACKEND_NAMES[harness] ?? harness;
     rts.rt.threads.notify(
       'blocking',
       se,
       `${name} on ${host.name} isn’t signed in`,
-      `When ${host.name} last said, ${name} there wasn’t signed in, so @${se.handle}’s turn there may stop with “Sign-in needed”. Run “${LOGIN_COMMANDS[harness]}” on ${host.name}, then carry on.`,
+      `${host.name} says ${name} there isn’t signed in, so @${se.handle}’s turn there may stop with “Sign-in needed”. Run “${LOGIN_COMMANDS[harness]}” on ${host.name}, then carry on.`,
       turn.threadId,
     );
   } else if (check && !check.ok)
@@ -38,12 +38,38 @@ export async function warnSignIn(rts, turn, ctx, se, host) {
     );
 }
 
+/** How long a turn’s start waits for the host to say whether its harness is signed in, before it warns of nothing. */
+export const SIGN_IN_TURN_WAIT_MS = 5000;
+
 /**
- * Whether the host’s last answer says the harness isn’t signed in: only a plain signed-out counts, never unknown.
- * @param {RemoteTurns} rts @param {string} hostId @param {string | undefined} harness
+ * The host’s answer now, over the session the turn runs on, not one before it, so a sign-in the person fixed since is
+ * heard (#1608); null when it doesn’t come within SIGN_IN_TURN_WAIT_MS, so a slow host never holds the turn up.
+ * @param {RemoteTurns} rts @param {string} hostId @returns {Promise<any>}
  */
-function signedOut(rts, hostId, harness) {
+function signInsNow(rts, hostId) {
+  const asked = rts.hosts?.signInsNow?.(hostId);
+  if (!asked) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), SIGN_IN_TURN_WAIT_MS);
+    timer.unref?.();
+    asked.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(null);
+      },
+    );
+  });
+}
+
+/**
+ * Whether the host’s answer says the harness isn’t signed in: only a plain signed-out counts, never unknown.
+ * @param {any} signIns @param {string | undefined} harness
+ */
+function signedOut(signIns, harness) {
   if (!harness || !Object.hasOwn(LOGIN_COMMANDS, harness)) return false;
-  const signIns = rts.hosts?.status?.(hostId)?.signIns;
   return signIns?.harnesses?.some((/** @type {any} */ h) => h.name === harness && h.state === 'signed-out') === true;
 }

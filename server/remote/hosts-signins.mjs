@@ -1,7 +1,8 @@
 // Asking a host whether each harness there is signed in (#1608): `signins`, answered by `signed`
 // (shared/remote-protocol.mjs), after each welcome, so the host’s card and a turn’s start can say a harness isn’t
-// signed in before a turn fails there. Nothing waits for it: a turn starts whatever the answer, and the answer lands
-// in the host’s status as signIns. Each function takes the host manager’s state first (hosts-status.mjs).
+// signed in before a turn fails there. The answer lands in the host’s status as signIns. A turn’s start asks again
+// (askNow), so it warns from the session it runs over, not one before it, and a sign-in the person fixed since is
+// heard (#1608). Each function takes the host manager’s state first (hosts-status.mjs).
 
 import { message, refusesType } from '../../shared/remote-protocol.mjs';
 import { SIGN_IN_STATUS_MS } from './host/daemon-signins.mjs';
@@ -27,27 +28,48 @@ export function watchSignIns(m) {
   m.events.on('status', (/** @type {string} */ id, /** @type {import('./hosts-status.mjs').HostStatus} */ s) => {
     if (s.state !== 'connected' || !s.welcome || m.signIns.get(id)?.welcome === s.welcome) return;
     m.signIns.set(id, { welcome: s.welcome, value: m.signIns.get(id)?.value ?? null });
-    queueMicrotask(() => void ask(m, id, s.welcome));
+    queueMicrotask(() => void askNow(m, id));
   });
 }
 
 /**
- * Sends `signins` over the session that welcomed, keeping the host connected while it waits, and keeps the answer.
- * The last answer stands until a new one comes; a connection lost first leaves it, and the next welcome asks again.
- * @param {Manager} m @param {string} id @param {any} welcome
+ * Asks the host now, over its session as it is, and resolves to that session’s answer: one already under way is
+ * shared. null when the host isn’t connected, or the session ends first, so a caller warns of nothing.
+ * @param {Manager} m @param {string} id @returns {Promise<SignIns | null>}
+ */
+export function askNow(m, id) {
+  const l = m.links.get(id)?.link;
+  if (m.closed || !l?.connected || !l.welcome) return Promise.resolve(null);
+  const entry = m.signIns.get(id);
+  if (entry && entry.welcome === l.welcome && entry.pending) return entry.pending;
+  if (entry?.welcome !== l.welcome) m.signIns.set(id, { welcome: l.welcome, value: entry?.value ?? null });
+  const now = /** @type {any} */ (m.signIns.get(id));
+  now.pending = ask(m, id, l.welcome).finally(() => {
+    if (m.signIns.get(id) === now) now.pending = null;
+  });
+  return now.pending;
+}
+
+/**
+ * Sends `signins` over the session that welcomed, keeping the host connected while it waits, and keeps the answer,
+ * which it resolves to. The last answer stands until a new one comes; a connection lost first leaves it, resolves to
+ * null, and the next welcome asks again.
+ * @param {Manager} m @param {string} id @param {any} welcome @returns {Promise<SignIns | null>}
  */
 async function ask(m, id, welcome) {
   const l = m.links.get(id)?.link;
   // A session gone before the ask is asked at its next welcome: needing the host here would reconnect it for nothing.
-  if (m.closed || !l?.connected || l.welcome !== welcome) return;
+  if (m.closed || !l?.connected || l.welcome !== welcome) return null;
   const found = (welcome.harnesses ?? []).filter((/** @type {any} */ h) => h.path).map((/** @type {any} */ h) => h.name);
   const why = Symbol('sign-ins');
   need(m, id, why);
   try {
     const harnesses = await signed(m, l, found);
-    if (!harnesses || m.closed || m.signIns.get(id)?.welcome !== welcome) return;
-    m.signIns.set(id, { welcome, value: { at: m.now(), harnesses } });
+    const entry = m.signIns.get(id);
+    if (!harnesses || m.closed || !entry || entry.welcome !== welcome) return null;
+    entry.value = { at: m.now(), harnesses };
     update(m, id);
+    return entry.value;
   } finally {
     release(m, id, why);
   }
