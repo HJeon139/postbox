@@ -21,7 +21,9 @@ const SECTION = /§\s?\d+(?:\.\d+)*/;
 const PLACEHOLDER = /(?<![\w&/])#[A-Z]\b/;
 // Left out on purpose, as each would flag more that is fine than it catches (#102): a line number such as “L120”, which
 // would flag “L2 cache”; “Table 3”, most often a real label on the page; a bare issue number such as “#208”; and the
-// lowercase forms, such as “r:31”, which are mostly something else.
+// lowercase forms, such as “r:31”, which are mostly something else. The citation pattern still flags a few that are
+// fine, kept as rare next to what it catches: a list such as “X:10, Y:20”, sizes such as “S:2 M:3”, and the “A:1” in an
+// IPv6 address.
 // lint-allow regex: the four patterns just above, each a constant.
 const CODED = new RegExp([NUMBERED_LABEL, CITATION, SECTION, PLACEHOLDER].map((re) => re.source).join('|'), 'g');
 
