@@ -91,7 +91,7 @@ for (const width of [320, 375, 768, 1024, 1280, 1920])
           hostLines: Math.round(hr.height / lineOf(where)),
           hostShows: hr.width,
           // The name and its version on one line, the host under them, the description under that (#1735: a row of
-          // the pick list, whose actions are in the bar under the list).
+          // the pick list, whose actions are in the bar in its heading’s row).
           nameLine: Math.abs(top('b') - top('b ~ .small:not(.fact)')) < lineOf(where),
           hostBelowName: hr.top >= (li.querySelector('b')?.getBoundingClientRect().bottom ?? 0) - 1,
           saidBelowHost: sr.top >= hr.bottom - 1,

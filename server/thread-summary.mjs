@@ -37,7 +37,7 @@ const busyIn = (summaries, threadId) =>
 export function summarizerOf(summaries, threadId) {
   if (summaries.summarize !== undefined) return summaries.summarize;
   const claude = summaries.sessions
-    .in(summaries.threads.lineage(threadId).at(-1))
+    .in(summaries.threads.conversationToWrite(threadId))
     .some((x) => ['claude-code', 'agent-sdk'].includes(summaries.personas.get(x.personaId)?.backend));
   if (!claude || !summaries.adapters.names().includes('agent-sdk')) return null;
   const sdk = summaries.adapters.get('agent-sdk').sdk;

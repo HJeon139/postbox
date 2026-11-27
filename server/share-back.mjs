@@ -102,7 +102,7 @@ export function postSummary(rt, se, turn, items) {
  */
 export function summarizing(rt, topicId) {
   const waiting = rt.sessions
-    .in(rt.threads.lineage(topicId).at(-1))
+    .in(rt.threads.conversationToWrite(topicId)) // as written: it decides clearSummaryPending's write (#623)
     .some((/** @type {any} */ se) => rt.delivery.waiting(se.id).some((/** @type {any} */ e) => e.threadId === topicId && e.message?.summary));
   return (
     waiting ||
@@ -128,7 +128,7 @@ export function clearSummaryPending(rt, topicId, ended = null) {
  * bring_to_conversation, because the person asked it to (#128).
  */
 export function shareText(rt, threadId, { fromThreadId, handle, text, summary = false, agent = false, question = undefined }) {
-  const from = rt.s.threads[fromThreadId];
+  const from = rt.store.pending.thread(fromThreadId); // its title, as written: a topic held behind a commit counts (#623)
   // The conversation’s agents read it at the start of their next turn, with everything else they missed.
   return rt.threads.addItem(threadId, {
     kind: 'shared',

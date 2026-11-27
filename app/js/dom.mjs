@@ -58,45 +58,59 @@ export function fill(el, ...children) {
 const HOLD_MS = 3000;
 const TEXT_FIELD = 'input, textarea, [contenteditable]';
 
+/** Whether a keydown starts a press: Space, which clicks on its keyup, on a control and not in a text field. @param {KeyboardEvent} e */
+export const spaceStartsPress = (e) => e.key === ' ' && !e.repeat && !(e.target instanceof Element && e.target.closest(TEXT_FIELD));
+
+/**
+ * When a press ends: just after the click it ends in, which the browser dispatches after pointerup and Space’s keyup, or
+ * HOLD_MS after it began, whichever comes first. start() begins watching, once while a press is down; ended() runs then.
+ * One press watch serves the panels’ repaints (heldPaint) and a running reply’s live refill (live-press.mjs, #1616).
+ * @param {() => void} ended
+ */
+export function pressEnds(ended) {
+  /** @type {AbortController | null} */
+  let hold = null;
+  let bound = 0;
+  const end = () => {
+    hold?.abort();
+    hold = null;
+    clearTimeout(bound);
+    ended();
+  };
+  return {
+    down: () => hold !== null,
+    start() {
+      if (hold) return;
+      hold = new AbortController();
+      const opts = { capture: true, signal: hold.signal };
+      const after = () => setTimeout(end);
+      // A mouse press may come as mouse events alone, with no pointer events, as in Firefox with touch emulated.
+      for (const type of ['pointerup', 'pointercancel', 'mouseup']) window.addEventListener(type, after, opts);
+      window.addEventListener('keyup', (e) => e.key === ' ' && after(), opts);
+      bound = window.setTimeout(end, HOLD_MS);
+    },
+  };
+}
+
 /**
  * Wraps a panel’s paint so a press in root holds it until the press ends (#898). A repaint replaces root’s buttons, and
  * a press that began on one and ends on its replacement isn’t a click to the browser, so it was lost. While a pointer
  * is down in root, or Space (which clicks on its keyup) is down on a control there, a paint waits; the press’s end
- * paints once, after its click, or HOLD_MS after the first press began, whichever comes first. One that ends after
- * root has left the page paints nothing. Returns the paint to call.
+ * paints once (pressEnds). One that ends after root has left the page paints nothing. Returns the paint to call.
  * @param {HTMLElement} root  @param {() => void} paint
  * @returns {() => void}
  */
 export function heldPaint(root, paint) {
-  /** @type {AbortController | null} */
-  let hold = null;
   let pending = false;
-  let bound = 0;
-  const flush = () => {
-    hold?.abort();
-    hold = null;
-    clearTimeout(bound);
+  const press = pressEnds(() => {
     const due = pending && root.isConnected;
     pending = false;
     if (due) paint();
-  };
-  const start = () => {
-    if (hold) return;
-    hold = new AbortController();
-    const opts = { capture: true, signal: hold.signal };
-    // After the click the press ends in, which the browser dispatches after pointerup and Space’s keyup.
-    const end = () => setTimeout(flush);
-    // A mouse press may come as mouse events alone, with no pointer events, as in Firefox with touch emulated.
-    for (const type of ['pointerup', 'pointercancel', 'mouseup']) window.addEventListener(type, end, opts);
-    window.addEventListener('keyup', (e) => e.key === ' ' && end(), opts);
-    bound = window.setTimeout(flush, HOLD_MS);
-  };
-  for (const type of ['pointerdown', 'mousedown']) root.addEventListener(type, start);
-  root.addEventListener('keydown', (e) => {
-    if (e.key === ' ' && !e.repeat && !(e.target instanceof Element && e.target.closest(TEXT_FIELD))) start();
   });
+  for (const type of ['pointerdown', 'mousedown']) root.addEventListener(type, press.start);
+  root.addEventListener('keydown', (e) => spaceStartsPress(e) && press.start());
   return () => {
-    if (hold) pending = true;
+    if (press.down()) pending = true;
     else paint();
   };
 }

@@ -161,3 +161,6 @@ export function clockScope(clocks) {
     extra: { clock_events: events, ...stops.extra, ...(voided ? { clock_void: { why: voided.why, at: when(voided.at) } } : {}) },
   };
 }
+
+/** A trajectory’s scope, with its clock’s. @param {{ notes: string, extra: any }} scope @param {{ note: string|null, extra: any }} clock */
+export const withClock = (scope, clock) => ({ notes: clock.note ? `${clock.note} ${scope.notes}` : scope.notes, extra: { ...scope.extra, ...clock.extra } });

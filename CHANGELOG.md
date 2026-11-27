@@ -2,6 +2,141 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.6 (2026-11-27)
+
+### Fixes
+
+- **review:** an answer that landed before a click doesn't take what the click sent
+- **review:** unmark only what a refused answer sent, so another answer's comments aren't sent again
+- **review:** let any landed answer, a dismissal included, take the comments sent before it
+- **review:** take a sent comment out of the draft only once its answer landed
+- **review:** take back what a settled answer sent where the newer revision is drawn
+- **review:** keep the newer revision's draft over a reload after an old answer settles
+- **review:** take back only what a settled answer sent when the review was revised
+- **review:** keep a draft started on a newer revision when an older answer settles
+
+## 4.52.5 (2026-11-27)
+
+### Fixes
+
+- **mentions:** a mention with a format character shows as a mention, as it wakes
+- **mentions:** a copied line whose mention carries a format character is still a copy
+- **mentions:** an invisible format character in an @handle no longer stops the wake (#1840)
+
+## 4.52.4 (2026-11-26)
+
+### Fixes
+
+- **view:** a pointer resting on a button holds it beside a reply at its estimate
+- **sheets:** an agent sheet takes hold of what's pressed as it's pressed
+- **view:** a press holds what it pressed beside a reply at its estimate
+
+## 4.52.3 (2026-11-26)
+
+### Fixes
+
+- **adapters:** a project whose repository has submodules keeps the project's folder
+- **adapters:** keep a turn-end commit's status and add out of a nested repository that arrives late
+- **adapters:** read a worktree's status only once it holds no nested repository
+- **adapters:** no turn-end commit of a worktree that holds a repository of its own
+- **adapters:** commit only in the worktree Postbox made, on the agent's own branch
+- **adapters:** a turn-end commit skips any conflict, and a bisect in progress
+- **adapters:** a turn-end commit skips a half-done merge, and sees every new file
+- **adapters:** the commit at an Antigravity turn's end is never signed
+- **adapters:** Postbox commits what an Antigravity turn left in its worktree
+- **adapters:** the worktree note comes last in agy's rules, and the hook's reads are tested
+- **adapters:** the worktree note doesn't guess a branch git's files don't name
+- **adapters:** Run everything gets the worktree note, and a reftable stub isn't a branch
+- **adapters:** an add stopped before git wrote its record's HEAD is still made again
+- **adapters:** no worktree note without agy's hook, and no worktree whose record is gone
+- **adapters:** the worktree note names the branch the agent's worktree is on now
+- **adapters:** an Antigravity agent in its worktree is told its branch, which the person merges
+- **adapters:** an agent in its own worktree reads the project's folder with no card
+- **adapters:** a ready agent worktree costs no git, and a reused handle gets its own branch
+- **adapters:** remove only an agent's own worktree record, never prune the person's
+- **adapters:** clear git's own record of a half-made worktree whose folder is gone
+- **adapters:** a failed worktree add that made no folder removes nothing
+- **adapters:** keep a worktree someone locked, and pin the worktree git guards
+- **adapters:** clean up only a worktree Postbox made and git didn't finish
+- **adapters:** routine git in an agent's worktree, and no half-made worktree
+- **adapters:** give each Antigravity agent its own git worktree
+
+## 4.52.2 (2026-11-26)
+
+### Fixes
+
+- **menu:** the room form's queue button keeps one width as its count changes
+- **notices:** a notice shown whole under the pointer stays inside the window
+- **notices:** mark a sheet's notices with a class, not a selector on the body
+- **notices:** over a sheet one notice shows, the newest, on one line
+- **menu:** no row shows above a pinned heading row, and the pick stays under it
+- **uat:** the runner reads a covering notice in the measurement it already makes
+- **menu:** a notice over a sheet keeps clear of a list's controls
+- **menu:** every list's +, − and Edit sit in the row of its heading
+- **menu:** a room's members + and − sit in the row of the Members heading
+
+## 4.52.1 (2026-11-26)
+
+### Fixes
+
+- **store:** word a refusal with no version, and pin each released format's list
+- **store:** record a data format number, raised only when an older Postbox can't replay
+- **store:** name --data for an older branch, and pin the version compare
+- **store:** refuse only a newer version's folder, and let the record only advise
+- **store:** refuse a data folder a newer Postbox wrote, changing nothing
+
+## 4.52.0 (2026-11-26)
+
+### Features
+
+- **menu:** a room's button opens its form, with no pop-over between
+
+### Fixes
+
+- **menu:** the room form's rows and queue button follow the room
+- **atif:** mark a turn by time only in its step's own session
+- **atif:** with no work ledger turns, place a stream with no step by time as before
+- **atif:** place a stream by its step's turn, and count only turns that called a tool
+- **atif:** say a trajectory without streams has no Claude Code stream, not that none was recorded
+- **atif:** match a recorded stream to its turn, and count the turns with none
+- **atif:** count unplaced calls on a session that has a trajectory, reply or not
+- **atif:** count unplaced calls on a session that has a trajectory
+- **atif:** a background job that printed nothing reads as empty after its note
+- **atif:** place an agent's streams in the right one of its sessions
+- **atif:** take a turn's calls from its recorded stream, with no gap left unmarked
+
+## 4.51.6 (2026-11-26)
+
+### Fixes
+
+- **uat:** of two options with one label, pick the one whose description the tester named
+- **blocks:** word an answer left for the turn's end as main does
+- **blocks:** leave a confirm's answer to start its own turn
+- **blocks:** leave a host turn's answer to come when the turn ends
+- **blocks:** drop the stopped turn's hold from an answer's settle
+- **app:** a press on a running reply's live steps isn't lost to a refill
+- **blocks:** leave a long answer and a correction to come at the turn's end
+- **blocks:** hand an agent the answer to its own block mid-turn, once
+- **store:** read a thread's glossary as written where a turn's check decides on it
+- **uat:** an option named with “ — ” picks the longest whole label it starts with
+- **uat:** the option label fallback matches a whole label, not the first that contains it
+- **uat:** match a choice option by its label when the tester names it with its description
+
+## 4.51.5 (2026-11-26)
+
+### Fixes
+
+- **text:** cut an app's title, intent and check problems whole too
+- **text:** cut an app version's summary whole, and test the host reply cuts
+
+## 4.51.4 (2026-11-26)
+
+### Fixes
+
+- **store:** read sessions as written where the read decides a write
+- **store:** read a held topic's glossary through its conversation, as written
+- **store:** read threads as written where the read decides a write
+
 ## 4.51.3 (2026-11-26)
 
 ### Fixes

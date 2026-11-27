@@ -25,7 +25,8 @@ const quiet = async (r) => {
 
 /**
  * A Postbox restarted during @coder’s turn on the host, with no backend registered for it now (#874), after the
- * startup’s attempt to attach it. `registered` registers its backends again.
+ * startup’s attempt to attach it, and once the host has confirmed any stop that attempt asked for. `registered` registers
+ * its backends again.
  * @param {{ signIn?: any, saved?: object, welcome?: 'running' | 'ended' | 'unkilled' | 'missing', moved?: boolean }} [o] `saved` patches the
  * session’s saved remoteTurn before the startup; `moved` puts the agent on this computer since
  */
@@ -43,6 +44,7 @@ async function unregisteredRestart({
   startUp(r);
   if (!saved) await until(() => failed(r).length > 0, 'a failed item');
   await quiet(r);
+  await until(() => !r.se().remoteTurn?.stopping?.length, 'the host to confirm the stop');
   return { r, d, registered };
 }
 

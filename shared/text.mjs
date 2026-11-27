@@ -26,8 +26,16 @@ export const clip = (s, n = 240) => {
 const BLOCKQUOTE = /^ {0,3}>/;
 /** A line that starts with an item’s id, in brackets or not, alone or as a list item. */
 const STARTS_WITH_ID = /^\s*(?:(?:[-*]|\d+\.)\s+)?\[?(it_[A-Za-z0-9]+)\]?/;
+/**
+ * A mention: @ and a handle's characters, with any invisible format characters (Unicode Cf: zero-width spaces and
+ * joiners, the word joiner, a byte-order mark, soft hyphens, bidi marks) among them. Those come in unseen when a handle
+ * is copied from rendered text, and a mention that looks right must still wake its agent (#1840). parseMentions drops
+ * them before matching the handle; the message's text keeps them.
+ */
+const MENTIONS = /(^|[^\w@.])@((?:[A-Za-z0-9_-]|\p{Cf})+)/gu;
+const INVISIBLE = /\p{Cf}/gu;
 /** The first mention in a line, as parseMentions reads one. */
-const FIRST_MENTION = /(?:^|[^\w@.])(@[A-Za-z0-9_-]+)/;
+const FIRST_MENTION = /(?:^|[^\w@.])(@(?:[A-Za-z0-9_-]|\p{Cf})+)/u;
 
 /**
  * The item a line is a copy of, as Postbox gave its line to an agent, or null: the line starts with that item’s id,
@@ -99,8 +107,8 @@ export function parseMentions(text, handles, isCopy = null) {
   const known = new Map(handles.map((h) => [h.toLowerCase(), h]));
   const plain = unquoted(said, isCopy);
   const found = [];
-  for (const m of plain.matchAll(/(^|[^\w@.])@([A-Za-z0-9_-]+)/g)) {
-    const h = known.get(m[2].toLowerCase());
+  for (const m of plain.matchAll(MENTIONS)) {
+    const h = known.get(m[2].replace(INVISIBLE, '').toLowerCase());
     if (h && !found.includes(h)) found.push(h);
   }
   return found;

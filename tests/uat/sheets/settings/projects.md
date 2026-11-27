@@ -10,7 +10,7 @@ Each project has one root folder, where agents start and the picker is bounded.
 
 ## Expected functionality
 
-- Lists projects and folders, one picked, with the list’s bar pinned under the sheet (#1735): + (New project), − (Delete project…) and Edit, each naming the pick. + shows the New project form in the list’s place, with Create project pinned under it and “All projects” to go back; Edit shows the picked project’s form, where its repository is set. A fresh install, with no project yet, opens on the New project form with focus in Name.
+- Lists projects and folders, one picked, with the list’s bar at the right end of the “Projects” heading’s row, above the list (#1735): + (New project), − (Delete project…) and Edit, each naming the pick. + shows the New project form in the list’s place, with Create project pinned under it and “All projects” to go back; Edit shows the picked project’s form, where its repository is set. A fresh install, with no project yet, opens on the New project form with focus in Name.
 - Create project takes only a full path to a folder that exists (#547). An empty or relative Root folder is refused with “Couldn’t create the project” and says to write the folder’s full path; nothing is made in the folder Postbox was started from.
 - Delete project… (#119), the bar’s − and the button in a project’s form, asks once, listing the conversations, messages and apps that go and the folder that stays, then deletes the project and every conversation in it. Focus stays in Settings, and a page showing that project leaves it. With one project left, Delete project… is off, still takes focus, and says why.
 - Enter on a tab switches to it and keeps focus on the tab (#26).

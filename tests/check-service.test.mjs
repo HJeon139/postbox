@@ -29,7 +29,11 @@ function rig(config = { lintSettleMs: 0 }) {
   /** @type {[string, string][]} */
   const told = [];
   const sessions = {
-    update: (/** @type {string} */ id, /** @type {any} */ patch) => store.emit('session', { ...store.state.sessions[id], ...patch }),
+    // As Sessions.update takes it: a patch, or a function of the pending session.
+    update: (/** @type {string} */ id, /** @type {any} */ patch) => {
+      const now = store.pending.session(id);
+      store.emit('session', { ...now, ...(typeof patch === 'function' ? patch(now) : patch) });
+    },
     tell: (/** @type {string} */ id, /** @type {string} */ text) => told.push([id, text]),
   };
   /** @type {any[]} */

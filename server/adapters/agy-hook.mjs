@@ -70,7 +70,11 @@ export function decideAgyTool(
   const isProtected = (p) => isProtectedPath(p, { cwd, scriptPath, home });
   // In Auto, Postbox approves routine calls and what the persona’s tools allow (agy-auto.mjs, #416); a command naming
   // Antigravity’s files asks.
-  if (mode === 'auto' && !PROTECTED_CMD.test(command) && (autoAllows(name, args, { roots, cwd, home, isProtected }) || personaAllows(name, args, tools)))
+  if (
+    mode === 'auto' &&
+    !PROTECTED_CMD.test(command) &&
+    (autoAllows(name, args, { roots, readRoots: readable(reads, cwd), cwd, home, isProtected }) || personaAllows(name, args, tools))
+  )
     return { decision: 'allow' };
   // With shell, a read or an edit follows the shell’s rule too (#1710): a command reaches any file with no card, so a
   // card for the same read or edit protected nothing. One naming a path a command would get a card for (PROTECTED_CMD),

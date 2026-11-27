@@ -16,7 +16,8 @@
 //
 // and removes it when the turn ends. Checked with agy 1.4.5: the plugin’s server loads as `postbox_postbox` (plugin,
 // then server), and the plugin’s rules reach the model. Two turns in one folder would overwrite each other’s
-// plugin, so a turn waits for the one before it in the same folder (FolderQueue). In a git repo the plugin folder
+// plugin, so a turn waits for the one before it in the same folder (FolderQueue); each agent gets its own worktree,
+// so agents don’t share one (agent-worktree.mjs, #1709). In a git repo the plugin folder
 // goes in .git/info/exclude, so it never shows in git status.
 //
 // Headless, agy refuses every call it would ask about, Postbox’s own tools included (recorded: “user denied
@@ -49,7 +50,7 @@
 // Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit. POSTBOX_AGY_RECORD=<folder> saves each turn’s raw stream.
 
 import { spawn } from 'node:child_process';
-import { rm, rmdir, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL, modelDefault } from '../../shared/agent-facts.mjs';
@@ -59,20 +60,22 @@ import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { describeTool } from '../tool-labels.mjs';
+import { agentWorktree, turnFolders, worktreeNote } from './agent-worktree.mjs';
+import { commitTurn } from './agent-worktree-commit.mjs';
 import { agyArgs, agyBypassWebOff } from './agy-args.mjs';
 import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, probeAgyHook } from './agy-hook-check.mjs';
+import { agyHookVars } from './agy-hook-env.mjs';
 import { modelIds } from './agy-model-ids.mjs';
-import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
+import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, removeAgyPlugin, writeAgyPlugin } from './agy-plugin.mjs';
 import { hookPromptCard } from './agy-prompt-card.mjs';
 import { agyStartError, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { repeatsLastError } from './agy-repeated-error.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { stepId, toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
-import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned } from './prompt-sent.mjs';
@@ -168,25 +171,8 @@ const named = (model) => /-(low|medium|high)$/.exec(String(model))?.[1] ?? null;
 export const effortRun = (model, passed) => passed ?? named(model);
 
 export { agyArgs, modeArgs } from './agy-args.mjs';
+export { agyHookVars } from './agy-hook-env.mjs';
 export { AGY_SERVER, ALLOW_POSTBOX, allowPostbox };
-
-/**
- * What the hook reads from its environment: its MCP server, the mode, the folders it may work in, and the persona’s
- * tools and publishing (#416). Not the folders it may only read (#338): the hook asks Postbox about a read there, which
- * answers from the session as it is now, where this is the turn’s start (#1074). And the files attached to the turn’s
- * message, which it may read with no card (attached-files.mjs, #1307).
- * @param {{ mcpUrl: string, persona: any, cwd: string, addDirs: string[], reads?: string[] }} o
- */
-export function agyHookVars({ mcpUrl, persona, cwd, addDirs, reads = [] }) {
-  return {
-    POSTBOX_MCP_URL: mcpUrl,
-    POSTBOX_AGY_MODE: persona?.permissionMode ?? 'auto',
-    POSTBOX_AGY_FOLDERS: JSON.stringify([cwd, ...addDirs]),
-    POSTBOX_AGY_READS: JSON.stringify(reads),
-    POSTBOX_AGY_TOOLS: JSON.stringify(Array.isArray(persona?.tools) ? persona.tools : []),
-    POSTBOX_AGY_PUBLISH: setupOf(persona).canPublish ? '1' : '',
-  };
-}
 
 /**
  * Where agy keeps each Postbox tool’s input schema, which the model reads before a call (recorded: read_file of
@@ -203,10 +189,10 @@ export const toolsNote = (dir) =>
  * Pure, so the tests can check it.
  * What it says about approval follows how agy runs: with the PreToolUse hook, calls ask through a card (HOOK_NOTE); in Run
  * everything, nothing is asked; without the hook (agy before 1.4.7), headless agy refuses them (HEADLESS_NOTE).
- * @param {{ persona: any, guide: string, schemas?: string|null, hooked?: boolean }} turn  schemas: agy’s schema folder for
- *   Postbox’s server; hooked: the PreToolUse hook runs this turn
+ * @param {{ persona: any, guide: string, schemas?: string|null, hooked?: boolean, place?: string }} turn  schemas: agy’s
+ *   schema folder for Postbox’s server; hooked: the PreToolUse hook runs this turn; place: where it works (worktreeNote)
  */
-export function agyRules({ persona, guide, schemas = null, hooked = false }) {
+export function agyRules({ persona, guide, schemas = null, hooked = false, place = '' }) {
   const ids = toolsOff(persona, TOOL_WORDS);
   const offIds = setupOf(persona).canPublish ? ids : [...ids, 'publish'];
   const words = (/** @type {string} */ id) => (id === 'publish' ? 'publishing or posting anything outside Postbox' : TOOL_WORDS[id]);
@@ -222,7 +208,8 @@ export function agyRules({ persona, guide, schemas = null, hooked = false }) {
     : '';
   const bypass = persona?.permissionMode === 'bypass';
   const approval = bypass ? '' : hooked ? HOOK_NOTE : `${HEADLESS_NOTE}\n\n${LOOKING_NOTE}`;
-  return `${[guide, schemas ? toolsNote(schemas) : '', approval, limits].filter(Boolean).join('\n\n')}\n`;
+  // Where it works comes last: its folder’s path has no length limit, and what comes before it mustn’t be pushed out.
+  return `${[guide, schemas ? toolsNote(schemas) : '', approval, limits, place].filter(Boolean).join('\n\n')}\n`;
 }
 
 export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp, stepId };
@@ -536,9 +523,10 @@ export class AntigravityCliAdapter {
   /**
    * @param {{ bin?: string, workRoot: string, models?: string[], version?: string|null, hookScript?: string, hookProbe?: typeof probeAgyHook, settingsFile?: string,
    *           spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv, kill?: typeof process.kill, listProcesses?: typeof listProcesses,
-   *           usage?: ReturnType<typeof import('./agy-usage.mjs').usageProbe> | null }} opts
+   *           usage?: ReturnType<typeof import('./agy-usage.mjs').usageProbe> | null, git?: import('./agent-worktree.mjs').Git }} opts
    *   models: a list to offer before agy is asked (server/model-lists.mjs); settingsFile: your agy settings; usage: how
-   *   it asks agy for its quota, for the composer’s line (#1466), which server/backends.mjs passes
+   *   it asks agy for its quota, for the composer’s line (#1466), which server/backends.mjs passes; git: how it runs git to
+   *   make an agent’s worktree (agent-worktree.mjs)
    */
   constructor({
     bin = findAgy(),
@@ -553,6 +541,7 @@ export class AntigravityCliAdapter {
     kill = process.kill,
     listProcesses: list = listProcesses,
     usage = null,
+    git,
   }) {
     this.usage = usage;
     this.kill = kill;
@@ -567,6 +556,7 @@ export class AntigravityCliAdapter {
     this.spawn = spawnImpl;
     this.env = env;
     this.folders = new FolderQueue();
+    this.git = git;
     /** @type {Promise<string>|null} */
     this.allowed = null;
     /** @type {Set<string>} */
@@ -583,9 +573,9 @@ export class AntigravityCliAdapter {
     return hookPromptCard(call?.raw, args);
   }
 
-  /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
+  /** The folder the agent works in: its own worktree of the project’s repository, else every backend’s (agent-worktree.mjs, #1709). */
   folderFor(persona, project) {
-    return agentFolder(persona, project, this.workRoot);
+    return agentWorktree(persona, project, this.workRoot, { git: this.git });
   }
 
   async deliver(session, message, ctx) {
@@ -604,9 +594,18 @@ export class AntigravityCliAdapter {
     const { guide, message: turnMessage } = turnGuide(message, { ...ctx, persona, brief: session?.brief, toolRules: null, setup: false });
     const prompt = formatMessage(turnMessage, ctx.pathOf);
     const useHook = agySupportsHooks(this.version) && (persona?.permissionMode !== 'bypass' || agyBypassWebOff(persona));
-    const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
+    const place = worktreeNote(cwd, persona, ctx.project, this.workRoot);
+    // Not without the hook, where agy refuses the reads it promises and has no room; Run everything refuses nothing.
+    const rulesWith = (hooked) =>
+      agyRules({
+        persona,
+        guide,
+        place: hooked || persona?.permissionMode === 'bypass' ? place : '',
+        schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER),
+        hooked,
+      });
     const rules = rulesWith(useHook);
-    const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
+    const { addDirs, reads } = turnFolders(cwd, ctx, this.workRoot);
     const asked = this.usage?.start(this.version, ctx.signal) ?? null;
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });
     // Its quota is reported once the run is over, while the turn can still record it: after a failed turn too, which
@@ -629,7 +628,7 @@ export class AntigravityCliAdapter {
       if (unhooked) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
       const rulesRead = unhooked ? rulesWith(false) : rules; // the rules file as agy reads it, recorded with each run’s prompt
       // What every run of this turn shares: where agy runs, and the rules file it reads, recorded with each run’s prompt.
-      const each = { ctx, cwd, addDirs, guide: rulesRead };
+      const each = { ctx, cwd, addDirs, reads, guide: rulesRead };
       try {
         let done = await this.run({ ...each, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
@@ -648,25 +647,24 @@ export class AntigravityCliAdapter {
           await this.run({ ...each, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed: await confirmed() });
         }
       } finally {
-        await rm(plugin, { recursive: true, force: true }).catch(() => {});
-        // The folders above it, only if the plugin was all they held.
-        for (const dir of [dirname(plugin), dirname(dirname(plugin))]) await rmdir(dir).catch(() => {});
+        await removeAgyPlugin(plugin);
+        await commitTurn(cwd, persona, ctx.project, this.workRoot); // what the turn left, in its own worktree (#1709)
       }
     });
     await (this.usage ? this.usage.reportAfter(ctx, asked, ran) : ran);
   }
 
   /**
-   * @param {{ ctx: any, cwd: string, addDirs: string[], prompt: string, guide?: string, sessionId: string|null, wrote?: boolean, hookConfirmed?: boolean }} turn
+   * @param {{ ctx: any, cwd: string, addDirs: string[], reads?: string[], prompt: string, guide?: string, sessionId: string|null, wrote?: boolean, hookConfirmed?: boolean }} turn
    * @returns {Promise<{ missingSession?: boolean, endedOnRefusal?: string|null, wrote?: boolean }>}
    */
-  run({ ctx, cwd, addDirs, prompt, guide, sessionId, wrote = false, hookConfirmed = false }) {
+  run({ ctx, cwd, addDirs, reads = ctx.readFiles ?? [], prompt, guide, sessionId, wrote = false, hookConfirmed = false }) {
     const persona = ctx.persona;
     const model = agyModel(persona, this.capabilities.models);
     const effort = agyEffort(model, effortOf(persona));
     const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
     const mapper = createAgyMapper(ctx, { effort, resumed: sessionId, wrote });
-    const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs, reads: ctx.readFiles ?? [] });
+    const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs, reads });
     const env = hookConfirmed ? { ...this.env, ...hookVars } : this.env;
     return new Promise((resolve, reject) => {
       let child;

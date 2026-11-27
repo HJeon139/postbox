@@ -7,7 +7,7 @@
 // what a turn reads is a service.
 
 import { sendEntryAlone } from './entry-queue.mjs';
-import { deliver, retry } from './turn-run.mjs';
+import { deliver, retry, takeQueued } from './turn-run.mjs';
 import { startFromEntries } from './turns.mjs';
 
 export class Turns {
@@ -71,6 +71,15 @@ export class Turns {
    */
   retry(threadId, itemId, onSend) {
     return retry(this.rt, threadId, itemId, onSend);
+  }
+
+  /**
+   * Takes out of a live turn’s queue the messages `carries` picks, which no longer wait for it, and gives them: Apps,
+   * once update_block’s refusal gave the agent an answer one held (#1810).
+   * @param {string} sessionId @param {(message: any) => boolean} carries
+   */
+  takeQueued(sessionId, carries) {
+    return takeQueued(this.rt, sessionId, carries);
   }
 
   /**
