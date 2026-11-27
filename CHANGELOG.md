@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.11 (2026-11-27)
+
+### Fixes
+
+- **ring:** a permission card during a background wait keeps the ring's waiting word
+- **agents:** an agent's side-thread entry redraws as it starts or stops a background wait
+- **ring:** an agent that waits only on its background work says so, and holds still
+- **server:** mark a session that waits only on background work
+
 ## 5.4.10 (2026-11-27)
 
 ### Fixes
