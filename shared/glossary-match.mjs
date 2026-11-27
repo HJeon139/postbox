@@ -13,6 +13,9 @@ const WHOLE_WORD_AFTER = '(?![\\w-])';
 // The text is escaped, so & reads as &amp;. Spaced, as in “R & D”, the letters stay words of their own.
 const SHORT_BEFORE = '(?<![\\w-]|&amp;|[A-Za-z]\\.)';
 const SHORT_AFTER = '(?![\\w-]|&amp;|\\.[A-Za-z])';
+// Each & in the escaped text starts an entity, such as &amp;, &lt; or &#39;. A term such as “AMP”, “lt” or “39” never
+// starts right after one, so the entity stays whole (#102). Further in, the whole-word guards keep it out.
+const NOT_IN_ENTITY = '(?<!&|&#)';
 
 /**
  * The form two spellings of one term share, from text escaped as the reply’s is: its quotes unescaped, then each dash
@@ -51,8 +54,8 @@ export function glossaryRegex(glossary) {
   const exact = new Map(entries.filter(isShort).map((g) => [sameForm(escapeHtml(g.term)), g.key]));
   const anyCase = new Map(entries.filter((g) => !isShort(g)).map((g) => [sameForm(escapeHtml(g.term)).toLowerCase(), g.key]));
   const branches = [];
-  if (anyCase.size) branches.push(`${WHOLE_WORD_BEFORE}(?:${alternation(anyCase.keys())})${WHOLE_WORD_AFTER}`);
-  if (exact.size) branches.push(`${SHORT_BEFORE}(?:${alternation(exact.keys())})${SHORT_AFTER}`);
+  if (anyCase.size) branches.push(`${NOT_IN_ENTITY}${WHOLE_WORD_BEFORE}(?:${alternation(anyCase.keys())})${WHOLE_WORD_AFTER}`);
+  if (exact.size) branches.push(`${NOT_IN_ENTITY}${SHORT_BEFORE}(?:${alternation(exact.keys())})${SHORT_AFTER}`);
   // The pattern is case-insensitive for the longer terms; keyOf holds the short ones to their own case.
   // lint-allow regex: glossary terms, each escaped by escapeRegExp in termPattern.
   const re = new RegExp(branches.join('|'), 'gi');

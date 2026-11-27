@@ -62,3 +62,20 @@ test('a term’s key treats dash and quote variants alike (#102)', () => {
   assert.equal(termKey('U:45–52'), termKey('U:45-52'));
   assert.equal(termKey('Bob’s rule'), termKey("Bob's rule"));
 });
+
+/** Some text rendered with the one term given, as HTML. */
+const rendered = (term, text) => String(renderMarkdown(text, { glossary: [{ term, key: 'k' }] }));
+
+test('a term doesn’t link inside an HTML entity the escaped text holds (#102)', () => {
+  assert.equal(rendered('AMP', 'the R&D budget'), '<p>the R&amp;D budget</p>');
+  assert.equal(rendered('amp', 'the R&D budget'), '<p>the R&amp;D budget</p>');
+  assert.equal(rendered('39', "Bob's rule"), '<p>Bob&#39;s rule</p>');
+  assert.equal(rendered('quot', 'the "fast" path'), '<p>the &quot;fast&quot; path</p>');
+  assert.equal(rendered('lt', 'a < b'), '<p>a &lt; b</p>');
+  assert.equal(rendered('#39', "Bob's rule"), '<p>Bob&#39;s rule</p>');
+});
+
+test('a term spelled like an entity’s name still links as a word of its own (#102)', () => {
+  assert.deepEqual(linked('AMP', 'the AMP team and R&D'), ['AMP']);
+  assert.deepEqual(linked('lt', 'lt is short and a < b'), ['lt']);
+});
