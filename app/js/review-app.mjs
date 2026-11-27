@@ -6,7 +6,8 @@ import { REGION_ANCHOR } from '/shared/review-regions.mjs';
 import { mountApp } from './apps.mjs';
 import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
-import { attachMarks, markControls, paintMarks, regionNote, regionsOf, renumberDraft, versionOf } from './review-marks.mjs';
+import { attachMarks, markControls, paintMarks, regionNote, versionOf } from './review-marks.mjs';
+import { regionsOf, renumberDraft } from './review-region-numbers.mjs';
 
 /** The anchor of a comment on the app as a whole: what the agent reads in the answer. */
 export const WHOLE_APP = 'the whole app';

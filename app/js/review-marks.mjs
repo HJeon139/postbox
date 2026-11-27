@@ -5,11 +5,12 @@
 // the app’s content (apps.mjs, sizeFrame), so of the app itself. Each region on the version shown is drawn with its
 // number; one on another version is listed only, with its version (designs/agent-apps.md, the review block).
 
-import { REGION_ANCHOR, regionAnchor, regionText } from '/shared/review-regions.mjs';
+import { regionText } from '/shared/review-regions.mjs';
 import { shownVersion } from './apps.mjs';
 import { client } from './client.mjs';
 import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
+import { nextAnchor, regionsOf } from './review-region-numbers.mjs';
 
 /** The box the keyboard starts from, centered, and how far one arrow key moves or resizes it, as fractions of the app. */
 const START = { x: 0.4, y: 0.4, w: 0.2, h: 0.2 };
@@ -35,39 +36,6 @@ const clamp = (/** @type {number} */ v, /** @type {number} */ lo, /** @type {num
 export function versionOf(b, done) {
   const app = client.state.apps[b.appId];
   return app ? shownVersion(app, !done) : null;
-}
-
-/**
- * Gives the draft’s regions the numbers the answer will give them: one an agent’s comment numbered first, while the
- * draft was open, moves to the next number, so the page draws both, each where it is (#856). @param {any} b @param {any} d
- */
-export function renumberDraft(b, d) {
-  const held = [...(b.threads ?? [])];
-  for (const c of d.comments) {
-    if (c.region) c.anchor = regionAnchor(c, held);
-    held.push(c);
-  }
-  if (d.composingRegion && typeof d.composing === 'string') d.composing = regionAnchor({ anchor: d.composing, region: d.composingRegion }, held);
-}
-
-/** The region of each anchor that has one: the threads’, the drafts’ and the open comment box’s. @param {any} b @param {any} d */
-export function regionsOf(b, d) {
-  /** @type {Map<string, any>} */
-  const out = new Map();
-  for (const x of [...(b.threads ?? []), ...d.comments]) if (x.region && typeof x.anchor === 'string') out.set(x.anchor, x.region);
-  if (d.composingRegion && typeof d.composing === 'string') out.set(d.composing, d.composingRegion);
-  return out;
-}
-
-/**
- * The anchor of the next region marked on a review: one past the highest it has, the open box’s too when something is
- * typed in it, since it becomes a draft comment when the new one opens, and a blank one is dropped (startComment).
- * @param {any} b @param {any} d
- */
-function nextAnchor(b, d) {
-  const open = d.composingRegion && d.composingText.trim() ? [{ anchor: d.composing }] : [];
-  const taken = [...(b.threads ?? []), ...d.comments, ...open].map((x) => x.anchor).filter((a) => typeof a === 'string' && REGION_ANCHOR.test(a));
-  return `region ${Math.max(0, ...taken.map((a) => Number(a.slice('region '.length)))) + 1}`;
 }
 
 /**
