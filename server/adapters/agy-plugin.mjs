@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { agentSkillFiles } from './agent-plugin.mjs';
 import { HOOK_TIMEOUT_S } from './agy-hook.mjs';
 import { agyHooksJson } from './agy-hook-check.mjs';
-import { configHash, dropPlugin, notePlugin, PLUGIN_DIR, removePluginFolder } from './agy-plugin-record.mjs';
+import { configHash, dropPlugin, notePlugin, PLUGIN_DIR, removePluginFolder, writeRefusal } from './agy-plugin-record.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 import { postboxSkillsOn } from './skill-config.mjs';
 
@@ -27,10 +27,17 @@ export const agyPlugin = ({ mcpUrl, rules, hookCommand = null, hookTimeout = HOO
 /**
  * Writes the plugin’s files (agyPlugin) into its folder, `dir`. hooks.json is removed first, since a turn before left it
  * read-only, and set read-only again once it’s written. With Postbox’s work root, the folder is noted beside it first, so
- * if Postbox is killed mid-turn, its next start removes the plugin (#314).
- * @param {string} dir @param {Record<string, string>} files @param {string | null} [root]
+ * if Postbox is killed mid-turn, its next start removes the plugin (#314). Says whether it wrote it: it writes nothing,
+ * and logs why, where writeRefusal names a reason, and the turn runs without the plugin, as with a hook that didn’t check
+ * out.
+ * @param {string} dir @param {Record<string, string>} files @param {string | null} [root] @returns {Promise<boolean>}
  */
 export async function writeAgyPlugin(dir, files, root = null) {
+  const why = await writeRefusal(dir, root);
+  if (why) {
+    console.error(`Postbox didn’t write its Antigravity plugin at ${dir}: ${why}. The turn runs without Postbox’s tools and rules there.`);
+    return false;
+  }
   if (root) await notePlugin(root, dir, configHash(files['mcp_config.json'] ?? ''));
   for (const [path, text] of Object.entries(files)) {
     const file = join(dir, path);
@@ -40,6 +47,7 @@ export async function writeAgyPlugin(dir, files, root = null) {
     // The umask masks writeFile’s mode (077 leaves 0o400), so hooks.json is set to 0o444 after it’s written (#730).
     if (path === 'hooks.json') await makeReadOnly(file);
   }
+  return true;
 }
 
 /**
@@ -49,7 +57,7 @@ export async function writeAgyPlugin(dir, files, root = null) {
  */
 export async function removeAgyPlugin(plugin, root = null) {
   // Dropped only once it’s gone: one the turn couldn’t remove, or can’t even look at, stays noted for the next start.
-  const gone = (await removePluginFolder(plugin, { throughLinks: true }).catch(() => false)) === true;
+  const gone = (await removePluginFolder(plugin).catch(() => false)) === true;
   if (root && gone) await dropPlugin(root, plugin).catch(() => {});
 }
 

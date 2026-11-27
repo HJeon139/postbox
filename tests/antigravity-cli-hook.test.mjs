@@ -5,10 +5,10 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { chmodSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import { AntigravityCliAdapter, PLUGIN_DIR } from '../server/adapters/antigravity-cli.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -23,11 +23,15 @@ const OPTIONS = /Turn Web on for this agent, or pick another permission mode\./;
 /**
  * One turn of a persona, its runs replaying the fixtures in order; onSpawn runs as the first starts, in the agent’s folder.
  * @param {{ permissionMode: string, tools?: string[] }} persona
- * @param {{ version?: string, hookScript?: string, hookProbe?: () => Promise<boolean>, runs?: string[], state?: any, onSpawn?: (cwd: string) => void }} [o]
+ * @param {{ version?: string, hookScript?: string, hookProbe?: () => Promise<boolean>, runs?: string[], state?: any, onSpawn?: (cwd: string) => void, seed?: (work: string) => void }} [o]
  */
-async function turn(persona, { version = '1.4.7', hookScript, hookProbe = async () => true, runs: fixtures = ['first'], state = {}, onSpawn = () => {} } = {}) {
+async function turn(
+  persona,
+  { version = '1.4.7', hookScript, hookProbe = async () => true, runs: fixtures = ['first'], state = {}, onSpawn = () => {}, seed = () => {} } = {},
+) {
   const runs = [...fixtures];
   const root = tempDir('pb-agy-hook-turn-');
+  seed(join(root, 'work'));
   /** @type {string[][]} */
   const spawned = [];
   const spawnImpl = (_bin, args, opts) => {
@@ -157,4 +161,19 @@ test('#314 a turn’s plugin is noted beside the work root while agy runs, and d
   assert.equal(Array.isArray(during) && during.length, 1, 'noted while agy runs');
   assert.ok(String(/** @type {any[]} */ (during)[0].dir).endsWith(PLUGIN_DIR), 'the plugin’s own folder');
   assert.deepEqual(JSON.parse(readFileSync(join(root, 'agy-plugins.json'), 'utf8')), [], 'and dropped once the turn removed it');
+});
+
+// A `postbox` plugin folder of the person’s own, already in the agent’s folder, is neither written into nor removed: the
+// turn runs without Postbox’s plugin, as with a hook that didn’t check out.
+test('a turn leaves a `postbox` plugin folder it didn’t write as it was, and runs without its own', async () => {
+  const seed = (/** @type {string} */ work) => {
+    mkdirSync(join(work, 'gem', PLUGIN_DIR), { recursive: true });
+    writeFileSync(join(work, 'gem', PLUGIN_DIR, 'notes.md'), 'mine\n');
+  };
+  const said = mock.method(console, 'error', () => {});
+  const { error, spawned, root } = await turn({ permissionMode: 'auto' }, { seed }).finally(() => said.mock.restore());
+  assert.equal(error, null);
+  assert.equal(spawned.length, 1, 'the turn ran');
+  assert.ok(!spawned[0].includes('--dangerously-skip-permissions'), 'without the hook');
+  assert.deepEqual(readdirSync(join(root, 'work', 'gem', PLUGIN_DIR), { recursive: true }), ['notes.md'], 'nothing written there, nothing removed');
 });

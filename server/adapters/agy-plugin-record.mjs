@@ -82,14 +82,25 @@ const gone = (path) =>
   );
 
 /**
- * Removes a plugin folder, and the folders above it that held only it; says whether it’s gone, or 'link' when it was
- * left for a link above it. The one removal both a turn and the sweep make. `throughLinks`: a turn removes what it wrote
- * moments before through the same path, so a link above leads where its write went; the sweep, days later perhaps,
- * refuses a link above, which could lead anywhere.
- * @param {string} dir @param {{ throughLinks: boolean }} opts @returns {Promise<boolean | 'link'>}
+ * Why a turn mustn’t write its plugin at `dir`, or null. A link at the plugin’s folder or a folder above it would lead
+ * the write, and the removal as the turn ends, into another folder. A folder already there that the work root’s record
+ * doesn’t note isn’t Postbox’s: the person’s own plugin of that name.
+ * @param {string} dir @param {string | null} root
  */
-export async function removePluginFolder(dir, { throughLinks }) {
-  if (!throughLinks && (await linkAbove(dir))) return 'link';
+export async function writeRefusal(dir, root) {
+  if ((await linkAbove(dir)) || (await lstat(dir).catch(() => null))?.isSymbolicLink()) return 'a link stands where its folders go';
+  if (await gone(dir)) return null;
+  const ours = root !== null && (await noted(root)).some((n) => n.dir === resolve(dir));
+  return ours ? null : 'a folder of that name is already there that Postbox didn’t note (delete it if an earlier Postbox left it)';
+}
+
+/**
+ * Removes a plugin folder, and the folders above it that held only it; says whether it’s gone, or 'link' when it was
+ * left for a link above it, which could lead anywhere. The one removal both a turn and the sweep make.
+ * @param {string} dir @returns {Promise<boolean | 'link'>}
+ */
+export async function removePluginFolder(dir) {
+  if (await linkAbove(dir)) return 'link';
   await rm(dir, { recursive: true, force: true });
   for (const up of [dirname(dir), dirname(dirname(dir))]) await rmdir(up).catch(() => {});
   return gone(dir);
@@ -127,7 +138,7 @@ export async function sweepAgyPlugins(root) {
   const left = [];
   for (const note of notes) {
     if (!note.dir.endsWith(sep + PLUGIN_DIR) || (await gone(note.dir)) || !(await stillOurs(note))) continue;
-    const removed = await removePluginFolder(note.dir, { throughLinks: false }).catch(() => false);
+    const removed = await removePluginFolder(note.dir).catch(() => false);
     if (removed === 'link') console.error(`Postbox left ${note.dir} as it is: a link stands where the Antigravity plugin’s folders go.`);
     if (removed) continue;
     console.error(

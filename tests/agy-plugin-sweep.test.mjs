@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { mock, test } from 'node:test';
 import { agyPlugin, PLUGIN_DIR, removeAgyPlugin, writeAgyPlugin } from '../server/adapters/agy-plugin.mjs';
 import { configHash, notePlugin, sweepAgyPlugins } from '../server/adapters/agy-plugin-record.mjs';
@@ -87,17 +87,33 @@ test('#314 a plugin the turn couldn’t remove stays noted, for the next start t
   }
 });
 
-test('#314 a link where the plugin’s folders go isn’t followed: what it leads to stays', async () => {
-  const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+/**
+ * An agent’s folder whose .agents/plugins, or .agents, is a link to another folder that holds a `postbox` folder with
+ * the person’s file in it: a repository that commits the link, or a person who links it to a folder shared across
+ * projects. @param {'plugins' | 'agents'} at  which folder is the link
+ */
+function linkedFolder(at) {
   const folder = tempDir('pb-agy-folder-');
   const elsewhere = tempDir('pb-agy-elsewhere-');
-  // A repository that commits .agents/plugins as a link, or a person who links it to a folder shared across projects.
-  mkdirSync(join(folder, '.agents'));
-  symlinkSync(elsewhere, join(folder, '.agents', 'plugins'));
-  await writeAgyPlugin(join(folder, PLUGIN_DIR), files(), workRoot);
-  writeFileSync(join(elsewhere, 'postbox', 'mine.txt'), 'mine\n');
-  await sweepAgyPlugins(workRoot);
-  assert.equal(readFileSync(join(elsewhere, 'postbox', 'mine.txt'), 'utf8'), 'mine\n');
+  const theirs = at === 'plugins' ? join(elsewhere, 'postbox') : join(elsewhere, 'plugins', 'postbox');
+  mkdirSync(theirs, { recursive: true });
+  writeFileSync(join(theirs, 'mine.txt'), 'mine\n');
+  if (at === 'plugins') mkdirSync(join(folder, '.agents'));
+  symlinkSync(elsewhere, at === 'plugins' ? join(folder, '.agents', 'plugins') : join(folder, '.agents'));
+  return { plugin: join(folder, PLUGIN_DIR), theirs };
+}
+
+test('#314 a link where the plugin’s folders go isn’t followed by the sweep: what it leads to stays', async () => {
+  for (const at of /** @type {const} */ (['plugins', 'agents'])) {
+    const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+    const { plugin, theirs } = linkedFolder(at);
+    // Noted with the hash of what’s there, so only the link check stands in the way.
+    writeFileSync(join(theirs, 'mcp_config.json'), files()['mcp_config.json']);
+    await notePlugin(workRoot, plugin, configHash(files()['mcp_config.json']));
+    const said = mock.method(console, 'error', () => {});
+    await sweepAgyPlugins(workRoot).finally(() => said.mock.restore());
+    assert.equal(readFileSync(join(theirs, 'mine.txt'), 'utf8'), 'mine\n', `a link at ${at}`);
+  }
 });
 
 test('#314 a folder at the noted path that isn’t the plugin the turn wrote is left as it is', async () => {
@@ -140,17 +156,53 @@ test('#314 a plugin the sweep can’t remove stays noted, and one it removed doe
   assert.deepEqual(noted(workRoot), [], 'gone, and no longer noted');
 });
 
-test('#314 a turn removes the plugin it wrote through a linked plugins folder', async () => {
+test('a turn writes no plugin through a link where its folders go, and its removal follows none', async () => {
+  for (const at of /** @type {const} */ (['plugins', 'agents'])) {
+    const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+    const { plugin, theirs } = linkedFolder(at);
+    const said = mock.method(console, 'error', () => {});
+    try {
+      assert.equal(await writeAgyPlugin(plugin, files(), workRoot), false, `not written, a link at ${at}`);
+      assert.match(String(said.mock.calls[0]?.arguments[0]), /a link stands where its folders go/);
+      await removeAgyPlugin(plugin, workRoot);
+    } finally {
+      said.mock.restore();
+    }
+    assert.deepEqual(readdirSync(theirs), ['mine.txt'], `what the link leads to is as it was (${at})`);
+    assert.equal(existsSync(join(workRoot, '..', 'agy-plugins.json')), false, 'and nothing noted');
+  }
+});
+
+test('a `postbox` plugin folder already there that Postbox didn’t note is left alone', async () => {
   const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
-  const folder = tempDir('pb-agy-folder-');
-  const shared = tempDir('pb-agy-shared-');
-  mkdirSync(join(folder, '.agents'));
-  symlinkSync(shared, join(folder, '.agents', 'plugins'));
-  const plugin = join(folder, PLUGIN_DIR);
-  await writeAgyPlugin(plugin, files(), workRoot);
-  await removeAgyPlugin(plugin, workRoot);
-  assert.equal(existsSync(join(shared, 'postbox')), false, 'removed where its write went');
-  assert.deepEqual(noted(workRoot), [], 'and unnoted');
+  const plugin = join(tempDir('pb-agy-folder-'), PLUGIN_DIR);
+  mkdirSync(plugin, { recursive: true });
+  writeFileSync(join(plugin, 'mcp_config.json'), 'mine\n');
+  const said = mock.method(console, 'error', () => {});
+  try {
+    assert.equal(await writeAgyPlugin(plugin, files(), workRoot), false, 'not written');
+  } finally {
+    said.mock.restore();
+  }
+  assert.match(String(said.mock.calls[0]?.arguments[0]), /already there that Postbox didn’t note/);
+  assert.deepEqual(readdirSync(plugin), ['mcp_config.json']);
+  assert.equal(readFileSync(join(plugin, 'mcp_config.json'), 'utf8'), 'mine\n');
+  // One Postbox noted, which a turn before couldn’t remove, is its own to write again.
+  await notePlugin(workRoot, plugin, 'sha');
+  assert.equal(await writeAgyPlugin(plugin, files(), workRoot), true, 'written once noted');
+  // But never through a link at the plugin’s own folder, noted or not.
+  const linked = join(tempDir('pb-agy-folder-'), PLUGIN_DIR);
+  const elsewhere = tempDir('pb-agy-elsewhere-');
+  mkdirSync(dirname(linked), { recursive: true });
+  symlinkSync(elsewhere, linked);
+  await notePlugin(workRoot, linked, 'sha');
+  const again = mock.method(console, 'error', () => {});
+  try {
+    assert.equal(await writeAgyPlugin(linked, files(), workRoot), false, 'not written through a link at its own folder');
+  } finally {
+    again.mock.restore();
+  }
+  assert.deepEqual(readdirSync(elsewhere), []);
 });
 
 test('#314 a link or an oversized file where mcp_config.json goes is left, though its text matches the note', async () => {
