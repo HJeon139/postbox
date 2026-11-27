@@ -1,5 +1,6 @@
 // The daemon’s `forget` (server/remote/host/daemon-forget.mjs, #491): a deleted persona’s memory folder,
-// ~/.postbox-remote/memory/<persona id>, goes, and nothing else does; Postbox hears `forgotten`.
+// ~/.postbox-remote/memory/<persona id>, and its Kiro home, kiro-home/<persona id> (#1661), go, and nothing else
+// does; Postbox hears `forgotten`.
 
 import assert from 'node:assert/strict';
 import { existsSync, promises as fsp, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -52,6 +53,45 @@ test('#491 forget removes the persona’s memory folder and no other', async (t)
   assert.deepEqual(await msgs.next('forgotten'), { type: 'forgotten', persona: 'pe_gone' });
   assert.equal(existsSync(join(memory, 'pe_gone')), false);
   assert.equal(existsSync(join(memory, 'pe_stays', 'pr_1', 'MEMORY.md')), true);
+});
+
+/** An Isolated Kiro persona’s home on the host (#1661), with its memory in it. @param {string} root @param {string} id */
+function kiroHome(root, id) {
+  mkdirSync(join(root, 'kiro-home', id, 'sessions'), { recursive: true });
+  writeFileSync(join(root, 'kiro-home', id, 'sessions', 's.json'), '{}\n');
+}
+
+test('#1661 forget removes the persona’s Kiro home too, and no other, with or without a memory folder', async (t) => {
+  const { p, msgs, send, memory } = await daemon(t);
+  kiroHome(p.root, 'pe_gone');
+  kiroHome(p.root, 'pe_stays');
+  // A host that never ran Claude Code has no memory/ at all.
+  assert.equal(existsSync(memory), false);
+  send('forget', { persona: 'pe_gone' });
+  assert.deepEqual(await msgs.next('forgotten'), { type: 'forgotten', persona: 'pe_gone' });
+  assert.equal(existsSync(join(p.root, 'kiro-home', 'pe_gone')), false);
+  assert.equal(existsSync(join(p.root, 'kiro-home', 'pe_stays', 'sessions', 's.json')), true);
+  remembered(memory, 'pe_both');
+  kiroHome(p.root, 'pe_both');
+  send('forget', { persona: 'pe_both' });
+  await msgs.next('forgotten');
+  assert.equal(existsSync(join(memory, 'pe_both')), false);
+  assert.equal(existsSync(join(p.root, 'kiro-home', 'pe_both')), false);
+});
+
+test('#1661 a kiro-home/ that is a link isn’t followed: nothing is removed, and Postbox hears why', async (t) => {
+  const { p, msgs, send } = await daemon(t);
+  const elsewhere = join(p.root, '..', 'elsewhere-kiro');
+  mkdirSync(join(elsewhere, 'pe_gone'), { recursive: true });
+  writeFileSync(join(elsewhere, 'pe_gone', 'keep'), 'keep\n');
+  symlinkSync(elsewhere, join(p.root, 'kiro-home'));
+  remembered(join(p.root, 'memory'), 'pe_gone');
+  send('forget', { persona: 'pe_gone' });
+  const refused = await msgs.next('error');
+  assert.equal(refused.persona, 'pe_gone');
+  assert.match(refused.message, /kiro-home isn’t a folder/);
+  assert.equal(existsSync(join(elsewhere, 'pe_gone', 'keep')), true);
+  assert.equal(existsSync(join(p.root, 'memory', 'pe_gone', 'pr_1', 'MEMORY.md')), true, 'its memory folder stays too, until it can all go');
 });
 
 test('#491 a persona with no memory there, or a host with no memory folder, is forgotten all the same', async (t) => {

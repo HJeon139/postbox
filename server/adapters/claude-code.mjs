@@ -33,10 +33,11 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
+import { cutText } from '../../shared/text-parts.mjs';
 import { withQuota, withTransient } from '../harness-failure.mjs';
 import { claudeModels } from '../remote/host/harness-models.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
-import { claudeArgs } from './claude-code-args.mjs';
+import { claudeArgs, claudeEnv } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
@@ -219,7 +220,7 @@ export class ClaudeCodeAdapter {
       try {
         // Its own process group, so Stop reaches everything under a launcher too (#126).
         // On a host, cwd and env are the remote spawn’s own (remoteTurn): these are ignored there.
-        child = (remote ? remote.spawnImpl : this.spawn)(this.bin, args, { cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+        child = (remote ? remote.spawnImpl : this.spawn)(this.bin, args, { cwd, env: claudeEnv(process.env), stdio: ['pipe', 'pipe', 'pipe'], detached: true });
       } catch (e) {
         reject(new Error(remote ? `Couldn’t start Claude Code on the host: ${e.message}` : `Couldn’t start Claude Code (${this.bin}): ${e.message}`));
         return;
@@ -276,7 +277,7 @@ export class ClaudeCodeAdapter {
         if ((resume || fork) && /No conversation found|session .* not found/i.test(said)) return resolve({ missingSession: true });
         const failure = resultError(mapper.result);
         if (failure) {
-          const why = stderr.trim().split('\n').slice(-3).join(' ').slice(0, 400);
+          const why = cutText(stderr.trim().split('\n').slice(-3).join(' '), 400);
           const error = withQuota(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`), mapper.quota);
           // A provider error that passes, such as 529 Overloaded, by the result’s HTTP status (#1713).
           return reject(withTransient(error, mapper.result?.api_error_status));

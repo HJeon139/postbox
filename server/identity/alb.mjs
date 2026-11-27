@@ -5,6 +5,7 @@
 // (`x-amzn-oidc-identity`, `x-amzn-oidc-accesstoken`) prove nothing and are never read, logged, kept or sent on.
 
 import { PROFILE } from '../../shared/limits.mjs';
+import { cutText } from '../../shared/text-parts.mjs';
 import { httpError } from '../helpers.mjs';
 import { albKeys } from './alb-keys.mjs';
 import { checkAlbToken } from './alb-token.mjs';
@@ -40,7 +41,7 @@ export function albProvider(settings, { get, now = Date.now }) {
     // is made up when a claim is missing. A user name is taken as the provider gives it: one a mention can’t be
     // written with (an email address, a name with a dot) is the provider’s to solve, and that person is reached by
     // @you (the owner’s ruling on #1742).
-    const [username, name] = [settings.claims.username, settings.claims.name].map((claim) => line(checked.claims[claim]).slice(0, PROFILE.name));
+    const [username, name] = [settings.claims.username, settings.claims.name].map((claim) => cutText(line(checked.claims[claim]), PROFILE.name));
     // Signed by the deployment’s own load balancer, so they are signed in, and signing in again wouldn’t help.
     if (!username || !name)
       throw Object.assign(

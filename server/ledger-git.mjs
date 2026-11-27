@@ -54,12 +54,13 @@ function gitOnce(exec, cwd, args, env, timeoutMs) {
  * index lock, so an agent committing at the same moment doesn’t fail on Postbox’s account. Every command a
  * repository’s config could have git run is set off (NO_COMMANDS), through git’s environment config, which wins over
  * the repository’s and takes any key as it is; that includes each content filter the repository names, so a read
- * that hashes a file doesn’t run one.
- * @param {string} cwd @param {string[]} args @param {{ timeoutMs?: number, exec?: typeof execFile }} [opts]
+ * that hashes a file doesn’t run one. index, when given, is the index file git reads and writes (GIT_INDEX_FILE), in
+ * place of the repository’s own (#1844).
+ * @param {string} cwd @param {string[]} args @param {{ timeoutMs?: number, exec?: typeof execFile, index?: string }} [opts]
  * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
  */
-export async function runGit(cwd, args, { timeoutMs = 10000, exec = execFile } = {}) {
-  const base = { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' };
+export async function runGit(cwd, args, { timeoutMs = 10000, exec = execFile, index } = {}) {
+  const base = { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...(index ? { GIT_INDEX_FILE: index } : {}) };
   const withConfig = (pairs) => ({
     ...base,
     GIT_CONFIG_COUNT: String(pairs.length),

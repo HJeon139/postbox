@@ -6,6 +6,7 @@
 import { positionOf } from '../shared/item-index.mjs';
 import { needsYouNow, whereNeeds } from '../shared/needs.mjs';
 import { searchText } from '../shared/search-text.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { clipText, httpError } from './helpers.mjs';
 import { publicItems } from './public-state.mjs';
 
@@ -118,7 +119,7 @@ export function itemsRoute(store, search, path, method, url, headers) {
       ...(asks.length ? { asks } : {}),
     };
   }
-  const hits = search.search(threadId, (url.searchParams.get('q') ?? '').slice(0, QUERY_MOST), HITS).map((hit) => {
+  const hits = search.search(threadId, cutText(url.searchParams.get('q') ?? '', QUERY_MOST), HITS).map((hit) => {
     const it = list[positionOf(list, hit.id)];
     return { id: hit.id, terms: hit.terms, kind: it?.kind, handle: it?.handle ?? null, text: clipText(searchText(it), HIT_TEXT) };
   });

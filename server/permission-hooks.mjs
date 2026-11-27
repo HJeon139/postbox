@@ -13,6 +13,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { INVISIBLE } from '../shared/invisible.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { HOST_SOURCES, ISOLATED_SOURCES } from './adapters/setup.mjs';
 import { KEY_SHAPES } from './key-shapes.mjs';
 import { settingsFiles } from './permission-rules.mjs';
@@ -40,7 +41,7 @@ const marked = (v) =>
     .replace(INVISIBLE, '\uFFFD');
 
 /** Text past `max` cut with an ellipsis. @param {string} v @param {number} max */
-const cut = (v, max) => (v.length > max ? `${v.slice(0, max - 1)}…` : v);
+const cut = (v, max) => (v.length > max ? `${cutText(v, max - 1)}…` : v);
 
 /** A string as one line of text at most `max` long, marked as `marked` does. @param {unknown} v @param {number} max */
 const shown = (v, max) => (typeof v === 'string' ? cut(marked(v), max) : '');
@@ -122,7 +123,7 @@ const keptName = (_match, name, other) => `${name ?? other}…`;
 
 /** `text`, cut to MAX_SCAN and marked, with the credentials found in it replaced by an ellipsis. @param {string} text */
 function redacted(text) {
-  const quoted = marked(text.slice(0, MAX_SCAN))
+  const quoted = marked(cutText(text, MAX_SCAN))
     .replace(AUTH_QUOTED, (_m, quote, name) => `${quote}${name}…`)
     .replace(USER_QUOTED, (_m, name) => `${name}…`)
     .replace(USER_BARE, keptName)

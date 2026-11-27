@@ -25,7 +25,7 @@ test('#120: a remote turn runs on the host: the stdio shim for Postbox’s serve
   assert.equal(start.harness, 'claude-code');
   assert.equal(start.folder, FOLDER);
   assert.equal(start.stdin, 'file');
-  assert.deepEqual(start.env, {}, 'no variable crosses unless the adapter sets one');
+  assert.deepEqual(start.env, { CLAUDE_CODE_TERMINAL_MCP_TOOLS: 'mcp__postbox__react' }, 'no variable crosses unless the adapter sets one (#1712)');
   assert.deepEqual(ctx.calls.turns, [start.turn], 'the turn runs as the runtime’s ctx.remote.turn');
   const msg = start.files.find((x) => x.name === MESSAGE_FILE);
   assert.match(msg.text, /Tea or coffee\?/);
@@ -58,12 +58,13 @@ test('#120: every remote resume passes the shim again (C6), and a resume after a
     assert.equal(serverOf(s.argv).args[1], s.turn);
   }
   assert.equal(serverOf(a.argv).timeout, 2 * HOUR, 'the host’s permissionWaitMax plus an hour');
-  assert.deepEqual(a.env, {});
-  assert.deepEqual(b.env, { CLAUDE_CODE_RESUME_INTERRUPTED_TURN: '1' });
+  const quiet = { CLAUDE_CODE_TERMINAL_MCP_TOOLS: 'mcp__postbox__react' };
+  assert.deepEqual(a.env, quiet);
+  assert.deepEqual(b.env, { ...quiet, CLAUDE_CODE_RESUME_INTERRUPTED_TURN: '1' });
   assert.ok(CLAUDE_CODE_CAPABILITIES.remote.env.includes('CLAUDE_CODE_RESUME_INTERRUPTED_TURN'));
   // A fresh start has nothing to go on with.
   await adapter.deliver({}, { kind: 'user', text: 'New' }, remoteCtx(d, { remote: { resumeInterrupted: true } }));
-  assert.deepEqual(starts(d)[2].env, {});
+  assert.deepEqual(starts(d)[2].env, quiet);
 });
 
 test('#120: with the host’s denyPrompts on, --permission-prompts none replaces the prompt tool; bypass and laptop turns are unchanged', async () => {
@@ -210,8 +211,9 @@ test('Claude Code says how it runs on a remote host; the mock can’t', () => {
     skills: true,
     remote: {
       stdin: 'file',
-      // The one variable it sets on a host: a resume after an interrupted turn goes on with it (D2).
-      env: ['CLAUDE_CODE_RESUME_INTERRUPTED_TURN'],
+      // The variables it sets on a host: a resume after an interrupted turn goes on with it (D2), and a turn may end
+      // on Postbox’s react with no text (#1712).
+      env: ['CLAUDE_CODE_RESUME_INTERRUPTED_TURN', 'CLAUDE_CODE_TERMINAL_MCP_TOOLS'],
       server: 'mcp-config',
       work: 'events',
       // After its result, a wait on a background task lists it, and prints nothing else (#847).

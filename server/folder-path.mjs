@@ -3,6 +3,7 @@
 
 import { isAbsolute } from 'node:path';
 import { hasControl, hiddenInFolder, INVISIBLE } from '../shared/invisible.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { httpError } from './helpers.mjs';
 
 // Every control character, to show each as its escape (shownFolder).
@@ -103,7 +104,7 @@ function shownFolder(folder) {
     return code.length > 4 ? `\\u{${code}}` : `\\u${code.padStart(4, '0')}`;
   };
   const shown = String(JSON.stringify(folder)).replace(CONTROL_ALL, asEscape).replace(INVISIBLE, asEscape);
-  return shown.length > SHOWN ? `${shown.slice(0, SHOWN)}…` : shown;
+  return shown.length > SHOWN ? `${cutText(shown, SHOWN)}…` : shown;
 }
 
 /**

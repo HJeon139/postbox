@@ -4,7 +4,9 @@
 // points at ask_for_tool, which shows a card the person answers. Turning the tool on changes the persona, in every
 // conversation, from its next turn (Personas.forSession reads Tools from the persona, not the session’s snapshot).
 
+import { cutText } from '../shared/text-parts.mjs';
 import { REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
+import { askAgain } from './ask-again.mjs';
 import { releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
 import { KNOWN_TOOLS } from './seed.mjs';
@@ -21,16 +23,17 @@ const LABELS = new Map([...KNOWN_TOOLS, ...REAL_BACKEND_TOOLS].map(([id, label])
 export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () => {}, threadId = rt.session(sessionId).threadId) {
   const se = rt.session(sessionId);
   const persona = rt.persona(se.personaId);
-  const id = String(tool ?? '')
-    .trim()
-    .slice(0, 40);
+  const id = cutText(String(tool ?? '').trim(), 40);
   if (!LABELS.has(id)) return { ok: false, message: `There’s no tool “${id}” to turn on. The ids are ${[...LABELS.keys()].join(', ')}.` };
   if ((persona?.tools ?? []).includes(id))
     return { ok: false, message: `${id} is already on for you. Its tools are in your list from your next turn after it was turned on.` };
   const open = rt.store.pending.items(threadId).find((x) => x.kind === 'toolask' && x.sessionId === sessionId && x.tool === id && x.status === 'open');
-  if (open) return { ok: true, message: `You already asked for ${id}, and the card is waiting for the person. End your turn.` };
+  if (open) {
+    askAgain(rt, se, open, threadId);
+    return { ok: true, message: `You already asked for ${id}, and the card is waiting for the person. End your turn.` };
+  }
   endSegment();
-  rt.threads.addItem(threadId, {
+  const it = rt.threads.addItem(threadId, {
     kind: 'toolask',
     sessionId,
     handle: se.handle,
@@ -38,9 +41,11 @@ export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () =>
     turnId: rt.turns.get(sessionId)?.id ?? null,
     tool: id,
     label: LABELS.get(id),
-    why: String(why ?? '').slice(0, 600),
+    why: cutText(String(why ?? ''), 600),
     status: 'open',
   });
+  // It is the agent’s need from now, while the turn runs on, as an asking block just shown is (#1868, card-needs.mjs offerShown).
+  rt.bus.emit('block.asking', { se, item: it, threadId });
   return {
     ok: true,
     message: `The person sees a card that can turn on ${id} for you. End your turn: their answer arrives as a message, and if they turn it on, its tools are yours from your next turn.`,

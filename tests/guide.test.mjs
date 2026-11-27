@@ -223,3 +223,8 @@ test('#203 the guide asks for option descriptions that start with what the perso
   assert.match(choice ?? '', /If options make different things, start each description with what the person gets/);
   assert.match(choice ?? '', /and list each in the fallback/);
 });
+
+test('#1712 the guide keeps an agent’s notes for itself out of a folder’s AGENTS.md and CLAUDE.md, which every agent there reads', () => {
+  assert.match(guideText(), /^- Keep your notes out of AGENTS\.md and CLAUDE\.md: every agent in the folder reads them\.$/m);
+  assert.match(guideText(), /^- Writing @handle wakes that agent; to name one, omit @\.$/m, 'the line it sits beside stays');
+});

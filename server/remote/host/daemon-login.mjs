@@ -6,6 +6,7 @@
 
 import { dirname } from 'node:path';
 import { REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
+import { cutText } from '../../../shared/text-parts.mjs';
 import { mergePath } from './login-path.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon */
@@ -55,7 +56,7 @@ export async function reprobe(d) {
 export function welcomeLoginPath(d) {
   const r = d.loginPath;
   if (!r) return { ok: false, why: 'the login shell wasn’t asked.' };
-  return r.ok ? { ok: true, entries: r.entries.length, ms: Math.round(r.ms) } : { ok: false, why: r.why.slice(0, REMOTE_LIMITS.messageChars) };
+  return r.ok ? { ok: true, entries: r.entries.length, ms: Math.round(r.ms) } : { ok: false, why: cutText(r.why, REMOTE_LIMITS.messageChars) };
 }
 
 /**

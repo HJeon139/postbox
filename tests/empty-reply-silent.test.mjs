@@ -119,3 +119,88 @@ test('#1543: a turn another agent’s direct @-mention woke still owes its reply
   assert.ok(researcher);
   assert.equal(store.state.sessions[critic.id].needs?.kind, 'failed', 'the assignment it dropped is a failed reply');
 });
+
+// #1712: Claude Code no longer re-prompts a turn that ends on Postbox’s react (CLAUDE_CODE_TERMINAL_MCP_TOOLS,
+// shared/terminal-tools.mjs), so Postbox’s own check alone decides what a reaction-only ending means. A reaction is an
+// answer (empty-reply.mjs, noteAnswer): the turn is answered whatever woke it, and posts no line.
+
+/**
+ * critic asks researcher, researcher plays `answer`, and critic, woken by it, only reacts to it with ✅.
+ * @param {any} f @param {(c: any) => Promise<void>} answer
+ */
+async function reactsToTheAnswer(f, answer) {
+  const { store, rt, adapter, t, critic } = f;
+  adapter.next.push(async (c) => c.text('Over to you. @researcher check the numbers.'));
+  adapter.next.push(answer);
+  adapter.next.push(async (c) => c.tools.react({ id: answerIn(store, t, critic).id, emoji: '✅' }));
+  rt.sendMessage(t.id, { text: '@critic review the figure update' });
+  await settle(rt);
+}
+
+/** The reply critic reacts to: the latest from another agent, with words. */
+const answerIn = (store, t, critic) =>
+  store
+    .items(t.id)
+    .filter((i) => i.kind === 'agent' && i.sessionId !== critic.id && i.text?.trim())
+    .at(-1);
+
+/** What a reaction-only ending leaves: no failed reply, no word that it was lost, no line, and no wake past it. */
+function endedOnTheReaction(f, wokeCritic) {
+  const { store, adapter, t, critic } = f;
+  const turns = (h) => adapter.calls.filter((x) => x.sessionId === arrange.agentIn(f.rt, t.id, h).id);
+  assert.equal(turns('critic').length, 2, 'critic was woken once more');
+  assert.equal(wokeCritic(turns('critic')[1]), true, 'by what the test says woke it');
+  assert.deepEqual(
+    store.items(t.id).filter((i) => i.status === 'failed'),
+    [],
+    'no failed reply',
+  );
+  assert.notEqual(store.state.sessions[critic.id].needs?.kind, 'failed');
+  assert.ok(!(store.state.sessions[critic.id].context ?? []).some((c) => /ended without a reply/i.test(c)), 'critic isn’t told it was lost');
+  const lines = store.items(t.id).filter((i) => i.kind === 'agent' && i.sessionId === critic.id && i.text?.trim());
+  assert.deepEqual(
+    lines.map((i) => i.text),
+    ['Over to you. @researcher check the numbers.'],
+    'no line after the reaction',
+  );
+  assert.equal(turns('researcher').length, 1, 'researcher isn’t woken again');
+  assert.deepEqual(
+    answerIn(store, t, critic).reactions?.map((r) => r.emoji),
+    ['✅'],
+  );
+}
+
+test('#1712: a turn a reply coming back woke that only reacts is answered, with no line and no failed reply', async () => {
+  const f = room();
+  await reactsToTheAnswer(f, async (c) => c.text('The numbers hold.'));
+  endedOnTheReaction(f, (call) => call.parts.every((p) => p.kind === 'agent'));
+});
+
+test('#1712: a reply coming back with a Postbox notice beside it, answered with only a reaction, ends the same way', async () => {
+  const f = room();
+  await reactsToTheAnswer(f, async (c) => {
+    arrange.leaveNotice(f.rt, f.critic.id, f.t.id, 'Postbox’s note: the figure app has something new.');
+    c.text('The numbers hold.');
+  });
+  endedOnTheReaction(f, (call) => JSON.stringify(call).includes('the figure app has something new'));
+});
+
+test('#1712: a turn the person started that only reacts is answered, as on main: no failed reply and no line', async () => {
+  const { store, rt, adapter, t, critic } = room();
+  adapter.next.push(async (c) => c.tools.react({ id: store.items(t.id).find((i) => i.kind === 'user').id, emoji: '👍' }));
+  rt.sendMessage(t.id, { text: '@critic thanks, that’s all' });
+  await settle(rt);
+  assert.deepEqual(
+    store.items(t.id).filter((i) => i.status === 'failed'),
+    [],
+  );
+  assert.equal(store.state.sessions[critic.id].needs, null, 'its reaction was its answer (#485)');
+  assert.ok(!store.items(t.id).some((i) => i.kind === 'agent' && i.sessionId === critic.id && i.text?.trim()), 'no line');
+});
+
+test('#1712: a turn another agent’s direct @-mention woke that only reacts is answered too: a reaction is a reply', async () => {
+  // A direct ask still owes a reply (#1543), and a reaction counts as one (noteAnswer): nothing fails, nothing posts.
+  const f = room();
+  await reactsToTheAnswer(f, async (c) => c.text('@critic please confirm you saw the change.'));
+  endedOnTheReaction(f, (call) => call.parts.some((p) => p.kind === 'agent' && /please confirm/.test(p.text)));
+});

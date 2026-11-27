@@ -2,6 +2,7 @@
 // what replaced it, with its version menu (app/js/apps.mjs). It stays where it is, since nothing new needs the person,
 // and it runs no sandbox until they open a version. A new version (update_app) brings it back.
 
+import { cutText } from '../shared/text-parts.mjs';
 import { settleUnchecked } from './app-check-wait.mjs';
 import { echoedId } from './helpers.mjs';
 
@@ -22,10 +23,12 @@ export function notYours(_apps, _sessionId, id) {
 export function retireApp(apps, sessionId, { id, reason, replacedBy } = {}) {
   const app = apps.store.pending.app(String(id));
   if (!app || app.sessionId !== sessionId) return notYours(apps, sessionId, String(id));
-  const why = String(reason ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 300);
+  const why = cutText(
+    String(reason ?? '')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    300,
+  );
   if (!why) return { ok: false, message: 'retire_app needs a reason, which the person reads in the app’s place.' };
   /** @type {{ id: string, title: string, itemId: string } | null} */
   let to = null;
@@ -38,7 +41,7 @@ export function retireApp(apps, sessionId, { id, reason, replacedBy } = {}) {
     const item = shown.find((x) => x.sessionId === sessionId) ?? shown[0];
     if (!item)
       return { ok: false, message: `There’s no other app or block ${echoedId(rid)} in this conversation. Name one shown here, or leave out replacedBy.` };
-    to = { id: rid, title: String(other?.title ?? item.block.title ?? item.block.prompt ?? rid).slice(0, 200), itemId: item.id };
+    to = { id: rid, title: cutText(String(other?.title ?? item.block.title ?? item.block.prompt ?? rid), 200), itemId: item.id };
   }
   const retired = { ...app, retired: { by: apps.sessions.get(sessionId).handle, reason: why, replacedBy: to, at: Date.now() } };
   apps.store.emit('app', retired);
