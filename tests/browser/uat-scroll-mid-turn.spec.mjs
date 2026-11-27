@@ -8,9 +8,8 @@ import { driver } from '../../tools/uat/driver.mjs';
 import { newProbes } from '../../tools/uat/probes.mjs';
 import { VIEW_CHECKS } from '../../tools/uat/room-checks-view.mjs';
 import { interruptAct } from '../../tools/uat/steps.mjs';
-import { recordViews } from '../../tools/uat/view-probe.mjs';
 import * as arrange from '../arrange.mjs';
-import { failOnPageErrors, frames, settled, startPostbox } from './postbox.mjs';
+import { failOnPageErrors, frames, startPostbox } from './postbox.mjs';
 import { runnerPage } from './runner-page.mjs';
 import { LONG, open as openIn, room as roomIn } from './view-read-fixture.mjs';
 
@@ -56,7 +55,10 @@ function streamingTurn(page, t) {
   };
 }
 
-test('a scroll interrupt pages back and forth while a reply streams, sampling the view after each move before the turn ends', async ({ page, browserName }) => {
+test('a scroll interrupt pages back and forth while a reply streams, and view-moved compares two samples a move before the turn ends', async ({
+  page,
+  browserName,
+}) => {
   test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
   test.setTimeout(60_000);
   const { t } = roomIn(app, 'Runner scroll mid-turn');
@@ -86,26 +88,18 @@ test('a scroll interrupt pages back and forth while a reply streams, sampling th
       /^Scrolled: PageUp \(reading, at it_\w+, while the agent worked\); PageUp \(reading, at it_\w+, while the agent worked\); PageDown \(reading, at it_\w+, while the agent worked\); End \(following, while the agent worked\)\./,
     );
     const views = /** @type {any[]} */ (facts.probes.views ?? []).filter((v) => v.where === 'main');
+    const reading = views.filter((v) => v.mode === 'reading');
+    expect(views.length, 'two samples a move, mid-turn').toBe(8);
     expect(
-      views.map((v) => [v.step, v.mode]),
-      'one sample after each move, mid-turn',
-    ).toEqual([
-      [3, 'reading'],
-      [3, 'reading'],
-      [3, 'reading'],
-      [3, 'following'],
-    ]);
-    expect(views[1].anchorId, 'the second page up went further back').not.toBe(views[0].anchorId);
-    expect(
-      views.map((v) => v.settled),
-      'each sample settled, so view-moved reads it',
-    ).toEqual([true, true, true, true]);
+      reading.map((v) => v.settled),
+      'each reading sample settled, so view-moved reads it',
+    ).toEqual([true, true, true, true, true, true]);
+    expect(reading[2].anchorId, 'the second page up went further back').not.toBe(reading[0].anchorId);
     expect(facts.probes.inputs.filter((x) => x.kind === 'scroll').length, 'each move recorded as an input').toBe(4);
+    // While the reply still streams: view-moved compared the pairs with no input between, each move’s two samples, and
+    // found the view held. With nothing compared it would say so, and not be silent.
+    expect(viewMoved.run(facts), 'view-moved compared mid-stream pairs and stayed silent').toEqual([]);
     await turn.end();
-    await settled(page);
-    await recordViews(d.kit.ev, facts, 4);
-    // Silent, and not for want of a pair: the sample after End and the one after the turn have no input between.
-    expect(viewMoved.run(facts), 'view-moved silent across the samples taken mid-stream').toEqual([]);
   } finally {
     await turn.end();
   }

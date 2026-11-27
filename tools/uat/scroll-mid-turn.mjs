@@ -1,8 +1,8 @@
 // The tester’s scroll while an agent works (#805): an interrupt {after, do: scroll, moves} pages the conversation back
 // and forth while a reply streams, as a person reading along does. A step can’t, since the run waits for the agents
 // before each one. Each move is the scroll step’s own (tools/uat/scroll-step.mjs): the input recorded first, then the
-// key. Once the view has stopped moving, it takes one sample from the view probe (tools/uat/view-probe.mjs), so
-// view-moved sees the mode and anchor while the turn runs.
+// key. Once the view has stopped moving, it takes a sample from the view probe (tools/uat/view-probe.mjs), and a
+// second a pause later with no input between, so view-moved compares a pair while the turn runs.
 
 import { sleep } from '../browser.mjs';
 import { KEYS, scrollStep } from './scroll-step.mjs';
@@ -10,7 +10,7 @@ import { recordViews } from './view-probe.mjs';
 
 /** The most moves one interrupt makes: enough to page back a few times and come back. */
 export const MOVES_MAX = 8;
-/** Between moves, so the reply streams on between samples, in ms. */
+/** After each move’s first sample, before its second: the reply streams on between them, in ms. */
 const BETWEEN_MS = 1000;
 /** The longest wait for a key’s scroll to stop before sampling, in ms: a view following a stream never stops. */
 const STILL_MAX_MS = 1500;
@@ -69,13 +69,17 @@ function viewSaid(views) {
  */
 export async function scrollMidTurn({ d, facts, step, pause = () => sleep(BETWEEN_MS) }, interrupt) {
   const said = [];
-  for (const [i, by] of scrollMoves(interrupt).entries()) {
-    if (i) await pause();
+  for (const by of scrollMoves(interrupt)) {
     await scrollStep({ page: d.kit.page, facts, step }, { by });
     await d.kit.ev(STILL);
     await recordViews(d.kit.ev, facts, step);
+    const view = viewSaid(facts.probes.views ?? []);
+    // A second sample a pause later, with no input since the first: the pair view-moved compares while the reply
+    // streams, where a view that moves on its own shows.
+    await pause();
+    await recordViews(d.kit.ev, facts, step);
     const live = (await d.kit.ev(WORKING)) ? 'while the agent worked' : 'after the agent had finished';
-    said.push(`${KEYS[/** @type {keyof typeof KEYS} */ (by)]} (${viewSaid(facts.probes.views ?? [])}, ${live})`);
+    said.push(`${KEYS[/** @type {keyof typeof KEYS} */ (by)]} (${view}, ${live})`);
   }
   return `Scrolled: ${said.join('; ')}.`;
 }

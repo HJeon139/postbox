@@ -43,7 +43,7 @@ function notingDriver(facts) {
 
 const runner = { fault: async () => 'fault', answer: async () => 'answer' };
 
-test('a scroll mid-turn is the driver’s answer: each move records its input, presses its key, then samples the view', async () => {
+test('a scroll mid-turn is the driver’s answer: each move records its input, presses its key, then samples the view twice, a pause apart', async () => {
   const facts = { probes: { inputs: [] } };
   const { calls, d } = notingDriver(facts);
   const pause = async () => calls.push({ what: 'pause', inputs: facts.probes.inputs.length, views: facts.probes.views.length });
@@ -57,13 +57,16 @@ test('a scroll mid-turn is the driver’s answer: each move records its input, p
       ['PageUp', 1, 0],
       ['still', 1, 0],
       ['sample', 1, 0],
-      ['working', 1, 1],
       ['pause', 1, 1],
-      ['focus', 2, 1],
-      ['End', 2, 1],
-      ['still', 2, 1],
-      ['sample', 2, 1],
-      ['working', 2, 2],
+      ['sample', 1, 1],
+      ['working', 1, 2],
+      ['focus', 2, 2],
+      ['End', 2, 2],
+      ['still', 2, 2],
+      ['sample', 2, 2],
+      ['pause', 2, 3],
+      ['sample', 2, 3],
+      ['working', 2, 4],
     ],
   );
   assert.deepEqual(
@@ -77,6 +80,8 @@ test('a scroll mid-turn is the driver’s answer: each move records its input, p
     facts.probes.views.map((v) => [v.step, v.mode]),
     [
       [6, 'reading'],
+      [6, 'reading'],
+      [6, 'following'],
       [6, 'following'],
     ],
   );
