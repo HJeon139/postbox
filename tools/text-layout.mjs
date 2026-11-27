@@ -21,12 +21,16 @@ const own = (name) => `(function () {\n${kit(name)}\n})();`;
  * Only kit/kit.js’s rgb and lum, which this check doesn’t call, are stood in for.
  */
 export const TEXT_LAYOUT = `(async () => {
-  const kept = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame, x: scrollX, y: scrollY };
+  const kept = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame };
   window.__pbCheck = { rgb: () => null, lum: () => 0 };
   // The transcript lets the browser skip the items off screen (#712), and asking what’s drawn at a point finds nothing
-  // of one until a frame draws it, so everything is drawn while the check measures.
+  // of one until a frame draws it, so everything is drawn while the check measures. Drawn, the items above take their
+  // real heights, and the page’s view holds its place (view-state.mjs) over two frames; the scroll it’s put back to is
+  // where it is after that, so a view that followed the end still does.
   const drawn = document.head.appendChild(document.createElement('style'));
   drawn.textContent = '* { content-visibility: visible !important; }';
+  await new Promise((ok) => kept.raf.call(window, () => kept.raf.call(window, ok)));
+  Object.assign(kept, { x: scrollX, y: scrollY });
   try {
     ${own('check-layout.js')}
     // The page isn’t a hidden frame: its own animation frames run, and its own ids cancel them.
