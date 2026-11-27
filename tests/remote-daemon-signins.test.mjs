@@ -2,56 +2,11 @@
 // (tests/remote-daemon-setup.mjs) whose children answer as the CLIs did in tests/fixtures/remote/signin/.
 
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
-import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { STATUS_OUTPUT_CHARS } from '../server/remote/host/harness-signin.mjs';
 import { SIGN_IN_KEEP_MS, SIGN_IN_STATUS_MS } from '../shared/remote-protocol.mjs';
 import { fakeClock, hello, PROGRAMS_FOUND, setup, until } from './remote-daemon-setup.mjs';
-
-/** @param {string} name */
-const recorded = (name) => JSON.parse(readFileSync(new URL(`./fixtures/remote/signin/${name}.json`, import.meta.url), 'utf8'));
-const FIXTURE = { claude: 'claude', codex: 'codex', 'kiro-cli': 'kiro' };
-
-/** Programs found with each harness there. */
-const ALL_FOUND = async () => {
-  const p = structuredClone(PROGRAMS_FOUND);
-  p.harnesses = p.harnesses.map((h) => (h.name === 'kiro-cli' ? { ...h, path: '/home/user/.local/bin/kiro-cli', version: '3.6.2' } : h));
-  return p;
-};
-
-/**
- * A spawn whose children are held until the test answers them: answer(i, how) plays recorded run `how` (such as
- * signed-in) for the call’s program, as the CLI printed it and exited.
- */
-function statusSpawn() {
-  const calls = [];
-  const spawn = (program, args, options) => {
-    const child = Object.assign(new EventEmitter(), { kills: [], kill: (sig) => child.kills.push(sig) && true });
-    if (options.stdio[1] === 'pipe') child.stdout = new PassThrough();
-    calls.push({ program, args, options, child });
-    return child;
-  };
-  /** Resolves once the child has closed. @param {any} call @param {string} how */
-  const play = async (call, how) => {
-    const run = recorded(`${FIXTURE[call.program.split('/').at(-1)]}-${how}`);
-    call.child.stdout?.end(run.stdout);
-    // As a child does: its close comes once its output has been read.
-    await new Promise((resolve) => setImmediate(resolve));
-    call.child.emit('close', run.exit, null);
-  };
-  return { spawn, calls, play };
-}
-
-/** Everything the connection carried, as text. @param {any} c */
-function carried(c) {
-  let text = '';
-  c.output.on('data', (b) => {
-    text += String(b);
-  });
-  return () => text;
-}
+import { ALL_FOUND, carried, recorded, statusSpawn } from './remote-daemon-signins-helpers.mjs';
 
 test('signins: each found harness’s status command runs as an argument list with no shell or stdin, and signed carries only its state', async () => {
   const sp = statusSpawn();
