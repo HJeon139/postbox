@@ -226,7 +226,7 @@ export const PENDING = {
   'turn-context.mjs': ['text', 'compaction'], // a streamed chunk's state check and a compaction's number, from the session a held write left
   'turn-end-work.mjs': ['workLine'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'turn-finish.mjs': ['endTurn', 'endTurn'], // a turn’s end: its session and its own items, maybe held behind a commit (#796, #623)
-  'turn-needs.mjs': ['needsAfter'], // the thread a turn’s reply count goes to, maybe held behind a commit (#796)
+  'turn-needs.mjs': ['needsAfter', 'needsAfter'], // the thread a turn’s reply count goes to, maybe held behind a commit (#796); the need’s card, whose turn says whether it rang before (#1868)
   // The quota marks that decide a mark or its clearing, and the persona that says whose quota it is, each maybe held
   // behind a commit (#442).
   'turn-quota.mjs': ['quotaKey', 'sessionsOn', 'quotaName', 'quotaMoved'],

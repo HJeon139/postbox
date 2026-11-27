@@ -48,8 +48,11 @@ export function needsAfter(rt, se, turn, items) {
   }));
   // The block the turn kept was already the need before this turn: a turn that didn’t change it raises no new alert,
   // and falls through to the notices below (designs/developing.md, “Design habits”, 12). Asking it again gives it this
-  // turn’s id (block-update.mjs, #69), which is a change the person hears of.
-  const changed = needs && (needs.itemId !== se.keptId || waiting?.turnId === turn.id);
+  // turn’s id (block-update.mjs, #69), which is a change the person hears of. A card a kept turn raised, as a tool or
+  // view request another agent’s wake keeps, was the need before this turn too: it rang when its own turn ended (#1868).
+  const card = needs ? rt.store.pending.item(needs.threadId ?? se.threadId, needs.itemId) : null;
+  const waitedBefore = needs?.itemId === se.keptId || (se.keptTurnIds ?? []).includes(card?.turnId);
+  const changed = needs && (!waitedBefore || card?.turnId === turn.id);
   if (changed && NOTIFIED.has(needs.kind)) rt.threads.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
   else if (mentionsYou && !viewing) rt.threads.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
   else if (turn.said && !viewing) rt.threads.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);
