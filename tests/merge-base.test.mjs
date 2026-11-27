@@ -27,6 +27,9 @@ test('merge-base: the candidates are the ref given, else origin/$BASE_REF alone,
   assert.deepEqual(baseRefs(undefined, { BASE_REF: 'dev' }), ['origin/dev'], 'CI’s BASE_REF ignores upstream');
   assert.deepEqual(baseRefs(undefined, { BASE_REF: '' }), ['origin/main', 'upstream/main']);
   assert.deepEqual(baseRefs(undefined, {}), ['origin/main', 'upstream/main']);
+  // An exact base, as tools/signoff.mjs passes the one it just fetched, comes before any remote-tracking ref.
+  assert.deepEqual(baseRefs(undefined, { BASE_SHA: 'a1b2c3d', BASE_REF: 'dev' }), ['a1b2c3d']);
+  assert.deepEqual(baseRefs('v1', { BASE_SHA: 'a1b2c3d' }), ['v1'], 'a ref given on the command line still wins');
 });
 
 test('merge-base: every existing ref goes to one git merge-base with HEAD', () => {

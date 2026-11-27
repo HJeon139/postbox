@@ -1,9 +1,8 @@
 // #817 end to end: a PreToolUse hook that approves every call, in the person’s user settings and the project’s, with
 // `disableAllHooks: false` in both, doesn’t run in a Postbox turn in Ask me, so a push waits on the permission card. One
-// real turn through each real adapter (the Claude Code CLI and the Agent SDK) asks for `git push origin
-// HEAD:refs/heads/e2e`; the test answers the card no, and checks the branch never reached the remote and neither hook
-// ran. A control turn through each adapter in Run everything, where Postbox keeps the person’s hooks, shows the
-// fixture’s hooks do run.
+// real turn through the Claude Code CLI’s adapter asks for `git push origin HEAD:refs/heads/e2e`; the test answers the
+// card no, and checks the branch never reached the remote and neither hook ran. A control turn in Run everything, where
+// Postbox keeps the person’s hooks, shows the fixture’s hooks do run.
 //
 // Ask me, not Auto, since #806: in Auto, Postbox adds no ask rules for writes outside it (harness first, #961), so it
 // keeps the person’s hooks there too, as in their terminal. Ask me and Accept edits are the modes whose ask rules and
@@ -14,12 +13,9 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { test } from 'node:test';
-import { landed, modelSettings, pushCard, pushTurn, sdkWhy, TURN_MS, why } from './claude-e2e.mjs';
+import { landed, modelSettings, pushCard, pushTurn, TURN_MS, why } from './claude-e2e.mjs';
 
-for (const [backend, skip] of [
-  ['claude-code', why],
-  ['agent-sdk', sdkWhy],
-]) {
+for (const [backend, skip] of [['claude-code', why]]) {
   test(`#817 ${backend} in Ask me: the approving hooks don’t run, the push waits on a card, and no answers no`, {
     skip,
     timeout: TURN_MS + 60_000,
@@ -32,11 +28,8 @@ for (const [backend, skip] of [
   });
 }
 
-// One control per adapter, so neither adapter's “the hooks don't run” can pass because the fixture's hooks never load.
-for (const [backend, skip] of [
-  ['claude-code', why],
-  ['agent-sdk', sdkWhy],
-]) {
+// A control, so “the hooks don't run” can’t pass because the fixture's hooks never load.
+for (const [backend, skip] of [['claude-code', why]]) {
   test(`#817 control: ${backend} in Run everything, Postbox keeps the person’s hooks, so the fixture’s hooks run`, {
     skip,
     timeout: TURN_MS + 60_000,

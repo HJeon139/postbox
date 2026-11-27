@@ -12,7 +12,7 @@ export const MAX_MODELS = 60;
 export const isModelId = (v) => typeof v === 'string' && MODEL_ID.test(v);
 
 /**
- * The ids in the CLI’s model rows (the SDK’s ModelInfo), in its order, once each and bounded. An alias row
+ * The ids in the CLI’s model rows (ModelInfo in Claude Code’s published types), in its order, once each and bounded. An alias row
  * (“default”, “opus”) counts as the id it resolves to, so a persona never names an alias your own settings decide (#60).
  * @param {unknown} rows
  * @returns {string[]}

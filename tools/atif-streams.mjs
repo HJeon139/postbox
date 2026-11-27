@@ -9,7 +9,7 @@
 // A call with a step goes with its step’s reply, and one with no step with the last call before it that has one, else
 // with its turn’s first reply. A turn that called a tool and has no stream, one made on another backend, say, is
 // counted, as its calls that made no step aren’t in the trajectory. Only Claude Code’s streams are read: the other
-// backends record theirs in their own shapes (streams/kiro, agy, codex and sdk).
+// backends record theirs in their own shapes (streams/kiro, agy and codex).
 
 /**
  * @typedef {{ id: string, name: string, input: any, result: string | null, isError: boolean, parent: string | null, seq: number }} StreamCall

@@ -1,5 +1,4 @@
 // What a real agent is told about Postbox, and how Postbox’s messages are written to it.
-// Shared by the Claude Code and Agent SDK adapters, so both backends behave the same way.
 // lint-allow-file quotes: this is read by models, and straight quotes mark literal values in it.
 
 import { factsText, runsWith } from '../../shared/agent-facts.mjs';
@@ -39,7 +38,7 @@ export function agentGuide({ persona, session, setup = true }) {
 /**
  * What changes during a room, for each turn’s message (#515, CX-3): who else is here, the project, the brief, what
  * Postbox knows of the session, and the tools turned off.
- * toolRules: the backend’s map of Tools ids to the tools it turns off (TOOL_RULES for Claude Code and the Agent SDK,
+ * toolRules: the backend’s map of Tools ids to the tools it turns off (TOOL_RULES for Claude Code,
  * the Kiro CLI’s own), or null for a backend that can’t turn a tool off for one agent.
  * room: the other agents in this conversation, with their roles (Runtime.roomOf); handles: every agent in Postbox.
  * @param {{ persona: any, handles: string[], room?: { handle: string, role: string }[], project?: any, brief?: string|null,
@@ -86,7 +85,7 @@ export function roomText(room) {
 
 ${who}
 
-Each agent here has a part. Your task is this turn’s request and anything that @-mentions you; what else happened since your last turn is context. A message the person sent to another agent is that agent’s, unless it asks for you too. Of a request, take the part that’s yours and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. A reply to agents that @-mentioned you, if it @-mentions no one, goes back to them, and each answer continues the chain. Once a reply has come back to you, one reply that only writes still goes back, and your second in a row to the same agent doesn’t wake it: @-mention the agent if it must act on those words or answer them. When an exchange is done, react to the last message with the react tool instead of replying. After a reaction to a reply that came back to you, nothing you write in that turn wakes its sender, even by name. An @-mention in a quote, in code or in a line you copied wakes no one. After the room’s chain limit of agent wakes in one chain (${HOP_LIMIT.toLocaleString('en-US')} unless the person set another), the person must allow the next one. Before redoing something, read what the others already did here.`;
+Each agent here has a part. Your task is this turn’s request and anything that @-mentions you; what else happened since your last turn is context. A message the person sent to another agent is that agent’s, unless it asks for you too. Of a request, take the part that’s yours and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. A reply to agents that @-mentioned you, if it @-mentions no one, goes back to them, and each answer continues the chain. Once a reply has come back to you, one reply that only writes still goes back, and your second in a row to the same agent doesn’t wake it: @-mention the agent if it must act on those words or answer them. When an exchange is done, react to the last message with the react tool instead of replying. After a reaction to a reply that came back to you, your reply from that turn doesn’t go back to its sender. An @-mention always wakes the agent it names, whatever came before. An @-mention in a quote, in code or in a line you copied wakes no one. After the room’s chain limit of agent wakes in one chain (${HOP_LIMIT.toLocaleString('en-US')} unless the person set another), the person must allow the next one. Before redoing something, read what the others already did here.`;
 }
 
 /**

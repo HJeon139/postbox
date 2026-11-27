@@ -258,13 +258,15 @@ test('#228: the summary prompt fences the thread as data, and the summary is cli
   assert.ok(store.item(t.id, reply.id).threadSummary.length <= 100);
 });
 
-test('#228: no summary call unless the conversation already runs on Claude, through the Agent SDK', async () => {
+test('#228: no summary call unless the conversation already runs on Claude Code, through its CLI here', async () => {
   const { store, rt, topic, a } = await topicOnReply();
   arrange.withSummarizer(rt, undefined);
-  rt.adapters.register({ name: 'agent-sdk', sdk: { query: () => [] }, async deliver() {} });
+  rt.adapters.register({ name: 'claude-code', bin: '/nowhere/claude', async deliver() {} });
   assert.equal(arrange.summarizerOf(rt, topic.id), null, 'its agents run on the mock: no conversation text goes to Claude');
-  store.emit('persona', { ...store.state.personas[a.id], backend: 'agent-sdk' });
+  store.emit('persona', { ...store.state.personas[a.id], backend: 'claude-code' });
   assert.equal(typeof arrange.summarizerOf(rt, topic.id), 'function');
+  rt.adapters.register({ name: 'claude-code', bin: '/nowhere/claude', async deliver() {} }, { here: false });
+  assert.equal(arrange.summarizerOf(rt, topic.id), null, 'Claude Code on hosts only: no CLI here to ask');
 });
 
 test('#228: what was said in a thread is capped, as the conversation’s is, keeping the newest', async () => {

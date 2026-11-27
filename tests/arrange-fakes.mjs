@@ -42,9 +42,6 @@ export const adapter = (rt, name) => rt.adapters.get(name);
 /** What a registered backend can do. @param {Runtime} rt @param {string} name */
 export const capabilitiesOf = (rt, name) => rt.adapters.get(name).capabilities;
 
-/** The names of the backends registered. @param {Runtime} rt */
-export const adapterNames = (rt) => rt.adapters.names();
-
 /**
  * Fakes the processes Postbox lists and signals, to stop a turn’s or a kept job’s process tree without one. Returns a
  * function that puts back what it replaced.

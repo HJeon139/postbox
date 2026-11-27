@@ -14,6 +14,7 @@ import { test } from 'node:test';
 const DIR = new URL('../app/js/', import.meta.url);
 const TRANSCRIPT_MODULES = [
   'thread.mjs',
+  'message-actions.mjs',
   'apps.mjs',
   'needs-nav.mjs',
   'side-line.mjs',
@@ -30,7 +31,7 @@ const ALLOWED = [
   { file: 'permissions.mjs', snippet: "'perm-mcp' : 'perm-dir')?.scrollIntoView(", why: 'a field in the permissions dialog' },
   { file: 'thread.mjs', snippet: 'slash.index}`)?.scrollIntoView(', why: 'the slash menu’s active option, above the composer' },
   { file: 'thread.mjs', snippet: 'ta.focus()', why: 'the composer’s text box, outside the transcript' },
-  { file: 'thread.mjs', snippet: "$('#side-input')?.focus()", why: 'the side thread’s composer, outside the transcript' },
+  { file: 'message-actions.mjs', snippet: "$('#side-input')?.focus()", why: 'the side thread’s composer, outside the transcript' },
   { file: 'thread.mjs', snippet: "hint.querySelector('.did-you-mean')?.focus()", why: 'the composer’s “Did you mean” hint' },
   { file: 'thread.mjs', snippet: 'asks.querySelector(`[data-key=', why: 'the stop ask above the composer' },
   { file: 'thread.mjs', snippet: '(action.isConnected ? action : ta).focus()', why: 'the stop ask above the composer, or the composer' },

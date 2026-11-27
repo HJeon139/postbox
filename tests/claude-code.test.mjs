@@ -6,8 +6,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { AgentSdkAdapter, sdkOptions } from '../server/adapters/agent-sdk.mjs';
-import { liveControl } from '../server/adapters/agent-sdk-live.mjs';
 import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
 import { ClaudeCodeAdapter, claudeArgs, forkPoint } from '../server/adapters/claude-code.mjs';
 import { contextPercent, createStreamMapper, describePermission, forkPointMissing, resultError } from '../server/adapters/claude-stream.mjs';
@@ -277,7 +275,6 @@ test('a folder the agent can’t work in fails its turn naming the folder, not a
     assert.deepEqual(runs, [], 'nothing was started in a folder that isn’t there');
     const adapters = [
       new ClaudeCodeAdapter({ bin: 'claude', workRoot: root, spawnImpl }),
-      new AgentSdkAdapter({ sdk: { query() {} }, workRoot: root }),
       new KiroCliAdapter({ bin: 'kiro-cli', workRoot: root, isolatedHome: root, spawnImpl }),
       new AntigravityCliAdapter({ bin: 'agy', workRoot: root, settingsFile: join(root, 'agy.json'), spawnImpl }),
       new CodexAdapter({ bin: 'codex', workRoot: root, spawnImpl }),
@@ -286,110 +283,6 @@ test('a folder the agent can’t work in fails its turn naming the folder, not a
   } finally {
     await rm(root, { recursive: true });
   }
-});
-
-// ── Agent SDK ────────────────────────────────────────────────────────────────────────────
-
-/**
- * A stand-in for the SDK’s query() that replays a recorded stream and keeps the options it got. A function
- * plays a different run each time: (index) => { lines, throws? }, where throws is an error raised at the end.
- */
-function fakeSdk(lines) {
-  const calls = [];
-  return {
-    calls,
-    query({ prompt, options }) {
-      const play = typeof lines === 'function' ? lines(calls.length) : { lines };
-      calls.push({ prompt, options });
-      return (async function* () {
-        for (const l of play.lines) yield l;
-        if (play.throws) throw play.throws;
-      })();
-    },
-  };
-}
-
-test('the Agent SDK adapter passes the mode explicitly, loads Postbox’s tools up front, and resumes', async () => {
-  const sdk = fakeSdk(fixture('block'));
-  const adapter = new AgentSdkAdapter({ sdk, workRoot: '/tmp/pb-test-work' });
-  const ctx = fakeCtx();
-  await adapter.deliver({}, { kind: 'user', text: 'Tea or coffee?' }, ctx);
-  const o = sdk.calls[0].options;
-  assert.equal(o.permissionMode, 'default', 'this persona asks');
-  assert.equal(typeof o.canUseTool, 'function');
-  assert.equal(
-    sdkOptions({ persona: {}, cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', abortController: new AbortController() }).permissionMode,
-    'auto',
-  );
-  assert.equal(o.mcpServers.postbox.alwaysLoad, true);
-  assert.equal(o.systemPrompt.preset, 'claude_code');
-  assert.match(o.systemPrompt.append, /You are @coder/);
-  assert.equal(o.model, 'claude-opus-5-5');
-  assert.ok(o.sessionId && !o.resume);
-  assert.equal(ctx.calls.text, 'Tea or coffee? Pick one above.');
-  await adapter.deliver({}, { kind: 'user', text: 'Again' }, fakeCtx({ state: { ...ctx.calls.saved } }));
-  assert.equal(sdk.calls[1].options.resume, ctx.calls.saved.sdkSessionId);
-  const bypass = sdkOptions({
-    persona: { permissionMode: 'bypass' },
-    cwd: '/w',
-    sessionId: 's',
-    resume: false,
-    mcpUrl: 'u',
-    guide: 'g',
-    abortController: new AbortController(),
-  });
-  assert.equal(bypass.permissionMode, 'bypassPermissions');
-  assert.equal(bypass.allowDangerouslySkipPermissions, true);
-  assert.equal(bypass.canUseTool, undefined);
-});
-
-test('the Agent SDK’s canUseTool allows Postbox’s tools and asks you about the rest', async () => {
-  const sdk = fakeSdk(fixture('block'));
-  const asked = [];
-  const ctx = fakeCtx({
-    askPermission: async (req) => {
-      asked.push(req);
-      return { allow: false, message: 'No.' };
-    },
-  });
-  await new AgentSdkAdapter({ sdk, workRoot: '/tmp/pb-test-work' }).deliver({}, { kind: 'user', text: 'x' }, ctx);
-  const can = sdk.calls[0].options.canUseTool;
-  assert.deepEqual(await can('mcp__postbox__show_block', { block: {} }), { behavior: 'allow', updatedInput: { block: {} } });
-  assert.deepEqual(await can('Bash', { command: 'rm -rf /', description: 'Wipe' }), { behavior: 'deny', message: 'No.' });
-  assert.deepEqual(asked, [
-    {
-      tool: 'Bash',
-      summary: 'run a command: Wipe',
-      detail: 'rm -rf /',
-      input: { command: 'rm -rf /', description: 'Wipe' },
-      suggestions: [],
-      suppressAlways: false,
-      agentId: null,
-    },
-  ]);
-});
-
-test('#66: canUseTool passes the prompt’s suggestions and subagent, and returns your edit and Always allow', async () => {
-  const sdk = fakeSdk(fixture('block'));
-  const asked = [];
-  const rules = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' }];
-  const ctx = fakeCtx({
-    askPermission: async (req) => {
-      asked.push(req);
-      return { allow: true, updatedInput: { command: 'npm test -- --ci' }, updatedPermissions: rules };
-    },
-  });
-  await new AgentSdkAdapter({ sdk, workRoot: '/tmp/pb-test-work' }).deliver({}, { kind: 'user', text: 'x' }, ctx);
-  const can = sdk.calls[0].options.canUseTool;
-  const answer = await can(
-    'Bash',
-    { command: 'npm test' },
-    { suggestions: rules, agentID: 'task-1', toolUseID: 'toolu_1', signal: new AbortController().signal },
-  );
-  assert.deepEqual(answer, { behavior: 'allow', updatedInput: { command: 'npm test -- --ci' }, updatedPermissions: rules });
-  assert.deepEqual(asked[0].suggestions, rules);
-  assert.equal(asked[0].agentId, 'task-1');
-  assert.equal(asked[0].toolUseId, 'toolu_1');
 });
 
 // ── Attached Claude Code sessions ─────────────────────────────────────────────────────────
@@ -527,17 +420,6 @@ test('fork points: a checkpoint, else the latest point of the session it forks',
   assert.deepEqual(forkPoint({ fork: { claudeSessionId: 'a', uuid: 'u' } }), { claudeSessionId: 'a', uuid: 'u' });
   assert.deepEqual(forkPoint({ forkFrom: { claudeSessionId: 'b' } }), { claudeSessionId: 'b' });
   assert.equal(forkPoint({}), null);
-  const o = sdkOptions({
-    persona: {},
-    cwd: '/w',
-    sessionId: 's',
-    resume: false,
-    mcpUrl: 'u',
-    guide: 'g',
-    abortController: new AbortController(),
-    fork: { sdkSessionId: 'conv', uuid: 'm1' },
-  });
-  assert.deepEqual([o.resume, o.forkSession, o.resumeSessionAt, o.sessionId], ['conv', true, 'm1', undefined]);
 });
 
 test('recorded refusals (a deny rule and the mode), for the agent and its subagent, each become one refusal', () => {
@@ -597,19 +479,6 @@ test('real agents get readable thinking, subagent messages, and rules allowed on
   assert.ok(args.includes('--forward-subagent-text'));
   const allowed = args.indexOf('--allowedTools');
   assert.deepEqual(args.slice(allowed, allowed + 3), ['--allowedTools', 'mcp__postbox', 'Bash(rm copy.txt)']);
-  const opts = sdkOptions({
-    persona: { model: 'mock' },
-    cwd: '/w',
-    sessionId: 's',
-    resume: false,
-    mcpUrl: 'u',
-    guide: 'g',
-    abortController: new AbortController(),
-    allowOnce: ['WebFetch(domain:example.com)'],
-  });
-  assert.deepEqual(opts.allowedTools, ['WebFetch(domain:example.com)']);
-  assert.deepEqual(opts.thinking, { type: 'adaptive', display: 'summarized' });
-  assert.equal(opts.forwardSubagentText, true);
 });
 
 test('#66: a recorded subagent’s permission prompt is named by its call, and the agent’s own isn’t', () => {
@@ -619,11 +488,11 @@ test('#66: a recorded subagent’s permission prompt is named by its call, and t
   const { m } = replay('permission-subagent');
   assert.equal(m.who({ toolUseId: prompts[0].tool_use_id }), null);
   assert.equal(m.who({ toolUseId: prompts[1].tool_use_id }), 'general-purpose');
-  // The SDK’s agent id is the task’s id, as for a refusal.
+  // An agent id is the task’s id, as for a refusal.
   assert.equal(m.who({ agentId: 'af66d9ea59ce3aaa6' }), 'general-purpose');
 });
 
-test('#66: a conversation’s rules and added folders reach both backends', () => {
+test('#66: a conversation’s rules and added folders reach Claude Code', () => {
   const rules = { allow: ['Bash(npm test:*)'], ask: ['Bash(npm publish:*)'], deny: ['WebFetch'] };
   const persona = { model: 'mock', tools: ['shell', 'web.fetch', 'agents.outside'], canPublish: true };
   const args = claudeArgs({ persona, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', allowOnce: ['Bash(rm a)'], rules, addDirs: ['/data'] });
@@ -632,37 +501,11 @@ test('#66: a conversation’s rules and added folders reach both backends', () =
   assert.deepEqual(args.slice(args.indexOf('--disallowedTools'), args.indexOf('--disallowedTools') + 2), ['--disallowedTools', 'WebFetch']);
   assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]).permissions, { ask: ['Bash(npm publish:*)'] });
   assert.deepEqual(args.slice(args.indexOf('--add-dir'), args.indexOf('--add-dir') + 2), ['--add-dir', '/data']);
-  const opts = sdkOptions({
-    persona,
-    cwd: '/w',
-    addDirs: ['/data'],
-    sessionId: 's',
-    resume: false,
-    mcpUrl: 'u',
-    guide: 'g',
-    abortController: new AbortController(),
-    rules,
-  });
-  assert.deepEqual(opts.allowedTools, ['Bash(npm test:*)']);
-  assert.deepEqual(opts.disallowedTools, ['WebFetch']);
-  assert.deepEqual(opts.settings.permissions, { ask: ['Bash(npm publish:*)'] });
-  assert.deepEqual(opts.additionalDirectories, ['/data']);
   // No conversation rules: in Auto, no asks at all (harness first); in Ask me, the asks for writes outside (#112).
   const plain = claudeArgs({ persona, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g' });
   assert.equal(JSON.parse(plain[plain.indexOf('--settings') + 1]).permissions, undefined);
   const bypass = claudeArgs({ persona: { ...persona, permissionMode: 'bypass' }, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g' });
   assert.equal(JSON.parse(bypass[bypass.indexOf('--settings') + 1]).permissions, undefined);
-});
-
-test('#66: the SDK adapter’s live control changes a running query’s mode, and says when it couldn’t', async () => {
-  const modes = [];
-  const ok = liveControl({ setPermissionMode: async (m) => modes.push(m) }, 'acceptEdits');
-  assert.equal(await ok.setPermissionMode('ask'), true);
-  assert.deepEqual(modes, ['default']);
-  // The SDK documents setPermissionMode for streaming input only; a string prompt may refuse it.
-  const refused = liveControl({ setPermissionMode: async () => Promise.reject(new Error('Only available in streaming input mode')) }, 'acceptEdits');
-  assert.equal(await refused.setPermissionMode('ask'), false);
-  assert.equal(await liveControl({}, 'acceptEdits').setPermissionMode('ask'), false);
 });
 
 test('a refusal only the result lists (a deny rule in settings) takes its reason from the tool’s error', () => {
@@ -773,41 +616,6 @@ test('a fork that succeeded keeps its reply, even if stderr mentions a missing m
   assert.equal(ctx.calls.text, 'Tea or coffee? Pick one above.');
   assert.equal(ctx.calls.saved.fork, null);
   assert.equal(marks.length, 1);
-  const sdk = fakeSdk(() => ({ lines: fixture('block'), throws: new Error(`Claude Code process exited with code 0: ${MISSING_STDERR}`) }));
-  await assert.rejects(
-    new AgentSdkAdapter({ sdk, workRoot: '/tmp/pb-test-work' }).deliver(
-      {},
-      { kind: 'user', text: 'Why?' },
-      fakeCtx({ state: { fork: { sdkSessionId: 'conv', uuid: 'm1' } } }),
-    ),
-    /The Agent SDK stopped/,
-  );
-  assert.equal(sdk.calls.length, 1, 'the SDK doesn’t run it again either');
-});
-
-test('the Agent SDK falls back the same way, and never resumes the failed fork', async () => {
-  for (const throws of [null, new Error(`Claude Code process exited with code 1: ${MISSING_STDERR}`)]) {
-    const init = { type: 'system', subtype: 'init', session_id: 'failed-fork', model: 'claude-opus-5-5' };
-    const sdk = fakeSdk((i) => (i === 0 ? { lines: [init, ...fixture('fork-point-missing')], throws } : { lines: fixture('block') }));
-    const marks = [];
-    const ctx = fakeCtx({ state: { fork: { sdkSessionId: 'conv', uuid: 'm1' } }, checkpoint: (c) => marks.push(c) });
-    await new AgentSdkAdapter({ sdk, workRoot: '/tmp/pb-test-work' }).deliver({}, { kind: 'user', text: 'Why?' }, ctx);
-    assert.equal(sdk.calls.length, 2);
-    assert.equal(sdk.calls[0].options.resumeSessionAt, 'm1');
-    const o = sdk.calls[1].options;
-    assert.deepEqual([o.resume, o.forkSession, o.resumeSessionAt], ['conv', true, undefined], 'not the failed fork, and not the bad uuid');
-    assert.match(
-      sdk.calls[1].prompt,
-      /^\[Postbox\] This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message\.\n\nWhy\?\n\n\[Postbox\] What’s current in this room:\n\n/,
-    );
-    const own = fixture('block')[0].session_id;
-    assert.equal(ctx.calls.saved.sdkSessionId, own);
-    assert.equal(ctx.calls.saved.fork, null);
-    assert.deepEqual(
-      marks.map((m) => m.sdkSessionId),
-      [own],
-    );
-  }
 });
 
 // ── Your Claude Code setup (#57) ─────────────────────────────────────────────────────────
@@ -821,9 +629,8 @@ const base5 = { sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g
 const glob = (rule) => new RegExp(`^${rule.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
 const deniedBy = (rules) => (tool) => rules.some((r) => glob(r).test(tool));
 
-test('every combination of the setup choices reaches both backends', () => {
+test('every combination of the setup choices reaches Claude Code', () => {
   const base = { sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g' };
-  const sdkBase = { cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', abortController: new AbortController() };
   const after = (args, flag) => args[args.indexOf(flag) + 1];
   for (const usesHostSetup of [undefined, true, false]) {
     for (const canPublish of [undefined, false, true]) {
@@ -834,17 +641,12 @@ test('every combination of the setup choices reaches both backends', () => {
       const sources = usesHostSetup === false ? 'project,local' : 'user,project,local';
       assert.equal(after(args, '--setting-sources'), sources, label);
       assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default' }, label);
-      const o = sdkOptions({ ...sdkBase, persona });
-      assert.deepEqual(o.settingSources, sources.split(','), label);
-      assert.deepEqual(o.settings, { outputStyle: 'default' }, label);
       if (canPublish === true) {
         assert.ok(!args.includes('--disallowedTools'), label);
-        assert.equal(o.disallowedTools, undefined, label);
       } else {
         const i = args.indexOf('--disallowedTools');
         assert.deepEqual(args.slice(i + 1, i + 1 + PUBLISHING_TOOLS.length), PUBLISHING_TOOLS, label);
         assert.match(args[i + 1 + PUBLISHING_TOOLS.length], /^--/, 'the list ends at the next flag');
-        assert.deepEqual(o.disallowedTools, PUBLISHING_TOOLS, label);
       }
     }
   }
@@ -916,20 +718,16 @@ const disallowed = (args) => {
   return args.slice(i + 1, end < 0 ? undefined : end);
 };
 
-test('#5: an unticked tool is denied in both backends; a ticked one is never an allow rule', () => {
-  const sdkBase = { cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', abortController: new AbortController() };
+test('#5: an unticked tool is denied; a ticked one is never an allow rule', () => {
   const all = Object.keys(TOOL_RULES);
   for (const id of all) {
     const ticked = { model: 'mock', canPublish: true, tools: all };
     const unticked = { model: 'mock', canPublish: true, tools: all.filter((t) => t !== id) };
     assert.deepEqual(disallowed(claudeArgs({ ...base5, persona: ticked })), [], `${id} ticked: nothing denied`);
-    assert.equal(sdkOptions({ ...sdkBase, persona: ticked }).disallowedTools, undefined, id);
     assert.deepEqual(disallowed(claudeArgs({ ...base5, persona: unticked })), TOOL_RULES[id], `${id} unticked`);
-    assert.deepEqual(sdkOptions({ ...sdkBase, persona: unticked }).disallowedTools, TOOL_RULES[id], id);
     // Ticked means “not denied”: the permission mode still asks, so no tool of the checklist is ever allowed.
     for (const persona of [ticked, unticked]) {
       assert.deepEqual(allowedAfter(claudeArgs({ ...base5, persona })), ['mcp__postbox'], id);
-      assert.equal(sdkOptions({ ...sdkBase, persona }).allowedTools, undefined, id);
     }
   }
   assert.deepEqual(TOOL_RULES.shell, ['Bash', 'Monitor']);
@@ -971,8 +769,7 @@ test('#5: no deny rule matches a Postbox tool, and every rule names a tool a rea
 
 // ── #60: model and effort ────────────────────────────────────────────────────────────────
 
-test('#60: both backends always pass the model and the effort, with the defaults when a persona names none', () => {
-  const sdkBase = { cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', abortController: new AbortController() };
+test('#60: Claude Code is always passed the model and the effort, with the defaults when a persona names none', () => {
   const after = (args, flag) => args[args.indexOf(flag) + 1];
   for (const [persona, model, effort] of [
     [{ model: 'claude-sonnet-5-5', effort: 'high' }, 'claude-sonnet-5-5', 'high'],
@@ -984,8 +781,6 @@ test('#60: both backends always pass the model and the effort, with the defaults
   ]) {
     const args = claudeArgs({ ...base5, persona });
     assert.deepEqual([after(args, '--model'), after(args, '--effort')], [model, effort], JSON.stringify(persona));
-    const o = sdkOptions({ ...sdkBase, persona });
-    assert.deepEqual([o.model, o.effort], [model, effort], JSON.stringify(persona));
   }
 });
 

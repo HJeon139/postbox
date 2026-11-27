@@ -24,6 +24,7 @@ import { dataFolder } from './home.mjs';
 import { hostsRoute } from './hosts-routes.mjs';
 import { closeServer, httpServer } from './http-server.mjs';
 import { whoIs } from './identity/session.mjs';
+import { signInSettings } from './identity/sign-in-settings.mjs';
 import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
 import { liveStreams } from './live-streams.mjs';
@@ -82,10 +83,11 @@ const OUTPUT_HEADERS = { 'content-type': 'text/plain; charset=utf-8', 'x-content
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
  *           host?: string, spawnShell?: typeof import('node:child_process').spawn, openUrl?: (cmd: [string, string[]]) => Promise<unknown>, hosts?: import('./remote/hosts.mjs').HostManager|null,
  *           wake?: Parameters<typeof import('./remote/wake.mjs').watchWake>[1], probes?: Partial<typeof PROBES>, archiveTurns?: boolean,
- *           account?: import('./identity/index.mjs').Principal }} [opts]
+ *           account?: import('./identity/index.mjs').Principal, signIn?: import('./identity/index.mjs').SignIn }} [opts]
  *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
  *   checks pass a temp folder, so they never read the real one)
  *   account: who the computer’s account is (server/identity/index.mjs, #558); tests and screenshot runs pass a fixture person’s
+ *   signIn: a hosted Postbox’s sign-in (designs/architecture/hosted.md); given, every request is whoever signed in, or refused
  *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
  *   host: the address it listens on, 127.0.0.1; `!` commands refuse to run on any other (tests check that)
  *   spawnShell: how `!` commands start (tests pass a fake)
@@ -112,7 +114,10 @@ export async function start({
   probes = undefined,
   archiveTurns = false,
   account = undefined,
+  signIn = undefined,
 } = {}) {
+  // Before anything is opened: sign-in settings that leave something out stop the start, with nothing held (#1733).
+  if (signIn) signInSettings(signIn.settings);
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
   const { store, blobs, mediaDir } = await openDataFolder(dataDir, { fresh });
@@ -143,7 +148,7 @@ export async function start({
   const rt = new Runtime({ store, adapters, config, blobs, narrator, spawnShell, hosts });
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture/view-app.md, “Agents see their app”).
   startViewApp(rt, { dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` });
-  const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
+  const firstReal = ['claude-code', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
   await seed(rt, { dataDir, backend: firstReal, demo });
   settleInterrupted(rt);
   stopStreaming(rt);
@@ -180,7 +185,7 @@ export async function start({
   // Who it answers before any route, and what runs only on this computer alone (server/request-gate.mjs).
   const gate = requestGate({ port, host: () => host });
   // Who each request is from (#558): the provider’s answer, and the person that is.
-  const who = whoIs({ store, account });
+  const who = whoIs({ store, account, signIn });
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
   const { streams, stop: stopStreams, stream, headers } = liveStreams(store, undefined, { running: rt.running });

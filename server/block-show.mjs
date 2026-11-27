@@ -2,7 +2,7 @@
 // new version of it (updateApp, server/apps.mjs); an id that names another session's app gets a fresh one.
 
 import { notShown } from '../shared/block-examples.mjs';
-import { validateBlock } from '../shared/catalog.mjs';
+import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { PERSON } from '../shared/review-comments.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { registerApp, withAppIntent, withIntentNote } from './apps.mjs';
@@ -56,6 +56,7 @@ export function showBlock(apps, sessionId, { turn, se, threadId, endSegment, too
   // A review’s images (#780), read and checked before the call reached here, stay with the item.
   const files = v.ok && v.block.type === 'review' && given.files ? { files: given.files } : {};
   const it = apps.threads.addItem(threadId(), { ...blockItem(sessionId, se, turn, block, v), ...files });
+  if (v.ok && ASKING.has(v.block.type)) apps.bus.emit('block.asking', { se: se(), item: it, threadId: threadId() });
   if (files.files) given.held = true; // the item holds them, so keptIfShown keeps their blobs (#828)
   if (v.ok && v.block.type === 'app') registerApp(apps, sessionId, v.block, it.id, threadId(), given.files ?? []);
   // The app’s first version holds its data files, so keptIfShown keeps their blobs (#1702).

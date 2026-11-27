@@ -43,7 +43,7 @@ test('#120: a host prompt’s card offers Always allow, kept for the host, and w
 test('#120: a host prompt’s Claude Code suggestions are never read: its Always allow is Postbox’s own rule', async () => {
   const r = rig();
   const turn = await running(r);
-  // The SDK’s shape (PermissionUpdate); the CLI sends none, but a later version, or a copy of the prompt, might.
+  // Claude Code’s own shape (PermissionUpdate); the CLI sends none, but a later version, or a copy of the prompt, might.
   const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test' }], behavior: 'allow', destination: 'localSettings' }];
   r.d.prompt(turn, { ...FIXTURE_PROMPT, permission_suggestions: suggestions });
   await until(() => r.store.items(r.t.id).some((i) => i.kind === 'permission'), 'the card');

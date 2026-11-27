@@ -76,7 +76,7 @@ test('#467 only the classifier lists the network codes: the scheduled wakes and 
 });
 
 // The event’s shape is recorded in tests/fixtures/claude-code/ (ledger-edits.jsonl, with status 'allowed'); 'rejected'
-// is the status the Agent SDK’s SDKRateLimitInfo type (sdk.d.ts) gives a limit that refuses the turn.
+// is the status Claude Code’s published types (SDKRateLimitInfo in sdk.d.ts) give a limit that refuses the turn.
 test('#442 Claude Code: a rejected rate limit is the turn’s quota, until its resetsAt', () => {
   const m = createStreamMapper(quietCtx());
   m.push({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', resetsAt: 1792741200, rateLimitType: 'five_hour' } });

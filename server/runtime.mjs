@@ -14,7 +14,7 @@ import { asksPort } from './asks-port.mjs';
 import { Assets } from './asset-service.mjs';
 import { act } from './blocks.mjs';
 import { Bus } from './bus.mjs';
-import { releaseNeed } from './card-needs.mjs';
+import { blockNeeds } from './card-needs.mjs';
 import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { Delivery } from './delivery.mjs';
@@ -49,6 +49,7 @@ import { Hosts } from './remote/host-service.mjs';
 import { hostTurnsPort } from './remote/host-turns-port.mjs';
 import { Placement } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
+import { retireBackends } from './retired-backends.mjs';
 import { Running } from './running.mjs';
 import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
 import { sendMessage } from './send-message.mjs';
@@ -215,7 +216,7 @@ export class Runtime {
       narrator: this.narrator,
       config,
     });
-    this.bus.on('block.withdrawn', ({ se, itemId }) => releaseNeed(this, se, itemId));
+    blockNeeds(this);
     // What an agent reads of its conversation (designs/architecture/services.md, “Memory”). The messages held for it on
     // a card waiting for the person come into its catch-up through the catchUpLines port (#693); the readers of an item
     // brought forward read on from its stub, before the call returns (#1041).
@@ -253,6 +254,7 @@ export class Runtime {
     closeOldSendCards(this); // an app-send card from before #1488 closes, with nothing waiting on the person
     // Ask me and Accept edits are gone: a persona stored with one runs Auto (permission-modes.mjs).
     retireModes(this);
+    retireBackends(this); // and one stored on the Agent SDK runs on Claude Code (retired-backends.mjs)
     // A need from before needsAt gets its item's time, once, so ⌃J orders it without the page holding its items.
     this.sessions.stampNeeds();
   }

@@ -62,7 +62,7 @@ test('close stops a pending /usage probe: agy is gone, close is quick, and nothi
     quiet: true,
     hosts: null,
     claudeHome: dir,
-    probes: { claude: none, sdk: none, kiro: none, codex: none, agy: async () => '1.5.10' },
+    probes: { claude: none, kiro: none, codex: none, agy: async () => '1.5.10' },
   };
   // A room with an Antigravity agent, so the next start asks.
   const first = await start(opts);

@@ -6,7 +6,7 @@ import { lstat, mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/pro
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { alwaysAllow, changeRule, cleanRule, readRules, settingsFiles } from '../server/permission-rules.mjs';
+import { changeRule, cleanRule, readRules, settingsFiles } from '../server/permission-rules.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
@@ -58,31 +58,6 @@ const settle = async (rt) => {
 const openCard = (store, t) => store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
 
 // ── Cards ─────────────────────────────────────────────────────────────────────────────
-
-test('#66: Always allow returns the prompt’s own suggestions, shown in words first; a session-only rule is saved locally', async () => {
-  const { rt, store, t, adapter } = await setup();
-  let answer;
-  const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'session' }];
-  adapter.next.push(async (c) => {
-    answer = await c.askPermission({ tool: 'Bash', summary: 'run a command', detail: 'npm test', input: { command: 'npm test' }, suggestions });
-  });
-  rt.sendMessage(t.id, { text: 'test it' });
-  await sleep(20);
-  const card = openCard(store, t);
-  assert.deepEqual(
-    card.always.lines.map((l) => l.text),
-    ['Always allow Bash(npm test:*) in this folder (.claude/settings.local.json)'],
-  );
-  assert.match(card.always.moved, /session only.*local settings/);
-  await rt.act(t.id, card.id, 'always', {});
-  await settle(rt);
-  assert.equal(answer.allow, true);
-  assert.deepEqual(answer.updatedPermissions, [
-    { type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' },
-  ]);
-  assert.equal(store.item(t.id, card.id).status, 'allowed-always');
-  assert.match(store.items(t.id).find((i) => i.kind === 'voice').text, /^Always allowed \(Bash\(npm test:\*\)\): @coder to run a command/);
-});
 
 test('#66: without suggestions (the CLI sends none), Always allow saves Postbox’s rule in the folder’s local settings', async () => {
   const { rt, store, t, adapter, folder } = await setup();
@@ -181,33 +156,6 @@ test('#66: a subagent’s prompt names the subagent, from the stream', async () 
   rt.act(t.id, card.id, 'allow');
   await settle(rt);
   assert.match(store.items(t.id).find((i) => i.kind === 'voice').text, /^Allowed: @coder’s subagent \(general-purpose\) to run a command/);
-});
-
-test('#66: suggestions are bounded; the project’s shared settings go local; modes and folders stay for the turn', () => {
-  assert.equal(alwaysAllow(null), null);
-  assert.equal(alwaysAllow([{ type: 'removeRules', rules: [], behavior: 'allow', destination: 'localSettings' }]), null);
-  const a = alwaysAllow([
-    { type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'make:*' }], behavior: 'allow', destination: 'projectSettings' },
-    { type: 'addRules', rules: [{ toolName: 'WebFetch' }], behavior: 'allow', destination: 'userSettings' },
-    { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
-    { type: 'addDirectories', directories: ['/data'], destination: 'session' },
-    { type: 'addRules', rules: [{ toolName: 42 }], behavior: 'allow', destination: 'localSettings' },
-    'nonsense',
-  ]);
-  assert.deepEqual(
-    a.updates.map((u) => u.destination),
-    ['localSettings', 'userSettings', 'session', 'session'],
-  );
-  assert.match(a.moved, /shared settings/);
-  assert.deepEqual(
-    a.lines.map((l) => l.text),
-    [
-      'Always allow Bash(make:*) in this folder (.claude/settings.local.json)',
-      'Always allow WebFetch everywhere you use Claude Code (~/.claude/settings.json)',
-      'Switch to accept edits mode for the rest of this turn',
-      'Let it work in /data for the rest of this turn',
-    ],
-  );
 });
 
 // ── The panel ─────────────────────────────────────────────────────────────────────────
@@ -324,11 +272,12 @@ async function cardFor(req) {
   return { ...env, card: openCard(env.store, env.t) };
 }
 
-test('#66: no Always allow when the SDK says a saved rule would grant more, or sends no suggestions; the CLI gets Postbox’s rule', async () => {
+test('#66: no Always allow when the harness says a saved rule would grant more, or sends a list Postbox doesn’t read; the CLI gets Postbox’s rule', async () => {
   const rm = { tool: 'Bash', summary: 'run a command', input: { command: 'rm -rf build' } };
   const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'rm:*' }], behavior: 'allow', destination: 'localSettings' }];
   assert.equal((await cardFor({ ...rm, suggestions, suppressAlways: true })).card.always, null);
-  // The SDK sends a list, and an empty one means nothing to allow always: no broader rule is made up.
+  // A list isn’t an offer Postbox reads (a harness’s own is `{ lines, updates, harness: true }`): no broader rule is made up.
+  assert.equal((await cardFor({ ...rm, suggestions })).card.always, null);
   assert.equal((await cardFor({ ...rm, suggestions: [] })).card.always, null);
   // The CLI’s prompt tool sends no list at all (recorded): Postbox’s rule.
   assert.equal((await cardFor(rm)).card.always.saves, 'Bash(rm:*)');
@@ -341,11 +290,6 @@ test('#66: a rule too long to keep (a heredoc) or a tool name past the bound off
   const long = await cardFor({ tool: `mcp__${'x'.repeat(300)}`, summary: 'use a tool', input: {} });
   assert.equal(long.card.always, null);
   assert.equal(long.card.tool.length, 120);
-  // Suggested rules past the bound are left out whole, never cut short.
-  assert.equal(
-    alwaysAllow([{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'x'.repeat(600) }], behavior: 'allow', destination: 'localSettings' }]),
-    null,
-  );
 });
 
 test('#10: Edit isn’t offered for an input too large to keep, and is refused if asked for', async () => {
@@ -369,14 +313,6 @@ test('#10: the edited command keeps the call’s other fields in the answer', as
   rt.act(t.id, openCard(store, t).id, 'edit', { command: 'npm test -- --ci' });
   await settle(rt);
   assert.deepEqual(answer.updatedInput, { command: 'npm test -- --ci', description: 'Test', timeout: 60000, run_in_background: true });
-});
-
-test('#66: a mode suggested for a settings file isn’t offered; one for the session lasts the turn', () => {
-  assert.equal(alwaysAllow([{ type: 'setMode', mode: 'acceptEdits', destination: 'projectSettings' }]), null);
-  assert.equal(alwaysAllow([{ type: 'setMode', mode: 'acceptEdits', destination: 'userSettings' }]), null);
-  assert.deepEqual(alwaysAllow([{ type: 'setMode', mode: 'acceptEdits', destination: 'cliArg' }]).updates, [
-    { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
-  ]);
 });
 
 test('#66: two rules saved at once both land, and nothing is left behind', async () => {

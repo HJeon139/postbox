@@ -24,6 +24,8 @@ const SESSION_WRITES = {
   // a new session; a session that exists, from store.pending.session; a removal, which a delete and an erase call; a
   // need's time as the store loads
   'sessions.mjs': ['ensure', 'update', 'remove', 'stampNeeds'],
+  // a session an older Postbox stored on the Agent SDK, moved to Claude Code as the store loads, before any write is held
+  'retired-backends.mjs': ['retireBackends'],
 };
 const SESSION_WRITE = /\bsessions\.put\(|\bemit\(\s*['"`]session(?:\.patch)?['"`]|\bemit\(\s*['"`]remove['"`]\s*,\s*\{\s*kind:\s*['"`]session['"`]/;
 
