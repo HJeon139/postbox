@@ -71,6 +71,11 @@ export function codexConfigArgs(mcpUrl) {
   ];
 }
 
+/** The local app-server’s arguments for a turn: Postbox’s server and its approvals, and the persona’s web search. @param {any} ctx */
+function appServerArgs(ctx) {
+  return ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl), ...codexWebSearchArgs(ctx.persona)];
+}
+
 /** The Codex thread a turn continues: a fork’s source, else the session’s own, or none. @param {any} state */
 const threadOf = (state) => (state.fork ?? state.forkFrom)?.threadId ?? state.codexThreadId;
 
@@ -185,7 +190,7 @@ export class CodexAdapter {
     const remote = ctx.remote ?? null;
     const attach = remote?.attach ?? null;
     const cwd = remote ? remote.folder : await realFolder(await this.folderFor(ctx.persona, ctx.project));
-    const args = ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl), ...codexWebSearchArgs(ctx.persona)];
+    const args = appServerArgs(ctx);
     // Its own process group, so stopping the turn reaches everything the app-server started (#126); on a host, the daemon’s.
     /** @type {any} */
     const child = remote
