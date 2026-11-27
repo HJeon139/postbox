@@ -27,16 +27,13 @@ export function mountThreads(projectId) {
           h('h1.title', { style: { fontSize: '20px' } }, 'Threads'),
           h(
             'p.small.dim',
-            `Threads in ${project?.name ?? 'this project'}. A topic thread is a branch of an agent’s session, so a side topic stays out of the conversation’s memory. A side thread is where agents talk to each other.`,
+            `Threads in ${project?.name ?? 'this project'}. A topic thread is a branch of an agent’s session, so a side topic stays out of the conversation’s memory. Agents wake each other in the conversation; a side thread from before then stays here, read-only.`,
           ),
         ),
       ),
       rows.length
         ? h('ul.thread-list', rows.map(threadCard))
-        : h(
-            'p.empty-note',
-            'No threads yet. To start one, choose Reply in thread under any message in a conversation. When an agent wakes another, their side thread shows here too.',
-          ),
+        : h('p.empty-note', 'No threads yet. To start one, choose Reply in thread under any message in a conversation.'),
     );
   });
   paint();
