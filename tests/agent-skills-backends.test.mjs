@@ -41,7 +41,7 @@ test('Antigravity: the skills go in the plugin’s skills folder, as written to 
   const files = agyPlugin({ mcpUrl: 'http://127.0.0.1:1/mcp', rules: 'R', skills });
   assert.equal(files['skills/visual-explainer/SKILL.md'], skills['visual-explainer/SKILL.md']);
   assert.ok(!Object.keys(agyPlugin({ mcpUrl: 'u', rules: 'R' })).some((p) => p.startsWith('skills/')), 'none when there are none');
-  const dir = tempDir('pb-agy-skills-');
+  const dir = join(tempDir('pb-agy-skills-'), PLUGIN_DIR);
   await writeAgyPlugin(dir, files);
   assert.equal(readFileSync(join(dir, 'skills', 'visual-explainer', 'references', 'shapes.md'), 'utf8'), skills['visual-explainer/references/shapes.md']);
 });

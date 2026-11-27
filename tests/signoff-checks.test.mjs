@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { EXIT, evaluate, latestByName, report, requiredOf, signoffChecks } from '../tools/signoff-checks.mjs';
+import { EXIT, evaluate, GH_TIMEOUT_MS, ghJson, latestByName, report, requiredOf, signoffChecks } from '../tools/signoff-checks.mjs';
 
 // Recorded from GitHub's API on 6 Nov 2026 (tests/fixtures/signoff): main's rules, and the check runs of four heads.
 const load = (name) => JSON.parse(readFileSync(new URL(`fixtures/signoff/${name}.json`, import.meta.url), 'utf8'));
@@ -141,4 +141,15 @@ test('rules that require nothing are an error, not a pass: the ruleset may be un
   const lines = [];
   assert.equal(signoffChecks(840, { gh, log: (l) => lines.push(l) }), EXIT.error);
   assert.deepEqual(lines, ['signoff-checks #840: no required checks found for main: is its ruleset readable? -> ERROR']);
+});
+
+test('#845 a gh call with no timeout of its own is bounded at GH_TIMEOUT_MS, as the sign-off calls it', () => {
+  /** @type {any} */
+  let seen = null;
+  const run = (/** @type {string} */ _bin, /** @type {string[]} */ _args, /** @type {any} */ o) => {
+    seen = o;
+    return '{}';
+  };
+  ghJson(['pr', 'view', '1'], { run });
+  assert.equal(seen?.timeout, GH_TIMEOUT_MS);
 });

@@ -98,7 +98,7 @@ function place(/** @type {{ id: string, kind?: string, title?: string }} */ thre
 /**
  * Where the reply goes as well as posting (#1518): back to the agents whose mentions started the turn, unless it
  * @-mentions an agent. Nothing for any other turn. A turn only replies that came back woke is told how its exchange
- * ends, as reply-back.mjs and mention-entries.mjs end it: a reaction to the reply ends it whatever the turn writes
+ * ends, as reply-back.mjs ends it: a reaction to the reply ends it whatever the turn writes without an @-mention
  * (#1553), and so does its second reply in a row to the same agent that only writes (#1591), which this one would be
  * for the agents in `wroteOnly`. The person’s Retry still owes its reply (empty-reply.mjs), which goes back.
  * @param {Entry[]} entries @param {string[]} wroteOnly  whom the agent’s last replies here, which only wrote, were for
@@ -109,7 +109,7 @@ function replyGoes(entries, wroteOnly) {
   const goes = ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.`;
   const asked = entries.filter((e) => e.source !== 'notice');
   if (!asked.every((e) => e.bounce === true)) return goes;
-  const react = 'If the exchange is done, react to the reply: then nothing you write this turn wakes its sender, even by name.';
+  const react = 'If the exchange is done, react to the reply: then your reply this turn doesn’t go back to its sender. An @-mention still wakes whom it names.';
   // A Retry’s entries carry whom its failed reply woke, as retryMarks (turns.mjs) reads them.
   if (entries.some((e) => Array.isArray(e.woken))) return `${goes} ${react}`;
   const end = `${react} You can also end without writing anything.`;

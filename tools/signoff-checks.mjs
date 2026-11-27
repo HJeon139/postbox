@@ -102,8 +102,23 @@ export function report(pr, head, v) {
   return lines;
 }
 
-/** gh’s JSON output for `args`. @param {string[]} args */
-const ghJson = (args) => JSON.parse(execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }));
+/** How long one gh call may take. execFileSync blocks the event loop, so a gh that hangs would otherwise stop the
+ * script without a word, with no progress line and no way to bound it from outside (#845). */
+export const GH_TIMEOUT_MS = 120_000;
+
+/**
+ * gh’s JSON output for `args`; throws, naming the call, when gh takes longer than o.timeout. o.run stands in for
+ * execFileSync in a test.
+ * @param {string[]} args @param {{ timeout?: number, run?: typeof execFileSync }} [o]
+ */
+export function ghJson(args, { timeout = GH_TIMEOUT_MS, run = execFileSync } = {}) {
+  try {
+    return JSON.parse(String(run('gh', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout })));
+  } catch (e) {
+    if (/** @type {NodeJS.ErrnoException} */ (e).code === 'ETIMEDOUT') throw new Error(`gh ${args.join(' ')} didn’t answer in ${timeout / 1000} s`);
+    throw e;
+  }
+}
 
 /**
  * Checks pull request `pr`, printing with `log`, and returns the exit code.
