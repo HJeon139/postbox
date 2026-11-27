@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.1 (2026-11-27)
+
+### Fixes
+
+- **kiro:** the tool-load note's last sentence says which failure to report
+- **kiro:** name both of Kiro's tool loaders in the note on loading Postbox's tools
+
 ## 5.4.0 (2026-11-27)
 
 ### Features
