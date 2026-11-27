@@ -48,7 +48,7 @@ async function readPullRequest(d, ctx) {
   try {
     Object.assign(ctx, await fetchBase(d, ctx.root, { pr: ctx.pr, prUrl: String(ctx.prUrl), base: String(ctx.base) }));
   } catch (e) {
-    ctx.fetchError = `couldn’t fetch ${ctx.base}: ${e.message.split('\n')[0]}`;
+    ctx.fetchError = `couldn’t fetch or read the base ${ctx.base}: ${e.message.split('\n')[0]}`;
   }
 }
 

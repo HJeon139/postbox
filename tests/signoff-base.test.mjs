@@ -45,7 +45,7 @@ test('a pull request URL that names no repository fails steps 2 and 3, fetching 
   const w = world();
   prAt(w, 'not a pull request');
   assert.equal(await signoff(['840'], w.d), EXIT.commits);
-  assert.match(w.lines.find((l) => l.startsWith('✖ 2.')) ?? '', /couldn’t fetch main: #840’s URL, not a pull request, names no repository/);
+  assert.match(w.lines.find((l) => l.startsWith('✖ 2.')) ?? '', /couldn’t fetch or read the base main: #840’s URL, not a pull request, names no repository/);
   assert.match(w.lines.find((l) => l.startsWith('✖ 3.')) ?? '', /no fetched base to merge with/);
   assert.equal(ran(w, /^git fetch /).length, 0);
 });
@@ -56,7 +56,7 @@ test('a fetch that fails fails steps 2 and 3, each naming why, rather than falli
   for (const n of [2, 3]) {
     assert.match(
       w.lines.find((l) => l.startsWith(`✖ ${n}.`)) ?? '',
-      /no fetched base to (compare|merge) with: couldn’t fetch main: .*could not read from remote repository/,
+      /no fetched base to (compare|merge) with: couldn’t fetch or read the base main: .*could not read from remote repository/,
     );
   }
   assert.equal(ran(w, /^git rev-parse (refs\/remotes|--verify FETCH_HEAD)/).length, 0);

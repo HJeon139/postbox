@@ -1,4 +1,4 @@
-// Every wait in tools/signoff.mjs talks: a command, or the heavy-suite lock, that runs past PROGRESS_MS prints a line
+// Every wait in tools/signoff.mjs talks: a command that runs past PROGRESS_MS prints a line
 // saying what it waits on and for how long, and again each PROGRESS_MS after. A sign-off that printed nothing for 15
 // minutes had its turn stopped as hung (#845).
 
