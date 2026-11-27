@@ -209,7 +209,8 @@ test('#1937 an MCP server’s request for input shows on its card cleaned and bo
   // Cleaning drops three invisible characters, the bell’s extra space and the space before the line break, so the
   // emoji starts at 1,199, across the cut.
   const message = `${said}${'x'.repeat(1199 - (said.length - 5))}\u{1F600} and the rest`;
-  await codexApproval(ctx, { id: 7, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message } });
+  await codexApproval(ctx, { id: 7, method: 'mcpServer/elicitation/request', params: { serverName: 'dep\u202Eloy', message } });
+  assert.equal(asked[0]?.summary, 'respond to deploy', 'the server’s name is cleaned');
   const detail = String(asked[0]?.detail ?? '');
   assert.match(detail, /^Please confirm the deploy/);
   assert.doesNotMatch(detail, /[\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2028\u2029\r]/u);
@@ -265,7 +266,7 @@ test('#1937 an MCP tool’s name, the card’s headline, is cleaned: it comes fr
     },
   };
   const meta = { codex_approval_kind: 'mcp_tool_call', tool_name: 'ship\u202Edorp', tool_params: {} };
-  await codexApproval(ctx, { id: 10, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message: '', _meta: meta } });
+  await codexApproval(ctx, { id: 10, method: 'mcpServer/elicitation/request', params: { serverName: 'dep\u202Eloy', message: '', _meta: meta } });
   assert.equal(asked[0]?.summary, 'use deploy tool shipdorp');
 });
 
