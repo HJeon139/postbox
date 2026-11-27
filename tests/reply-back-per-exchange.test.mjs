@@ -5,7 +5,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { turnInput } from '../server/turn-input.mjs';
-import { heldOnCard, room, settle } from './bounce-loop-fixture.mjs';
+import { HOP_LIMIT } from '../shared/limits.mjs';
+import { hitLimit, room, settle } from './bounce-loop-fixture.mjs';
 
 const work = (text, more = {}) => ({ text, step: true, ...more });
 const END = { text: '' };
@@ -62,7 +63,7 @@ test('#1591: an exchange that ended stays ended: the third reply in a row that o
   const { store, rt, adapter, t } = room(plays);
   rt.sendMessage(t.id, { text: '@alpha tell beta and gamma' });
   await settle(rt);
-  assert.ok(!heldOnCard(store, t), turnsOf(adapter));
+  assert.ok(!hitLimit(adapter), turnsOf(adapter));
   const mine = replies(store, t).filter((i) => i.handle === 'alpha');
   const cut = mine.filter((i) => i.wordsOnly && !i.wentBack);
   assert.ok(cut.length >= 1, 'alpha’s second reply in words to each went to no one');
@@ -77,10 +78,10 @@ test('#1591: three agents, each pair exchanging lines that only write, still end
     beta: [{ text: '@gamma seen; you?' }, { text: 'Noted.' }],
     gamma: [{ text: '@alpha seen. And beta?', busyMs: 15 }, { text: 'OK.' }],
   };
-  const { store, rt, adapter, t } = room(plays);
+  const { rt, adapter, t } = room(plays);
   rt.sendMessage(t.id, { text: '@alpha tell beta and gamma' });
   await settle(rt);
-  assert.ok(!heldOnCard(store, t), `ended before the room’s limit: ${turnsOf(adapter)}`);
+  assert.ok(!hitLimit(adapter), `ended before the player’s limit: ${turnsOf(adapter)}`);
   assert.ok(adapter.calls.length <= 16, `${adapter.calls.length} turns: ${turnsOf(adapter)}`);
 });
 
@@ -125,13 +126,16 @@ test('#1591: a turn that starts as the agent’s last one ends is told whom its 
   assert.match(line, /goes back to @gamma\. .*Your last reply to @beta only wrote/);
 });
 
-test('#1591: a reply that only wrote, which the chain limit holds, is marked for the agent it waits to reach', async () => {
+test('#1591, #1623: a reply that only wrote, which the chain’s cap stops, is still marked for the agent it was for', async () => {
   const plays = { alpha: [{ text: '@beta which file?' }, { text: 'Which section?' }], beta: [{ text: 'CHANGELOG.md.' }] };
   const { store, rt, t } = room(plays);
-  rt.threads.patch(t.id, { chainLimit: 2 });
   rt.sendMessage(t.id, { text: '@alpha ask beta' });
+  rt.threads.patch(t.id, { hops: HOP_LIMIT - 2 }); // two wakes left under the cap
   await settle(rt);
-  assert.ok(heldOnCard(store, t), 'the third wake in the chain waits on the card');
+  assert.ok(
+    store.items(t.id).some((i) => i.variant === 'chain-stopped'),
+    'the third wake in the chain stopped it',
+  );
   const held = replies(store, t).find((i) => i.text === 'Which section?');
   assert.deepEqual([held.wordsOnly, held.wentBack], [['beta'], undefined]);
 });

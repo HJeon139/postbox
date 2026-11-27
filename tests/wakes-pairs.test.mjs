@@ -45,7 +45,7 @@ test('#372 a turn in an old side thread that mentions two agents posts its messa
   );
 });
 
-test('#372 a turn in an old side thread whose wake waits on a card is still told side threads are gone', async () => {
+test('#372, #1623 a turn in an old side thread whose wake the chain’s cap stops is still told side threads are gone', async () => {
   const { store, rt, adapter, t, alpha } = three();
   const old = oldSide(rt, t);
   arrange.putThread(rt, { ...store.state.threads[t.id], hops: HOP_LIMIT });
@@ -54,21 +54,18 @@ test('#372 a turn in an old side thread whose wake waits on a card is still told
   rt.turnService.run(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
   await sleep(5);
   const r = rt.agentWake(alpha.id, 'beta', 'Status?');
-  assert.equal(r.waiting, true, 'past the wake limit, it waits on the card');
+  assert.deepEqual([r.ok, r.waiting], [false, undefined], 'past the cap, it doesn’t go');
   assert.equal(store.state.sessions[alpha.id].toldSideThreadsGone, true);
   h.release();
   await settle(rt);
 });
 
-test('#372, #1518 a woken agent with more than agents’ messages is told its reply reaches the waker only by an @-mention, and the guide names the chain limit', async () => {
+test('#372, #1518 a woken agent with more than agents’ messages is told its reply reaches the waker only by an @-mention, and the guide names no chain limit (#1623)', async () => {
   const { formatMessage, roomText } = await import('../server/adapters/guide.mjs');
   // A turn of agents’ messages alone is given turn-input.mjs’s text, whose reply goes back (tests/reply-goes-back.test.mjs).
   assert.match(
     formatMessage({ kind: 'agent', from: '@alpha', text: 'Check the totals.' }),
     /^\[Postbox\] @alpha wrote to you\. Your reply posts here\. This turn has other messages too, so your reply reaches @alpha only if you @-mention them/,
   );
-  assert.match(
-    roomText([{ handle: 'beta', role: 'Reviews' }]),
-    /After the room’s chain limit of agent wakes in one chain \(1,000 unless the person set another\), the person must allow/,
-  );
+  assert.doesNotMatch(roomText([{ handle: 'beta', role: 'Reviews' }]), /chain limit|must allow|1,000/);
 });

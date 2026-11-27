@@ -18,7 +18,7 @@ Attach project files by reference without uploading.
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Attach a book file and send it.
+2. In a conversation of the Reading notes project, such as “Asset explorer”, open the picker, open `notes`, attach a note (`notes/harbor-town.md`) and send it.
 3. In the project’s folder, make a file whose name is `a`, then U+202E, then `b.txt` (in a shell: `touch "a$(printf '\u202e')b.txt"`), and open the picker again.
 
 **Pass if:** The file is attached as a reference, and the file from step 3 is listed as “a�b.txt”, not reordered; attaching and sending it shows “Your message didn’t send” with ““a_b.txt” can’t be attached”, and nothing is sent.

@@ -122,9 +122,6 @@ export const PENDING = {
   // left, so a stream holds one patch, not one per chunk, a held compaction counts, and a held note is given. A delivery reads its session pending too (runtime.mjs
   // deliver, twice): the last summary's givenMentions and seenItem, and a notice, held, are seen, not given again or lost (#506). Whether a thread has a persona's session already
   // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
-  // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035); and the room a
-  // PATCH sets it on, maybe started there.
-  'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
   // With run clocks on (#1526): every decision on a run clock (its route, its timer, a turn’s line, Delivery’s hold),
   // on the clock as held writes will leave it; the session its route names, which a held delete may have removed; and
   // the host stops its pause or expiry waits on, which the stop itself just wrote; and, as Postbox starts or Retry

@@ -6,7 +6,7 @@
 - project: Hand-offs
 - conversation: Across machines
 
-**Needs rework since #492:** there is no pair limit now, so phase 1’s third wake in a row no longer raises a card, and phase 2’s hand-offs go rather than wait on it. A card now comes only from the room’s chain limit (1,000 wakes in one chain unless the room sets another, #1035; 50 when this was written). Until the phases are rebuilt on that, a run of this scenario won’t reach its triggers.
+**Needs rework since #492:** there is no pair limit now, so phase 1’s third wake in a row no longer raises a card, and phase 2’s hand-offs go rather than wait on it. Since #1623 the chain’s cap raises no card either: the chain stops with one line in the room, and only the add card (#228) waits for the person. Until the phases are rebuilt on the add card, a run of this scenario won’t reach its triggers.
 
 A run with one host (`--host`, once), Claude Code only: @critic runs there, and @researcher and @developer on this computer. Phase 1’s card is researcher’s wake of developer; phase 2’s two hand-offs are between critic and researcher, one each way, so developer, the card’s target, takes no part until phase 3 allows the card. Postbox stops two agents waking each other after a hand-off and its answer: their third wake in a row raises a card for the person (`PAIR_LIMIT`, `shared/limits.mjs`). While one such card waits, a wake that needs a second card is held on it until the person answers (`askToWake`, `server/wake-cards.mjs`, #439); before #439’s fix it was refused. This run makes that happen from a host and from this computer, and checks what each sender is told, when, and whether the work it handed off is lost. Watch for an agent that says it handed work on when it didn’t, an agent left idle with work it was never given, and a refusal that names no card.
 
@@ -21,7 +21,7 @@ In one message that @-mentions only @researcher, ask it to send developer this s
 
 Then, in one message that @-mentions only @researcher, ask it to stop messaging developer: it answers you in one line without @-mentioning anyone, and doesn’t message developer again in this conversation. Requests from you or from critic later still get an answer. Wait until it has answered and no agent is working. Your message clears the counts and leaves the card open, which is what phase 2 needs.
 
-From here to phase 3’s Allow, don’t write to developer, and no step wakes it: developer is the card’s target, and on a build with #439’s fix, writing to a card’s target, or another agent waking it, retires the card (it got a turn another way), so there would be nothing left to allow.
+From here to phase 3’s Allow, don’t write to developer, and no step wakes it: developer is the card’s target, and writing to it would add it to the room yourself. Then the hand-offs in phase 2 would go straight to it instead of waiting on the card, and phase 3’s Allow would have nothing held to deliver.
 
 ## Phase 2: Hand-offs while the card waits
 

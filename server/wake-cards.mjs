@@ -1,42 +1,12 @@
-// The wake cards (#108, #228): a wake past the limit, or of an agent the conversation doesn’t have, waits for the
-// person’s Allow on a card in the conversation, and resolveHop settles it. One card waits at a time: a wake that needs
-// another while it does is held on it, and settled with it (#439). Moved from server/side-threads.mjs, whose agentWake
-// raises them. Functions take the Runtime first (designs/architecture/code-size.md, “What a move may change”).
+// The add card (#228): a wake of an agent the conversation doesn’t have waits for the person’s Allow on a card in the
+// conversation, and resolveHop settles it. One card waits at a time: a wake that needs another while it does is held on
+// it, and settled with it (#439). The wake-limit card that shared it is gone (#1623): the chain’s cap refuses a wake
+// with no card (chain-stop.mjs). Moved from server/side-threads.mjs, whose agentWake raises them. Functions take the
+// Runtime first (designs/architecture/code-size.md, “What a move may change”).
 
 import { HELD_WAKES } from '../shared/limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { clip, httpError } from './helpers.mjs';
-import { roomChainLimit } from './room-chain-limit.mjs';
-
-/**
- * The card for a wake past the room’s chain limit (#108), which waits for the person’s Allow. It keeps the limit it was
- * raised under (#1035): the room’s may change before the person answers, and the wake’s number doesn’t say it.
- */
-export function askToWake(rt, from, parent, p, wake) {
-  const open = openCard(rt, parent);
-  if (open) return holdOnCard(rt, open, parent, from, p, wake);
-  const n = (parent.hops ?? 0) + 1;
-  const limit = roomChainLimit(rt, parent.id);
-  // The card shows reason as a preview; text is the whole message, delivered when you allow it (#108).
-  const it = rt.threads.addItem(parent.id, {
-    kind: 'hop',
-    fromSessionId: from.id,
-    from: from.handle,
-    to: p.handle,
-    reason: clip(wake.text, 200),
-    ...wake,
-    status: 'open',
-    n,
-    limit,
-  });
-  needsCard(rt, from, parent, it, `@${from.handle} wants to wake @${p.handle}`);
-  rt.threads.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${n} since your last message.`);
-  return {
-    ok: false,
-    waiting: true,
-    message: `Waiting for the person to allow waking @${p.handle}: this room’s chain limit is ${limit.toLocaleString('en-US')}.`,
-  };
-}
 
 /**
  * An agent wakes a persona the conversation doesn’t have (#228): only the person adds one, so a card asks them. Allow
@@ -134,24 +104,22 @@ function needsCard(rt, from, parent, it, text) {
   offerNeed(rt, from, { kind: 'hop', itemId: it.id, text, ...rt.sessions.awayFrom(from, parent.id) }, rt.turns.has(from.id) ? from.state : 'needs');
 }
 
+/**
+ * The person’s answer on an add card. A wake-limit card from before #1623 closed at startup (closeOrphanCards), so the
+ * one still open is an add card.
+ */
 export function resolveHop(rt, threadId, itemId, allow) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind === 'hop' && it.status === 'closed') throw httpError(409, `That request was closed: ${it.closedWhy}.`);
-  if (it?.kind !== 'hop' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
+  if (it?.kind !== 'hop' || !it.join || it.status !== 'open') throw httpError(409, 'That request was already answered.');
   rt.threads.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined' });
-  const voice = it.join
-    ? allow
-      ? `Added @${it.to} to this conversation for @${it.from}`
-      : `Didn’t add @${it.to} to this conversation`
-    : allow
-      ? `Allowed: @${it.from} wakes @${it.to}`
-      : `Didn’t allow @${it.from} to wake @${it.to}`;
+  const voice = allow ? `Added @${it.to} to this conversation for @${it.from}` : `Didn’t add @${it.to} to this conversation`;
   rt.threads.addItem(threadId, { kind: 'voice', text: voice });
   const from = rt.s.sessions[it.fromSessionId];
   releaseNeed(rt, from, itemId);
   rt.threads.patch(threadId, { hops: 0 });
   // Added: it joins with a note on why, as an agent the person adds does, and the wake goes on (#228).
-  const p = it.join && allow ? rt.personas.byHandle(it.to) : null;
+  const p = allow ? rt.personas.byHandle(it.to) : null;
   if (p) {
     rt.ensureSession(threadId, p.id, { brief: `@${it.from} woke you, and the person added you to this conversation.`, joined: { by: it.from, in: threadId } });
     rt.threads.addItem(threadId, { kind: 'system', variant: 'joined', to: p.handle });
@@ -167,12 +135,8 @@ export function resolveHop(rt, threadId, itemId, allow) {
     });
   settleHeld(rt, it, allow);
   if (allow) return { ok: true };
-  if (from && !from.retiredFork) {
-    const text = it.join
-      ? `The person chose not to add @${it.to} to this conversation, so it didn’t get your message. Carry on without it.`
-      : `The person chose not to let you wake @${it.to}. Carry on without it.`;
-    answerWaker(rt, from, it, it.replyIn, text);
-  }
+  if (from && !from.retiredFork)
+    answerWaker(rt, from, it, it.replyIn, `The person chose not to add @${it.to} to this conversation, so it didn’t get your message. Carry on without it.`);
   return { ok: true };
 }
 
@@ -180,7 +144,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
 function settleHeld(rt, card, allow) {
   for (const w of card.held ?? []) {
     if (allow) {
-      sendHeld(rt, card, w, true);
+      sendHeld(rt, card, w);
       continue;
     }
     const se = rt.s.sessions[w.fromSessionId];
@@ -207,46 +171,21 @@ function answerWaker(rt, se, card, replyIn, text) {
 }
 
 /**
- * A card whose target got a turn another way is stale (#439): the person wrote to it, or another agent’s wake reached
- * it. It closes as retired, and its own wake goes on with the wakes held on it, as their agents sent them: nothing says
- * the other turn covered what they asked. Each goes past the limits if the person’s message retired the card, since
- * their acting starts the counts again (intent.md), and through them otherwise, so one that still needs a card raises
- * it. One that can’t go tells its agent why (sendHeld).
- * @param {any} rt @param {string} threadId  where the target’s turn comes from @param {any} target @param {string} why
- * @param {{ byPerson?: boolean }} [opts]
+ * A held wake goes on as its agent sent it, and its agent is told either way: that it went, since the hold’s answer said
+ * it waits and the agent would go on reporting it as waiting (#517), or why it didn’t (its target was removed meanwhile).
  */
-export function retireStale(rt, threadId, target, why, { byPerson = false } = {}) {
-  const conv = rt.threads.conversationToWrite(threadId);
-  const card = openCard(rt, { id: conv });
-  if (!card || card.join || card.to !== target.handle) return;
-  rt.threads.patchItem(conv, card.id, { status: 'retired', retiredWhy: why, retiredAt: Date.now() });
-  const from = rt.s.sessions[card.fromSessionId];
-  releaseNeed(rt, from, card.id);
-  // A request stored before #108 kept only the preview.
-  const own = {
-    fromSessionId: card.fromSessionId,
-    to: card.to,
-    text: card.text ?? card.reason ?? '',
-    replyIn: card.replyIn ?? null,
-    fromTurnId: card.fromTurnId ?? null,
-    itemId: card.itemId ?? null,
-    bounce: card.bounce === true,
-  };
-  for (const w of [own, ...(card.held ?? [])]) sendHeld(rt, card, w, byPerson);
-}
-
-/** A held wake goes on as its agent sent it; one that can’t go (its target was removed meanwhile) tells its agent why. */
-function sendHeld(rt, card, w, confirmed) {
+function sendHeld(rt, card, w) {
   const r = rt.agentWake(w.fromSessionId, w.to, w.text, {
-    confirmed,
+    confirmed: true,
     replyIn: w.replyIn,
     fromTurnId: w.fromTurnId,
     itemId: w.itemId,
     bounce: w.bounce === true,
   });
   const se = rt.s.sessions[w.fromSessionId];
-  if (!r.ok && !r.waiting && se && !se.retiredFork)
-    rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${r.message}`);
+  if (r.waiting || !se || se.retiredFork) return;
+  const outcome = r.ok ? 'went: the person allowed it.' : `didn’t go: ${r.message}`;
+  rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, ${outcome}`);
 }
 
 /**
@@ -270,20 +209,26 @@ export function dropHeld(rt, se, how) {
 
 /**
  * A card that closes with no answer from the person (#693): the agent that asked was removed or retired, so
- * nothing can answer for it. It closes, its agent stops needing the person, and nothing it held goes. Its agent and
- * each agent whose wake was held on it are told at their next turn, as dropHeld tells, and the card stays closed.
- * The one way every such close goes.
- * @param {any} rt @param {string} conv @param {any} card @param {string} how  what happened to the agent that asked
+ * nothing can answer for it. @param {any} rt @param {string} conv @param {any} card @param {string} how  what happened
+ * to the agent that asked
  */
-export function closeHop(rt, conv, card, how) {
-  const why = `@${card.from} was ${how}`;
+export const closeHop = (rt, conv, card, how) => closeCard(rt, conv, card, `@${card.from} was ${how}`, `you were ${how}`);
+
+/**
+ * A card that closes with no answer from the person: it closes, its agent stops needing the person, and nothing it held
+ * goes. Its agent and each agent whose wake was held on it are told at their next turn, as dropHeld tells, and the card
+ * stays closed. The one way every such close goes (#693, #1623).
+ * @param {any} rt @param {string} conv @param {any} card @param {string} why  why it closed, as the page and the held
+ * wakes’ agents read it @param {string} askerWhy  the same, as the agent that asked is told it
+ */
+function closeCard(rt, conv, card, why, askerWhy) {
   rt.threads.patchItem(conv, card.id, { status: 'closed', closedWhy: why, closedAt: Date.now() });
   const asker = rt.s.sessions[card.fromSessionId];
   releaseNeed(rt, asker, card.id);
   if (asker)
     rt.sessions.tell(
       asker.id,
-      `${cardName(card).replace(`@${card.from}’s request`, 'Your request')} was closed: you were ${how}. Ask again if you still need it.`,
+      `${cardName(card).replace(`@${card.from}’s request`, 'Your request')} was closed: ${askerWhy}. Send your message again if you still need it.`,
     );
   for (const w of card.held ?? []) {
     // The agent that asked has its note above, which covers its own wakes held here.
@@ -302,15 +247,20 @@ export function closeOwnCard(rt, se, how) {
   if (card?.fromSessionId === se.id) closeHop(rt, conv, card, how);
 }
 
+/** Why a wake-limit card from before #1623 closed, as its agents are told. */
+const CARD_GONE = 'Postbox no longer asks the person to continue a chain of wakes';
+
 /**
  * At startup, an open card whose agent is retired or gone closes (#693): a room from before the fix would hold every
- * wake on it. O(items), once per start.
+ * wake on it. So does a wake-limit card from before #1623: nothing asks past the chain’s cap now (chain-stop.mjs), and
+ * the page shows one as a line with no buttons. O(items), once per start.
  */
 export function closeOrphanCards(rt) {
   for (const t of Object.values(rt.s.threads)) {
     const card = openCard(rt, t);
     const from = card && rt.s.sessions[card.fromSessionId];
-    if (card && (!from || from.retiredFork)) closeHop(rt, t.id, card, 'retired or removed');
+    if (card && !card.join) closeCard(rt, t.id, card, CARD_GONE, CARD_GONE);
+    else if (card && (!from || from.retiredFork)) closeHop(rt, t.id, card, 'retired or removed');
   }
 }
 
@@ -318,8 +268,8 @@ export function closeOrphanCards(rt) {
 const HELD_NAMED = 3;
 
 /**
- * The messages waiting for an agent on its conversation’s open card, for its catch-up (#693): a wake-limit card’s own
- * wake, and each wake held on the card, so it learns a message is coming, and from whom, while the person hasn’t
+ * The messages waiting for an agent on its conversation’s open card, for its catch-up (#693): each wake held on the
+ * card, so it learns a message is coming, and from whom, while the person hasn’t
  * answered. Up to HELD_NAMED lines, then a count. O(items in the conversation), once per turn.
  * @param {any} rt @param {any} se  the agent the messages are for @returns {string[]}
  */
@@ -328,8 +278,7 @@ export function heldFor(rt, se) {
   // write, so a card still held behind a commit isn’t named yet.
   const card = rt.store.items(rt.threads.lineage(se.threadId).at(-1)).find((x) => x.kind === 'hop' && x.status === 'open');
   if (!card) return [];
-  const own = !card.join && card.to === se.handle ? [{ from: card.from, text: card.text ?? card.reason ?? '' }] : [];
-  const mine = [...own, ...(card.held ?? []).filter((w) => w.to === se.handle)];
+  const mine = (card.held ?? []).filter((w) => w.to === se.handle);
   const lines = mine
     .slice(0, HELD_NAMED)
     .map((w) => `@${w.from}’s message to you (“${clip(w.text, 120)}”) is held on ${cardName(card)}, waiting for the person.`);

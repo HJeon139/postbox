@@ -220,59 +220,20 @@ test('#1319 an agent’s invalid block is refused, and nothing is stored or rend
   assert.match(result.message, /^The block wasn’t shown: Unknown type “timeline”/);
 });
 
-test('after the room’s chain limit of agent wakes in a row, the next one waits for your confirm', async () => {
-  const { rt, store, t, b } = setup();
-  rt.ensureSession(t.id, b.id);
+test('a wake you allow on an add card delivers its whole message, not the card’s preview (#108, #228)', async () => {
+  const { rt, store, t, adapter } = setup();
   const alpha = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'alpha');
-  arrange.setThread(rt, t.id, { chainLimit: 3 }); // the room’s own (#1035), so the test needn’t make 1,000 wakes
-  // All while the chain runs: one that ends starts the count again (#492).
-  for (let i = 0; i < 3; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true }).ok, true);
-  const r = rt.agentWake(alpha.id, 'beta', 'check again');
-  assert.equal(r.waiting, true);
-  const hop = store.items(t.id).find((i) => i.kind === 'hop');
-  assert.equal(hop.status, 'open');
-  // One request waits at a time: a further wake is held on it, and the agent is told which card it waits for (#439).
-  const again = rt.agentWake(alpha.id, 'beta', 'and again');
-  assert.deepEqual([again.ok, again.waiting], [false, true]);
-  assert.match(again.message, /holding your message to @beta: @alpha’s request to wake @beta/);
-  assert.equal(store.items(t.id).filter((i) => i.kind === 'hop').length, 1, 'only one request waits at a time');
-  rt.act(t.id, hop.id, 'confirm');
-  await settle(rt);
-  assert.equal(store.item(t.id, hop.id).status, 'allowed');
-});
-
-test('a wake you allow delivers its whole message, not the card’s preview (#108)', async () => {
-  const { rt, store, t, b, adapter } = setup();
-  rt.ensureSession(t.id, b.id);
-  const alpha = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'alpha');
-  arrange.setThread(rt, t.id, { chainLimit: 3 });
-  for (let i = 0; i < 3; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   const long = `Must fix: ${'acceptance bar, '.repeat(200)}`.slice(0, 3000);
   assert.equal(rt.agentWake(alpha.id, 'beta', long).waiting, true);
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
   assert.ok(hop.reason.length <= 200, 'the card keeps a short preview');
   rt.act(t.id, hop.id, 'confirm');
   await settle(rt);
-  // The wakes that waited for beta reach it in one turn (designs/rooms-at-scale.md, “What a turn is given”).
   const given = adapter.calls.filter((c) => c.handle === 'beta').flatMap((c) => c.parts);
-  const woke = given.filter((m) => m.kind === 'agent' && m.from === '@alpha').at(-1);
+  // The first: beta’s reply then goes back to alpha, whose answer comes back (#1518).
+  const woke = given.find((m) => m.kind === 'agent' && m.from === '@alpha');
   assert.equal(woke?.text.length, 3000);
   assert.equal(woke?.text, long);
-});
-
-test('a wake request stored before #108, with only a preview, still delivers that preview when allowed', async () => {
-  const { rt, store, t, b, adapter } = setup();
-  rt.ensureSession(t.id, b.id);
-  const alpha = arrange.sessionsIn(rt, t.id).find((x) => x.handle === 'alpha');
-  arrange.setThread(rt, t.id, { chainLimit: 3 });
-  for (let i = 0; i < 3; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
-  rt.agentWake(alpha.id, 'beta', 'the whole message');
-  const hop = store.items(t.id).find((i) => i.kind === 'hop');
-  arrange.setItem(rt, t.id, hop.id, { text: undefined, reason: 'the preview' });
-  rt.act(t.id, hop.id, 'confirm');
-  await settle(rt);
-  const given = adapter.calls.filter((c) => c.handle === 'beta').flatMap((c) => c.parts);
-  assert.equal(given.filter((m) => m.kind === 'agent' && m.from === '@alpha').at(-1)?.text, 'the preview');
 });
 
 test('a message from you resets the wake count', async () => {

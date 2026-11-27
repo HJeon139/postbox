@@ -67,7 +67,5 @@ export function confirmRemove(se, { removed } = {}) {
         `Remove ${se.handle}`,
       ),
     ],
-    initialFocus: () => null,
   });
-  dlg.dialog.querySelector('.d-foot .btn')?.focus();
 }

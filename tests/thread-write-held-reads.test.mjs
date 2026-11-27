@@ -160,11 +160,11 @@ test('a sweep over every pending thread sees each held write of a thread, read a
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
-  const limit = () => f.store.pending.threads()[f.t.id].chainLimit;
-  arrange.setThread(f.rt, f.t.id, { chainLimit: 3 });
-  assert.equal(limit(), 3);
-  arrange.setThread(f.rt, f.t.id, { chainLimit: 4 });
-  assert.equal(limit(), 4);
+  const title = () => f.store.pending.threads()[f.t.id].title;
+  arrange.setThread(f.rt, f.t.id, { title: 'Third' });
+  assert.equal(title(), 'Third');
+  arrange.setThread(f.rt, f.t.id, { title: 'Fourth' });
+  assert.equal(title(), 'Fourth');
   await release();
   b.release();
   await settle(f.rt);

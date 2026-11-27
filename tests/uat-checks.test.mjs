@@ -1189,7 +1189,7 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     const prompt = systemPrompt({ scenario: parseScenario('# T\n'), issues: [] });
     assert.match(prompt, /jobs \{answer\}/);
     assert.match(prompt, /an interrupt \{after, do, jobs\?, text\?\}/);
-    assert.match(prompt, /A wake request \(“Let @a wake @b\?”\) is a card/);
+    assert.match(prompt, /A request to add an agent to the room \(“Add critic to this conversation\?”\) is a card/);
   });
 });
 

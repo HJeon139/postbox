@@ -1,11 +1,12 @@
 // #1518: an agent @-mentioned with a question that answers without @-mentioning back left its asker asleep, and the
 // room’s work stopped. A turn only agents’ mentions started, whose replies @-mention no one, goes back to the agents
 // that woke it. #1523: every time, however many bounces came before; an agent ends the exchange with a reaction, or
-// with its second reply in a row that only writes (#1591), and the room’s chain limit is the backstop
-// (designs/intent.md, the agents-waking row).
+// with its second reply in a row that only writes (#1591), and the chain’s cap is the loop guard (#1623;
+// designs/intent.md, the agents-waking row).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { HOP_LIMIT } from '../shared/limits.mjs';
 import * as arrange from './arrange.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
@@ -153,34 +154,23 @@ test('#1518 a mention in a quote, in code or in a copied line names no one, so t
   );
 });
 
-test('#1518 the chain limit counts the reply that goes back, and past it the wake waits for the person', async () => {
+test('#1518, #1623 the chain’s cap counts the reply that goes back: at the cap it doesn’t go, with no card, and its agent is told', async () => {
   const f = setup();
-  arrange.setThread(f.rt, f.t.id, { chainLimit: 1 });
   f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
   f.adapter.next.push(async (c) => c.text('It’s CHANGELOG.md.'));
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
+  arrange.setThread(f.rt, f.t.id, { hops: HOP_LIMIT - 1 }); // alpha’s mention of beta is the last wake under the cap
   await quiet(f);
-  assert.equal(turnsOf(f, 'alpha').length, 1, 'alpha isn’t woken past the limit');
-  const card = f.store.items(f.t.id).find((x) => x.kind === 'hop');
-  assert.equal(card?.status, 'open', 'a card asks the person, as for any wake past the limit');
-  assert.deepEqual([card.from, card.to, card.n], ['beta', 'alpha', 2]);
-  assert.equal(replyOf(f, 'It’s CHANGELOG.md.').wentBack, undefined, 'the note waits for it to go: the card shows it till then');
-});
-
-test('#1518 a reply going back that is held on a waiting card says so as a reply, not as a mention its agent wrote', async () => {
-  const f = setup();
-  f.rt.ensureSession(f.t.id, f.c.id);
-  arrange.setThread(f.rt, f.t.id, { chainLimit: 2 });
-  f.adapter.next.push(async (c) => c.text('@beta @gamma which file holds the changelog?'));
-  f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
-  await quiet(f);
-  // beta’s answer going back raised the card; gamma’s waits on it.
-  const card = f.store.items(f.t.id).find((x) => x.kind === 'hop' && x.status === 'open');
-  assert.equal(card.held?.length, 1, JSON.stringify(card));
-  const gamma = arrange.sessionsIn(f.rt, f.t.id).find((x) => x.handle === 'gamma');
-  const told = (f.store.state.sessions[gamma.id].context ?? []).join(' | ');
-  assert.match(told, /Your message to @alpha is held\./);
-  assert.doesNotMatch(told, /Your mention of @alpha/);
+  assert.equal(turnsOf(f, 'alpha').length, 1, 'alpha isn’t woken past the cap');
+  assert.deepEqual(
+    f.store.items(f.t.id).filter((x) => x.kind === 'hop'),
+    [],
+    'no card',
+  );
+  assert.equal(f.store.items(f.t.id).filter((x) => x.variant === 'chain-stopped').length, 1, 'one line');
+  assert.equal(replyOf(f, 'It’s CHANGELOG.md.').wentBack, undefined);
+  const told = (f.store.state.sessions[f.beta.id].context ?? []).join(' | ');
+  assert.match(told, /Your reply didn’t go back to @alpha: agents in this conversation woke each other 1,000 times in a row/);
 });
 
 test('#1518 a turn that opens a topic naming an agent hands off, so its reply doesn’t go back', async () => {
@@ -212,33 +202,41 @@ test('#1518 a turn the person started goes back to no one', async () => {
   assert.ok(!f.store.items(f.t.id).some((x) => x.wentBack));
 });
 
-test('#1523 a thanks loop stops at the chain limit and waits for the person, and goes on when allowed', async () => {
+test('#1523, #1623 a thanks loop stops at the cap with one line, and the person’s next message starts it again', async () => {
   // The demo’s @indexer thanked “@researcher” for each answer, and each thanks was answered: chaining goes on until
-  // an agent reacts instead, or the chain limit asks the person.
+  // an agent reacts instead, or the chain reaches the cap.
   const f = setup();
-  arrange.setThread(f.rt, f.t.id, { chainLimit: 4 });
   f.adapter.next.push(async (c) => c.text('@beta which file holds the changelog?'));
   for (const text of ['It’s CHANGELOG.md.', 'Thanks @beta, adding it there.', 'Glad to help.', 'Thanks @beta, again.', 'Glad to help, again.']) {
     f.adapter.next.push(async (c) => c.text(text));
   }
   f.rt.sendMessage(f.t.id, { text: '@alpha find out where the changelog goes' });
+  arrange.setThread(f.rt, f.t.id, { hops: HOP_LIMIT - 4 }); // four wakes left under the cap
   await quiet(f);
   assert.deepEqual(
     turns(f).map((x) => x.split(':')[0]),
     ['alpha', 'beta', 'alpha', 'beta', 'alpha'],
   );
   assert.deepEqual(replyOf(f, 'Glad to help.').wentBack, ['alpha']);
-  const card = f.store.items(f.t.id).find((x) => x.kind === 'hop' && x.status === 'open');
-  assert.deepEqual([card?.from, card?.to, card?.n], ['alpha', 'beta', 5], 'the fifth wake waits for the person');
+  assert.deepEqual(
+    f.store.items(f.t.id).filter((x) => x.kind === 'hop'),
+    [],
+    'the fifth wake didn’t go, and nothing waits for the person',
+  );
+  assert.equal(f.store.items(f.t.id).filter((x) => x.variant === 'chain-stopped').length, 1);
+  assert.equal(f.store.state.sessions[f.alpha.id].needs ?? null, null);
+  f.adapter.next.splice(0);
+  f.adapter.next.push(async (c) => c.text('@beta one last check.'));
   f.adapter.next.push(reacts(f));
-  f.rt.resolveHop(f.t.id, card.id, true);
+  f.rt.sendMessage(f.t.id, { text: '@alpha go on' });
   await quiet(f);
   assert.deepEqual(
-    turns(f).map((x) => x.split(':')[0]),
-    ['alpha', 'beta', 'alpha', 'beta', 'alpha', 'beta', 'alpha'],
-    'allowed, beta answers, and alpha ends it with a reaction',
+    turns(f)
+      .map((x) => x.split(':')[0])
+      .slice(5),
+    ['alpha', 'beta'],
+    'your message starts the chain again',
   );
-  assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0);
 });
 
 test('#1518 a turn that reviews the asker’s block hands off by the review, so its reply doesn’t go back too', async () => {
