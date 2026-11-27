@@ -222,15 +222,15 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
   // pad’s readyState: what the issue needs to find the cause.
   await appItem.getByRole('button', { name: 'Full screen', exact: true }).focus();
   await page.keyboard.press('Tab');
-  await expect(inside, 'focus in the pad')
-    .toBeFocused()
-    .catch(async (err) => {
-      const record = JSON.stringify(await focusAfterTab(page, frame));
-      // The list reporter prints a failed test’s output, so the record is in CI’s log, not only in its JSON report.
-      console.log(`Focus after the Tab (#906): ${record}`);
-      test.info().annotations.push({ type: 'focus after the Tab (#906)', description: record });
-      throw err;
-    });
+  /** Prints where focus is and adds it as an annotation (#906), then rethrows the miss. @param {Error} err */
+  const recordMiss = async (err) => {
+    const record = JSON.stringify(await focusAfterTab(page, frame));
+    // The list reporter prints a failed test’s output, so the record is in CI’s log, not only in its JSON report.
+    console.log(`Focus after the Tab (#906): ${record}`);
+    test.info().annotations.push({ type: 'focus after the Tab (#906)', description: record });
+    throw err;
+  };
+  await expect(inside, 'focus in the pad').toBeFocused().catch(recordMiss);
 
   await test.step('Tab out of the app, its item skipped, lands on its next control and brings it into view', async () => {
     await wheel(page, 6000);
@@ -239,7 +239,7 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
     expect
       .soft(next, 'the app’s next control is skipped, and has a client rect')
       .toEqual({ key: appKey, name: (await actionsOf(appItem))[0], skipped: true, rects: 1 });
-    await expect(inside, 'focus is still in the pad').toBeFocused();
+    await expect(inside, 'focus is still in the pad').toBeFocused().catch(recordMiss);
     await page.keyboard.press('Tab');
     await expect.poll(() => focused(page), { message: 'Tab out of the skipped app lands on its next control' }).toEqual({ key: next?.key, name: next?.name });
     await still(page);
