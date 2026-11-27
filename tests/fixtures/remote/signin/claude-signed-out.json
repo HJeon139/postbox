@@ -1,0 +1,9 @@
+{
+  "recorded": "2026-11-27",
+  "version": "2.1.318 (Claude Code)",
+  "command": ["claude", "auth", "status"],
+  "config": "CLAUDE_CONFIG_DIR set to an empty folder",
+  "exit": 1,
+  "stdout": "{\n  \"loggedIn\": false,\n  \"authMethod\": \"none\",\n  \"apiProvider\": \"firstParty\",\n  \"analyticsDisabled\": false,\n  \"projectsDirectory\": \"/home/robin/.empty/claude/projects\",\n  \"configDirectory\": \"/home/robin/.empty/claude\",\n  \"loginExpiresAt\": null\n}\n",
+  "stderr": ""
+}

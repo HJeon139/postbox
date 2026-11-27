@@ -10,6 +10,7 @@ import { ack, read } from './daemon-read.mjs';
 import { remove } from './daemon-remove.mjs';
 import { fail, send } from './daemon-reply.mjs';
 import { checkIdle } from './daemon-scan.mjs';
+import { signins } from './daemon-signins.mjs';
 import { start } from './daemon-start.mjs';
 import { stop } from './daemon-stop.mjs';
 import { write } from './daemon-write.mjs';
@@ -93,6 +94,7 @@ const handlers = {
   remove: (d, c) => remove(d, c),
   check: (d, c) => check(d, c),
   models: (d, c, m) => models(d, c, m),
+  signins: (d, c) => signins(d, c),
   forget: (d, c, m) => forget(d, c, m),
 };
 

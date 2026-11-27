@@ -92,6 +92,7 @@ export function fakeHosts(d, { signIn = /** @type {any} */ (null) } = {}) {
   hosts.calls = { need: [], release: [], signIn: 0, ensure: 0, forget: [], refresh: [], remove: [] };
   hosts.signIn = signIn;
   hosts.state = null; // overrides the status’s state
+  hosts.signIns = null; // what the host last said of each harness’s sign-in (#1608), as the status carries it
   hosts.theLink = link;
   hosts.link = () => link;
   hosts.ensureWelcome = async () => {
@@ -100,7 +101,13 @@ export function fakeHosts(d, { signIn = /** @type {any} */ (null) } = {}) {
     if (!link.connected) throw new Error('No welcome from the fake daemon.');
     return link.welcome;
   };
-  hosts.status = () => ({ state: hosts.state ?? (link.connected ? 'connected' : 'reconnecting'), failure: null, welcome: link.welcome, lastHeard: null });
+  hosts.status = () => ({
+    state: hosts.state ?? (link.connected ? 'connected' : 'reconnecting'),
+    failure: null,
+    welcome: link.welcome,
+    lastHeard: null,
+    signIns: hosts.signIns,
+  });
   hosts.need = (h, why) => hosts.calls.need.push([h, why]);
   hosts.release = (h, why) => hosts.calls.release.push([h, why]);
   hosts.wake = () => {};
