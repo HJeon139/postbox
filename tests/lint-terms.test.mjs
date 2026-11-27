@@ -10,6 +10,7 @@ const flagged = (text, glossary = {}) => lintTerms(text, glossary).map((t) => t.
 test('a capital-letter citation such as R:31 or U:45–52 is flagged until it’s defined', () => {
   assert.deepEqual(flagged('As R:31 says, and U:45–52 shows.'), ['R:31', 'U:45–52']);
   assert.deepEqual(flagged('See U:45-52.'), ['U:45-52']);
+  assert.deepEqual(flagged('See U:45\u221252.'), ['U:45\u221252']);
 });
 
 test('a section such as §4.2 is flagged until it’s defined', () => {
@@ -38,6 +39,7 @@ test('a defined citation under a key of its own isn’t flagged, whichever dash 
   const glossary = { 'cite-u': { term: 'U:45–52' } };
   assert.deepEqual(flagged('See U:45-52.', glossary), []);
   assert.deepEqual(flagged('See U:45—52.', { 'cite-u': { term: 'U:45-52' } }), []);
+  assert.deepEqual(flagged('See U:45\u221252 and U:45\u201252.', glossary), []);
   assert.deepEqual(flagged('Then Step 7 runs.', { 'first-step': { term: 'step 7' } }), []);
 });
 

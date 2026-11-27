@@ -14,7 +14,7 @@ import { foldTerm, termKey } from '../shared/term-key.mjs';
 // a numbered label such as “Step 7” or “Requirement F3”;
 const NUMBERED_LABEL = /\b(?:Step|Requirement|Phase|Stage|Rule|Option|Milestone|Scenario)\s+[A-Z]?\d{1,3}[a-z]?\b/;
 // a citation by a capital letter and a number or a range, such as “R:31” or “U:45–52” (a time such as “10:30” has no letter);
-const CITATION = /\b[A-Z]:\d{1,4}(?:[-\u2010\u2011\u2013\u2014]\d{1,4})?\b/;
+const CITATION = /\b[A-Z]:\d{1,4}(?:[-\u2010\u2011\u2012\u2013\u2014\u2212]\d{1,4})?\b/;
 // a section, such as “§4.2”;
 const SECTION = /§\s?\d+(?:\.\d+)*/;
 // and a placeholder for something not yet filed or named, such as “sub-issue #A” (not a color such as “#ABC”).

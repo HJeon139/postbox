@@ -49,6 +49,12 @@ test('dash variants of a term link to it, both ways (#102)', () => {
   assert.deepEqual(linked('U:45-52', 'see U:45 52 now'), []);
 });
 
+test('a minus sign or a figure dash links like a hyphen (#102)', () => {
+  assert.deepEqual(linked('U:45–52', 'see U:45\u221252 now'), ['U:45\u221252']);
+  assert.deepEqual(linked('U:45–52', 'see U:45\u201252 now'), ['U:45\u201252']);
+  assert.deepEqual(linked('U:45\u221252', 'see U:45-52 now'), ['U:45-52']);
+});
+
 test('straight and curly quote variants of a term link to it, both ways (#102)', () => {
   assert.deepEqual(linked('Bob’s rule', "Bob's rule holds"), ['Bob&#39;s rule']);
   assert.deepEqual(linked("Bob's rule", 'Bob’s rule holds'), ['Bob’s rule']);

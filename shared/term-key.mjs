@@ -4,10 +4,10 @@
 
 /**
  * Spellings that differ only in a dash or a quote are one term (#102): “U:45–52” is “U:45-52”, and “Bob’s rule” is
- * “Bob's rule”. Each character a term may use, by the one it folds to: hyphen, non-breaking hyphen, en and em dash;
- * curly single and double quotes.
+ * “Bob's rule”. Each character a term may use, by the one it folds to: hyphen, non-breaking hyphen, figure dash, en and
+ * em dash, and the minus sign; curly single and double quotes.
  */
-export const TERM_VARIANTS = { '-': '\u2010\u2011\u2013\u2014', "'": '\u2018\u2019', '"': '\u201C\u201D' };
+export const TERM_VARIANTS = { '-': '\u2010\u2011\u2012\u2013\u2014\u2212', "'": '\u2018\u2019', '"': '\u201C\u201D' };
 
 /** Each variant, by the plain character it folds to. */
 const PLAIN_OF = new Map(Object.entries(TERM_VARIANTS).flatMap(([plain, variants]) => [...variants].map((v) => [v, plain])));
