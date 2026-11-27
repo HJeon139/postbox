@@ -32,7 +32,7 @@ export async function heldRig(o = {}) {
   let closed = null;
   // Closed once, at the test’s end or the file’s, so a failed assertion doesn’t leave the store open; a commit it
   // left held is let through first, or the close would wait out its bound on that disk step.
-  const close = () => (closed ??= (async () => (open ? open() : undefined))().then(() => h.store.close()));
+  const close = () => (closed ??= (async () => (open ? open() : undefined))().finally(() => h.store.close()));
   after(close);
   return { ...r, hold, close };
 }

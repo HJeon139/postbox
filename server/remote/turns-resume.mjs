@@ -113,7 +113,7 @@ export function resume(rts, sessionId) {
   // session, so reading the pending one can only refuse a resume already made, never start one the page didn’t offer.
   const se = remoteOf(rts, sessionId);
   const r = se?.remoteTurn;
-  if (!se || !r?.resume) return { ok: false, message: `@${shown.handle} has no stopped turn on a host to resume.` };
+  if (!r?.resume) return { ok: false, message: `@${shown.handle} has no stopped turn on a host to resume.` };
   if (rt.turns.has(sessionId)) return { ok: false, message: `@${se.handle} is already at work.` };
   // A turn there that Postbox asked to stop may still run until the daemon confirms it: a new one would run beside it
   // on the same session (#872, #965). A stop on another host, one the agent moved off, doesn’t hold it.
