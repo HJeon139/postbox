@@ -3,7 +3,8 @@
 // anything in the agent’s folders, which the agent can write. Against real git, in the shared temp home.
 
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -151,9 +152,10 @@ test('#1709 a repository nested in the worktree isn’t committed, and runs noth
 
 /**
  * A worktree with a repository in an ignored folder, whose own config names a program for a file that has changed, and a
- * commit that tries to put it in the worktree’s index as the turn-end commit runs, as a process the agent left running
- * could: before its status (when: 'status') or between its status and its add (when: 'add'). git refuses it while
- * Postbox holds the index’s lock (#1844); either way, `tries` counts that the process ran.
+ * process that puts it in the worktree’s index as the turn-end commit runs, as one the agent left running could: before
+ * its status (when: 'status') or between its status and its add (when: 'add'). It stages around Postbox’s lock, into a
+ * file renamed over the index, since git would refuse it through the lock, and the test would then check only the lock,
+ * not that the commit is built from Postbox’s copy (#1844).
  * @param {string} name @param {'status'|'add'} when
  */
 async function slippedIn(name, when) {
@@ -171,14 +173,15 @@ async function slippedIn(name, when) {
   writeFileSync(join(sub, '.git', 'config'), `${readFileSync(join(sub, '.git', 'config'), 'utf8')}[filter "x"]\n\tclean = "touch ${marker}; cat"\n`);
   writeFileSync(join(sub, 'f'), 'two\n');
   const sha = git(sub, ['rev-parse', 'HEAD']).trim();
+  const admin = git(w.dir, ['rev-parse', '--absolute-git-dir']).trim();
+  const around = join(admin, 'index.around');
   let tries = 0;
   const slip = () => {
     tries++;
-    try {
-      git(w.dir, ['update-index', '--add', '--cacheinfo', `160000,${sha},sub`]);
-    } catch {
-      // Refused on Postbox’s lock on the index: the process still ran, which is what the test needs.
-    }
+    copyFileSync(join(admin, 'index'), around);
+    const env = { ...process.env, GIT_INDEX_FILE: around };
+    execFileSync('git', ['update-index', '--add', '--cacheinfo', `160000,${sha},sub`], { cwd: w.dir, stdio: 'pipe', env });
+    renameSync(around, join(admin, 'index'));
   };
   let statuses = 0;
   const gitThen = async (/** @type {string} */ cwd, /** @type {string[]} */ args, /** @type {{ index?: string }} */ o = {}) => {
