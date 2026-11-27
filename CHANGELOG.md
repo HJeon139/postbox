@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.2 (2026-11-27)
+
+### Fixes
+
+- **keys:** Alt+Up/Down step over a hidden item instead of onto it
+
 ## 5.4.1 (2026-11-27)
 
 ### Fixes
