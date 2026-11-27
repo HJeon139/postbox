@@ -12,6 +12,7 @@ const plain = (/** @type {string} */ s) =>
   String(s ?? '')
     .replace(/You \((@[A-Za-z0-9_-]+)\)/g, '$1')
     .replace(WRITING_NOTE, '')
+    .replace(/\p{Cf}/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
 
