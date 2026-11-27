@@ -98,7 +98,8 @@ test('#353 after a restart, a prompt whose call the replayed stream never shows 
     await lag();
     assert.equal(d.answers.length, 0, 'it waits for the replay');
     d.caughtUp('host-turn-1', 'out');
-    await lag();
+    // Its bound starts once the caught-up has crossed the streams, so the clock moves only after that (#1657).
+    await untilTurns(() => r.rt.remote.byTurn.get('host-turn-1').replay === null, 'the read to catch up');
     t.mock.timers.tick(PROMPT_CALL_WAIT_MS - 1);
     await lag();
     assert.equal(d.answers.length, 0, 'then for its bound');

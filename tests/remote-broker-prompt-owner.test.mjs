@@ -107,7 +107,7 @@ test('#353 after the shim reconnects, its prompt’s answer reaches its new conn
     await back.next('welcome');
     back.send('permission', { id: 'p1', request: REQUEST });
     // The resend taken first, so the answer goes to the new connection, not to a resend after it.
-    await until(() => k.b.pending.prompts[0]?.asked.size === 2, 'the resend taken on the new connection');
+    await until(() => [...(k.b.pending.prompts[0]?.asked ?? [])].some((c) => !c.closed), 'the resend taken on the new connection');
     assert.deepEqual((await k.post('answer', { turn: 't1', prompt: 'p1', result: ALLOW })).errors, []);
     assert.deepEqual(await back.next('permission-answer'), { type: 'permission-answer', id: 'p1', result: ALLOW });
     // The record names the shim by its key’s hash, never the key.
