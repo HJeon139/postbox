@@ -7,7 +7,7 @@ import { needHost, releaseHost } from './turns-need.mjs';
 import { endOrphanCards } from './turns-prompts.mjs';
 import { caughtUp } from './turns-replay.mjs';
 import { whenBack } from './turns-resume.mjs';
-import { mayBeOnHost, ON_HOST, remoteError, unconfirmed, updateRemote } from './turns-shared.mjs';
+import { mayBeOnHost, ON_HOST, remoteError, remoteOf, unconfirmed, updateRemote } from './turns-shared.mjs';
 import { offsetAt } from './turns-start.mjs';
 import { askStop } from './turns-stops.mjs';
 
@@ -24,7 +24,8 @@ export function ended(rts, turn, err) {
   if (!live) return err;
   forget(rts, live);
   const rt = rts.rt;
-  const se = rt.s.sessions[turn.sessionId];
+  // As written: allocate’s remoteTurn, maybe still held behind a commit, says the turn is this one (#623).
+  const se = remoteOf(rts, turn.sessionId);
   if (live.current) offsetAt(rts, live, live.current, live.offset, true);
   // Postbox is shutting down: the turn goes on on the host, and is attached again after the restart.
   if (rt.closing || !se?.remoteTurn || se.remoteTurn.rtTurn !== turn.id) return err;
@@ -87,8 +88,7 @@ function endedHow(rts, live, se, err) {
 export function stopped(rts, turn, { by, why } = {}) {
   const live = /** @type {Live | undefined} */ (turn.remote);
   if (!live) return;
-  const rt = rts.rt;
-  const se = rt.s.sessions[turn.sessionId];
+  const se = remoteOf(rts, turn.sessionId); // as written, a held remoteTurn’s state included (#623)
   // The adapter’s child sends the stop; Postbox keeps asking until the daemon confirms it (askStop). Asked before
   // the turn is forgotten, so the host stays needed and heard throughout. One whose start never reached a connected
   // link (it was down, or a file stdin hadn’t ended) can’t be on the host: its child ends here and sends nothing,

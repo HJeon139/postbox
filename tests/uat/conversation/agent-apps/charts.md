@@ -11,6 +11,7 @@ Charts built to the design rules, each readable as a table too.
 ## Expected functionality
 
 - Line, scatter, stacked, heatmap and table, with a Chart/Table toggle, legends, and light/dark tokens.
+- The demo’s “Asset dashboard” draws four of them: a stacked chart of one series (passages per asset, so it reads as bars), a scatter, a heatmap and a table (`server/mock/apps.mjs`). A line chart needs an app that draws one.
 
 ## Steps to reproduce
 

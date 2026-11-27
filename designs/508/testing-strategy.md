@@ -20,14 +20,14 @@ Requirement ids, and the trigger and check each requirement names, are from `req
 
 All three agents start in a room seeded with about 1,000 items (`- seed: big-room`), so catch-up has to leave things out. The run checks that every message addressed to an agent reaches it: held behind a card, buried past the catch-up cap, sent while the agent works, or resent after a turn that failed before any output. A repeat must say it’s a repeat. The fault launcher fails one chosen turn before any output; the phase that needs it turns it on.
 
-## Phase 1: Two wakes held at once (A1)
+## Phase 1: A chain stops at its cap, with no card (A1)
 
-- triggers: held-behind-card, held-released
+- triggers: chain-stopped
 - steps: 6
 
-The scenario sets `- chain-limit: 3`, so the run’s Postbox raises a card on the fourth agent wake since the person’s message. Since #541 there’s no pair limit, and the default backstop of 50 (1,000 since #1035) is out of reach in a phase.
+The scenario sets `- chain-limit: 3`, so the run’s Postbox stops the chain at the fourth agent wake since the person’s message. Since #541 there’s no pair limit, and the default cap of 50 (1,000 since #1035) is out of reach in a phase. Until #1623 that wake raised a card, and the phase checked two pairs’ wakes held on it (`held-behind-card`, `held-released`); since then the chain stops with one line in the room, and only the add card holds wakes.
 
-Ask @critic and @developer to settle the version number between them, by mentioning each other until they agree, and in the same message ask @researcher and @critic to do the same for the changelog wording. The fourth agent wake raises the “allow another wake?” card: don’t answer it. Wait until the card also holds a wake from the other pair, then say what the conversation shows is waiting on you. Answer Allow on the card; when the next one appears, allow it too.
+Ask @critic and @developer to settle the version number between them, by mentioning each other until they agree, and in the same message ask @researcher and @critic to do the same for the changelog wording. The fourth agent wake since your message doesn’t go: the room says once that agents stopped waking each other, and no card asks you anything. Say what the conversation shows is waiting on you, then send a message that asks them to finish, and see that they start again.
 
 ## Phase 2: A mention past the catch-up cap (A2)
 
@@ -183,6 +183,7 @@ Each one carries the requirement ids it serves, beside today’s `issue` field, 
 |---|---|---|
 | `held-behind-card` | AT-1 | two deliveries were held, open at once, behind cards |
 | `held-released` | AT-1, AT-2 | answering a card delivered every delivery it held |
+| `chain-stopped` | AT-5 | a chain at its cap stopped with one line in the room, and no card (#1623) |
 | `mention-past-cap` | DL-1, DL-5 | an addressed item older than the catch-up cap reached its agent |
 | `edit-while-waiting` | DL-7, AT-6 | a delivery changed while it waited (a queued message edited, or a block revised) and reached its agent once, in its changed form |
 | `fail-before-output` | DL-3 | a turn failed with no output and its deliveries went back to waiting |

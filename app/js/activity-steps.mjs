@@ -77,7 +77,7 @@ export function stepRow(s) {
     );
   const note =
     s.state === 'denied'
-      ? s.detail || 'Refused: see the card below.'
+      ? s.detail || 'Refused: its refusal card says why.'
       : s.state === 'failed'
         ? s.detail
         : s.state === 'stopped'

@@ -15,8 +15,8 @@ Fixed answers are faster and less ambiguous than typing.
 - In dark mode, a chosen chip has an amber outline and an amber label, not a solid amber fill (#181). Light mode keeps its fill.
 - Answering sends one event to the agent, shows a line in your voice and turns the block read-only. A long line in your voice wraps inside a box with a card’s corners, not pill ends (#199).
 - A result the agent reports on it shows as a line under your answer, and the block stays answered (as on a [confirm](confirm.md)).
-- **Closing it without an answer** (#106): while it waits on you, a Dismiss button follows its own answer button (Tab to it, then Enter); going to the block still puts you on its answer. Dismissing closes it as “Dismissed by you at 14:02”; the agent hears “dismiss”, and it stops needing you. The agent can withdraw a choice it asked, answered or not: it reads “Withdrawn by @critic at 14:02: why”, can’t be answered, and stops needing you. Neither deletes it: it keeps what it asked, and any answer. A form, confirm and review close the same way.
-- Keyboard: arrows, Space/Enter; number keys pick options.
+- **Closing it without an answer** (#106): while it waits on you, a Dismiss button follows its own answer button (Tab to it, then Enter); going to the block still puts you on its answer. Dismissing closes it as “Dismissed by you at 14:02”; the agent hears “dismiss”, and it stops needing you. The agent can withdraw a choice it asked, answered or not: it reads “Withdrawn by critic at 14:02: why”, can’t be answered, and stops needing you. Neither deletes it: it keeps what it asked, and any answer. A form, confirm and review close the same way.
+- Keyboard: arrows, Space/Enter; in a single choice, number keys pick options, and its foot says so (“or press 1–3”). A multiple choice ignores them and shows no such hint.
 
 ## Steps to reproduce
 

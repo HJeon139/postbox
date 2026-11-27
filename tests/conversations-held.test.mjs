@@ -7,7 +7,6 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { patchThread } from '../server/room-chain-limit.mjs';
 import * as arrange from './arrange.mjs';
 import { heldStore, setup } from './stop-reply-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -54,25 +53,20 @@ test('starting a conversation with an agent while a commit is held joins the age
   await store.close();
 });
 
-// PATCH /api/threads/:id sends what patchThread returns. A conversation deleted while a commit is held is still in the
+// PATCH /api/threads/:id sends what the rename returns. A conversation deleted while a commit is held is still in the
 // published state, so it passed rt.thread, but updateThread found no thread to write and returned undefined.
-for (const [what, body] of [
-  ['renaming', { title: 'Renamed' }],
-  ['setting the chain limit of', { chainLimit: 5 }],
-]) {
-  test(`${what} a conversation deleted behind a held commit is refused as deleted, not answered with nothing`, async () => {
-    const { result, store } = await whileHeld(({ rt, t }) => {
-      rt.deleteThread(t.id);
-      try {
-        return patchThread(rt, t.id, body);
-      } catch (e) {
-        return e;
-      }
-    });
-    assert.equal(result?.status, 404, `refused: ${result?.message ?? JSON.stringify(result)}`);
-    await store.close();
+test('renaming a conversation deleted behind a held commit is refused as deleted, not answered with nothing', async () => {
+  const { result, store } = await whileHeld(({ rt, t }) => {
+    rt.deleteThread(t.id);
+    try {
+      return rt.threads.rename(t.id, 'Renamed');
+    } catch (e) {
+      return e;
+    }
   });
-}
+  assert.equal(result?.status, 404, `refused: ${result?.message ?? JSON.stringify(result)}`);
+  await store.close();
+});
 
 // POST /api/personas with join: the persona createPersona just wrote is held too, so ensureSession, which looked it up
 // in the published state, refused it as “That agent doesn’t exist” after it was made. The route does what these do.
@@ -222,22 +216,5 @@ test('a delete it refuses stops no turn and leaves every session', async () => {
   assert.deepEqual(result.refused, [404, 409], 'both were refused');
   assert.deepEqual(result.stopped, [], 'no turn was stopped');
   assert.equal(result.sessions, result.before, 'and no session was deleted');
-  await store.close();
-});
-
-// patchThread checks the thread pending, then found its room with rt.lineage, which reads the published state: for a
-// conversation started behind a held commit that’s nothing, so the chain limit went nowhere and the route answered
-// with nothing.
-test('setting the chain limit of a conversation started behind a held commit sets it on that conversation', async () => {
-  const { result, store } = await whileHeld(({ rt }) => {
-    const room = rt.createThread({ projectId: 'p1', title: 'New room' });
-    try {
-      return patchThread(rt, room.id, { chainLimit: 5 });
-    } catch (e) {
-      return e;
-    }
-  });
-  assert.equal(result?.chainLimit, 5, `set: ${result?.message ?? JSON.stringify(result)}`);
-  assert.equal(store.state.threads[result.id].chainLimit, 5, 'on the conversation');
   await store.close();
 });

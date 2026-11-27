@@ -47,9 +47,7 @@ export function confirmDeletePersona(p, back) {
         `Delete ${p.handle}`,
       ),
     ],
-    initialFocus: () => null,
   });
-  dlg.dialog.querySelector('.d-foot .btn')?.focus();
 }
 
 /** What deleting a persona erases and what it keeps, as deleting a session lists them. @param {any} p */

@@ -1,6 +1,6 @@
 // The lines Postbox adds to a conversation about it, not said by anyone (kind 'system'): a session attached from a
 // terminal, a wake, a compaction with what was kept, a scheduled wake with Cancel, an agent that joined or
-// left. Moved out of app/js/thread.mjs.
+// left, a chain of wakes the loop guard stopped. Moved out of app/js/thread.mjs.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { h, icon, trusted } from './dom.mjs';
@@ -30,7 +30,6 @@ export function systemLine(it, _ctx) {
               h('b', it.to),
               // It had no session here, so it joined the conversation to answer (#110).
               it.joined ? ' · joined the conversation' : '',
-              it.n ? ` · agent wake ${it.n} of ${it.limit ?? 3}` : '',
             ],
       );
     case 'compaction': {
@@ -73,6 +72,13 @@ export function systemLine(it, _ctx) {
     }
     case 'schedule':
       return scheduledWakeLine(it);
+    case 'chain-stopped':
+      // The loop guard (#1623): the one line the room shows, with nothing to answer. Its count is the cap it stopped at.
+      return h(
+        'div.col.sys-line',
+        icon('agent', 'i-sm'),
+        `Agents stopped waking each other after ${Number(it.wakes).toLocaleString('en-US')} wakes in a row. Your next message lets them start again.`,
+      );
     case 'joined':
       return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', it.to), ' joined');
     case 'left':

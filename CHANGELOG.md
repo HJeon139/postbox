@@ -2,6 +2,64 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.3.1 (2026-11-27)
+
+### Fixes
+
+- **remote:** find a host turn's folder while its turn is held behind a commit
+- **remote:** drop a redundant Resume check; close the held tests' store whatever its release does
+- **remote:** the person's Resume of a removed conversation is refused, not an error
+- **remote:** a resume, and the person's Resume, read the remote turn as written
+- **remote:** read a remote turn's session as written where the read decides a write
+- **chain:** tell a stopped agent its message didn't go, and to send it later
+- **tools:** find the wake line before and after the scheduled wake fires
+- **links:** link no room asset inside a glossary term's text
+- **tools:** retarget shoot-uat's shots to what the demo shows now
+- **rail:** let a long status word give way too, after the names' first letters
+- **rail:** keep a room's status word whole in its sidebar row
+- **ui:** start every dialog with focus inside it
+- **tools:** shoot only what the demo shows, and fail on a missed shot
+- **mock:** say in words what each refused block held
+- **threads:** stop promising side threads on the Threads page
+- **activity:** point a refused step at its card without saying where
+- **markdown:** match no glossary term inside a link's text
+- **markdown:** draw streamed math once, from its source
+- **wakes:** a closed card tells its agent to send its message again, not to ask
+- **wakes:** a chain counted past a lowered cap still stops with its one line
+- **wakes:** an agent whose wake was held on a card is told when it goes
+- **composer:** the composer no longer counts agent wakes against a limit
+- **wakes:** the chain cap stops a wake with one line in the room, and no card
+
+## 5.3.0 (2026-11-27)
+
+### Features
+
+- **apps:** tell only the agent of labels over a chart's marks, as the person chose
+
+### Fixes
+
+- **kit:** a line chart with no points draws its empty grid again
+- **kit:** keep a line chart with no series on its grid, and test the cap
+- **kit:** draw a line chart's x labels whole, spaced by their width
+- **apps:** test a one-path grid by its subpaths, so a long path can't make the regex backtrack
+- **kit:** let a part that takes focus itself open a comment on a click
+- **kit:** give a line chart's end and axis labels the room they take
+- **kit:** measure chart labels as they're drawn, tabular figures included
+- **apps:** name hints beside an unfinished check in the waiting reply, and test a rotated label
+- **apps:** cap labels over marks at three charts, and drop the false finds the integrator found
+- **kit:** open a review comment on a click anywhere in a highlighted part
+- **kit:** make room for long category labels on bar charts and heatmaps
+- **apps:** keep the version button on the current version after Back
+- **review:** send a comment typed in an open box with Submit review
+- **apps:** keep hints from crowding out findings, tell them once, and off an unfinished check's note
+- **apps:** a node's name is the label centered in it, so a small area chart's value still counts
+- **apps:** let a rounded box drawn as a path be a node, and scale the label band vertically
+- **apps:** size the label's tested band by its font, and keep area charts out of nodes
+- **apps:** test the middle of a label, and let a node's name sit in its node, for text over marks
+- **apps:** read only a clip the check can place, and count a ring scatter as a chart
+- **apps:** catch labels on a chart's straight fit line, and keep the check within its time
+- **apps:** warn the agent of chart labels drawn over the chart's dots and lines
+
 ## 5.2.1 (2026-11-27)
 
 ### Fixes

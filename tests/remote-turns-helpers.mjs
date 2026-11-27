@@ -10,7 +10,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { createMessageReader, encode, MESSAGE_FILE, message, PROTOCOL_VERSION, validateMessage } from '../shared/remote-protocol.mjs';
 import * as arrange from './arrange.mjs';
-import { createFakeDaemon, FAKE_TOKEN, FIXTURE_PROMPT } from './fake-daemon.mjs';
+import { createFakeDaemon, FAKE_TOKEN, FIXTURE_PROMPT, fixtureLines } from './fake-daemon.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 // The project’s folder, a temp folder of the test file’s: the adapters make agent folders in it (#823).
@@ -184,6 +184,16 @@ export function rig({
   const t = Object.values(store.state.threads)[0];
   return { d, hosts, rt, store, t, se: () => arrange.sessionsIn(rt, t.id)[0], host, f, notes, link: hosts.theLink };
 }
+
+/** The fixture’s stream, ending with the sign-in error the adapter names (capabilities.remote.signInError) instead of
+ * its result: no host has recorded one yet, so it’s the recorded result line with those fields. */
+export const signInLines = () => {
+  const lines = fixtureLines();
+  const i = lines.findIndex((l) => JSON.parse(l).type === 'result');
+  const res = JSON.parse(lines[i]);
+  lines[i] = JSON.stringify({ ...res, is_error: true, error: 'authentication_failed', result: 'Failed to authenticate.' });
+  return lines.slice(0, i + 1);
+};
 
 export const starts = (d) => d.received.filter((m) => m.type === 'start');
 /** The message Claude Code got on its stdin, for a start. */
