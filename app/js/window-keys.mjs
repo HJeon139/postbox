@@ -85,7 +85,7 @@ export function edgeKeys(windows) {
     if (!pageEdgeKey(e)) return;
     // A long room’s window, or a short room’s transcript: without either, there’s no conversation for the keys.
     const w = [...windows].find((x) => !x.inPanel) ?? null;
-    if (!w && !document.getElementById('main')) return;
+    if (!w && !document.querySelector('.transcript#main')) return;
     e.preventDefault();
     void toEdge(windows, w, e.key === 'End');
   });
