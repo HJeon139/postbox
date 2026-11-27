@@ -41,10 +41,10 @@ const DURING = [
   ['09-errors', 'app-crashed', item('stopped working')],
   ['09-errors', 'stopped-reply', item('Stopped by you')],
 ];
-// Not taken, since the demo doesn’t show them: a queued message (the demo’s is delivered before its scene’s shot), the
-// wake confirm (its chain ends long before the room’s limit of 1,000),
-// and a side thread’s link and panel (agents wake each other in the conversation since #372). Their UAT pages say how
-// to reach each one.
+// Not taken: a queued message, which no UAT page shows (since #1437 it waits behind its agent’s mail button in the
+// Agents section), and, since the demo doesn’t show them, the chain’s stop line (its chain ends long before the cap of
+// 1,000 wakes) and a side thread’s link and panel (agents wake each other in the conversation since #372). Their UAT
+// pages say how to reach each one.
 
 /** Captures after the demo: [name, hash or thread title, finder, prepare?]. */
 const AFTER = [
