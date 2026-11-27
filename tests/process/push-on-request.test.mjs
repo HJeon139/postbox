@@ -151,11 +151,12 @@ test('#562’s review: a repository planted where Postbox makes its own is never
 test('#1958 a push the remote refuses quotes its hook’s words cleaned', async () => {
   const r = await repo();
   const plan = await pushPlan(r.work, { branch: 'feat/now' });
-  // A remote hook writes a right-to-left override, a zero-width space and a bell into git’s “remote:” lines.
+  // A remote hook writes a right-to-left override and a zero-width space into git’s “remote:” lines. Not a control
+  // character: git on Linux shows one as caret notation (^G) itself, before Postbox reads it.
   await mkdir(join(r.remote, 'hooks'), { recursive: true });
   await writeFile(
     join(r.remote, 'hooks', 'pre-receive'),
-    "#!/bin/sh\nprintf 'refused: \\342\\200\\256yeK\\342\\200\\254 \\342\\200\\213bad\\007 push\\n' >&2\nexit 1\n",
+    "#!/bin/sh\nprintf 'refused: \\342\\200\\256yeK\\342\\200\\254 \\342\\200\\213bad push\\n' >&2\nexit 1\n",
     {
       mode: 0o755,
     },
