@@ -67,12 +67,13 @@ import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, mainCheckout, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
+import { sendStep } from './uat/send-step.mjs';
 import { midTurnAnswerer, staleNoter } from './uat/stale-notes.mjs';
 import { stalledFinding } from './uat/stall.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
 import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
-import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
+import { createTester, systemPrompt } from './uat/tester.mjs';
 import { runTiming } from './uat/timing.mjs';
 import { phaseGoals } from './uat/triggers.mjs';
 import { namedWait, sendThenStop, settle as settleTurns, stopThroughPage, testerWait } from './uat/turns.mjs';
@@ -395,22 +396,8 @@ async function main() {
         const key = a.item ? keys.get(a.item) : null;
         if (a.item && !key) throw new Error(`There’s no item ${a.item}.`);
         if (Object.hasOwn(STEPS, a.type)) actionResult = await STEPS[a.type]({ d, page, api, keys, facts, step }, a);
-        else if (a.type === 'send') {
-          await d.send(a.text ?? '');
-          // A message that addresses an agent by name without its @ goes to the last speaker, not to that agent: say
-          // so, so the tester knows where it went. The first mixed-room run wrote “critic: …” and “researcher: …”.
-          const st = facts.state;
-          // Who Postbox sends it to: the last speaker, or before anyone has spoken, the conversation’s first agent.
-          const t = st?.threads?.[mainThread];
-          const last = st?.sessions?.[t?.lastSpeaker ?? t?.members?.[0]]?.handle ?? null;
-          const named = unaddressed(
-            a.text ?? '',
-            Object.values(st?.personas ?? {}).map((p) => p.handle),
-            { lastSpeaker: last },
-          );
-          if (named.length)
-            actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
-        } else if (a.type === 'send_then_stop')
+        else if (a.type === 'send') actionResult = await sendStep(d, a, { state: facts.state, mainThread });
+        else if (a.type === 'send_then_stop')
           actionResult = await timing.time('waits', () => sendThenStop(d, a, { step, probes: facts.probes, log, onWait: () => midTurnChecks() }));
         else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'thread_reply') await d.replyInOpenThread(a.text ?? '');
