@@ -85,3 +85,9 @@ test('the repo’s own workflows run Node 22, and every node-version in them is 
     [22],
   );
 });
+
+test('a workflow with Windows line endings reads the same as one without', () => {
+  const lf = 'jobs:\n  a:\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 22\n';
+  assert.deepEqual(majorsIn(lf.replaceAll('\n', '\r\n')), majorsIn(lf));
+  assert.deepEqual(majorsIn(lf), [22]);
+});

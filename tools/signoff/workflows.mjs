@@ -129,7 +129,7 @@ function matrixValues(lines, i, key) {
  * @returns {number[]}
  */
 export function majorsIn(text) {
-  const lines = text.split('\n');
+  const lines = text.split(/\r?\n/);
   /** @type {number[]} */
   const found = [];
   lines.forEach((line, i) => {
