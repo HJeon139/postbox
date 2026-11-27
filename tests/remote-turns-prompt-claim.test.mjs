@@ -7,10 +7,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { REFUSED } from '../server/prompt-claim.mjs';
 import { Store } from '../server/store.mjs';
+import { heldPrompts } from '../server/turn-work.mjs';
 import { PROMPT_CALL_WAIT_MS } from '../shared/limits.mjs';
 import * as arrange from './arrange.mjs';
 import { callLine, createFakeDaemon, FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { rig, running, settled, sleep, startUp, until } from './remote-turns-helpers.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 const cards = (r) => r.store.items(r.t.id).filter((i) => i.kind === 'permission');
 const refusals = (r) => r.store.items(r.t.id).filter((i) => i.kind === 'system' && i.variant === 'prompt-refused');
@@ -52,7 +54,8 @@ test('#353 a host prompt for a call no stream showed waits its bound, then is re
   let id = '';
   try {
     id = r.d.prompt(turn, { tool_name: 'Bash', input: { command: 'git push' }, tool_use_id: 'toolu_01NeverInThisStream' });
-    await lag();
+    // Its bound starts once the prompt has crossed the fake daemon’s streams, so the clock moves only after that (#1657).
+    await untilTurns(() => heldPrompts(r.rt.turns.get(r.se().id)) === 1, 'the prompt to wait for its call’s line');
     t.mock.timers.tick(PROMPT_CALL_WAIT_MS - 1);
     await lag();
     assert.equal(r.d.answers.length, 0, 'still waiting for the stream');
