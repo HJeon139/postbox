@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.7 (2026-11-27)
+
+### Fixes
+
+- **agy:** clean Antigravity's error words before they reach a step
+- **kiro:** keep a DeepSeek marker quoted in inline code at a chunk's end
+- **codex:** clean Codex's words before its tools-down step shows them, as Kiro's are
+- **kiro:** drop the marker with its closing bracket too, and say split markers aren't caught
+- **kiro:** drop DeepSeek's tool-call marker from the end of a reply chunk
+
 ## 5.4.6 (2026-11-27)
 
 ### Fixes
