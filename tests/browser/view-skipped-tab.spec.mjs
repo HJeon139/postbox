@@ -176,6 +176,39 @@ test('#712a: with an app in view, Tab goes into it, out to the next control in d
   await holds(page, t, 'after Shift+Tab back into the app');
 });
 
+/**
+ * Where focus is after a Tab from an app’s Full screen button that didn’t reach its first control (#906): the page’s
+ * focused element and whether its document has focus, and the same for the app’s frame, with its readyState. The frame’s
+ * read is bounded at 2 s, and a read that fails says so, so the Tab’s own failure is what the test reports.
+ * @param {any} page @param {any} frame the app’s iframe locator
+ */
+async function focusAfterTab(page, frame) {
+  const inPage = await page
+    .evaluate(() => {
+      const a = document.activeElement;
+      return {
+        active: a ? `${a.tagName.toLowerCase()}[${a.getAttribute('aria-label') ?? a.getAttribute('title') ?? ''}]` : null,
+        hasFocus: document.hasFocus(),
+      };
+    })
+    .catch((/** @type {Error} */ e) => ({ error: e.message }));
+  const inApp = await frame
+    .contentFrame()
+    .locator('body')
+    .evaluate(
+      () => ({
+        active: document.activeElement?.tagName.toLowerCase() ?? null,
+        id: document.activeElement?.id ?? null,
+        hasFocus: document.hasFocus(),
+        readyState: document.readyState,
+      }),
+      undefined,
+      { timeout: 2000 },
+    )
+    .catch((/** @type {Error} */ e) => ({ error: e.message }));
+  return { inPage, inApp };
+}
+
 test('#712a: scrolled away from the app, Tab out of it and on into the skipped item below reaches each next control', async ({ page, browserName }) => {
   // In Firefox the item below the app isn’t skipped when the case checks, so it can’t show what it’s for there; and a
   // Tab from the composer at 1,000 items took 29–32 ms with skipping on, against 17–31 ms on main (Linux Firefox).
@@ -185,13 +218,19 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
   );
   const { t, frame, inside, appItem, tallItem } = await room(page, 'Tab past an app scrolled away');
   const appKey = await appItem.getAttribute('data-key');
-  // Retried: in about 4 of 20 plain full Chromium runs, the first Tab from Full screen left the pad's document inactive,
-  // and the cause isn't found yet. The retry may cover a defect in the page; #906 tracks it.
-  await expect(async () => {
-    await appItem.getByRole('button', { name: 'Full screen', exact: true }).focus();
-    await page.keyboard.press('Tab');
-    await expect(inside, 'focus in the pad').toBeFocused({ timeout: 1000 });
-  }, 'Tab from Full screen into the pad').toPass({ timeout: 10_000 });
+  // One Tab, not retried (#906). If it misses, the failure prints where focus is in the page and in the pad, and the
+  // pad’s readyState: what the issue needs to find the cause.
+  await appItem.getByRole('button', { name: 'Full screen', exact: true }).focus();
+  await page.keyboard.press('Tab');
+  /** Prints where focus is and adds it as an annotation (#906), then rethrows the miss. @param {Error} err */
+  const recordMiss = async (err) => {
+    const record = JSON.stringify(await focusAfterTab(page, frame));
+    // The list reporter prints a failed test’s output, so the record is in CI’s log, not only in its JSON report.
+    console.log(`Focus after the Tab (#906): ${record}`);
+    test.info().annotations.push({ type: 'focus after the Tab (#906)', description: record });
+    throw err;
+  };
+  await expect(inside, 'focus in the pad').toBeFocused().catch(recordMiss);
 
   await test.step('Tab out of the app, its item skipped, lands on its next control and brings it into view', async () => {
     await wheel(page, 6000);
@@ -200,7 +239,7 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
     expect
       .soft(next, 'the app’s next control is skipped, and has a client rect')
       .toEqual({ key: appKey, name: (await actionsOf(appItem))[0], skipped: true, rects: 1 });
-    await expect(inside, 'focus is still in the pad').toBeFocused();
+    await expect(inside, 'focus is still in the pad').toBeFocused().catch(recordMiss);
     await page.keyboard.press('Tab');
     await expect.poll(() => focused(page), { message: 'Tab out of the skipped app lands on its next control' }).toEqual({ key: next?.key, name: next?.name });
     await still(page);
