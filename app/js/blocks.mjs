@@ -8,22 +8,18 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { own } from '/shared/state-assets.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
 import { asDrawn, closing } from './block-close.mjs';
+import { draft, drafts } from './block-drafts.mjs';
 import { fitChoiceOptions } from './choice-layout.mjs';
 import { codeBox, copyControls, showFilename } from './code-block.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { formField } from './form-field.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
 import { renderReview } from './review.mjs';
+import { markSent, unmarkSent } from './review-draft.mjs';
 import { forgetReviewDraft } from './review-draft-store.mjs';
 import { fmtCell } from './table-cells.mjs';
 import { scrollFrame } from './table-scroll.mjs';
 import { sortedRows } from './table-sort.mjs';
-
-const drafts = new Map(); // item id → local, unsent input
-const draft = (id, init) => {
-  if (!drafts.has(id)) drafts.set(id, init());
-  return drafts.get(id);
-};
 
 // What the person is answering (#123): the revision of each open choice, form, confirm or review the page last drew.
 // The answer says which revision it’s for, so one the agent replaced before the page drew it is refused instead of
@@ -105,12 +101,18 @@ const errLine = (msg) => (msg ? h('span.err', { role: 'alert' }, icon('warn'), m
 async function submit(item, ctx, action, values, setError) {
   setError(null);
   const s = seen.get(item.id);
+  const asked = s?.revision ?? item.revision ?? 1;
+  const sent = markSent(drafts.get(item.id), asked);
   try {
-    await ctx.act(action, values, s?.revision ?? item.revision ?? 1);
+    await ctx.act(action, values, asked);
+    // Revised while this answer was on its way: every revision draws from this one draft, so what the person started
+    // on the newer one stays (#518). What this answer sent leaves it where that revision is drawn (reviewDraft).
+    if ((seen.get(item.id)?.revision ?? 0) > asked) return;
     drafts.delete(item.id);
     forgetReviewDraft(item.id);
     seen.delete(item.id);
   } catch (e) {
+    unmarkSent(drafts.get(item.id), sent);
     // A refusal for a revision the page hasn’t drawn yet says so; the new version, with its notice, replaces it as it arrives.
     setError(e.message, e.fieldErrors);
   }

@@ -1,12 +1,17 @@
 // The main menu’s Rooms (#1735): every conversation and room, each with who is in it and its actions, and a form for
 // one at a time: its title and its members, agents and people in one list, as both are seats in it.
 
-import { mockMarker } from './agent-facts.mjs';
+import { factsText } from '/shared/agent-facts.mjs';
+import { factsOf, mockMarker } from './agent-facts.mjs';
+import { queuedFor } from './agent-queue.mjs';
 import { api, client, sessionsOf } from './client.mjs';
 import { h } from './dom.mjs';
 import { heard } from './go-when-there.mjs';
-import { barAction, barSign, formHead, pickList, sectionHead } from './manage-list.mjs';
+import { onChangeWhileAlive } from './held-weakly.mjs';
+import { barAction, barSign, formHead, listHead, pickList, sectionHead } from './manage-list.mjs';
+import { memberQueueButton } from './member-queue.mjs';
 import { called, me, people } from './profile-tab.mjs';
+import { stateWordOf } from './ring.mjs';
 import { navigate, openMenu, route, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -78,8 +83,7 @@ export function roomsTab(paint, setFoot, at, sheets) {
         ),
     ],
   });
-  setFoot(bar);
-  return [list];
+  return [listHead('Rooms', bar, { pinned: true }), list];
 }
 
 /** A room’s form: its title, who is in it, and the agents that could be. */
@@ -96,7 +100,7 @@ function roomForm(
     api(`/api/threads/${t.id}`, { title: title.value }, 'PATCH')
       .then(async () => {
         toast({ title: `Saved ${title.value}` });
-        // Opened on this room from the room itself (its ⋯, /rename), Save goes back there; from the list, to the list.
+        // Opened on this room from the room itself (its Manage button, /rename), Save goes back there; from the list, to the list.
         if (at.direct) return sheets.close();
         // Once the page has heard of the new title, so the list shows it.
         await heard(() => S().threads[t.id]?.title === title.value.trim());
@@ -120,9 +124,8 @@ function roomForm(
   return [
     ...formHead('All rooms', back, t.title),
     h('div.field', h('label.label', { for: 'rm-title' }, 'Title'), title),
-    sectionHead('Members'),
+    listHead('Members', members.bar),
     members.list,
-    members.bar,
     // Why − can be off, in words on the page: a title shows only under a pointer.
     h(
       'span.help',
@@ -187,7 +190,7 @@ function membersList(/** @type {any} */ t, /** @type {() => void} */ paint, /** 
         key: se.id,
         name: `@${se.handle}`,
         marks: [mockMarker(se), h('span.small.dim', 'agent')],
-        facts: [S().personas[se.personaId]?.description],
+        facts: [S().personas[se.personaId]?.description, liveFacts(se.id)],
       })),
       ...everyone.map((/** @type {any} */ p) => ({
         key: p.id,
@@ -208,6 +211,53 @@ function membersList(/** @type {any} */ t, /** @type {() => void} */ paint, /** 
         () => sheets.confirmDelete(S().sessions[r?.key ?? ''], { keepConversation: true, removed: () => heard(() => !S().sessions[r?.key ?? '']).then(paint) }),
         { off: whyNot(r) },
       ),
+      ...agentActions(r && S().sessions[r.key], sheets),
     ],
   });
+}
+
+/**
+ * What else acts on the member picked, when it is an agent: Edit, which shows its persona’s form, and its queued
+ * messages, off while it has none. @param {any} se  the pick’s session, or none for a person @param {Record<string, Function>} sheets
+ */
+function agentActions(se, sheets) {
+  if (!se) return [];
+  return [
+    barAction('Edit', se.handle, () => {
+      sheets.editPersona(se.personaId);
+      // On the form’s first field, as the Personas list’s own Edit leaves it: a repaint alone leaves focus on a Tools chip.
+      document.getElementById('pe-d')?.focus();
+    }),
+    memberQueueButton(se),
+  ];
+}
+
+/** What an agent runs with, its state now, and how many messages wait for it, in words. @param {string} sessionId */
+function factsLine(sessionId) {
+  const se = S().sessions[sessionId];
+  if (!se) return '';
+  const queued = queuedFor(sessionId);
+  return `${factsText(factsOf(se))} · ${stateWordOf(se).toLowerCase()}${queued ? ` · ${queued} queued` : ''}`;
+}
+
+/** What changes an agent’s facts line: what the sidebar’s Agents section repaints on, and an inbox entry coming or going. */
+const FACTS_CHANGE = ['session', 'thread', 'persona', 'load', 'remove', 'host', 'host.status', 'entry.add', 'entry.patch'];
+
+/** A facts line’s listener, made here so it closes over nothing that holds the line (#866). @param {string} sessionId */
+const followFacts = (sessionId) => (/** @type {HTMLElement} */ el, /** @type {any} */ change) => {
+  if (!FACTS_CHANGE.includes(change.type)) return;
+  const now = factsLine(sessionId);
+  if (el.textContent !== now) el.textContent = now;
+};
+
+/**
+ * An agent’s facts in its Members row, kept current while the form is open: the form stays up while a person adds
+ * members or waits, and with the sidebar behind it, or hidden in a narrow window, the row is the one statement of an
+ * agent’s state in view. It says each agent’s queue too, so none takes a pick to find.
+ * @param {string} sessionId
+ */
+function liveFacts(sessionId) {
+  const el = h('span', factsLine(sessionId));
+  onChangeWhileAlive(el, followFacts(sessionId));
+  return el;
 }

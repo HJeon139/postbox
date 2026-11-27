@@ -1305,17 +1305,15 @@ test('#123: update_block won’t reopen a block over an answer the agent hasn’
   const at = new Date(store.item(t.id, item.id).answer.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   assert.equal(
     refused.message,
-    `The update wasn’t applied. The person answered revision 2 of issue at ${at}: request_changes, 3 comments. Their answer stays on screen. It reaches you when this turn ends: read it, then update.`,
+    `The update wasn’t applied. The person answered revision 2 of issue at ${at}: request_changes, 3 comments. Their answer stays on screen. It was waiting for this turn to end, and comes here instead, so here it is in full: submit ${JSON.stringify(store.item(t.id, item.id).answer.values)}. Read it, then update.`,
   );
   // Nothing changed for the person: their answer, the revision they answered, and the text.
   const it = store.item(t.id, item.id);
   assert.equal(it.answered, true);
   assert.equal(it.revision, 2);
   assert.equal(it.block.content, 'v2');
-  // When the turn ended, the answer reached the agent, naming revision 2; now it has read it, so an update applies.
-  const event = adapter.calls.at(-1).message;
-  assert.equal(event.kind, 'event');
-  assert.equal(event.event.revision, 2);
+  // The refusal gave the answer, naming revision 2, so no turn gives it again (#1810); having read it, an update applies.
+  assert.equal(adapter.calls.at(-1).message.kind, 'input');
   assert.equal(it.answer.read, true);
   adapter.next.push(async (c) => {
     refused = c.tools.update_block({ block: review('v3', { previous: 'v2' }) });

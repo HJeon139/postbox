@@ -74,10 +74,10 @@ export class Ledger {
     return this.store.state;
   }
 
-  /** The conversation a thread’s work belongs to: side and topic threads count toward theirs. */
+  /** The conversation a thread’s work belongs to: side and topic threads count toward theirs, a held one too (#623). */
   convOf(threadId) {
-    const t = this.s.threads[threadId];
-    return t?.parentId && this.s.threads[t.parentId] ? t.parentId : threadId;
+    const t = this.store.pending.thread(threadId);
+    return t?.parentId && this.store.pending.thread(t.parentId) ? t.parentId : threadId;
   }
   entries(convId) {
     return this.store.pending.work(convId);

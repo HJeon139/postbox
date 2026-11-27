@@ -96,12 +96,13 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 
-/** Opens the panel from `handle`’s conversation’s ⋯, and returns its hooks section. */
+/** Opens the panel from the form of `handle`’s conversation in the main menu, and returns its hooks section. */
 async function openHooks(page, handle) {
   await page.goto(`${app.origin}/#/t/${threads[handle]}`);
   await synced(page, app);
-  await page.locator('header.topbar button[aria-label^="Actions for"]').click();
-  await page.locator('.menu button.mi', { hasText: 'Permissions…' }).click();
+  // The room’s form in the main menu holds it (#1735): the top bar’s room button, then More › Permissions….
+  await page.locator('header.topbar #conversation-actions').click();
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Permissions…', exact: true }).click();
   const hooks = page.locator('.dialog #perm-hooks');
   await expect(hooks, 'the hooks section').toBeVisible();
   return hooks;
@@ -180,6 +181,7 @@ for (const [width, phone] of [
       await settled(page);
       const over = await page
         .locator('.dialog')
+        .filter({ has: page.locator('.perm-panel') })
         .evaluate((d, w) => [d.scrollWidth - d.clientWidth, document.documentElement.scrollWidth - w], windowWidth(page));
       expect.soft(over, 'nothing overflows sideways').toEqual([0, 0]);
     });

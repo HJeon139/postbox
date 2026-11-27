@@ -8,6 +8,28 @@ import { jobHostNote } from './thread-host.mjs';
 import { say, toast } from './ui.mjs';
 
 /**
+ * The jobs whose Stop was pressed and whose stop hasn’t failed, by the reply and the job (#1837): a later turn’s reply
+ * is another, so a job id its process reuses isn’t taken for this one. A running reply’s rows are
+ * drawn anew at each step (paintLive, activity-paint.mjs), so a Stop drawn while its stop is in flight is drawn pressed,
+ * and a second press sends nothing. It’s marked with aria-disabled, not disabled, so it can keep focus.
+ */
+const stopping = new Set();
+const stopKey = (/** @type {string} */ replyId, /** @type {string} */ job) => `${replyId}\n${job}`;
+
+/**
+ * Puts a reply’s job rows drawn anew in place of the old ones, and focus back on the same job’s button if it was on one
+ * (#1837), as focus in the live steps stays (paintLive).
+ * @param {Element} old
+ * @param {Element} rows
+ */
+export function swapJobs(old, rows) {
+  const active = /** @type {HTMLElement | null} */ (document.activeElement);
+  const job = old.contains(active) ? active?.dataset.job : undefined;
+  old.replaceWith(rows);
+  if (job) /** @type {HTMLElement | null} */ (rows.querySelector(`[data-job="${CSS.escape(job)}"]`))?.focus();
+}
+
+/**
  * The background jobs a reply started that are still running (#129), outside the folded steps so you can see them, each
  * with its own Stop. The call returned at once, so without this the step would read done while the job runs on.
  */
@@ -30,13 +52,27 @@ export function jobRows(it, steps) {
             {
               type: 'button',
               'aria-label': `Stop the background job “${s.label}”`,
-              onclick: (e) => {
-                const b = e.currentTarget;
-                b.disabled = true;
+              'aria-disabled': stopping.has(stopKey(it.id, s.job)) ? 'true' : null,
+              'data-reply': it.id,
+              'data-job': s.job,
+              onclick: () => {
+                const key = stopKey(it.id, s.job);
+                if (stopping.has(key)) return;
+                stopping.add(key);
+                // Every Stop for this job, the one pressed or one drawn since, shows whether its stop is in flight.
+                const pressed = (/** @type {boolean} */ on) => {
+                  const sel = `.bg-jobs button[data-reply="${CSS.escape(it.id)}"][data-job="${CSS.escape(s.job)}"]`;
+                  for (const b of document.querySelectorAll(sel)) {
+                    if (on) b.setAttribute('aria-disabled', 'true');
+                    else b.removeAttribute('aria-disabled');
+                  }
+                };
+                pressed(true);
                 api(`/api/sessions/${it.sessionId}/jobs/${encodeURIComponent(s.job)}/stop`, {})
                   .then(() => say(`Stopped the background job “${s.label}”.`))
                   .catch((err) => {
-                    b.disabled = false;
+                    stopping.delete(key);
+                    pressed(false);
                     toast({ title: 'Couldn’t stop the job', text: err.message, level: 'blocking' });
                   });
               },

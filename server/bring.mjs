@@ -10,7 +10,7 @@ import { tooLongToSend } from './helpers.mjs';
  * @param {any} rt @param {any} turn
  */
 export function offersBring(rt, turn) {
-  return turn?.kind === 'user' && ['side', 'topic'].includes(rt.s.threads[turn.threadId]?.kind);
+  return turn?.kind === 'user' && ['side', 'topic'].includes(rt.store.pending.thread(turn.threadId)?.kind);
 }
 
 /**
@@ -20,7 +20,7 @@ export function offersBring(rt, turn) {
  * @param {any} rt @param {string} sessionId @param {any} turn  the turn calling it @param {{ text?: unknown }} [args]
  */
 export function bringToConversation(rt, sessionId, turn, { text } = {}) {
-  const t = rt.s.threads[turn?.threadId];
+  const t = rt.store.pending.thread(turn?.threadId);
   if (t?.kind !== 'side' && t?.kind !== 'topic')
     return { ok: false, message: 'bring_to_conversation works only in a side thread or a topic thread. Here you’re in the conversation: just reply.' };
   if (!offersBring(rt, turn))
@@ -29,9 +29,10 @@ export function bringToConversation(rt, sessionId, turn, { text } = {}) {
   if (!body) return { ok: false, message: 'Give the text to post in the conversation.' };
   const over = tooLongToSend('A post to the conversation', body);
   if (over) return over;
-  // The main chat, as the person asked and the tool says: the conversation itself, from a side thread of a topic too.
-  let main = rt.s.threads[t.parentId];
-  while (main && (main.kind === 'side' || main.kind === 'topic')) main = rt.s.threads[main.parentId];
+  // The main chat, as the person asked and the tool says: the conversation itself, from a side thread of a topic too,
+  // as the threads are written: a topic opened behind a held commit counts (#623).
+  const main = rt.store.pending.thread(rt.threads.conversationToWrite(t.id));
+  if (!main || main.id === t.id) return { ok: false, message: 'This thread’s conversation is gone, so there’s nowhere to post. Reply in the thread.' };
   const se = rt.session(sessionId);
   rt.shareText(main.id, { fromThreadId: t.id, handle: se.handle, text: body, agent: true });
   return { ok: true, message: `Posted in “${main.title}”. Its agents read it at their next turn; no one was woken.` };

@@ -232,7 +232,7 @@ export function deletedFrom(rt, t, p) {
  * posted (blocks split a reply). addItem calls it for every message there.
  */
 export function bumpSideLink(rt, sideThreadId) {
-  const side = rt.s.threads[sideThreadId];
+  const side = rt.store.pending.thread(sideThreadId); // as written: a side thread held behind a commit counts (#623)
   if (side?.kind !== 'side') return;
   const link = rt.store.pending.items(side.parentId).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
   if (!link) return;
