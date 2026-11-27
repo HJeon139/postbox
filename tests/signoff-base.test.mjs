@@ -1,4 +1,4 @@
-// Steps 3 and 4 of tools/signoff.mjs use a base freshly fetched from the pull request’s base repository (#845): a
+// Steps 2 and 3 of tools/signoff.mjs use a base freshly fetched from the pull request’s base repository (#845): a
 // remote-tracking ref goes stale in a single-branch clone or one with a narrowed refspec, and a fork’s origin is the
 // fork, so neither is read.
 
@@ -14,7 +14,7 @@ const prAt = (w, url) => {
   w.d.gh = (args) => (args[0] === 'pr' ? { ...gh(args), url } : gh(args));
 };
 
-test('step 3’s range and step 4’s merge use the base fetched from the pull request’s repository, not a remote ref', async () => {
+test('step 2’s range and step 3’s merge use the base fetched from the pull request’s repository, not a remote ref', async () => {
   const w = world();
   assert.equal(await signoff(['840'], w.d), EXIT.pass);
   assert.deepEqual(ran(w, /^git fetch /)[0].argv, ['git', 'fetch', '--quiet', '--no-tags', '--', BASE_REPO, 'refs/heads/main']);
@@ -35,23 +35,23 @@ test('a fork’s clone fetches the base from the base repository the pull reques
     [upstream],
   );
   assert.ok(
-    w.lines.some((l) => l.startsWith('✔ 3.')),
+    w.lines.some((l) => l.startsWith('✔ 2.')),
     w.lines.join('\n'),
   );
 });
 
-test('a pull request URL that names no repository fails steps 3 and 4, fetching nothing', async () => {
+test('a pull request URL that names no repository fails steps 2 and 3, fetching nothing', async () => {
   const w = world();
   prAt(w, 'not a pull request');
   assert.equal(await signoff(['840'], w.d), EXIT.commits);
-  assert.match(w.lines.find((l) => l.startsWith('✖ 3.')) ?? '', /couldn’t fetch main: #840’s URL, not a pull request, names no repository/);
-  assert.match(w.lines.find((l) => l.startsWith('✖ 4.')) ?? '', /no fetched base to merge with/);
+  assert.match(w.lines.find((l) => l.startsWith('✖ 2.')) ?? '', /couldn’t fetch main: #840’s URL, not a pull request, names no repository/);
+  assert.match(w.lines.find((l) => l.startsWith('✖ 3.')) ?? '', /no fetched base to merge with/);
   assert.equal(ran(w, /^git fetch /).length, 0);
 });
 
-test('a fetch that fails fails step 3, rather than falling back to what the clone last fetched', async () => {
+test('a fetch that fails fails step 2, rather than falling back to what the clone last fetched', async () => {
   const w = world({ answers: [[/^git fetch /, { code: 128, out: 'fatal: could not read from remote repository' }]] });
   assert.equal(await signoff(['840'], w.d), EXIT.commits);
-  assert.match(w.lines.find((l) => l.startsWith('✖ 3.')) ?? '', /couldn’t fetch main: .*could not read from remote repository/);
+  assert.match(w.lines.find((l) => l.startsWith('✖ 2.')) ?? '', /couldn’t fetch main: .*could not read from remote repository/);
   assert.equal(ran(w, /^git rev-parse (refs\/remotes|--verify FETCH_HEAD)/).length, 0);
 });

@@ -1,6 +1,5 @@
-// A fake world for tools/signoff.mjs’s tests (#845): git, npm, Biome and Node answer from a table, GitHub from A2’s
-// recorded fixtures (tests/fixtures/signoff), and files live in a Map. The workflows are the repo’s real ones, so the
-// Node majors the tests expect are the ones CI runs.
+// A fake world for tools/signoff.mjs’s tests (#845): git, npm and Biome answer from a table, and GitHub from A2’s
+// recorded fixtures (tests/fixtures/signoff).
 
 import { readFileSync } from 'node:fs';
 
@@ -17,22 +16,16 @@ export const STALE_SHA = '5'.repeat(40);
 export const BASE_REPO = 'https://github.com/HJeon139/postbox';
 export const MERGE_BASE = 'a'.repeat(40);
 export const COMMITS = ['c'.repeat(40), 'd'.repeat(40)];
-export const NODE22 = '/opt/homebrew/opt/node@22/bin/node';
-const CHECK_YML = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8');
 
 /**
  * A world where every step passes, unless a test changes it: answers are tried first, each [match, result], match a
  * regular expression against the command line joined by spaces, result a { code, out } or a function of argv and options.
- * @param {{ runs?: typeof GREEN, prHead?: string, answers?: [RegExp, any][], nodeVersion?: string }} [o]
+ * @param {{ runs?: typeof GREEN, prHead?: string, answers?: [RegExp, any][] }} [o]
  */
 export function world(o = {}) {
   const runs = o.runs ?? GREEN;
-  /** @type {Map<string, string>} */
-  const files = new Map([[`${ROOT}/.github/workflows/check.yml`, CHECK_YML]]);
-  files.set(NODE22, '');
   const w = {
     head: runs.head,
-    files,
     calls: /** @type {{ argv: string[], o: any }[]} */ ([]),
     lines: /** @type {string[]} */ ([]),
     timers: /** @type {Set<() => void>} */ (new Set()),
@@ -63,7 +56,7 @@ export function world(o = {}) {
  * @param {any} w @param {typeof GREEN} runs @param {Parameters<typeof world>[0] & {}} o
  */
 function fakeDeps(w, runs, o) {
-  const { files, calls, lines, timers } = w;
+  const { calls, lines, timers } = w;
   const table = [...(o.answers ?? []), ...defaults(w.head)];
   return {
     run: async (argv, opts = {}) => {
@@ -83,12 +76,6 @@ function fakeDeps(w, runs, o) {
     },
     loadavg: () => [3.5, 3, 2],
     cores: () => 18,
-    readFile: (path) => {
-      if (!files.has(path)) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
-      return files.get(path);
-    },
-    list: (dir) => [...new Set([...files.keys()].filter((p) => p.startsWith(`${dir}/`)).map((p) => p.slice(dir.length + 1).split('/')[0]))],
-    exists: (path) => [...files.keys()].some((p) => p === path || p.startsWith(`${path}/`)),
     // Each temporary folder has a name of its own, as mkdtemp makes it, so a test can tell which were removed.
     mkdtemp: (prefix) => {
       w.temps.push(`${prefix}${w.temps.length}`);
@@ -97,9 +84,6 @@ function fakeDeps(w, runs, o) {
     rm: (path) => w.removed.push(path),
     link: (target, path) => w.links.push([target, path]),
     tmpdir: () => '/tmp',
-    home: '/home/me',
-    execPath: '/usr/bin/node',
-    nodeVersion: o.nodeVersion ?? 'v24.22.1',
     log: (line) => lines.push(line),
     onSignal: (fn) => {
       w.handled++;
@@ -137,6 +121,5 @@ function defaults(head) {
     [/^git commit-tree /, ok(`${'f'.repeat(40)}\n`)],
     [/node_modules\/\.bin\/biome check/, ok()],
     [/^npm run -s lint:project$/, ok()],
-    [new RegExp(`^${NODE22} --version$`), ok('v22.11.0\n')],
   ];
 }

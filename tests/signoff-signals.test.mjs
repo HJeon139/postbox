@@ -14,7 +14,7 @@ const raising =
     return { code, out: '' };
   };
 
-test('Ctrl-C during step 3 stops Biome, checks out nothing more, and removes the temporary worktree before exiting 130', async () => {
+test('Ctrl-C during step 2 stops Biome, checks out nothing more, and removes the temporary worktree before exiting 130', async () => {
   const w = world({ answers: [[/--no-errors-on-unmatched/, raising('SIGINT')]] });
   await signoff(['840'], w.d);
   assert.deepEqual(w.killed, ['SIGINT'], 'the signal is passed on to the running Biome');
@@ -29,7 +29,7 @@ test('Ctrl-C during step 3 stops Biome, checks out nothing more, and removes the
   assert.equal(ran(w, /^git worktree prune/).length, 0, 'the person’s other worktrees are left alone');
 });
 
-test('a signal while a quick git command runs in step 3 stops the next checkout too', async () => {
+test('a signal while a quick git command runs in step 2 stops the next checkout too', async () => {
   // git diff ends well, as a quick command does when the signal reaches only this script; the checkout after it must not run.
   const quick = (_a, _o, w) => {
     w.raise('SIGTERM');
@@ -45,13 +45,13 @@ test('a signal while a quick git command runs in step 3 stops the next checkout 
   assert.ok(w.exits[0].removed.includes(w.temps[0]));
 });
 
-test('SIGTERM during step 4’s lints removes that step’s temporary worktree before exiting 143', async () => {
+test('SIGTERM during step 3’s lints removes that step’s temporary worktree before exiting 143', async () => {
   const w = world({ answers: [[/^npm run -s lint:project$/, raising('SIGTERM', 143)]] });
   await signoff(['840'], w.d);
   assert.deepEqual(w.killed, ['SIGTERM']);
   const [first] = w.exits;
   assert.equal(first.code, 143);
-  assert.deepEqual(first.removed, w.temps.slice(0, 2), 'step 3’s folder and step 4’s, each removed');
+  assert.deepEqual(first.removed, w.temps.slice(0, 2), 'step 2’s folder and step 3’s, each removed');
 });
 
 test('a sign-off no signal stops leaves no signal handler behind and doesn’t exit itself', async () => {

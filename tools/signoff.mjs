@@ -1,11 +1,10 @@
 // The local sign-off on a pull request (#845, part A1): what a reviewer runs before saying a head is ready, so a
-// sign-off fails loudly where sprint 3’s scripts failed quietly. Five steps, in order, each printed as it ends:
+// sign-off fails loudly where sprint 3’s scripts failed quietly. Four steps, in order, each printed as it ends:
 //   1. the head is pushed: the local HEAD is the pull request’s head on GitHub;
-//   2. the toolchain: every Node major CI runs (tools/signoff/workflows.mjs) is installed (tools/signoff/toolchain.mjs);
-//   3. Biome at each commit from the merge base to HEAD (tools/signoff/trees.mjs);
-//   4. the merged tree: HEAD merges cleanly with the base freshly fetched from the pull request’s base repository, and
+//   2. Biome at each commit from the merge base to HEAD (tools/signoff/trees.mjs);
+//   3. the merged tree: HEAD merges cleanly with the base freshly fetched from the pull request’s base repository, and
 //      the merge passes Biome and the project lints;
-//   5. GitHub’s checks: every check main’s rules require, CodeQL included, passed on the head (tools/signoff-checks.mjs,
+//   4. GitHub’s checks: every check main’s rules require, CodeQL included, passed on the head (tools/signoff-checks.mjs,
 //      part A2). The full browser passes are CI’s: the required check “Demo in Chrome, with accessibility checks”
 //      passes only when every shard of both passed, so this step reads them rather than running them here.
 // A failed step doesn’t stop the ones after it, so one run reports every problem. It exits with the first failed
@@ -17,17 +16,16 @@
 import { fileURLToPath } from 'node:url';
 import { parseArgs, USAGE } from './signoff/args.mjs';
 import { defaultDeps } from './signoff/deps.mjs';
-import { toolchain } from './signoff/toolchain.mjs';
 import { eachCommit, fetchBase, mergedTree } from './signoff/trees.mjs';
 import { must } from './signoff/wait.mjs';
 import { EXIT as CHECKS_EXIT, signoffChecks } from './signoff-checks.mjs';
 
 /** Exit codes: 0 when every step passed, else the first failed step’s number; 64 for a command line that can’t run. */
-export const EXIT = { pass: 0, head: 1, toolchain: 2, commits: 3, merged: 4, checks: 5, usage: 64 };
+export const EXIT = { pass: 0, head: 1, commits: 2, merged: 3, checks: 4, usage: 64 };
 
 /**
  * @typedef {{ ok: boolean, why?: string, note?: string }} StepResult
- * @typedef {{ pr: number, nodes: string[], root: string, head: string, load?: { one: number, cores: number },
+ * @typedef {{ pr: number, root: string, head: string, load?: { one: number, cores: number },
  *   base?: string, prUrl?: string, baseSha?: string, mergeBase?: string, fetchError?: string }} Ctx
  */
 
@@ -45,12 +43,7 @@ async function headIsPushed(d, ctx) {
   return { ok: true, note: `${ctx.head.slice(0, 8)} is #${ctx.pr}’s head, into ${ctx.base}` };
 }
 
-/** Step 2. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
-function nodes(d, ctx) {
-  return toolchain(d, ctx.root, ctx.nodes);
-}
-
-/** Step 3: fetches the base first, for this step and the next. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
+/** Step 2: fetches the base first, for this step and the next. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
 async function commits(d, ctx) {
   if (!ctx.base) return { ok: false, why: 'no base branch: step 1 couldn’t read the pull request' };
   try {
@@ -62,13 +55,13 @@ async function commits(d, ctx) {
   return eachCommit(d, ctx.root, /** @type {string} */ (ctx.mergeBase));
 }
 
-/** Step 4. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
+/** Step 3. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
 async function merged(d, ctx) {
   if (!ctx.base || !ctx.baseSha) return { ok: false, why: `no fetched base to merge with: ${ctx.fetchError ?? 'step 1 couldn’t read the pull request'}` };
   return mergedTree(d, ctx.root, ctx.base, ctx.baseSha);
 }
 
-/** Step 5: part A2, printing its own lines. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
+/** Step 4: part A2, printing its own lines. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
 async function checks(d, ctx) {
   const code = signoffChecks(ctx.pr, { gh: d.gh, log: d.log });
   if (code === CHECKS_EXIT.pass) return { ok: true, note: 'every required check passed on GitHub, CodeQL included' };
@@ -78,7 +71,6 @@ async function checks(d, ctx) {
 
 const STEPS = /** @type {const} */ ([
   [EXIT.head, 'the head is pushed', headIsPushed],
-  [EXIT.toolchain, 'the toolchain', nodes],
   [EXIT.commits, 'Biome at each commit', commits],
   [EXIT.merged, 'the merged tree', merged],
   [EXIT.checks, 'GitHub’s checks', checks],

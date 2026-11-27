@@ -1,9 +1,9 @@
 // What tools/signoff.mjs does to the world, in one object, so its tests drive every path with fakes (#845): the
-// commands it runs, its reads from GitHub, the clock and timers, the machine’s load, and files.
+// commands it runs, its reads from GitHub, the clock and timers, the machine’s load, and temporary folders.
 
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
-import { cpus, homedir, loadavg, tmpdir } from 'node:os';
+import { cpus, loadavg, tmpdir } from 'node:os';
 import { ghJson } from '../signoff-checks.mjs';
 import { SIGNALS } from './stop.mjs';
 
@@ -18,16 +18,10 @@ import { SIGNALS } from './stop.mjs';
  *   every: (ms: number, fn: () => void) => () => void,
  *   loadavg: () => number[],
  *   cores: () => number,
- *   readFile: (path: string) => string,
- *   list: (dir: string) => string[],
- *   exists: (path: string) => boolean,
  *   mkdtemp: (prefix: string) => string,
  *   rm: (path: string) => void,
  *   link: (target: string, path: string) => void,
  *   tmpdir: () => string,
- *   home: string,
- *   execPath: string,
- *   nodeVersion: string,
  *   log: (line: string) => void,
  *   onSignal: (fn: (signal: string) => void) => () => void,
  *   exit: (code: number) => void,
@@ -64,16 +58,10 @@ export function defaultDeps() {
     },
     loadavg,
     cores: () => cpus().length,
-    readFile: (path) => fs.readFileSync(path, 'utf8'),
-    list: (dir) => fs.readdirSync(dir),
-    exists: (path) => fs.existsSync(path),
     mkdtemp: (prefix) => fs.mkdtempSync(prefix),
     rm: (path) => fs.rmSync(path, { recursive: true, force: true }),
     link: (target, path) => fs.symlinkSync(target, path),
     tmpdir,
-    home: homedir(),
-    execPath: process.execPath,
-    nodeVersion: process.version,
     log: (line) => process.stdout.write(`${line}\n`),
     onSignal: (fn) => {
       for (const s of SIGNALS) process.on(s, fn);

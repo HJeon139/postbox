@@ -1,10 +1,10 @@
-// Steps 3 and 4 of tools/signoff.mjs (#845). Both check out code in a temporary worktree of their own, detached, so
+// Steps 2 and 3 of tools/signoff.mjs (#845). Both check out code in a temporary worktree of their own, detached, so
 // the person’s working tree, index and branches never change; git keeps only the worktree’s note in its own folder
 // until the step removes it.
-// - Step 3: Biome at each commit from the merge base to HEAD, on the files that commit changes, with the biome.json
+// - Step 2: Biome at each commit from the merge base to HEAD, on the files that commit changes, with the biome.json
 //   of that commit. A commit that fails is red even when a later one fixes it: each commit is reviewed and reverted
 //   alone (designs/engineering-practices.md, “Commits and versions”).
-// - Step 4: the tree a merge would make with the base freshly fetched from the pull request’s base repository.
+// - Step 3: the tree a merge would make with the base freshly fetched from the pull request’s base repository.
 //   main’s ruleset doesn’t require a head to be current with main, so a head green on its own can still conflict, or
 //   fail a lint, once merged. A conflict fails; a clean merge is checked out and runs Biome and the project lints, as
 //   `npm run lint` and `npm run lint:project` do.
@@ -16,7 +16,7 @@ import { exec, firstLine, lastLine, must } from './wait.mjs';
 /** Biome as npm run lint runs it, from this checkout’s node_modules: a temporary worktree has none. @param {string} root */
 const biome = (root) => [join(root, 'node_modules/.bin/biome'), 'check', '--error-on-warnings'];
 
-/** The identity of the merge commit step 4 writes: an object only, which no branch points at. */
+/** The identity of the merge commit step 3 writes: an object only, which no branch points at. */
 const MERGE_IDENTITY = {
   GIT_AUTHOR_NAME: 'signoff',
   GIT_AUTHOR_EMAIL: 'signoff@localhost',
@@ -62,7 +62,7 @@ export function baseRepo(pr, prUrl) {
 /**
  * Fetches base from the pull request’s base repository and returns its commit and the merge base with HEAD. The commit
  * is FETCH_HEAD, read as soon as the fetch ends: a remote-tracking ref goes stale without a word in a single-branch
- * clone or one with a narrowed refspec, and steps 3 and 4 must not use an old base.
+ * clone or one with a narrowed refspec, and steps 2 and 3 must not use an old base.
  * @param {import('./deps.mjs').Deps} d @param {string} root @param {{ pr: number, prUrl: string, base: string }} o
  */
 export async function fetchBase(d, root, { pr, prUrl, base }) {
@@ -86,7 +86,7 @@ async function changedFiles(d, root, sha, stop) {
 }
 
 /**
- * Step 3: Biome on each commit’s changed files, at that commit.
+ * Step 2: Biome on each commit’s changed files, at that commit.
  * @param {import('./deps.mjs').Deps} d @param {string} root @param {string} mergeBase
  */
 export async function eachCommit(d, root, mergeBase) {
@@ -124,7 +124,7 @@ async function mergeTree(d, root, baseSha) {
 }
 
 /**
- * Step 4: HEAD merges cleanly with the fetched base, and the merged tree passes Biome and the project lints.
+ * Step 3: HEAD merges cleanly with the fetched base, and the merged tree passes Biome and the project lints.
  * @param {import('./deps.mjs').Deps} d @param {string} root @param {string} base @param {string} baseSha
  */
 export async function mergedTree(d, root, base, baseSha) {

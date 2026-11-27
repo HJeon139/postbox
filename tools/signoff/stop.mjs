@@ -1,4 +1,4 @@
-// Ctrl-C, a kill or a closed terminal during the long parts of tools/signoff.mjs (#845): steps 3 and 4, which check
+// Ctrl-C, a kill or a closed terminal during the long parts of tools/signoff.mjs (#845): steps 2 and 3, which check
 // out code in temporary worktrees. While one of them runs, the signal passes on to the command running then, as
 // tools/heavy-lock.mjs passes it on, and the part runs no further command. Its own cleanup then runs (the worktree
 // removed) before the script exits as the signal would have ended it. Outside those parts a signal ends the script at
