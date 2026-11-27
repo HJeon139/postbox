@@ -29,7 +29,7 @@ for (const [backend, handle, harness] of [
   ['kiro-cli', 'kiro', 'Kiro CLI'],
   ['antigravity-cli', 'agy', 'Antigravity'],
 ])
-  test(`#1811 #1812 /compact for a ${backend} agent says why it can’t, and posts nothing`, async ({ page }) => {
+  test(`#1811 #1812 /compact for ${backend === 'antigravity-cli' ? 'an' : 'a'} ${backend} agent says why it can’t, and posts nothing`, async ({ page }) => {
     const { rt } = app;
     const projectId = Object.values(rt.store.state.projects)[0].id;
     const p = rt.createPersona({ handle, backend });

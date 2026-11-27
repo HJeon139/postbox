@@ -69,7 +69,7 @@ export { KIRO_PUBLISHING, KIRO_TOOL_RULES, kiroAgent, kiroRules } from './kiro-c
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
 export { KIRO_CAPABILITIES, kiroRemoteEnv } from './kiro-cli-remote.mjs';
 export { kiroExitError as exitError } from './kiro-errors.mjs';
-// Moved to kiro-result.mjs; kept here for those that import it from this module (tools/uat/checks.mjs).
+// Moved to kiro-result.mjs; kept here for those that import it from this module (tools/uat/room-checks-backends.mjs).
 export { REFUSED };
 
 /**

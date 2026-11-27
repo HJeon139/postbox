@@ -36,7 +36,7 @@ const CASES = [
 ];
 
 for (const { backend, handle, make, reason } of CASES)
-  test(`#1811 #1812 /compact for a ${backend} agent is refused with its reason, before anything is posted or started`, () => {
+  test(`#1811 #1812 /compact for ${backend === 'antigravity-cli' ? 'an' : 'a'} ${backend} agent is refused with its reason, before anything is posted or started`, () => {
     const root = tempDir('pb-compact-');
     const store = new Store(null);
     const adapter = make(root);

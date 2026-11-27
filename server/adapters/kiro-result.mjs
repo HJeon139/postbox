@@ -12,7 +12,7 @@ const contentText = (content) =>
 // lint-allow spelling: “cancelled” is Kiro’s value, as it sends it.
 // interaction_resolved with outcome “cancelled”, then the call fails with “The user rejected this tool call.” The
 // turn itself still succeeds, so the stream is the only record. The text is the fallback, and v2’s wording. The
-// UAT’s checks read recorded streams with it too (tools/uat/checks.mjs).
+// UAT’s checks read recorded streams with it too (tools/uat/room-checks-backends.mjs).
 export const REFUSED = /The user rejected this tool call|permission approval is not supported/;
 
 /**
