@@ -30,6 +30,18 @@ function commit() {
   }
 }
 
+/**
+ * The claim a person’s user name is read from. With a Cognito user pool it is `email`, which the pool verifies. Another
+ * provider has to say: not every provider’s userinfo says an email address is verified, and Postbox refuses one that
+ * isn’t, so there is no default that works for all of them. @param {ReturnType<typeof signIn>} provider
+ */
+function usernameClaim(provider) {
+  if (context('claimUsername')) return context('claimUsername');
+  if (provider && 'oidc' in provider)
+    throw new Error('With an OIDC provider, say which claim holds a person’s user name: -c claimUsername=<claim> (infra/README.md).');
+  return 'email';
+}
+
 /** The address: a name in a hosted zone of yours, or a certificate of yours. @param {Stack} stack */
 function address(stack) {
   const domainName = context('domainName');
@@ -84,13 +96,18 @@ const edge = new PostboxEdge(edgeStack, 'Edge', {
 });
 new CfnOutput(edgeStack, 'Url', { value: edge.origin });
 
-const serverStack = stackOf('Server');
+// The server’s stack is made once someone may sign in: Postbox doesn’t start without an allow list. Until then the
+// other three deploy, so a new user pool exists to make the first person in.
+const subjects = list(context('allowSubjects'));
 const groups = list(context('allowGroups'));
-const hosted = hostedSettings(serverStack, {
-  edge,
-  signIn: provider,
-  claims: { username: context('claimUsername') ?? 'email', name: context('claimName') ?? 'name' },
-  allow: { subjects: list(context('allowSubjects')), groups: groups.length ? { claim: context('allowGroupsClaim'), any: groups } : undefined },
-});
-const server = new PostboxServer(serverStack, 'Server', { vpc, serverGroup, ...data, targets: edge.targets, source: { root, commit: commit() }, hosted });
-new CfnOutput(serverStack, 'LogGroup', { value: server.logGroup });
+if (subjects.length || groups.length) {
+  const serverStack = stackOf('Server');
+  const hosted = hostedSettings(serverStack, {
+    edge,
+    signIn: provider,
+    claims: { username: usernameClaim(provider), name: context('claimName') ?? 'name' },
+    allow: { subjects, groups: groups.length ? { claim: context('allowGroupsClaim'), any: groups } : undefined },
+  });
+  const server = new PostboxServer(serverStack, 'Server', { vpc, serverGroup, ...data, targets: edge.targets, source: { root, commit: commit() }, hosted });
+  new CfnOutput(serverStack, 'LogGroup', { value: server.logGroup });
+} else console.error('No one may sign in yet, so the server’s stack is left out. Name someone with -c allowSubjects=<their subject> (infra/README.md).');

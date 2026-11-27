@@ -10,7 +10,7 @@ const MINUTE_MS = 60_000;
  * @param {{ now?: () => number, log?: (line: string) => void }} [io]
  * @returns {(e: any) => void}  given what the provider threw
  */
-export function refusalLog({ now = Date.now, log = console.log } = {}) {
+export function refusalLog({ now = Date.now, log = (line) => console.log(line) } = {}) {
   /** @type {Map<string, { at: number, more: number }>} */
   const said = new Map();
   return (e) => {

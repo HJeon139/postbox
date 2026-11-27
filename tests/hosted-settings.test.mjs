@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { publicOriginOf, readHosted } from '../server/hosted-settings.mjs';
 import { fetchKeyText } from '../server/identity/alb-key-fetch.mjs';
+import { signInSettings } from '../server/identity/sign-in-settings.mjs';
 import { SETTINGS } from './alb-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -49,4 +50,14 @@ test('a file that can’t be read, isn’t JSON, has a field Postbox doesn’t k
   assert.throws(() => readHosted(fileOf({ origin: 'https://postbox.example.com', signIn: SETTINGS, user: 'robin' })), /have no “user”/);
   assert.throws(() => readHosted(fileOf({ origin: 'https://postbox.example.com', signIn: { ...SETTINGS, allow: undefined } })), /needs an allow list/);
   assert.throws(() => readHosted(fileOf({ origin: 'https://postbox.example.com' })), /sign-in settings are an object/);
+});
+
+test('a Cognito user pool can’t back an allow list of groups: its claims are attributes a person may be able to write', () => {
+  const groups = { claim: 'custom:team', any: ['postbox'] };
+  const cognito = 'https://cognito-idp.us-west-2.amazonaws.com/us-west-2_EXAMPLE';
+  assert.throws(() => signInSettings({ ...SETTINGS, issuer: cognito, allow: { groups } }), /A Cognito user pool can’t back “allow.groups”/);
+  assert.throws(() => signInSettings({ ...SETTINGS, issuer: cognito, allow: { subjects: ['u-1'], groups } }), /A Cognito user pool can’t back “allow.groups”/);
+  // By subject it is fine, and another provider’s groups are its administrators’ to set.
+  assert.deepEqual(signInSettings({ ...SETTINGS, issuer: cognito }).allow, { subjects: ['u-1'], groups: null });
+  assert.deepEqual(signInSettings({ ...SETTINGS, allow: { groups } }).allow, { subjects: [], groups });
 });

@@ -6,11 +6,11 @@ It is a CDK app in plain JavaScript, with its own `package.json`. The `postbox` 
 
 ```mermaid
 flowchart LR
-  B[Browser] -->|"HTTPS :443"| LB["Application Load Balancer, public subnets: TLS, sign-in at your identity provider"]
-  LB -->|"HTTP :8080, with the signed token"| T["One Fargate task, private subnets: the server’s image"]
-  T --- D[("EFS: the data folder")]
-  T -->|"HTTPS, through the NAT gateway"| K["The region’s key endpoint"]
-  X[Anything else] -. "no route, no rule, and no token Postbox accepts" .-> T
+  B[Browser] -->|"HTTPS, then sign-in"| LB[Load balancer]
+  LB -->|"HTTP :8080, with the signed token"| T[Postbox]
+  T --- D[(Data folder)]
+  T -->|"HTTPS, by the NAT gateway"| K[Key endpoint]
+  X[Anything else] -. "no route, no rule, no token" .-> T
 ```
 
 ## What it makes, and what it costs
@@ -28,7 +28,7 @@ The deployment is four constructs, each usable alone, and `HostedPostbox` (`lib/
 | `PostboxEdge` (`lib/edge.mjs`) | The load balancer, its name and certificate, and the sign-in | It stands without a server behind it |
 | `PostboxServer` (`lib/server.mjs`) | The one task and its service | It changes with every release, and is the likeliest to fail to start |
 
-`app.mjs` puts each in a stack of its own, so a part that fails rolls back alone: a server that doesn’t start leaves the network, the disk and the edge standing, and the next deployment makes only the server again. They make what they aren’t given and use what they are:
+`app.mjs` puts each in a stack of its own, so a part that fails rolls back alone: a server that doesn’t start leaves the network, the disk and the edge standing, and the next deployment makes only the server again. The server’s stack imports what the edge’s stack exports (the load balancer’s ARN, the client’s id, the target group), so the edge can’t rename or drop one of those while a server uses it: take the server’s stack down first. They make what they aren’t given and use what they are:
 
 | You have | Give it | Else |
 |---|---|---|
@@ -45,7 +45,7 @@ new HostedPostbox(stack, 'Postbox', {
 });
 ```
 
-**Signing in is not being let in.** The provider says who a person is. Who may use this Postbox is `allow`, Postbox’s own list, which Postbox checks on every request: people by their subject at the provider. A provider you share with other applications admits none of their people until you name them. With no `allow`, no one is let in. Admitting by a group’s claim (`allow.groups`) is only for an OIDC provider whose administrators alone set that claim; the construct refuses it for a Cognito user pool, where a claim is an attribute a person may be able to write for themselves through another of the pool’s clients. For the same reason, a person named by their email address must have one the provider verified.
+**Signing in is not being let in.** The provider says who a person is. Who may use this Postbox is `allow`, Postbox’s own list, which Postbox checks on every request: people by their subject at the provider. A provider you share with other applications admits none of their people until you name them. `allow` is required, and until it names someone the app here leaves the server’s stack out. Admitting by a group’s claim (`allow.groups`) is only for an OIDC provider whose administrators alone set that claim; the construct refuses it for a Cognito user pool, where a claim is an attribute a person may be able to write for themselves through another of the pool’s clients. For the same reason, a person named by their email address must have one the provider verified: a provider whose userinfo doesn’t say `email_verified` must name people by another claim, so with an OIDC provider the app asks for `claimUsername` and has no default. And on a Cognito user pool shared with other applications, don’t set `claimUsername=preferred_username`: a person can write that attribute for themselves through another client, and so choose the name they are mentioned by.
 
 ## Deploy it with the app here
 
@@ -57,8 +57,8 @@ new HostedPostbox(stack, 'Postbox', {
 | `certificateArn` | Instead of a zone: a certificate of yours in ACM, with `domainName` when your DNS points one at the load balancer |
 | `userPoolId`, `userPoolDomain` | A Cognito user pool of yours, and its sign-in domain (the prefix, or a full custom domain) |
 | `oidcIssuer`, `oidcAuthorizationEndpoint`, `oidcTokenEndpoint`, `oidcUserInfoEndpoint`, `oidcClientId`, `oidcClientSecretName` | Another OIDC provider. The secret is read from Secrets Manager by its name as the stack deploys |
-| `claimUsername`, `claimName` | The claims that hold a person’s user name and name. `email` and `name` |
-| `allowSubjects` | Who may sign in: their subjects at the provider, separated by commas |
+| `claimUsername`, `claimName` | The claims that hold a person’s user name and name. `email` and `name` with a Cognito user pool; with an OIDC provider `claimUsername` is required |
+| `allowSubjects` | Who may sign in: their subjects at the provider, separated by commas. Until it is given, the server’s stack is left out |
 | `allowGroupsClaim`, `allowGroups` | With an OIDC provider only: anyone in one of these groups, read from this claim |
 | `deletionProtection` | `false` lets the load balancer be deleted, for a test you will take down. On |
 | `openTo` | The addresses that reach the listener, as a CIDR. Everywhere |
@@ -67,7 +67,7 @@ new HostedPostbox(stack, 'Postbox', {
 You need the AWS CLI signed in to the account, the account [bootstrapped for CDK](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping.html) in the region, and Docker, or Finch with `CDK_DOCKER=finch` set, to build the image.
 
 ```bash
-npm install
+npm ci
 ```
 
 ```bash
@@ -77,16 +77,24 @@ npx cdk deploy --all
 The outputs are `Url`, the address, and `LogGroup`, the server’s log. For a test with no name of your own, bring a self-signed certificate, and your browser will warn about it:
 
 ```bash
-openssl req -x509 -newkey rsa:2048 -nodes -days 30 -keyout key.pem -out cert.pem -subj "/CN=postbox-test.invalid"
+openssl req -x509 -newkey rsa:2048 -nodes -days 30 -keyout "$TMPDIR/postbox-key.pem" -out "$TMPDIR/postbox-cert.pem" -subj "/CN=postbox-test.invalid"
 ```
 
 ```bash
-aws acm import-certificate --certificate fileb://cert.pem --private-key fileb://key.pem --query CertificateArn --output text
+aws acm import-certificate --certificate "fileb://$TMPDIR/postbox-cert.pem" --private-key "fileb://$TMPDIR/postbox-key.pem" --query CertificateArn --output text
 ```
+
+Delete the key file once it is imported. It is written outside this folder so it is never committed.
 
 ## Let someone in
 
-Read a person’s subject at the provider. For a Cognito user pool:
+With a new user pool, the first deployment makes the pool and leaves the server out. Make the person there, with an email address marked verified, which Postbox requires; they are sent a temporary password, and set up their authenticator app at their first sign-in:
+
+```bash
+aws cognito-idp admin-create-user --user-pool-id <the pool’s id> --username <their email> --user-attributes Name=email,Value=<their email> Name=email_verified,Value=true Name=name,Value="<their name>"
+```
+
+Then read a person’s subject at the provider. For a Cognito user pool:
 
 ```bash
 aws cognito-idp list-users --user-pool-id <the pool’s id> --filter 'email = "<their email>"' --query "Users[].Attributes[?Name=='sub'].Value" --output text
@@ -96,7 +104,7 @@ Then deploy with it in `allowSubjects`, which changes the server’s stack alone
 
 ## What to check
 
-- **What stands between the internet and a room,** in the order a request meets it: the load balancer signs the person in; Postbox checks the token the load balancer signed, on every request, against this load balancer, this client and this provider; and Postbox’s allow list names the person. The network is the second line, not the first: the task has no public address, and its security group admits port 8080 from the load balancer’s security group alone.
+- **What stands between the internet and a room,** in the order a request meets it: the load balancer signs the person in; Postbox checks the token the load balancer signed, on every request, against this load balancer, this client and this provider; and Postbox’s allow list names the person. The network rule is required: the task has no public address, and its security group admits port 8080 from the load balancer’s security group alone. Keep it so in any VPC you bring. It is what stops requests sent straight to the port with made-up key ids from using up Postbox’s key lookups and refusing sign-ins (hosted.md, “The check, whole”).
 - **Why a sign-in was refused** is in the log group, one line a minute for each reason: `Postbox refused a sign-in: signer.` means the settings name another load balancer, `not-allowed` that the person isn’t on the allow list.
 - **What it doesn’t do yet.** The hop from the load balancer to the task is plain HTTP inside the VPC. There is no access log, no WAF and no sign-out; a sign-in at the load balancer lasts 12 hours (`sessionTimeout`), and taking someone off the allow list is a deployment. Everyone on the allow list reaches every room, and can add an SSH host for the server to dial.
 - **One writer.** The service runs one task and stops it before starting its replacement, so a deployment drops every page’s stream for a moment and pages reconnect. Never raise the task count: a second task would take over the data folder’s lock while the first still writes (hosted.md, “One server, one disk”).

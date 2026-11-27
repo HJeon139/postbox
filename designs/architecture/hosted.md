@@ -70,7 +70,7 @@ flowchart LR
 
 - **It listens on every address of its container,** loopback among them: Postbox’s own headless browser loads it over loopback ([view-app.md](view-app.md)), and the load balancer reaches it on the container’s address. What `hereAlone` reads as the listen address (`host()` in `server/request-gate.mjs`) is then not a loopback address, so `!` commands and an app’s links are refused by the check that exists, for every request, one from loopback included.
 - **No proxy beside it.** A proxy in the same container group, forwarding to a Postbox that listened on loopback alone, would keep “listens on 127.0.0.1” true in words and break it in fact: `hereAlone` would allow `!` for every request.
-- `admit` answers the public origin’s `Host` and accepts its `Origin` on writes. A `Host` of loopback is answered only for Postbox’s own browser (“Who is asking”, the requests with no signed identity).
+- `admit` answers the public origin’s `Host` and accepts its `Origin` on writes. A `Host` of loopback is refused like any other, Postbox’s own browser’s included, until “Postbox’s own browser” under “Open questions for the owner” is answered.
 - Everything built from the origin is built from the public one: the two policies, `config.origin`, `POSTBOX_ORIGIN`, the page token’s cookie, which gains `Secure`. One thing is built from the request’s `Host` with `http://` written in, the page that may frame an app (`server/index.mjs`), and it is built from the public origin too, or behind TLS the browser refuses every app and diagram.
 - With no public origin set, nothing changes: 127.0.0.1, and the gate as it is.
 

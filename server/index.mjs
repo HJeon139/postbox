@@ -21,10 +21,10 @@ import { buildInfo } from './build-info.mjs';
 import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { dataFolder } from './home.mjs';
+import { checkHosted } from './hosted-settings.mjs';
 import { hostsRoute } from './hosts-routes.mjs';
 import { closeServer, httpServer } from './http-server.mjs';
 import { whoIs } from './identity/session.mjs';
-import { signInSettings } from './identity/sign-in-settings.mjs';
 import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
 import { liveStreams } from './live-streams.mjs';
@@ -119,7 +119,7 @@ export async function start({
   publicOrigin = undefined,
 } = {}) {
   // Before anything is opened: sign-in settings that leave something out stop the start, with nothing held (#1733).
-  if (signIn) signInSettings(signIn.settings);
+  checkHosted({ signIn, publicOrigin });
   const origin = publicOrigin ?? `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
   const { store, blobs, mediaDir } = await openDataFolder(dataDir, { fresh });

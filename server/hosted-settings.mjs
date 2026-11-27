@@ -42,3 +42,13 @@ export function readHosted(path) {
   signInSettings(given.signIn); // refused here in words, before anything starts
   return { host: '0.0.0.0', publicOrigin, signIn: { settings: given.signIn, get: fetchKeyText } };
 }
+
+/**
+ * What `start()` checks before it opens anything: sign-in settings that leave something out stop the start with
+ * nothing held (#1733), and a public address is never answered with no one asked who they are.
+ * @param {{ signIn?: import('./identity/index.mjs').SignIn, publicOrigin?: string }} given
+ */
+export function checkHosted({ signIn, publicOrigin }) {
+  if (signIn) signInSettings(signIn.settings);
+  if (publicOrigin && !signIn) throw new Error('A hosted Postbox needs its sign-in settings.');
+}
