@@ -33,11 +33,11 @@
   }
 
   // Whether the text and the control both show where they meet: one under something opaque (a dialog over the page’s
-  // buttons, a sticky bar over the controls scrolled under it) is hidden there. A control on top hides the text under
-  // its opaque box, as Jump to latest floats over the transcript (#681), and so does a control the text belongs to. The
-  // text’s own box otherwise hides the control only when it covers it whole: text on a badge over part of a button is
-  // a collision, and a dialog’s text over a button it hides isn’t. Asking what’s at a point skips what ignores the
-  // pointer, which still shows, so the question is asked with every element taking the pointer.
+  // buttons, a sticky bar over the controls scrolled under it) is hidden there. The other one’s own box hides it only
+  // when it covers it whole, or floats with the window, fixed or sticky, as Jump to latest floats over the transcript
+  // (#681): text on a badge over part of a button is a collision, a close button misplaced over a title is one, and a
+  // dialog’s text over a button it hides isn’t. Asking what’s at a point skips what ignores the pointer, which still
+  // shows, so the question is asked with every element taking the pointer.
   function bothShow(textEl, control, x, y, y0) {
     jump(y < 0 || y > innerHeight ? y + y0 - innerHeight / 2 : y0);
     const hit = document.head.appendChild(document.createElement('style'));
@@ -50,8 +50,8 @@
     };
     const hides = (e, el) => {
       if (e.contains(el) || !opaque(e)) return false;
-      const textsOwn = el === control && (e === textEl || textEl.contains(e));
-      return !textsOwn || e.closest(CONTROLS) !== null || covers(e, el);
+      const other = el === control ? textEl : control;
+      return !(e === other || other.contains(e)) || covers(e, el) || floats(e);
     };
     const under = (el) => {
       const i = stack.indexOf(el);
@@ -59,6 +59,12 @@
     };
     return !under(textEl) && !under(control);
   }
+
+  // Placed over the page with the window, not where the page’s flow put it: it, or what holds it, is fixed or sticky.
+  const floats = (e) => {
+    for (let a = e; a && a !== document.body; a = a.parentElement) if (/^(fixed|sticky)$/.test(getComputedStyle(a).position)) return true;
+    return false;
+  };
 
   // Text that belongs to the control: its own, and its labels’.
   const belongs = (n, control) => control.contains(n) || [...(control.labels ?? [])].some((l) => l.contains(n));
