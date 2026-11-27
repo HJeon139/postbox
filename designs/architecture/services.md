@@ -214,14 +214,12 @@ flowchart LR
     - A due wake is an entry with the source “scheduled”, so `noteScheduledTurn` becomes its take, `prepareScheduledRetry` becomes the failed-start rule, and the tools a wake recorded (`recordScheduledTool`, `recordedTools`) are its note.
   - **The person’s own actions:**
     - `edit(entryId)`, `cancel(entryId)` and `stopped(sessionId)`;
-    - `continueChain(threadId)`: Continue at the chain cap;
     - `retry(sessionId)`: the facade’s Retry on a failed turn. The entries that turn took go back to waiting, marked as a resend, and the session is no longer failed, so `entry.waiting` starts the turn. As built (#1429) it takes the failed turn’s id and whom its failed reply already woke (`woken`, #485), which rides on each reopened entry, so whichever turn takes them, Send now’s included, is the retry and no other turn is. What an app event’s entry carries in memory stays while a Retry can reopen it. A failed turn that took no entries, such as a host turn’s replay, sends its request again instead.
 
     The person’s message is an entry when it’s sent (#1404), so `edit` and `cancel` act on it. A queue a store holds from before that is turned into entries once, on start (step 3).
   - **Signals:** `entry.waiting`. It is raised for an agent that has a waiting entry that isn’t a notice, and that:
     - isn’t `busy()` in Running (no live turn, none exiting, no host turn awaiting attach);
-    - has a session that hasn’t failed;
-    - isn’t held at the chain cap.
+    - has a session that hasn’t failed.
 
     It is raised when such an entry arrives, and from the listeners below.
 - **Listens to:**
@@ -668,7 +666,7 @@ Each step is its own pull request, and is done when:
   - **What the switch found:**
     - A reply’s part that settles during the end of its turn is final before that turn has written its error. Its entries are stored with `wake: false`, and `turn.ended` or `turn.failed` wakes their agents, so a failed reply’s entry reads its error.
     - Delivery needs the turn an item came from after Running has let it go: Running keeps each session’s last turn to leave (`turnFor`).
-    - The chain cap’s card and the add-agent card stand in front of Delivery until Asks replaces them, so `chainHeld` stays unbound.
+    - The add-agent card stands in front of Delivery until Asks replaces it, so `chainHeld` stays unbound. Nothing is held at the chain cap since #1623: the wake past it is refused.
     - A host turn’s replay keys its mentions by the host turn and their order, as the retry id (#1138’s class).
     - Entries carry an arrival number, so they sort with the queue’s messages in the same millisecond (#733).
     - Stop closes a turn without `endTurn`, so it raises `turn.stopping`, and Delivery marks what the turn took as delivered. A shutdown’s stop doesn’t: the restart reopens those entries once, as a resend. A reply the person stopped hands its mentions to no one, as before.

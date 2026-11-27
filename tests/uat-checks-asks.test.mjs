@@ -59,8 +59,8 @@ test('ask-dropped doesn’t judge a held wake while the turn due to carry it is 
 
 /**
  * A card from @critic to @developer with @researcher’s wake of @critic held on it, retired when @developer was woken
- * another way. Retiring sends each wake on (server/wake-cards.mjs’s retireStale): the card’s own raises the next
- * card, and the held one is held on that card. @critic takes a turn meanwhile that doesn’t carry it. Then the next
+ * another way, as runs from before #1623 did. Retiring sent each wake on (wake-cards.mjs’s retireStale, since removed):
+ * the card’s own raises the next card, and the held one is held on that card. @critic takes a turn meanwhile that doesn’t carry it. Then the next
  * card is allowed, or retired in its turn, and the wake reaches @critic, or doesn’t.
  */
 function movedRoom({ next = 'open', arrives = false } = {}) {

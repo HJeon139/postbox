@@ -823,7 +823,6 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .composer .hint .runs-in .folder-head { flex: 0 1000 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; }
 .composer .hint .runs-in .runs-in-rest { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .composer .hint b { color: var(--text); font-weight: 500; }
-/* How many wakes agents have chained since your last message, with the hint to Stop them (#492). */
 /* A “mock” tag after a name fits the hint’s line, so it doesn’t make the line taller. */
 .composer .hint .mock-tag { line-height: 12px; vertical-align: top; }
 .attachments { display: flex; flex-wrap: wrap; gap: 6px; }
