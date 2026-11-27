@@ -127,15 +127,15 @@ const overMarks = (id) =>
     .filter((p) => p.code === 'text-over-marks')
     .map((p) => p.message);
 
-test('#952 labels drawn over a chart’s dot, ring and fit line are a hint for the agent that names them, and the version passes', () => {
+test('#952 labels drawn over a chart’s dot, ring and fit line are a hint for the agent that names them', () => {
   const [message] = overMarks('onmarks');
   expect(message, says('onmarks')).toMatch(/^In svg#onmarks, 3 labels sit on the chart’s marks/);
   expect(message).toContain('“6:25” (on a dot)');
   expect(message).toContain('“6:11” (on a ring)');
   expect(message).toContain('“5:56” (on a line)');
   expect(message).not.toContain('Hill circuit');
-  expect(check('onmarks').status, 'the agent alone is told: the version passes').toBe('passed');
-  expect(check('onmarks').problems, 'nothing for the person').toEqual([]);
+  // Not its status: a label on a dot’s fill can also fail contrast, depending on where the platform’s font puts it,
+  // and that finding is the person’s.
 });
 
 test('#952 the person sees the chart with no note: only its agent hears of the labels on its marks', async ({ page }) => {
@@ -145,10 +145,14 @@ test('#952 the person sees the chart with no note: only its agent hears of the l
     title: 'Chart',
     personaIds: [rt.createPersona({ handle: 'charter' }).id],
   });
-  rt.toolsFor(arrange.agentIn(rt, t.id).id).show_app({ id: 'quiet', title: 'quiet', code: APPS.onmarks });
+  // Its only finding is a label on the fit line: nothing else could give the version a note.
+  const code = scatter('quiet', `<text x="196" y="140" ${T}>5:56</text>`);
+  rt.toolsFor(arrange.agentIn(rt, t.id).id).show_app({ id: 'quiet', title: 'quiet', code });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
-  await expect.poll(() => rt.store.state.apps.quiet.check.status, { message: 'the chart checked', timeout: 30_000 }).toBe('passed');
+  await expect.poll(() => rt.store.state.apps.quiet.check.status, { message: 'the chart checked', timeout: 30_000 }).not.toBe('pending');
+  expect(check('quiet').status, says('quiet')).toBe('passed');
+  expect(check('quiet').problems, 'nothing for the person').toEqual([]);
   expect(overMarks('quiet'), 'its agent hears of the labels').toHaveLength(1);
   const item = page.locator(`#main [data-key="${rt.store.state.apps.quiet.itemId}"]`);
   await expect(item.locator('iframe.app-iframe'), 'the chart is shown').toBeVisible();
