@@ -437,7 +437,7 @@ function appBody(appId, review) {
 const standsIn = (app, review) =>
   app.check.status === 'fixing' && !app.retired && !review && !viewing.has(app.id) && app.lastShown > 0 && app.lastShown < app.current;
 /** The version the person sees: one picked from the menu, else the current one, or the one standing in for it. */
-const shownVersion = (app, review = false) => viewing.get(app.id) ?? (standsIn(app, review) ? app.lastShown : app.current);
+export const shownVersion = (app, review = false) => viewing.get(app.id) ?? (standsIn(app, review) ? app.lastShown : app.current);
 
 /**
  * Renders an app (current or viewed version) into `container`. Used by transcript items and app reviews.

@@ -9,6 +9,9 @@ export const newReviewDraft = (content) => ({
   composing: null,
   composingText: '',
   composingSelection: null,
+  // The region of the app the open new comment is on, if the person marked one (#856), and the box being marked.
+  composingRegion: null,
+  marking: null,
   // The draft comment open for editing, by its place in comments, and its unsaved text (#858).
   editing: null,
   editingText: '',
@@ -27,18 +30,21 @@ export const newReviewDraft = (content) => ({
 
 /**
  * Opens one comment box: empty, or with what was typed there before Edit closed it (parkComment). @param {any} draft
- * @param {any} key
+ * @param {any} key @param {any} [region]  the region of an app it’s on, when the person marked one (#856)
  */
-export function startComment(draft, key) {
+export function startComment(draft, key, region = null) {
   // One box at a time: an edit open elsewhere keeps what was typed in it.
   saveEdit(draft);
   // Only this place’s text comes back; text set aside for another place waits for its own.
-  const at = draft.parked.findIndex((p) => samePlace(p.key, key));
+  const at = draft.parked.findIndex((p) => samePlace(p.key, key) && samePlace(p.region ?? null, region));
   const parked = at < 0 ? null : draft.parked[at];
   if (parked) draft.parked = draft.parked.filter((_p, i) => i !== at);
   draft.composing = key;
   draft.composingText = parked ? parked.text : '';
   draft.composingSelection = null;
+  draft.composingRegion = region;
+  // A comment box opened leaves marking a region (#856).
+  draft.marking = null;
   draft.composeFocus = true;
 }
 
@@ -51,17 +57,21 @@ const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);
  */
 export function parkComment(draft) {
   const key = draft.composing;
-  if (key !== null && draft.composingText.trim()) draft.parked = [...draft.parked.filter((p) => !samePlace(p.key, key)), { key, text: draft.composingText }];
+  const region = draft.composingRegion ?? null;
+  const other = (/** @type {any} */ p) => !samePlace(p.key, key) || !samePlace(p.region ?? null, region);
+  if (key !== null && draft.composingText.trim()) draft.parked = [...draft.parked.filter(other), { key, region, text: draft.composingText }];
   stopComment(draft);
 }
 
 /**
- * A new comment at a box’s place: a selection carries its own place, an app review’s key is a part, and any other is a
- * line. @param {any} key @param {string} text @param {boolean} app  whether the review is of an app
+ * A new comment at a box’s place: a selection carries its own place, an app review’s key is a part, or a region the
+ * person marked (#856), and any other is a line. @param {any} key @param {string} text @param {boolean} app  whether
+ * the review is of an app @param {any} [region]  the region of the app it’s on
  */
-export function commentAt(key, text, app) {
+export function commentAt(key, text, app, region = null) {
   if (typeof key === 'object') return { ...key, text };
-  return app ? { anchor: key, text } : { line: key, text };
+  if (app) return region ? { anchor: key, region, text } : { anchor: key, text };
+  return { line: key, text };
 }
 
 /**
@@ -70,7 +80,7 @@ export function commentAt(key, text, app) {
  */
 export function addComposing(draft, app) {
   const text = typeof draft.composingText === 'string' ? draft.composingText.trim() : '';
-  if (draft.composing !== null && text) draft.comments = [...draft.comments, commentAt(draft.composing, text, app)];
+  if (draft.composing !== null && text) draft.comments = [...draft.comments, commentAt(draft.composing, text, app, draft.composingRegion)];
   stopComment(draft);
 }
 
@@ -79,6 +89,7 @@ export function stopComment(draft) {
   draft.composing = null;
   draft.composingText = '';
   draft.composingSelection = null;
+  draft.composingRegion = null;
 }
 
 /**

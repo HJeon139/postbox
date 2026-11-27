@@ -1,10 +1,11 @@
 // An app in a review: the app in review mode, where its registered anchors carry name tags, and the comments on each
 // anchor beside it (designs/agent-apps.md, the review block). An app that names no parts says so, and the person
-// comments on the whole app instead (#855).
+// comments on the whole app instead (#855), or marks a point or a box anywhere on it (#856, review-marks.mjs).
 
 import { mountApp } from './apps.mjs';
 import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
+import { attachMarks, markControls, paintMarks, regionNote, regionsOf, versionOf } from './review-marks.mjs';
 
 /** The anchor of a comment on the app as a whole: what the agent reads in the answer. */
 export const WHOLE_APP = 'the whole app';
@@ -74,7 +75,7 @@ function graft(old, next, keep, slot) {
 /**
  * The app and its comments, by anchor.
  * @param {any} b  the review block
- * @param {{ itemId: string, d: any, done: boolean, rerender: () => void, threadBox: (key: any) => HTMLElement }} env
+ * @param {{ itemId: string, d: any, done: boolean, rerender: () => HTMLElement, threadBox: (key: any) => HTMLElement }} env
  */
 export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
   const key = `${b.appId}:${done ? 'answered' : 'review'}`;
@@ -85,7 +86,9 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
   const anchors = new Set(
     [...(b.threads ?? []).map((t) => t.anchor), ...d.comments.map((c) => c.anchor), ...(d.composing ? [d.composing] : [])].filter(Boolean),
   );
-  for (const a of anchors) pins.append(h('div', h('span.small.dim', 'On ', h('b', a)), threadBox(a)));
+  const version = versionOf(b, done);
+  const regions = regionsOf(b, d);
+  for (const a of anchors) pins.append(h('div', h('span.small.dim', 'On ', h('b', a), regionNote(regions.get(a), version)), threadBox(a)));
   if (done && !anchors.size) pins.append(h('p.small.dim', 'No comments.'));
   // Open, the review always takes a comment on the whole app, the only way to comment on one that names no parts. The
   // button comes first, so the hint under it changes without moving it.
@@ -96,7 +99,12 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
     startComment(d, WHOLE_APP);
     rerender();
   };
-  if (!done) pins.append(h('div', h('button.btn.sm', { type: 'button', onclick: onWhole }, 'Comment on the whole app')), hint);
+  const marks = { b, d, done, version, rerender };
+  if (!done) {
+    const mark = markControls(itemId, marks);
+    pins.append(h('div.rv-app-actions', h('button.btn.sm', { type: 'button', onclick: onWhole }, 'Comment on the whole app'), mark.button), hint);
+    if (mark.help) pins.append(mark.help, mark.status);
+  }
   if (!kept)
     mountApp(appEl, b.appId, {
       review: !done,
@@ -115,5 +123,8 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
         }
       },
     });
+  // Over the app’s frame, a layer of Postbox’s own draws the regions marked on it, and takes the marking (#856).
+  if (!kept) attachMarks(itemId, appEl);
+  paintMarks(itemId, marks);
   return h('div.app-review-wrap', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' } }, appEl, pins);
 }

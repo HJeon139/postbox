@@ -1205,6 +1205,19 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 /* Review */
 .rv-doc .tx { white-space: pre-wrap; word-break: break-word; }
 .rv-pins { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.rv-app-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Regions marked on an app in its review (#856): a layer of Postbox’s own over the frame, in the same grid cell, so it
+   takes the frame’s size and scrolls with it. It takes the pointer only while the person is marking. */
+.rv-app .app-body { display: grid; grid-template-columns: minmax(0, 1fr); }
+.rv-app .app-body > * { grid-area: 1 / 1; }
+.rv-marks { position: relative; z-index: 1; pointer-events: none; }
+.rv-marks.marking { pointer-events: auto; cursor: crosshair; touch-action: none; outline: 2px dashed var(--accent); outline-offset: -2px; }
+.rv-marks.marking:focus-visible { outline-style: solid; }
+.rv-region { position: absolute; box-sizing: border-box; border: 2px solid var(--accent); border-radius: 2px; pointer-events: none; }
+.rv-region.marking { border-style: dashed; }
+.rv-region.point { width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--accent); }
+.rv-region-n { position: absolute; top: 0; left: 0; padding: 0 4px; font-size: 11px; line-height: 16px; color: var(--text); background: var(--panel); border: 1px solid var(--accent); border-radius: 2px; }
+.rv-region.point .rv-region-n { left: 14px; top: -4px; }
 
 /* Command palette, settings and lists */
 .palette .p-list { list-style: none; padding: 0; margin: 0; max-height: 50vh; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
