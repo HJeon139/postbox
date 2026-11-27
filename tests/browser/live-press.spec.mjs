@@ -118,12 +118,17 @@ test('#1616 a press held on a background job’s Stop while a step lands sends t
   await running(page, ['jobber']);
   const stop = page.locator('.bg-jobs').getByRole('button', { name: /^Stop the background job/ });
   await expect(stop).toBeVisible();
-  // The scripted backend has no process to stop, so the server refuses the stop; what’s checked is that the click,
-  // held across the refill, sent it.
-  allowPageError(page, /status of 409/);
+  // The scripted backend has no process to stop, so the server refuses the stop, here twice; what’s checked is that the
+  // click, held across the refill, sent it, and that Stop sends again once refused.
+  allowPageError(page, /status of 409/, { times: 2 });
   const sent = page.waitForRequest((r) => r.method() === 'POST' && /\/jobs\/bash_1\/stop$/.test(r.url()), { timeout: 5000 });
   await pressAcrossRefill(page, stop, 'jobber');
   await sent;
+  // Refused, Stop can be pressed again (#1837).
+  await expect(stop, 'pressable again once the stop is refused').not.toHaveAttribute('aria-disabled', 'true');
+  const again = page.waitForRequest((r) => r.method() === 'POST' && /\/jobs\/bash_1\/stop$/.test(r.url()), { timeout: 5000 });
+  await stop.click();
+  await again;
   await finish(['jobber']);
 });
 
@@ -146,4 +151,47 @@ test('#1616 Space held on “N earlier steps” while a step lands opens them on
   await expect(page.locator('.live-steps details.earlier'), 'opened by Space’s keyup').toHaveAttribute('open', '');
   await expect(page.locator('.live-steps li.step-full'), 'the held refill landed').toContainText('make piece-41');
   await finish(['keyer']);
+});
+
+// #1837: a refill replaced the job rows with a fresh, enabled Stop while the first stop was in flight, so a second press
+// sent a second stop, and focus on Stop went to the page.
+test('#1837 a job’s Stop pressed by keyboard stays pressed and focused across a refill, and a second press sends nothing', async ({ page }) => {
+  scripts.set('stopper', async ({ emit, who }) => {
+    emit({ kind: 'tool_call', id: 'bg2', name: 'Bash', input: { command: 'npm run serve', run_in_background: true }, final: true });
+    emit({ kind: 'tool_result', id: 'bg2', text: 'Command running in background with ID: bash_2', background: { job: 'bash_2' } });
+    await hold(who, 1);
+    step(emit, 's2', 'npm test');
+    await hold(who, 2);
+  });
+  await running(page, ['stopper']);
+  const stop = page.locator('.bg-jobs').getByRole('button', { name: /^Stop the background job/ });
+  await expect(stop).toBeVisible();
+  // The stop waits at the server until the test lets it go, so it’s in flight across the refill.
+  let stops = 0;
+  /** @type {() => void} */
+  let letGo = () => {};
+  await page.route('**/jobs/bash_2/stop', async (route) => {
+    stops++;
+    await new Promise((r) => {
+      letGo = () => r(undefined);
+    });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+  });
+  await stop.focus();
+  await page.keyboard.press(' ');
+  await expect.poll(() => stops, { message: 'the stop sent' }).toBe(1);
+  go('stopper');
+  await expect.poll(() => at('stopper')).toBe(2);
+  await synced(page, scripted.app);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await expect(page.locator('.live-steps li.step-full'), 'the refill landed').toContainText('npm test');
+  await expect(stop, 'still focused after the refill').toBeFocused();
+  await expect(stop, 'still shown as pressed').toHaveAttribute('aria-disabled', 'true');
+  // Pressed again, by mouse and by keyboard: forced, since Playwright won’t click what says it’s disabled, but a person can.
+  await stop.click({ force: true });
+  await page.keyboard.press(' ');
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(r)));
+  expect(stops, 'one stop, though pressed again').toBe(1);
+  letGo();
+  await finish(['stopper']);
 });

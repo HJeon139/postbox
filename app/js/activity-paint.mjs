@@ -8,7 +8,7 @@ import { agentMarkdown, markTerms, paintAgentMarkdown } from './agent-markdown.m
 import { itemsOf, placeIn } from './client.mjs';
 import { h, icon, trusted } from './dom.mjs';
 import { onPressEnd, pressHolds } from './live-press.mjs';
-import { jobRows, runningNote } from './reply-stop.mjs';
+import { jobRows, runningNote, swapJobs } from './reply-stop.mjs';
 import { kiroStep } from './thread-host.mjs';
 import { recordOf, recordWords, workLink } from './work-record.mjs';
 
@@ -185,7 +185,7 @@ export function paintActivity(node, it, threadId) {
   if (oldList && list) moveInto(oldList, list);
   else if (list) node.insertBefore(list, before);
   else oldList?.remove();
-  if (oldJobs && jobs) oldJobs.replaceWith(jobs);
+  if (oldJobs && jobs) swapJobs(oldJobs, jobs);
   else if (jobs) (list?.isConnected ? list : oldList)?.after(jobs);
   else oldJobs?.remove();
   return true;
@@ -245,7 +245,7 @@ function paintLive(node, it, threadId) {
   if (focused) /** @type {HTMLElement | null} */ (now?.querySelector(':scope > summary'))?.focus();
   if (focusKey) /** @type {HTMLElement | null} */ (block.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`))?.focus();
   const oldJobs = node.querySelector(':scope > ul.bg-jobs');
-  if (oldJobs && jobs) oldJobs.replaceWith(jobs);
+  if (oldJobs && jobs) swapJobs(oldJobs, jobs);
   else if (jobs) block.after(jobs);
   else oldJobs?.remove();
   const box = /** @type {HTMLElement | null} */ (node.querySelector(':scope > .md'));
