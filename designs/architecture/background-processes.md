@@ -159,7 +159,7 @@ A wait that costs the agent its messages needs a real risk, and says what it pro
 | A background subagent is still running | The subagent runs inside the CLI’s own process, with no process of its own to keep. Ending the CLI ends it, and its work is lost, as the two review rounds of #1714 were | Live input for that backend |
 | A Monitor is still running | A Monitor’s lines reach the model only through the CLI that started it. Its script would survive the CLI, but nothing would read it, so the watch the agent asked for would be silently gone | Live input for that backend |
 
-Both of the last two are bounded at 2 h (`QUIET.backgroundMax`), which a turn on a host has today (#847), and a host is where this applies. Past it the turn is stopped as hung, naming the task, as `server/remote/turns-background.mjs` does today. The bound protects against an agent deaf for good behind work inside its CLI that hung. The person’s Send now still ends such a wait at any moment.
+Both of the last two are bounded at 2 h (`QUIET.backgroundMax`), which a turn on a host has today (#847). A host is where this applies, and Claude Code on this computer only if its first step can’t be built, with Postbox’s own timer. Past it the turn is stopped as hung, naming the task, as `server/remote/turns-background.mjs` does today. The bound protects against an agent deaf for good behind work inside its CLI that hung. The person’s Send now still ends such a wait at any moment.
 
 Nothing else waits. In particular, a turn never waits because Postbox couldn’t tell which process is a job’s.
 
@@ -222,6 +222,7 @@ These CLIs exit by themselves after the reply, and Postbox sends no signal at a 
 - **What’s kept is what’s left.** After the CLI’s exit, whatever is still in its process group is work the turn left running. Nothing is signaled, as on `main`. The group is recorded as one kept job, with the command of each member as its label, only if it’s still there at a second read 1 s later, so a helper that outlives its CLI by milliseconds wakes no one. The turn’s end doesn’t wait for that read.
 - **The wake** is the one in “Ending the turn at the reply”, when the group is empty. Its text names no output file: a job that redirected its output is the agent’s to read, and one fed through the CLI’s pipes had its output discarded, which the wake says.
 - **Stop is `main`’s Stop.** It kills the turn’s group, background work included, between the CLI’s exit and its `close` too.
+- **Antigravity’s commit at the turn’s end** (#1709) would run at `exit` while the job still writes in the agent’s worktree, so it would take only what the job had written by then. Whether that commit waits for the kept group to empty is decided in the step’s own change.
 
 Its live check, per CLI: at a normal end, does the CLI exit with `&` and `nohup` work left in its group? Does `close` fire while an unredirected `cmd &` runs, or only when it ends? Does a turn with no background command leave nothing in the group?
 
