@@ -6,7 +6,7 @@
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { failureClass } from './harness-failure.mjs';
 import { liveEnd } from './live-buffer.mjs';
-import { takenBack } from './store-outage.mjs';
+import { neverReached, takenBack } from './store-outage.mjs';
 import { heldBy } from './turn-held.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { outOfQuota, quotaBack } from './turn-quota.mjs';
@@ -38,9 +38,9 @@ export function endTurn(rt, turn, err) {
   const se = rt.store.pending.session(turn.sessionId) ?? rt.s.sessions[turn.sessionId];
   if (!se) return;
   const items = rt.store.pending.items(turn.threadId);
-  // The backend failed it before it left a reply part or step: one that ended with no reply ran, and its agent had the
-  // tools-down note (#1171).
-  const neverRan = Boolean(err) && !turn.first;
+  // The backend failed it before it reached the agent (store-outage.mjs, neverReached), decided from the backend’s own
+  // error: one that ended with no reply ran, and its agent had what it took (#1171, #1904).
+  const neverRan = Boolean(err) && neverReached(rt, turn, err);
   // A turn that ends with no reply is never posted as an empty message (#485, empty-reply.mjs): it fails, saying so.
   if (!err && endedWithoutReply(turn, items)) err = emptyReply(rt, se, turn);
   // How it ended, for the entries its replies’ mentions make as they settle (mention-entries.mjs).

@@ -19,7 +19,7 @@ function room() {
   const store = new Store(null);
   /** @type {any[]} */
   const sent = [];
-  const fail = { next: false, downAgain: /** @type {string | null} */ (null), afterWords: false, silent: false, hang: false };
+  const fail = { next: false, downAgain: /** @type {string | null} */ (null), afterWords: false, silent: false, hang: false, refused: false };
   const adapter = {
     name: 'mock',
     async folderFor() {
@@ -38,6 +38,13 @@ function room() {
       if (fail.silent) {
         fail.silent = false;
         return;
+      }
+      // A backend that refused to open the turn, after a step saying so: Codex when Postbox’s tools didn’t start
+      // (codexRefusal), whose error says it never reached the agent.
+      if (fail.refused) {
+        fail.refused = false;
+        ctx.activity({ id: 'postbox-tools-down', label: 'Postbox’s tools didn’t load', state: 'failed', ms: 0 });
+        throw Object.assign(new Error('Postbox’s tools didn’t load.'), { notReached: true });
       }
       // A CLI that couldn’t start: the turn never reached the agent.
       if (fail.next) {
@@ -264,4 +271,28 @@ test('#1904 a turn the store’s outage stopped gives back its waiting notice on
   r.store.tellStatus();
   for (let i = 0; i < 200 && !(r.store.state.sessions[r.se.id].context ?? []).length; i++) await new Promise((x) => setTimeout(x, 5));
   assert.deepEqual(r.store.state.sessions[r.se.id].context, [NOTICE]);
+});
+
+test('#1904 a turn its backend refused after a step saying so gives back what it took: it never reached its agent', async () => {
+  const r = room();
+  notice(r);
+  lintWaits(r);
+  r.fail.refused = true;
+  await r.turn('Try again.');
+  await r.turn('Once more.');
+  assert.ok(carries(r.sent[1]));
+  assert.match(String(r.sent[1].lint ?? ''), /A problem\./);
+});
+
+test('#1904 the notices go back ahead of one that came since, in the order they were told', async () => {
+  const r = room();
+  notice(r);
+  r.fail.hang = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  // Told while the turn that took the first one still runs, then that turn is stopped before any output.
+  r.rt.sessions.tell(r.se.id, 'A later notice.');
+  r.rt.stop(r.se.id);
+  for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
+  assert.deepEqual(r.store.state.sessions[r.se.id].context, [NOTICE, '[Postbox] A later notice.']);
 });

@@ -9,7 +9,7 @@ import { clockStopConfirmed } from './run-clock.mjs';
 import { dropScheduledWake } from './scheduled-wakes.mjs';
 import { dropWakes } from './side-threads.mjs';
 import { recordStopped } from './stop-record.mjs';
-import { STORE_STOPPED, takenBack } from './store-outage.mjs';
+import { neverReached, STORE_STOPPED, takenBack } from './store-outage.mjs';
 import { whenWritable } from './store-wait.mjs';
 import { endSubagent } from './subagent-end.mjs';
 import { forgetWait } from './turn-transient.mjs';
@@ -77,7 +77,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
   turn.closed = true;
   // Stopped before it left a reply part or step, it gives back what it took, as a failed one does (#1171, #1904).
-  if (!turn.first) takenBack(rt, sessionId, turn);
+  if (neverReached(rt, turn)) takenBack(rt, sessionId, turn);
   rt.running.end(sessionId);
   recordStopped(rt, turn, ended, { by, why: by === 'clock' || by === 'pause' ? STOP_WHY[by] : STOP_WHY.you });
   // What the turn took was given to the agent, so it isn't handed over again (designs/architecture/services.md, “The

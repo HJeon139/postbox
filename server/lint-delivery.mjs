@@ -107,7 +107,8 @@ export function lint(checks, sessionId, turnId, problems) {
 
 /**
  * Another turn starts before a lint turn went (the person wrote during the settle, say): the problems join that
- * turn, so a lint turn never lands after it, and later reports for the earlier turns are dropped.
+ * turn, so a lint turn never lands after it, and later reports for the earlier turns are dropped, unless that turn
+ * never reached its agent and gave them back (store-outage.mjs, takenBack; #1904).
  */
 export function foldLint(checks, sessionId, message) {
   const problems = [];

@@ -80,3 +80,12 @@ test('#1162 “postbox:” inside another server’s error detail isn’t Postbo
   await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi.' }, ctx), /tried the postbox: socket/);
   assert.equal(down(ctx), undefined);
 });
+
+test('#1904 Codex’s refusal says the turn never reached the agent, though its step says why', async () => {
+  const { codexRefusal } = await import('../server/adapters/codex-thread.mjs');
+  const ctx = context();
+  const err = codexRefusal(ctx, { message: refused('postbox').message });
+  assert.ok(down(ctx), 'a step says so');
+  assert.equal(err.notReached, true);
+  assert.equal(codexRefusal(context(), { message: 'some other error' }).notReached, undefined, 'any other error as it was');
+});

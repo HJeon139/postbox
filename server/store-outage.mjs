@@ -155,6 +155,20 @@ export function saveBackendState(rt, sessionId, patch) {
 }
 
 /**
+ * Whether a turn that ended without finishing never reached its agent, as near as Postbox can tell, so it gives back
+ * what it took (takenBack; #1171, #1904). One its backend marks so (notReached: Codex refusing a turn whose tools didn’t
+ * start, after a step saying so) never did. Otherwise, one that left a reply part or step did, and so did a host turn
+ * whose link gave up, which runs on there and is attached again (remote/turns-end.mjs, “lost”).
+ * @param {Runtime} rt @param {any} turn @param {any} [err]
+ */
+export function neverReached(rt, turn, err) {
+  if (err?.notReached === true) return true;
+  if (turn.first) return false;
+  const se = rt.store.pending.session(turn.sessionId) ?? rt.s.sessions[turn.sessionId];
+  return !(turn.remote && se?.remoteTurn?.state === 'lost');
+}
+
+/**
  * Gives back what a turn that never reached its agent took from the session (#1171, #1904): the tools-down note, unless a
  * newer one was set (one still waiting for writes to reopen too); the waiting notices, ahead of any that came since;
  * and the folded lint, which the next turn folds in again.
@@ -209,7 +223,7 @@ function stopForStore(rt, sessionId) {
   rt.running.exit(sessionId, { turn, held: turn.pending.splice(0), silent: false });
   turn.abort.abort(Object.assign(new Error(WHY), { name: 'AbortError' }));
   turn.closed = true;
-  if (!turn.first) takenBack(rt, sessionId, turn); // as any Stop does (turn-stop.mjs)
+  if (neverReached(rt, turn)) takenBack(rt, sessionId, turn); // as any Stop does (turn-stop.mjs)
   rt.running.end(sessionId);
   console.error(`@${rt.s.sessions[sessionId]?.handle ?? sessionId}’s turn stopped: Postbox can’t save changes right now.`);
   rt.storeWait.push(Object.assign(() => recordStop(rt, turn), { stopOf: sessionId })); // settleOrphanTurns reads stopOf
