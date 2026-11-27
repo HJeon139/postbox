@@ -118,3 +118,16 @@ test('#439 a held wake whose target was removed tells its agent it didn’t go w
     `beta is told: ${told.join(' | ')}`,
   );
 });
+
+test('#517 allowing the card tells each held wake’s agent its message went, so it stops reporting it as waiting', async () => {
+  const f = await cardOpen();
+  await f.wake(f.beta, 'gamma', HANDOFF);
+  f.rt.resolveHop(f.t.id, f.card.id, true);
+  await settle(f.rt);
+  // beta’s next turn, on gamma’s answer, carries the note as its context.
+  const told = f.adapter.calls.filter((c) => c.handle === 'beta').flatMap((c) => c.message?.context ?? []);
+  assert.ok(
+    told.some((l) => /Your message to @gamma \(“Count the lines.*”\), held on @alpha’s request to add @gamma.*, went: the person allowed it\./.test(l)),
+    `beta is told: ${told.join(' | ')}`,
+  );
+});

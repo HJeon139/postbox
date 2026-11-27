@@ -170,7 +170,10 @@ function answerWaker(rt, se, card, replyIn, text) {
   rt.delivery.send({ sessionId: se.id, threadId, source: 'answer', itemId: card.id, from: 'you', message: { kind: 'notice', text } });
 }
 
-/** A held wake goes on as its agent sent it; one that can’t go (its target was removed meanwhile) tells its agent why. */
+/**
+ * A held wake goes on as its agent sent it, and its agent is told either way: that it went, since the hold’s answer said
+ * it waits and the agent would go on reporting it as waiting (#517), or why it didn’t (its target was removed meanwhile).
+ */
 function sendHeld(rt, card, w) {
   const r = rt.agentWake(w.fromSessionId, w.to, w.text, {
     confirmed: true,
@@ -180,8 +183,9 @@ function sendHeld(rt, card, w) {
     bounce: w.bounce === true,
   });
   const se = rt.s.sessions[w.fromSessionId];
-  if (!r.ok && !r.waiting && se && !se.retiredFork)
-    rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${r.message}`);
+  if (r.waiting || !se || se.retiredFork) return;
+  const outcome = r.ok ? 'went: the person allowed it.' : `didn’t go: ${r.message}`;
+  rt.sessions.tell(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, ${outcome}`);
 }
 
 /**
