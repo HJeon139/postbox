@@ -6,16 +6,16 @@ It is a CDK app in plain JavaScript, with its own `package.json`. The `postbox` 
 
 ```mermaid
 flowchart LR
-  B[Browser] -->|"HTTPS :443"| LB["Application Load Balancer: TLS, sign-in with a Cognito user pool"]
-  LB -->|"HTTP :8080, with the signed token"| T["One Fargate task: the server’s image"]
+  B[Browser] -->|"HTTPS :443"| LB["Application Load Balancer, public subnets: TLS, sign-in at your identity provider"]
+  LB -->|"HTTP :8080, with the signed token"| T["One Fargate task, private subnets: the server’s image"]
   T --- D[("EFS: the data folder")]
-  T -->|HTTPS| K["The region’s key endpoint"]
-  X[Anything else] -. "refused by the task’s security group" .-> T
+  T -->|"HTTPS, through the NAT gateway"| K["The region’s key endpoint"]
+  X[Anything else] -. "no route, no rule, and no token Postbox accepts" .-> T
 ```
 
 ## What it makes, and what it costs
 
-One VPC with two public subnets and no NAT gateway, one Application Load Balancer, one Cognito user pool, one ECS cluster with one Fargate task (0.5 vCPU, 1 GB, ARM64), one EFS file system and one log group. Left running, the load balancer and the task cost about a dollar a day in us-east-1, at the prices on [the load balancer’s](https://aws.amazon.com/elasticloadbalancing/pricing/) and [Fargate’s](https://aws.amazon.com/fargate/pricing/) pages. Take it down when you’re done (“Take it down”).
+With nothing of yours given: one VPC with public and private subnets and one NAT gateway, one Application Load Balancer, one Cognito user pool, one ECS cluster with one Fargate task (0.5 vCPU, 1 GB, ARM64), one EFS file system and one log group. Left running, the load balancer, the NAT gateway and the task cost about two and a half dollars a day in us-east-1, at the prices on [the load balancer’s](https://aws.amazon.com/elasticloadbalancing/pricing/), [the NAT gateway’s](https://aws.amazon.com/vpc/pricing/) and [Fargate’s](https://aws.amazon.com/fargate/pricing/) pages. Take it down when you’re done (“Take it down”).
 
 ## Use what you already have
 
@@ -25,7 +25,7 @@ One VPC with two public subnets and no NAT gateway, one Application Load Balance
 |---|---|---|
 | A hosted zone | `address: { domainName, hostedZone }`: it requests the certificate, proves it through the zone and points the name at the load balancer | `address: { certificate, domainName? }`, a certificate of your own |
 | An identity provider | `signIn: { userPool, userPoolDomain }` for a Cognito user pool, to which it adds one app client of its own; or `signIn: { oidc: { … } }` for any OIDC provider | a new user pool, whose people an administrator makes |
-| A VPC | `vpc` | a new one with two public subnets and no NAT gateway |
+| A VPC | `vpc`, with private subnets that reach the internet | a new one: the load balancer in public subnets, Postbox in private ones behind one NAT gateway |
 
 ```js
 new HostedPostbox(stack, 'Postbox', {
@@ -36,7 +36,7 @@ new HostedPostbox(stack, 'Postbox', {
 });
 ```
 
-**Signing in is not being let in.** The provider says who a person is. Who may use this Postbox is `allow`, Postbox’s own list, which Postbox checks on every request: people by their subject at the provider, or anyone in a group a claim names. A provider you share with other applications admits none of their people until you name them. With no `allow`, no one is let in.
+**Signing in is not being let in.** The provider says who a person is. Who may use this Postbox is `allow`, Postbox’s own list, which Postbox checks on every request: people by their subject at the provider. A provider you share with other applications admits none of their people until you name them. With no `allow`, no one is let in. Admitting by a group’s claim (`allow.groups`) is only for an OIDC provider whose administrators alone set that claim; the construct refuses it for a Cognito user pool, where a claim is an attribute a person may be able to write for themselves through another of the pool’s clients. For the same reason, a person named by their email address must have one the provider verified.
 
 ## Deploy it with the app here
 
@@ -50,7 +50,8 @@ new HostedPostbox(stack, 'Postbox', {
 | `oidcIssuer`, `oidcAuthorizationEndpoint`, `oidcTokenEndpoint`, `oidcUserInfoEndpoint`, `oidcClientId`, `oidcClientSecretName` | Another OIDC provider. The secret is read from Secrets Manager by its name as the stack deploys |
 | `claimUsername`, `claimName` | The claims that hold a person’s user name and name. `email` and `name` |
 | `allowSubjects` | Who may sign in: their subjects at the provider, separated by commas |
-| `allowGroupsClaim`, `allowGroups` | Or anyone in one of these groups, read from this claim |
+| `allowGroupsClaim`, `allowGroups` | With an OIDC provider only: anyone in one of these groups, read from this claim |
+| `deletionProtection` | `false` lets the load balancer be deleted, for a test you will take down. On |
 | `openTo` | The addresses that reach the listener, as a CIDR. Everywhere |
 | `stackName` | The stack’s name. `PostboxTest` |
 
@@ -64,7 +65,7 @@ npm install
 npx cdk deploy
 ```
 
-The output `Url` is the address. For a test with no name of your own, bring a self-signed certificate, and your browser will warn about it:
+The outputs are `Url`, the address, and `LogGroup`, the server’s log. For a test with no name of your own, bring a self-signed certificate, and your browser will warn about it:
 
 ```bash
 openssl req -x509 -newkey rsa:2048 -nodes -days 30 -keyout key.pem -out cert.pem -subj "/CN=postbox-test.invalid"
@@ -86,8 +87,9 @@ Then deploy with it in `allowSubjects`, which replaces the task with one that kn
 
 ## What to check
 
-- **Only the load balancer reaches Postbox’s port.** The task has a public address so it can reach ECR and the key endpoint without a NAT gateway; its security group admits port 8080 from the load balancer’s security group and from nothing else. `curl` to the task’s address on 8080 times out.
+- **What stands between the internet and a room,** in the order a request meets it: the load balancer signs the person in; Postbox checks the token the load balancer signed, on every request, against this load balancer, this client and this provider; and Postbox’s allow list names the person. The network is the second line, not the first: the task has no public address, and its security group admits port 8080 from the load balancer’s security group alone.
 - **Why a sign-in was refused** is in the log group, one line a minute for each reason: `Postbox refused a sign-in: signer.` means the settings name another load balancer, `not-allowed` that the person isn’t on the allow list.
+- **What it doesn’t do yet.** The hop from the load balancer to the task is plain HTTP inside the VPC. There is no access log, no WAF and no sign-out; a sign-in at the load balancer lasts 12 hours (`sessionTimeout`), and taking someone off the allow list is a deployment. Everyone on the allow list reaches every room, and can add an SSH host for the server to dial.
 - **One writer.** The service runs one task and stops it before starting its replacement, so a deployment drops every page’s stream for a moment and pages reconnect. Never raise the task count: a second task would take over the data folder’s lock while the first still writes (hosted.md, “One server, one disk”).
 
 ## Take it down
