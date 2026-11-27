@@ -73,8 +73,9 @@ export async function scrollMidTurn({ d, facts, step, pause = () => sleep(BETWEE
   for (const by of scrollMoves(interrupt)) {
     await scrollStep({ page: d.kit.page, facts, step }, { by });
     await d.kit.ev(STILL);
+    const before = (facts.probes.views ?? []).length;
     await recordViews(d.kit.ev, facts, step);
-    const view = viewSaid(facts.probes.views ?? []);
+    const view = viewSaid((facts.probes.views ?? []).slice(before));
     // A second sample a pause later, with no input since the first: the pair view-moved compares while the reply
     // streams, where a view that moves on its own shows.
     await pause();

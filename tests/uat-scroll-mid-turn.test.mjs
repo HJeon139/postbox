@@ -16,16 +16,20 @@ function kindOf(expr) {
   return 'still';
 }
 
-/** A driver whose page notes each key and each read, with how many inputs and samples were recorded by then. */
-function notingDriver(facts) {
+/**
+ * A driver whose page notes each key and each read, with how many inputs and samples were recorded by then.
+ * misses: the view samples, counted from 0, at which the probe reads nothing.
+ */
+function notingDriver(facts, misses = []) {
   const calls = [];
+  let samples = 0;
   const note = (what) => calls.push({ what, inputs: facts.probes.inputs.length, views: (facts.probes.views ?? []).length });
   const sample = (mode) => [{ where: 'main', thread: 't1', mode, anchorId: mode === 'reading' ? 'it_9' : '', settled: true }];
   let mode = 'following';
   const ev = async (expr) => {
     if (expr.includes('data-view-mode')) {
       note('sample');
-      return sample(mode);
+      return misses.includes(samples++) ? [] : sample(mode);
     }
     note(kindOf(expr));
     return true;
@@ -86,6 +90,15 @@ test('a scroll mid-turn is the driver’s answer: each move records its input, p
     ],
   );
   assert.equal(said, 'Scrolled: PageUp (reading, at it_9, while the agent worked); End (following, while the agent worked).');
+});
+
+test('a move whose sample the probe missed tells the tester so, not an earlier move’s view (#805)', async () => {
+  const facts = { probes: { inputs: [] } };
+  const { d } = notingDriver(facts, [2]);
+  const act = interruptAct({ after: 5, do: 'scroll', moves: ['up', 'end'] }, { ...runner, ctx: { d, facts, step: 6, pause: async () => {} } });
+  const said = await act.answer();
+  assert.equal(facts.probes.viewMisses, 1);
+  assert.equal(said, 'Scrolled: PageUp (reading, at it_9, while the agent worked); End (the view probe read nothing, while the agent worked).');
 });
 
 test('a scroll mid-turn with no moves, too many, or one it doesn’t know fails before the agent works its seconds', () => {
