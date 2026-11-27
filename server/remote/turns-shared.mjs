@@ -54,7 +54,8 @@ export const clock = (at) => new Date(at).toLocaleTimeString('en-US', { hour: '2
  * A stop Postbox is waiting on. unconfirmed: its start was written but never confirmed, so a welcome that doesn’t list
  * it may have come before the start reached the daemon (server/remote/turns.mjs, the header). personaId: whose turn it
  * is, kept here because deleting a persona deletes its sessions first, while the turn may still run on the host (#1680).
- * @typedef {{ sessionId: string, hostId: string, waiters: (() => void)[], unconfirmed: boolean, personaId?: string }} Stop
+ * kept: its session is gone, so it’s in its host’s record (hostStops) until confirmed, and sessionId may be null (#1796).
+ * @typedef {{ sessionId: string | null, hostId: string, waiters: (() => void)[], unconfirmed: boolean, personaId?: string, kept?: boolean }} Stop
  */
 
 /** The line a resumed turn starts with (the design, “Resuming says why”). @param {string} why @param {string} host */
@@ -64,10 +65,30 @@ export function whyLine(why, host) {
     : `[Postbox] Your last turn on ${host} was interrupted before it finished: its process on the host ended without a result, as when the host restarts. It wasn’t this message that stopped it.`;
 }
 
-/** @param {RemoteTurns} rts @param {string} sessionId @param {Record<string, any>} patch */
+/**
+ * The session as written, what is held behind a commit included, for a read that decides a write (#623;
+ * designs/508/601-held-view.md, “a read that decides a write reads pending”). A read whose result leaves the process,
+ * a snapshot sent to the host, a prompt, the page, reads the published session instead.
+ * @param {RemoteTurns} rts @param {string} sessionId
+ */
+export function remoteOf(rts, sessionId) {
+  return rts.rt.store.pending.session(sessionId) ?? null;
+}
+
+/** Every session as written, for a sweep that decides writes (remoteOf). @param {RemoteTurns} rts @returns {any[]} */
+export function remotes(rts) {
+  return Object.values(rts.rt.store.pending.sessions());
+}
+
+/**
+ * Patches the session’s remoteTurn, merged into the pending one, so a field a write held behind a commit left isn’t
+ * overwritten (#623). `patch` is the fields to set, or a function of the pending remoteTurn that returns them, for a
+ * field built from the turn’s own (its replies, its stops, its resume count). A session with no remoteTurn isn’t written.
+ * @param {RemoteTurns} rts @param {string} sessionId @param {Record<string, any> | ((r: any) => Record<string, any>)} patch
+ */
 export function updateRemote(rts, sessionId, patch) {
-  const se = rts.rt.s.sessions[sessionId];
-  if (se?.remoteTurn) rts.rt.sessions.update(sessionId, { remoteTurn: { ...se.remoteTurn, ...patch } });
+  if (!remoteOf(rts, sessionId)?.remoteTurn) return;
+  rts.rt.sessions.update(sessionId, (se) => ({ remoteTurn: { ...se.remoteTurn, ...(typeof patch === 'function' ? patch(se.remoteTurn) : patch) } }));
 }
 
 /** The session a host turn is (or was last) of. @param {RemoteTurns} rts @param {string} turn */

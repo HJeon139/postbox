@@ -28,6 +28,9 @@ test('#464-b2b: after a failed automatic install, the person’s Install… that
     assert.equal(st.update.outcome, 'present', 'the try is rewritten as present, which the card says nothing for');
     assert.equal(updateShown(st), null, 'connected, the card says nothing of an install Postbox didn’t do');
     t.mgr.link('h1').idle();
+    // Disconnected once the ssh child has exited, which a loaded machine can report later than any fixed wait (#1657).
+    // The settle after it gives a late write the chance to add an error or a try, which the checks below rule out.
+    await until(() => t.mgr.status('h1').state === 'disconnected', 'idle, as two minutes later');
     await settle();
     st = t.mgr.status('h1');
     assert.equal(st.state, 'disconnected', 'idle, as two minutes later');

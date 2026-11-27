@@ -55,6 +55,25 @@ export function parkComment(draft) {
   stopComment(draft);
 }
 
+/**
+ * A new comment at a box’s place: a selection carries its own place, an app review’s key is a part, and any other is a
+ * line. @param {any} key @param {string} text @param {boolean} app  whether the review is of an app
+ */
+export function commentAt(key, text, app) {
+  if (typeof key === 'object') return { ...key, text };
+  return app ? { anchor: key, text } : { line: key, text };
+}
+
+/**
+ * Adds what is typed in the open new comment’s box as a draft comment, when it isn’t blank, so submitting never drops
+ * it: the person sees it in the box, and Submit sends what they see. @param {any} draft @param {boolean} app
+ */
+export function addComposing(draft, app) {
+  const text = typeof draft.composingText === 'string' ? draft.composingText.trim() : '';
+  if (draft.composing !== null && text) draft.comments = [...draft.comments, commentAt(draft.composing, text, app)];
+  stopComment(draft);
+}
+
 /** Closes the open comment box and forgets its unfinished text. @param {any} draft */
 export function stopComment(draft) {
   draft.composing = null;

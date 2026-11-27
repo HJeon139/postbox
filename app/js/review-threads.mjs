@@ -7,7 +7,7 @@ import { authorName } from '/shared/review-comments.mjs';
 import { h, icon, plural, trusted } from './dom.mjs';
 import { commentBox, placeKey, placeOf, quoted } from './review-comment-box.mjs';
 import { correctButton, correctingIn, correctionBox, lastMine } from './review-correct.mjs';
-import { parkComment, saveEdit } from './review-draft.mjs';
+import { commentAt, parkComment, saveEdit } from './review-draft.mjs';
 import { revisionOf } from './review-view.mjs';
 
 /** Whether a thread or a comment is on key: an app’s part, or a line. */
@@ -144,7 +144,7 @@ function composer(key, { b, d, closeComposer }) {
   const add = (/** @type {string} */ value) => {
     const text = value.trim();
     if (!text) return;
-    d.comments.push(typeof key === 'object' ? { ...key, text } : b.format === 'app' ? { anchor: key, text } : { line: key, text });
+    d.comments.push(commentAt(key, text, b.format === 'app'));
     closeComposer(key);
   };
   return commentBox(d, {

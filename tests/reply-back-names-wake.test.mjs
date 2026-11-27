@@ -2,11 +2,12 @@
 // that ends an exchange may hold a wake an @-mention asks for. Postbox held one: the name of an agent whose reply the
 // turn had reacted to (#1724). Counts of turns without work, tried on that PR, held others, and each stalled a room
 // whose coordinator, who never does work, named a worker; those rooms are played here too. Agents that go on naming
-// each other are bounded by the room’s chain limit alone. The player is tests/bounce-loop-fixture.mjs.
+// each other are bounded by the chain’s cap alone (1,000 wakes, #1623, tests/chain-stop.test.mjs); here the player’s
+// limit stops them first. The player is tests/bounce-loop-fixture.mjs.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { heldOnCard, LIMIT, room, settle } from './bounce-loop-fixture.mjs';
+import { hitLimit, LIMIT, room, settle } from './bounce-loop-fixture.mjs';
 
 const END = { text: '' };
 const WORK = { text: 'Did it: committed.', step: true };
@@ -78,8 +79,8 @@ for (const [what, plays, words] of [
   });
 }
 
-test('#1591 mentions: agents that go on naming each other in words are bounded by the chain limit alone', async () => {
-  const { store, adapter, t } = await play({ alpha: [{ text: 'Noted @beta.' }], beta: [{ text: 'Noted @alpha.' }] }, '@alpha start');
-  assert.ok(heldOnCard(store, t), turnsOf(adapter));
-  assert.equal(adapter.calls.length, LIMIT + 1, 'every name woke its agent, up to the limit');
+test('#1591 mentions: agents that go on naming each other in words are bounded by the chain’s cap alone', async () => {
+  const { adapter } = await play({ alpha: [{ text: 'Noted @beta.' }], beta: [{ text: 'Noted @alpha.' }] }, '@alpha start');
+  assert.ok(hitLimit(adapter), turnsOf(adapter));
+  assert.equal(adapter.calls.length, LIMIT + 1, 'every name woke its agent, up to the player’s limit');
 });

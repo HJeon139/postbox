@@ -91,6 +91,8 @@ export const PENDING = {
   // the ledger reads back its own entries; the turn’s blocks and apps; and convOf, the conversation whose work list a
   // turn’s entry goes in, through a topic maybe opened behind a held commit (#623)
   'ledger.mjs': ['convOf', 'convOf', 'entries', 'recordPublishes', 'recordPublishes'],
+  // the folder a host turn works in, which its edits resolve against, from a turn started behind a held commit (#623)
+  'ledger-remote.mjs': ['hostFolder'],
   // the turn’s replies, maybe held behind a commit: their diagrams decide its lint turn and the session’s diagramsLinted
   // (#731); and the session’s diagramsLinted, maybe written behind one, which decides whether a diagram is told again (#623)
   'diagram-check.mjs': ['rememberDiagrams', 'diagramCheck', 'syntaxCheck'],
@@ -107,6 +109,10 @@ export const PENDING = {
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies
   'remote/turns-prompt-cards.mjs': ['permissionCards'], // a host turn’s own cards, and a question’s blocks (#1059): the sweep its callers settle, and the calls an attach after a restart holds (#353)
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
+  // A remote turn’s session as written, for each read that decides a write of its remoteTurn (its replies, stops, state,
+  // resume count), and every session as written, for the sweeps that resume or check one: each maybe written behind a
+  // held commit (#623).
+  'remote/turns-shared.mjs': ['remoteOf', 'remotes'],
   'remote/turns.mjs': ['noteAttach', 'noteAttach'], // the session and the persona: whether it awaits attach, which decides a delivery’s wait, with the persona as written (#1135)
   'reply-segment.mjs': ['wordsSegment', 'placeStep'], // whether the turn’s open part is still its thread’s last decides where its next words and steps go
   // The conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which a
@@ -122,9 +128,6 @@ export const PENDING = {
   // left, so a stream holds one patch, not one per chunk, a held compaction counts, and a held note is given. A delivery reads its session pending too (runtime.mjs
   // deliver, twice): the last summary's givenMentions and seenItem, and a notice, held, are seen, not given again or lost (#506). Whether a thread has a persona's session already
   // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
-  // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035); and the room a
-  // PATCH sets it on, maybe started there.
-  'room-chain-limit.mjs': ['roomChainLimit', 'patchThread'],
   // With run clocks on (#1526): every decision on a run clock (its route, its timer, a turn’s line, Delivery’s hold),
   // on the clock as held writes will leave it; the session its route names, which a held delete may have removed; and
   // the host stops its pause or expiry waits on, which the stop itself just wrote; and, as Postbox starts or Retry
@@ -233,6 +236,9 @@ export const PENDING = {
   'turn-transient.mjs': ['forgetWait', 'forgetWait', 'transientRetry', 'armRetry', 'retryRefused', 'retryRefused'],
   // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
   'turn-stop.mjs': ['stop', 'turnExited'],
+  // Whether a newer tools-down note was set, maybe behind a held commit, before a turn that never reached its agent
+  // gives back the one it took (#1171).
+  'store-outage.mjs': ['toolsDownBack'],
   'stop-record.mjs': ['recordStopped'], // the stopped turn’s segments still streaming, maybe held behind a commit (#602)
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)

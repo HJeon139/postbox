@@ -4,7 +4,7 @@
 // uat-runs/2026-11-21T06-52-24-harnessmix and uat-runs/2026-11-21T06-52-53-scifact. These aren’t replays: Postbox can’t
 // replay a UAT run’s turns (tools/uat-run.mjs --recheck recomputes its checks only). Each agent here plays its own
 // recorded replies, in order, as the run woke it, and reacts to the message that woke it when it did in the run. The
-// room’s chain limit, set low, is the backstop that bounds each test, as it bounds a room. The fixture keeps each run’s
+// player’s limit of 40 turns bounds each test (tests/bounce-loop-fixture.mjs). The fixture keeps each run’s
 // first 40 turns, each reply cut to 200 characters; its `mentions` were parsed from the full text, so a few early turns
 // (scifact 1, harnessmix 1, 2 and 5) name an agent the cut text no longer shows. The tests play `text` and
 // `reactedToWaker` only.
@@ -12,14 +12,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { endedByReaction } from '../server/reply-back.mjs';
-import { heldOnCard, playsFrom, room, settle } from './bounce-loop-fixture.mjs';
+import { hitLimit, playsFrom, room, settle } from './bounce-loop-fixture.mjs';
 
 test('#1553: Codex with Kiro, acknowledging with a reaction and words, stops once a reaction ends the exchange', async () => {
   // harnessmix from turn 11: alpha (Kiro) reports to critic (Codex), and from there both react ✅ and write words too.
   const { store, rt, adapter, t } = room({ alpha: playsFrom('harnessmix', 'alpha', 11), critic: playsFrom('harnessmix', 'critic', 12) });
   rt.sendMessage(t.id, { text: '@alpha report to critic when the tests pass' });
   await settle(rt);
-  assert.ok(!heldOnCard(store, t), 'the chain ended before the room’s limit');
+  assert.ok(!hitLimit(adapter), 'the chain ended before the player’s limit');
   assert.ok(adapter.calls.length < 12, `${adapter.calls.length} turns: ${adapter.calls.map((c) => c.handle).join(' ')}`);
   // It ended on a reaction: the last reply posted, and went back to no one.
   const last = store
@@ -29,14 +29,14 @@ test('#1553: Codex with Kiro, acknowledging with a reaction and words, stops onc
   assert.equal(last.wentBack, undefined, JSON.stringify(last));
 });
 
-test('#1591: two Claude agents that write “I’m not replying” instead of reacting end there, not at the chain limit', async () => {
+test('#1591: two Claude agents that write “I’m not replying” instead of reacting end there, not at a limit', async () => {
   // scifact from turn 7, where critic @-mentions researcher, then from turn 8 on neither agent reacts, and each says
   // it isn’t replying, in a reply. Until #1591 each of those lines went back, to hop 333 in the run: now an agent’s
   // second reply in a row from a turn that only a reply coming back woke, and that only writes, wakes no one.
-  const { store, rt, adapter, t } = room({ researcher: playsFrom('scifact', 'researcher', 8), critic: playsFrom('scifact', 'critic', 7) });
+  const { rt, adapter, t } = room({ researcher: playsFrom('scifact', 'researcher', 8), critic: playsFrom('scifact', 'critic', 7) });
   rt.sendMessage(t.id, { text: '@critic close the table exchange with researcher' });
   await settle(rt);
-  assert.ok(!heldOnCard(store, t), 'the exchange ended before the room’s limit');
+  assert.ok(!hitLimit(adapter), 'the exchange ended before the player’s limit');
   // critic names researcher, researcher’s answer goes back (#1518), each says once more that it isn’t replying, and
   // critic’s second such line ends it.
   assert.deepEqual(

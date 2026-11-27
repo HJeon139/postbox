@@ -16,7 +16,7 @@ import { claimAhead } from '../turn-work.mjs';
 import { linkOf } from './turns-need.mjs';
 import { cardOf, isOpen, isQuestion, openCards, permissionCards, questionParts } from './turns-prompt-cards.mjs';
 import { replayCeiling, replayed } from './turns-replay.mjs';
-import { ENDED_TEXT, key, ON_HOST, send, updateRemote } from './turns-shared.mjs';
+import { ENDED_TEXT, key, ON_HOST, remoteOf, send, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Live} Live */
@@ -218,7 +218,7 @@ export function ask(rts, turn, req) {
 
 /** @param {RemoteTurns} rts @param {Live} live @param {boolean} on */
 function setWaiting(rts, live, on) {
-  const se = rts.rt.s.sessions[live.sessionId];
+  const se = remoteOf(rts, live.sessionId); // as written: allocate’s remoteTurn may still be held behind a commit (#623)
   if (!se?.remoteTurn || live.rt.closed || !ON_HOST.has(se.remoteTurn.state)) return;
   const open = [...rts.rt.permissionWaits.values()].some((w) => w.sessionId === live.sessionId);
   const state = on || open ? 'waiting' : 'running';

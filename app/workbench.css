@@ -301,7 +301,12 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .rail .row .name { flex: 1; min-width: 0; line-height: 1.25; }
 .rail .row .name span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rail .row .name .sub { font-size: 12px; color: var(--dim); }
+/* The names give way to the status word: a room’s long list of agents ends in “…”, and “· needs you” stays whole; a
+   word longer than the line ends in “…” once the names are down to 2em. */
+.rail .row .name .sub { display: flex; }
+.rail .row .name .sub > .who { flex: 0 1000 auto; min-width: 2em; }
 .rail .row .name .sub .state-word { display: inline; }
+.rail .row .name .sub > .state-word { white-space: pre; }
 .stack { display: inline-flex; }
 .stack { width: 30px; flex-wrap: wrap; gap: 1px; justify-content: center; }
 .stack pb-ring { margin: 0; }
@@ -823,8 +828,6 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .composer .hint .runs-in .folder-head { flex: 0 1000 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; }
 .composer .hint .runs-in .runs-in-rest { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .composer .hint b { color: var(--text); font-weight: 500; }
-/* How many wakes agents have chained since your last message, with the hint to Stop them (#492). */
-.composer .hint .chain { color: var(--text); }
 /* A “mock” tag after a name fits the hint’s line, so it doesn’t make the line taller. */
 .composer .hint .mock-tag { line-height: 12px; vertical-align: top; }
 .attachments { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1044,6 +1047,9 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .mention-menu { bottom: calc(100% + 6px); left: 0; width: 320px; }
 
 .ov-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* A head’s name and folder break anywhere: a project’s name (up to 80 characters) or folder with no space would widen
+   the page past a narrow window (#1534’s class). */
+.ov-head > .grow { overflow-wrap: anywhere; }
 
 /* Mock agents and demo mode, marked in words wherever an agent is named (#12). */
 /* The space before it is text (mockMarker), so it needs no margin. */
@@ -1275,6 +1281,8 @@ iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--st
 .perm-sec > h3.label, .perm-list > h4.label, .perm-add > h4.label { margin: 0; }
 .perm-list { display: flex; flex-direction: column; gap: 4px; }
 .perm-list .list-rows li { flex-wrap: wrap; row-gap: 4px; }
+/* A rule’s source keeps room to read: beside a long list of tools it goes under it rather than one word a line. */
+.perm-list .list-rows li > .grow { min-width: min(18em, 100%); }
 .perm-rule { overflow-wrap: anywhere; }
 .perm-path { overflow-wrap: anywhere; min-width: 0; }
 .perm-add { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); }

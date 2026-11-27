@@ -38,15 +38,16 @@ function link(convId, at, node) {
 }
 
 /**
- * Text nodes under root that hold an asset id’s prefix and aren’t in code, a link or a code block. Walked only when the
- * reply’s text has the prefix at all, and a node is checked for where it sits only once its text has it.
+ * Text nodes under root that hold an asset id’s prefix and aren’t in code, a link, a code block or a glossary term
+ * (which takes focus itself, so a link in it would nest). Walked only when the reply’s text has the prefix at all, and a
+ * node is checked for where it sits only once its text has it.
  * @param {Element} root
  */
 function plainText(root) {
   const out = [];
   if (!root.textContent?.includes('as_')) return out;
   const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.textContent?.includes('as_') && !n.parentElement?.closest('a, code, pre')) out.push(n);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.textContent?.includes('as_') && !n.parentElement?.closest('a, code, pre, .term')) out.push(n);
   return out;
 }
 
@@ -75,7 +76,7 @@ export function linkRoomRefs(root) {
   const convId = conversationOf(threads, threadId);
   const { any, find } = lookupFor(convId);
   if (!any) return;
-  const codes = [...root.querySelectorAll('code')].filter((c) => !c.closest('a, pre'));
+  const codes = [...root.querySelectorAll('code')].filter((c) => !c.closest('a, pre, .term'));
   const ids = plainText(root);
   for (const code of codes) {
     const ref = find(code.textContent ?? '');

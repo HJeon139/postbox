@@ -39,9 +39,9 @@ export function room() {
       turnId,
       status: 'open',
     });
-  // A wake request: a card that waits until answered, whatever the turn.
+  // A wake request: an add card, which waits until answered, whatever the turn.
   const hop = (threadId = t.id) =>
-    arrange.post(rt, threadId, { kind: 'hop', fromSessionId: alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please' });
+    arrange.post(rt, threadId, { kind: 'hop', join: true, fromSessionId: alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please' });
   // A wake request offers itself as the need, as server/wake-cards.mjs does when it raises one. `on` is the runtime, a
   // restart's when the spec made one.
   const offerHop = (card, { threadId = t.id, on = rt } = {}) => {

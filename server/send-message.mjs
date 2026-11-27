@@ -9,7 +9,6 @@ import { httpError, retiredError } from './helpers.mjs';
 import * as queue from './message-queue.mjs';
 import { refuseWhileHeld } from './run-clock-held.mjs';
 import { sideSession, threadPersona } from './side-threads.mjs';
-import { retireStale } from './wake-cards.mjs';
 
 /**
  * You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies.
@@ -66,9 +65,6 @@ export function sendMessage(rt, threadId, { text = '', attachments = [], sendNow
     else rt.delivery.wake(e.sessionId);
   }
   const queued = entries.filter((e) => rt.delivery.waiting(e.sessionId).some((x) => x.id === e.id));
-  // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the inbox. It
-  // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
-  for (const { se } of targets) retireStale(rt, threadId, se, 'you wrote to it', { byPerson: true });
   return queued.length ? { item, queued } : { item };
 }
 

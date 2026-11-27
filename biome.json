@@ -11,6 +11,7 @@
       "app/kit/check-boxes.js",
       "app/kit/check.js",
       "app/kit/kit.js",
+      "app/kit/narration.js",
       "app/kit/diagram.js",
       "app/kit/drawn.js",
       "app/kit/frames.js",
@@ -20,6 +21,8 @@
       "tools/**",
       "tests/**",
       "playwright.config.mjs",
+      "infra/*.mjs",
+      "infra/lib/**",
       "!.claude",
       "!app/kit/vendor"
     ]

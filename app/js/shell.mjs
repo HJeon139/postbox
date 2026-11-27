@@ -403,7 +403,7 @@ function updateRow(n, t, active, fresh = false) {
   fill(
     n,
     slot,
-    h('span.name', h('span', t.title), h('span.sub', who, h('span.state-word', word))),
+    h('span.name', h('span', t.title), h('span.sub', h('span.who', who), h('span.state-word', word))),
     unread ? h('span.badge', { 'aria-label': `${unread} unread` }, String(unread)) : null,
   );
 }
