@@ -198,7 +198,8 @@ function stoppedNeed(rt, turn) {
 
 /**
  * A card shown or withdrawn moves the need (raised on the bus): a withdrawn block is released, and an asking block shown
- * or asked again (#1748), or a tool or view request raised (#1868), is offered. A stopped turn drops its own block’s need.
+ * or asked again (#1748), or a tool or view request raised or asked again (#1868), is offered. A stopped turn drops the
+ * need its own block or request made.
  * @param {any} rt
  */
 export function blockNeeds(rt) {
