@@ -290,7 +290,14 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
   document.body.append(backdrop);
   unwatch = scrollFocus(/** @type {HTMLElement} */ (dialog.querySelector('.d-body')));
   if (anchor && innerWidth >= 768) placeBeside(backdrop, dialog, anchor);
-  (initialFocus?.() ?? $('input, textarea, select, button.send, .d-body button', dialog))?.focus();
+  // Focus starts in the dialog, so Tab never lands on what is behind it: its field or main button, else its first
+  // button below (a confirm’s Cancel), else Close, as in a panel still reading what it shows.
+  (
+    initialFocus?.() ??
+    $('input, textarea, select, button.send, .d-body button', dialog) ??
+    $('.d-foot button', dialog) ??
+    $('.d-head button', dialog)
+  )?.focus();
   return { close, dialog };
 }
 
