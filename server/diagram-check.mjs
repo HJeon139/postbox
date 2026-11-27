@@ -5,6 +5,7 @@
 
 import { createHash } from 'node:crypto';
 import { COLUMN_PX, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { syntaxError } from './diagram-parse.mjs';
 import { clipText } from './helpers.mjs';
 import { holdLint, lint } from './lint-delivery.mjs';
@@ -61,11 +62,13 @@ function scopeOf(block) {
 /** Mermaid couldn’t parse or draw the diagram. @param {{ message: string, line?: number | null }} error @param {any} scope */
 function failedProblem(error, scope) {
   // Mermaid’s message, without its caret line: “Parse error on line 2: … Expecting 'SEMI', got 'ARROW'”.
-  const said = error.message
-    .split('\n')
-    .filter((l) => l.trim() && !/^[-\s]*\^$/.test(l))
-    .join(' ')
-    .slice(0, 400);
+  const said = cutText(
+    error.message
+      .split('\n')
+      .filter((l) => l.trim() && !/^[-\s]*\^$/.test(l))
+      .join(' '),
+    400,
+  );
   const line = Number.isInteger(error.line) && Number(error.line) > 0 ? ` (line ${Math.min(Number(error.line), 9999)})` : '';
   return {
     code: 'diagram-error',

@@ -6,6 +6,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { cutText } from '../../shared/text-parts.mjs';
 import { HarnessEvents } from '../harness-events.mjs';
 import { brokenMapApp, dashboardApp, explorerApp, layoutApp, walkthroughApp } from '../mock/apps.mjs';
 import { explainer } from './mock-explainer.mjs';
@@ -123,7 +124,7 @@ function kit(ctx, session, mem) {
     /** A command, as Claude Code reports one. Nothing runs: the output is the script’s. */
     async run(command, { output = '', exit = 0, ms = 500, background = false, label = null, who = null } = {}) {
       const id = `t${++n}`;
-      const name = label ?? `Ran ${command.slice(0, 60)}`;
+      const name = label ?? `Ran ${cutText(command, 60)}`;
       emit({ kind: 'tool_call', id, name: 'Bash', input: { command, ...(background ? { run_in_background: true } : {}) }, label: name, who, final: true });
       await sleep(ms);
       if (exit) emit({ kind: 'tool_result', id, isError: true, text: `Exit code ${exit}\n${output}`, result: `Error: Exit code ${exit}\n${output}`, ms });

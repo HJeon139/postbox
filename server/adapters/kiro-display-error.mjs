@@ -3,6 +3,7 @@
 // ends as a success, with the model offered none of that server’s tools. When the server is Postbox’s, the agent
 // can’t show, send or read anything through Postbox that turn, as with any backend (tools-down.mjs).
 
+import { cutText } from '../../shared/text-parts.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 import { toolsDown } from './tools-down.mjs';
 
@@ -10,7 +11,7 @@ const MAX = 400;
 let seen = 0; // display_errors reported, for their steps’ ids
 
 /** The words Kiro gave, bounded. @param {any} k */
-const messageOf = (k) => String(k?.message ?? k?.displayError?.message ?? '').slice(0, MAX);
+const messageOf = (k) => cutText(String(k?.message ?? k?.displayError?.message ?? ''), MAX);
 
 /** The step’s label: another named server, or Kiro’s error. @param {string|null} server */
 const labelOf = (server) => (server ? `MCP server ${server} didn’t load` : 'Kiro reported an error');
