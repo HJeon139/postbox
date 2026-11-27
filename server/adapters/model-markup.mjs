@@ -8,9 +8,10 @@
 /**
  * What could still become the marker at the end of the text so far: any start of it, with the space before it, or a
  * line break and space alone, as come before the marker where the whole-chunk rule drops them (#1916). Space with no
- * line break isn’t held, so ordinary tokens reach the reply when they did.
+ * line break isn’t held, so ordinary tokens reach the reply when they did. A match starts only where a run of space
+ * starts, so a long run is scanned once, not once from each of its characters.
  */
-const MAYBE_MARKER = /(?:\s*(?<!`)<(?:｜(?:D(?:S(?:M(?:L(?:｜[A-Za-z_]*>?\s*)?)?)?)?)?)?|[^\S\n]*\n\s*)?$/u;
+const MAYBE_MARKER = /(?:(?<!\s)(?:\s*(?<!`)<(?:｜(?:D(?:S(?:M(?:L(?:｜[A-Za-z_]*>?\s*)?)?)?)?)?)?|[^\S\n]*\n\s*))?$/u;
 
 /** A whole marker and nothing else, with the space before it. */
 const WHOLE_MARKER = /^\s*<｜DSML｜[A-Za-z_]+>?\s*$/u;

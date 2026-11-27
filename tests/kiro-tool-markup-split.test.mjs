@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createKiroMapper } from '../server/adapters/kiro-cli.mjs';
+import { markupHolder } from '../server/adapters/model-markup.mjs';
 import { fakeCtx, fixture } from './kiro-cli-fakes.mjs';
 
 /** The recorded turn with each message chunk cut into pieces of `size` characters. @param {number} size */
@@ -63,4 +64,19 @@ test('#1934 held words still reach the reply when the turn ends right after them
   const start = lines.slice(0, lines.indexOf(chunk));
   assert.equal(reply([...start, said, finished]), 'It ends on <');
   assert.equal(reply([...start, said, { type: 'runError', data: { message: 'stopped' } }]), 'It ends on <');
+});
+
+test('#1934 a long run of spaces or tabs in a chunk is held in linear time, never blocking the server', () => {
+  for (const run of [' ', '\t']) {
+    let said = '';
+    const markup = markupHolder((e) => {
+      said += e.text;
+    });
+    const started = performance.now();
+    markup.chunk(`words${run.repeat(100_000)}`);
+    markup.letGo();
+    const took = performance.now() - started;
+    assert.equal(said.length, 5 + 100_000, 'every character let go');
+    assert.ok(took < 200, `100,000 of ${JSON.stringify(run)} took ${Math.round(took)} ms`);
+  }
 });
