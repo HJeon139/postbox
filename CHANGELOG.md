@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.0 (2026-11-27)
+
+### Features
+
+- **deploy:** the server's image and a CDK stack for a test deployment on AWS
+- **hosted:** start a hosted Postbox from a settings file, at its public address
+
+### Fixes
+
+- **infra:** lower-case the domain name so a hosted zone's record resolves
+- **remote:** a host keeps only a stop that names its turn, and lets go one its session also asked
+- **remote:** a deleted agent's memory on a host waits for its stopping turn across a restart
+
 ## 5.3.3 (2026-11-27)
 
 ### Fixes
