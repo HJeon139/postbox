@@ -56,6 +56,9 @@ postbox.charts.line(document.getElementById('none'), { label: 'None yet', x: [],
 postbox.charts.line(document.getElementById('capped'), { label: 'Capped', x: ['a', 'b', 'c'], series: [{ name: ${JSON.stringify(CAPPED)}, values: [1, 2, 3] }] });
 </script>`;
 
+/** How many charts the app draws: one for each of its divs. */
+const CHARTS = (CHART.match(/<div id=/g) ?? []).length;
+
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 failOnServerErrors(test);
@@ -85,8 +88,17 @@ test('long category labels on the kit’s bar chart and heatmap stay inside the 
   const said = (check().problems ?? []).map((p) => `${p.code}: ${p.message}`).join('\n');
   expect(check().status, said || 'no problems').toBe('passed');
   const frame = page.frameLocator('iframe.app-iframe');
+  // The check passes on the server first: the page shows the app’s frame only once it hears so, and with the server’s
+  // events late that came after this read. So nothing is read until every chart is drawn there, at the width checked.
+  const charts = frame.locator('.pb-plot');
   for (const width of [1280, 375]) {
     await page.setViewportSize({ width, height: 900 });
+    await expect(charts.locator('> svg'), 'every chart drawn in the conversation’s frame').toHaveCount(CHARTS);
+    await expect
+      .poll(() => charts.evaluateAll((ps) => ps.every((p) => Math.abs((p.querySelector('svg')?.getBoundingClientRect().width ?? 0) - p.clientWidth) < 2)), {
+        message: `every chart drawn at the frame’s width at ${width} px`,
+      })
+      .toBe(true);
     await expect
       .poll(
         () =>

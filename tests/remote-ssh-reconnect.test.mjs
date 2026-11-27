@@ -7,6 +7,7 @@ import { BACKOFF, backoffDelay, createReconnector } from '../server/remote/ssh.m
 import { createFakeDaemon } from './fake-daemon.mjs';
 import { fakeSsh } from './fake-ssh.mjs';
 import { connection, fakeClock, flush } from './remote-ssh-fixtures.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 // ── Reconnecting ────────────────────────────────────────────────────────────────────
 
@@ -64,17 +65,14 @@ test('reconnect backs off while needed, resets after it connects, and reconnects
   assert.deepEqual(clock.pending(), [4000]);
   assert.equal(r.failure.kind, 'unreachable');
   clock.fire();
-  await flush();
-  await flush();
-  assert.equal(r.state, 'open');
+  // The welcome comes back from the fake daemon over its streams: wait for it, not a count of turns (#1657).
+  await untilTurns(() => r.state === 'open', 'the fourth try’s welcome');
   assert.equal(r.failure, null);
   assert.equal(spawned.length, 4);
   assert.ok(r.connection);
   // A drop starts again from the first step.
   daemon.drop();
-  await flush();
-  await flush();
-  assert.equal(r.state, 'waiting');
+  await untilTurns(() => r.state === 'waiting', 'the drop heard');
   assert.deepEqual(clock.pending(), [1000]);
   assert.deepEqual(states.slice(0, 3), ['connecting', 'waiting', 'connecting']);
   r.dispose();
@@ -110,9 +108,7 @@ test('a sign-in, host-key, install or version failure isn’t retried, not even 
   await flush();
   assert.equal(spawned.length, 1);
   r.retry();
-  await flush();
-  await flush();
-  assert.equal(r.state, 'open');
+  await untilTurns(() => r.state === 'open', 'the retry’s welcome');
   assert.equal(spawned.length, 2);
   r.dispose();
 });
@@ -133,9 +129,7 @@ test('the laptop’s wake reconnects at once and starts the backoff over', async
   assert.equal(spawned.length, 3);
   assert.deepEqual(clock.pending(), [1000]);
   r.wake();
-  await flush();
-  await flush();
-  assert.equal(r.state, 'open');
+  await untilTurns(() => r.state === 'open', 'the wake’s welcome');
   r.dispose();
   await flush();
   assert.equal(r.state, 'idle');
@@ -173,9 +167,7 @@ test('#991 a session that can’t be made, such as over a stored setting ssh-arg
   assert.equal(opened, 1, 'need and wake leave it for the person');
   refuse = false;
   r.retry();
-  await flush();
-  await flush();
-  assert.equal(r.state, 'open');
+  await untilTurns(() => r.state === 'open', 'the retry’s welcome');
   assert.equal(opened, 2);
   r.dispose();
 });
