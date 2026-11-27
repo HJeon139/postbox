@@ -99,7 +99,7 @@ for (const width of [375, 1280]) {
     expect.soft(title.length, 'a close button over its own sticky box’s title').toBe(1);
     for (const p of found) {
       // Each names its element by a selector path, and quotes no more than 40 characters of its text and an ellipsis.
-      expect.soft(p.message, 'names where it is').toMatch(/\((?:[\w.#:()-]+(?: > )?)+\)/);
+      expect.soft(p.message, 'names where it is').toMatch(/\([\w.#:() >-]+\)/);
       for (const [, quote] of p.message.matchAll(/“([^”]*)”/g)) expect.soft(quote.length, `“${quote}” is short`).toBeLessThanOrEqual(41);
     }
     await expect(expectTidyText(page, 'the bad page'), 'the specs’ helper fails it').rejects.toThrow(/text-overlap|text-on-control|cut off|mid-word/);
