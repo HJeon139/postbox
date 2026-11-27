@@ -244,8 +244,11 @@ test('#1937 an ordinary request for input reads on its card as the server wrote 
     },
   };
   const message = 'Deploy which build?\n\n- 1.4.2 (staging)\n- 1.4.1 (prod)';
+  const spaced = message.replace('\n\n', '\n\n\n\n');
   await codexApproval(ctx, { id: 9, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message } });
   assert.equal(asked[0]?.detail, message);
+  await codexApproval(ctx, { id: 12, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message: spaced } });
+  assert.equal(asked[1]?.detail, message, 'no more than one blank line in a row');
 });
 
 test('#1937 an MCP tool’s name, the card’s headline, is cleaned: it comes from the server', async () => {
@@ -260,4 +263,23 @@ test('#1937 an MCP tool’s name, the card’s headline, is cleaned: it comes fr
   const meta = { codex_approval_kind: 'mcp_tool_call', tool_name: 'ship\u202Edorp', tool_params: {} };
   await codexApproval(ctx, { id: 10, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message: '', _meta: meta } });
   assert.equal(asked[0]?.summary, 'use deploy tool shipdorp');
+});
+
+test('#1937 only Postbox’s own server, by its exact name, skips the card: a look-alike cleaned to it still asks', async () => {
+  /** @type {any[]} */
+  const asked = [];
+  const ctx = {
+    askPermission: async (/** @type {any} */ a) => {
+      asked.push(a);
+      return { allow: false };
+    },
+  };
+  const meta = { codex_approval_kind: 'mcp_tool_call', tool_name: 'show_block', tool_params: {} };
+  const answer = await codexApproval(ctx, {
+    id: 11,
+    method: 'mcpServer/elicitation/request',
+    params: { serverName: 'postbox\u200B', message: '', _meta: meta },
+  });
+  assert.equal(asked.length, 1, 'a card is shown');
+  assert.deepEqual(answer, { action: 'decline' });
 });

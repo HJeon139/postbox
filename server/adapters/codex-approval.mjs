@@ -5,7 +5,7 @@ import { draftOf } from '../write-guard.mjs';
 import { codexAlwaysOffer } from './codex-always.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
-/** Of an MCP server’s request for input shown on its card, well within a card’s 4,000 (permission-cards.mjs). */
+/** Of an MCP server’s request for input shown on its card, well within a card’s 4,000 (server/permission-cards.mjs). */
 const ASKED_MAX = 1200;
 
 /** Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses. */
@@ -22,7 +22,8 @@ export async function codexApproval(ctx, msg) {
       const name = cleanSaid(String(meta.tool_name ?? meta.toolName ?? named ?? 'tool'), 80);
       // Postbox tools only update the current conversation. Let those run directly;
       // the MCP endpoint still validates every call and the UI actions are intentionally user-scoped.
-      if (server === POSTBOX_SERVER) return { action: 'accept', content: {} };
+      // By its exact name, before cleaning: a look-alike cleaned to “postbox” still gets a card.
+      if (String(p.serverName ?? '') === POSTBOX_SERVER) return { action: 'accept', content: {} };
       const tool = `mcp__${server}__${name}`;
       const args = meta.tool_params ?? {};
       const detail = JSON.stringify(
