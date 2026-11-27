@@ -26,8 +26,8 @@ const STYLE = `<style>
   button { font: inherit; }
 </style>`;
 
-// One of each problem: text over text, text over a button, text cut off by its box, and a word broken three letters
-// a line.
+// One of each problem: text over text, an opaque button misplaced over text, text cut off by its box (twice: the
+// second inside a faded section whose fade isn’t what cuts it), and a word broken three letters a line.
 const BAD = `${STYLE}
 <section style="position: relative; height: 40px">
   <span>Overlapping words here</span>
@@ -35,18 +35,20 @@ const BAD = `${STYLE}
 </section>
 <section style="position: relative; height: 40px">
   <span>A sentence a button sits on</span>
-  <button style="position: absolute; left: 40px; top: 0; background: none">Send now</button>
+  <button style="position: absolute; left: 40px; top: 0">Send now</button>
 </section>
 <section style="width: 120px; overflow: hidden; white-space: nowrap">This label is far too long for its box</section>
+<section style="mask-image: linear-gradient(#000, #000); -webkit-mask-image: linear-gradient(#000, #000)">
+  <div style="width: 120px; overflow: hidden; white-space: nowrap">A faded section, its label still cut</div>
+</section>
 <section class="mono" style="width: 3ch; overflow-wrap: anywhere">Configuration</section>`;
 
 // The same kinds of text, laid out well: cut short with an ellipsis, a word broken four letters a line with its last
 // part shorter, a word broken at soft hyphens, a word set to break anywhere that fills the line before it breaks, a
 // button beside its text, a checkbox in its label, a button under a dialog that text in the dialog crosses, a hidden
-// button under text, an opaque button floating over a paragraph, and over part of
-// another button, as Jump to latest does over a reaction, a paragraph
-// the browser hyphenates, and text hidden for screen readers in a 1 px box, which breaks
-// a letter a line.
+// button under text, an opaque button floating with the window over a paragraph and over part of another button, as
+// Jump to latest does over the transcript, a word set to hyphenate and break anywhere, and text hidden for screen
+// readers in a 1 px box, which breaks a letter a line.
 const CLEAN = `${STYLE}
 <section style="width: 120px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">This label is far too long for its box</section>
 <section class="mono" style="width: 4ch; overflow-wrap: anywhere">Configuration</section>
@@ -62,15 +64,15 @@ const CLEAN = `${STYLE}
   <span>Text over a hidden button</span>
   <button style="position: absolute; left: 0; top: 0; visibility: hidden">Hidden</button>
 </section>
-<section style="position: relative">
+<section>
+  <div style="position: sticky; top: 0; height: 0"><button style="position: absolute; left: 40px; background: Canvas">Jump</button></div>
   <p style="margin: 0">A paragraph with an opaque button floating over its words</p>
-  <button style="position: absolute; left: 40px; top: 0; background: Canvas">Jump</button>
 </section>
-<section style="position: relative">
+<section>
+  <div style="position: sticky; top: 0; height: 0"><button style="position: absolute; left: 30px; background: Canvas">Jump to latest</button></div>
   <button>Good: react</button>
-  <button style="position: absolute; left: 30px; top: 0; background: Canvas">Jump to latest</button>
 </section>
-<section lang="en" class="mono" style="width: 6ch; hyphens: auto">internationalization</section>
+<section lang="en" class="mono" style="width: 3ch; hyphens: auto; overflow-wrap: anywhere">Configuration</section>
 <section class="mono" style="overflow-wrap: anywhere">Read aloud:
   <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Configuration</span>
 </section>`;
@@ -87,6 +89,7 @@ for (const width of [375, 1280]) {
     await open(page, BAD, width);
     const found = await textLayout(page);
     expect.soft([...new Set(found.map((p) => p.code))].sort(), 'one of each problem the page was built with').toEqual(CODES);
+    expect.soft(found.filter((p) => p.code === 'text-cut-off').length, 'both labels cut off, the faded section’s too').toBe(2);
     for (const p of found) {
       // Each names its element by a selector path, and quotes no more than 40 characters of its text and an ellipsis.
       expect.soft(p.message, 'names where it is').toMatch(/\((?:[\w.#:()-]+(?: > )?)+\)/);
@@ -160,6 +163,8 @@ for (const width of [375, 1280]) {
     await synced(page, scripted.app);
     await expect(page.locator('.thread-root .md.clamped')).toContainText('The first paragraph');
     await expect(page.locator('.thread-root').getByRole('button', { name: 'Show all' })).toBeVisible();
+    const md = page.locator('.thread-root .md.clamped');
+    expect(await md.evaluate((el) => el.scrollHeight > el.clientHeight + 10), 'the first message is clamped').toBe(true);
     await expectTidyText(page, 'a topic thread’s clamped first message');
   });
 
@@ -179,6 +184,8 @@ for (const width of [375, 1280]) {
     await expect(pill).toBeVisible();
     // The pill floats over the transcript, opaque: scrolled until a line of its text is under it.
     expect(await page.evaluate(lineUnderPill), 'a line of text under the pill').toBe(true);
+    await settled(page);
+    expect(await page.evaluate(lineUnderPill), 'still a line of text under the pill, once the page settles').toBe(true);
     await expect(pill).toBeVisible();
     await expectTidyText(page, 'Jump to latest over the transcript');
   });
