@@ -5,6 +5,7 @@
 
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
 import { clockStopConfirmed } from '../run-clock.mjs';
+import { retryHostWake } from '../scheduled-wakes.mjs';
 import { forgetWait } from '../turn-transient.mjs';
 import { hostOf, unregisteredWhy } from './placement.mjs';
 import { backgroundStopText, waitingOnBackground } from './turns-background.mjs';
@@ -168,6 +169,8 @@ export async function reattach(rts, sessionId) {
  */
 function giveUpAttach(rts, sessionId, { r, now, persona, listed, moved, unregistered }) {
   const rt = rts.rt;
+  // A wake this turn was is carried by the resume only while the agent stays on this host: a moved one retries (#466).
+  if (moved) retryHostWake(rt, sessionId);
   rts.restoring.delete(r.turn);
   rts.noteAttach(sessionId);
   rts.early.delete(r.turn);

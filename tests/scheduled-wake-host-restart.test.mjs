@@ -1,7 +1,8 @@
 // #466: a scheduled wake whose own turn is on a host at a restart stays that turn’s. The turn attached again carries
 // the wake (its origin record keeps scheduledWakeId), so it settles the wake as the first turn would have: done when
-// it ends, retried with the bounded backoff on a network failure. A host Postbox can’t reach any more doesn’t leave
-// the wake’s line saying “done”: its turn is lost to the network, so the wake retries.
+// it ends, retried with the bounded backoff on a network failure. When Postbox gives up attaching it, the wake’s line
+// never says “done”: an agent moved off that host has its wake retried where it runs now, and one still placed on a
+// host Postbox can’t reach any more has it stopped, since a retry could only fail there.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -35,6 +36,11 @@ async function wakeOnHostThenRestart({ removeHost = false } = {}) {
 }
 
 const line = (r, sc) => r.store.item(sc.threadId, sc.itemId);
+/** The agent moved off its host, to run on this computer. @param {any} r */
+const moveOff = (r) => {
+  const p = r.rt.personas.forSession(r.se());
+  r.store.emit('persona', { ...p, remote: null });
+};
 
 test('#466 a wake’s host turn attached again after a restart settles the wake when it ends, not at the restart', async () => {
   const { r, sc, d, hostTurn } = await wakeOnHostThenRestart();
@@ -83,8 +89,17 @@ test('#466 a second restart during a wake’s host turn attached again leaves th
   assert.notEqual(line(again, first.sc).status, 'done');
 });
 
-test('#466 a wake’s host turn on a host removed while Postbox was down retries the wake, not marked done', async () => {
+test('#466 a wake’s host turn on a host removed while Postbox was down stops the wake, not marked done, while its agent is placed there', async () => {
   const { r, sc } = await wakeOnHostThenRestart({ removeHost: true });
+  startUp(r);
+  assert.equal(r.store.state.schedules[sc.id], undefined, 'a retry there could only fail');
+  assert.equal(r.rt.timers.has(sc.id), false);
+  assert.equal(line(r, sc).status, 'stopped');
+});
+
+test('#466 a wake’s host turn on a host removed while Postbox was down retries the wake where its agent runs now', async () => {
+  const { r, sc } = await wakeOnHostThenRestart({ removeHost: true });
+  moveOff(r);
   startUp(r);
   const retry = r.store.state.schedules[sc.id];
   assert.ok(retry, 'the wake is pending again under the same id');
@@ -96,8 +111,9 @@ test('#466 a wake’s host turn on a host removed while Postbox was down retries
   clearTimeout(r.rt.timers.get(sc.id));
 });
 
-test('#466 a wake’s host turn that had started a tool, on a host Postbox can’t reach at a restart, retries as a recovery', async () => {
+test('#466 a wake’s host turn that had started a tool, cut off from its host, retries as a recovery', async () => {
   const { r, sc } = await wakeOnHostThenRestart({ removeHost: true });
+  moveOff(r);
   r.store.emit('schedule', { ...r.store.state.schedules[sc.id], startedTools: ['show_block'] });
   startUp(r);
   const retry = r.store.state.schedules[sc.id];
@@ -107,22 +123,40 @@ test('#466 a wake’s host turn that had started a tool, on a host Postbox can�
   clearTimeout(r.rt.timers.get(sc.id));
 });
 
-test('#466 a wake whose host turn waits to be attached again retries when Postbox gives up on that turn', async () => {
+test('#466 a wake whose agent moved off its host while Postbox was down retries when the attach gives up on its turn', async () => {
   const { r, sc } = await wakeOnHostThenRestart();
-  // The host can’t be reached, so the turn waits to be attached again.
-  r.hosts.ensureWelcome = async () => {
-    throw unreachable();
-  };
+  moveOff(r);
   startUp(r);
-  await until(() => r.hosts.calls.need.length > 0, 'the host to be needed for the attach');
-  assert.equal(r.store.state.schedules[sc.id]?.running, true, 'the wake waits with its turn');
-  // Removing the host gives up on the turn there (stopTurnsOn).
-  assert.equal(r.rt.remote.cancel(r.se().id), true);
-  assert.equal(r.store.state.schedules[sc.id]?.attempt, 1);
+  await until(() => r.store.state.schedules[sc.id]?.attempt === 1, 'the wake to retry');
   assert.ok(r.rt.timers.has(sc.id), 'its bounded retry is armed');
   assert.equal(line(r, sc).status, 'pending');
   clearTimeout(r.rt.timers.get(sc.id));
 });
+
+for (const moved of [false, true])
+  test(`#466 a wake whose host turn waits to be attached again, given up on, ${moved ? 'retries once its agent moved' : 'stops while its agent is placed there, as removing the host does'}`, async () => {
+    const { r, sc } = await wakeOnHostThenRestart();
+    // The host can’t be reached, so the turn waits to be attached again.
+    r.hosts.ensureWelcome = async () => {
+      throw unreachable();
+    };
+    startUp(r);
+    await until(() => r.hosts.calls.need.length > 0, 'the host to be needed for the attach');
+    assert.equal(r.store.state.schedules[sc.id]?.running, true, 'the wake waits with its turn');
+    if (moved) moveOff(r);
+    // Removing the host gives up on the turn there (stopTurnsOn), with the agent still placed on it.
+    assert.equal(r.rt.remote.cancel(r.se().id), true);
+    if (moved) {
+      assert.equal(r.store.state.schedules[sc.id]?.attempt, 1);
+      assert.ok(r.rt.timers.has(sc.id), 'its bounded retry is armed');
+      assert.equal(line(r, sc).status, 'pending');
+      clearTimeout(r.rt.timers.get(sc.id));
+    } else {
+      assert.equal(r.store.state.schedules[sc.id], undefined, 'no retry onto the host being removed');
+      assert.equal(r.rt.timers.has(sc.id), false);
+      assert.equal(line(r, sc).status, 'stopped');
+    }
+  });
 
 test('#466 a wake’s host turn whose link gave up settles the wake once it’s attached again and ends', async () => {
   const d = createFakeDaemon({ autoEnd: false });

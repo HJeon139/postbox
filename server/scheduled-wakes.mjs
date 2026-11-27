@@ -3,6 +3,7 @@
 import { cutText } from '../shared/text-parts.mjs';
 import { isNetworkFailure } from './harness-failure.mjs';
 import { httpError } from './helpers.mjs';
+import { hostOf } from './remote/placement.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
 import { newId } from './store.mjs';
 import { whenWritable } from './store-wait.mjs';
@@ -212,16 +213,20 @@ export function noteScheduledTurn(rt, turn) {
 }
 
 /**
- * A wake whose own turn on a host Postbox gives up attaching again, since it can’t reach that host any more (the host
- * was removed, or Postbox can’t reach hosts at all), lost its turn to the network: it’s retried as one (#466).
+ * A wake whose own turn on a host Postbox gives up attaching again (#466). Its agent moved off that host, so the wake
+ * is retried as one whose turn the network took, there where it runs now. Still placed on a host Postbox can’t reach
+ * any more (removed, or no hosts at all), a retry could only fail there, so the wake stops, and its line says so.
  * @param {any} rt @param {string} sessionId
  */
 export function retryHostWake(rt, sessionId) {
-  const rtTurn = rt.store.pending.session(sessionId)?.remoteTurn?.rtTurn;
+  const se = rt.store.pending.session(sessionId);
+  const r = se?.remoteTurn;
   // Only a running wake names its turn: a retry, a re-arm and a finish each drop it.
-  const own = (/** @type {any} */ sc) => sc.sessionId === sessionId && typeof sc.turnId === 'string' && sc.turnId === rtTurn;
+  const own = (/** @type {any} */ sc) => sc.sessionId === sessionId && typeof sc.turnId === 'string' && sc.turnId === r?.rtTurn;
   const sc = Object.values(rt.store.pending.schedules()).find(own);
-  if (sc) retryWake(rt, sc, null, sc.startedTools ?? [], 'was cut off from its host');
+  if (!sc) return;
+  if (hostOf(rt.personas.forSession(se)) === r.hostId) return finishSchedule(rt, sc, 'stopped');
+  retryWake(rt, sc, null, sc.startedTools ?? [], 'was cut off from its host');
 }
 
 /** Whether a running schedule’s own turn is still on its host, in any state RemoteTurns attaches again. */
