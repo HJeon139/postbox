@@ -137,8 +137,9 @@ export async function mergedTree(d, root, base, baseSha) {
   await inWorktree(d, root, merged, async (dir, stop) => {
     const lint = await exec(d, [...biome(root), '.'], { cwd: dir, stop });
     if (lint.code !== 0) failed.push(`Biome (${firstLine(lint.out)})`);
-    // BASE_REF points the lints that compare with a base (tools/merge-base.mjs) at this pull request’s.
-    const project = await exec(d, ['npm', 'run', '-s', 'lint:project'], { cwd: dir, env: { BASE_REF: base }, stop });
+    // BASE_SHA points the lints that compare with a base (tools/merge-base.mjs) at the base just fetched, not at
+    // origin/<base>, which can be stale or missing; BASE_REF names it.
+    const project = await exec(d, ['npm', 'run', '-s', 'lint:project'], { cwd: dir, env: { BASE_REF: base, BASE_SHA: baseSha }, stop });
     // Each lint prints a line; the one that failed is the last, as .githooks/pre-commit reads it.
     if (project.code !== 0) failed.push(`the project lints (${lastLine(project.out)})`);
   });

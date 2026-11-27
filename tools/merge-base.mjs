@@ -4,9 +4,13 @@
 // that is set (CI); or with the ref given on the command line. Nothing is fetched: the refs are as the person last
 // fetched them, so a failure names them. With no base to find, a lint fails in CI and skips elsewhere (noBase).
 
-/** The refs to compare with: the one given, else origin/$BASE_REF, else origin/main and upstream/main. */
+/**
+ * The refs to compare with: the one given, else $BASE_SHA, an exact base tools/signoff.mjs has just fetched, else
+ * origin/$BASE_REF, else origin/main and upstream/main.
+ */
 export function baseRefs(/** @type {string | undefined} */ given, /** @type {Record<string, string | undefined>} */ env) {
   if (given) return [given];
+  if (env.BASE_SHA) return [env.BASE_SHA];
   if (env.BASE_REF) return [`origin/${env.BASE_REF}`];
   return ['origin/main', 'upstream/main'];
 }

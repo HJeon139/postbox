@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { majorsIn } from '../tools/signoff/workflows.mjs';
 import { EXIT, signoff } from '../tools/signoff.mjs';
-import { COMMITS, gateLog, NO_CODEQL, NODE22, putLog, RED, world } from './signoff-fake.mjs';
+import { BASE_SHA, COMMITS, gateLog, NO_CODEQL, NODE22, putLog, RED, world } from './signoff-fake.mjs';
 
 /** A world whose head has a passing gate log. @param {Parameters<typeof world>[0]} [o] */
 const signed = (o) => {
@@ -140,6 +140,8 @@ test('a merged tree that fails the project lints fails step 4', async () => {
   assert.equal(await signoff(['840'], w.d), EXIT.merged);
   assert.match(line(w, /^✖ 4\./), /fails the project lints \(lint-caps: 1 problem\(s\)\)/);
   assert.equal(ran(w, /^npm run -s lint:project$/)[0].o.env.BASE_REF, 'main');
+  // The lints that compare with a base take the freshly fetched one, not a remote-tracking ref that can be stale.
+  assert.equal(ran(w, /^npm run -s lint:project$/)[0].o.env.BASE_SHA, BASE_SHA);
 });
 
 test('a merged tree that fails Biome fails step 4', async () => {
