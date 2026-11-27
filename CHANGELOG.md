@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.3.2 (2026-11-27)
+
+### Fixes
+
+- **turns:** a turn the store's outage stopped gives the tools-down note back too
+- **sheet:** a scroll of a sheet's body is not pulled back by its pointer hold
+- **view:** a scroll the transcript hasn't heard of yet isn't undone by a pointer's hold
+- **turns:** an empty reply keeps the tools-down note taken, and a stop before output gives it back
+- **turns:** only a turn that never reached the agent gives the tools-down note back
+- **kiro:** only a recorded mcp_connection_error reads as a server down, and Kiro's words are cleaned
+- **turns:** a turn that fails gives back the tools-down note it took
+
 ## 5.3.1 (2026-11-27)
 
 ### Fixes
