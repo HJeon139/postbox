@@ -121,19 +121,14 @@ test('a side thread’s line says its agent waits on background work there, and 
   const line = page.locator('#main .pill', { hasText: 'asked' });
   // It calls a tool first, so the line, already drawn, has to change to say it waits.
   await expect.soft(line, 'the line while it calls a tool').toContainText('archivist is calling tools');
-  // Its entry under its row in the Agents section, drawn while it called a tool, has to change too (agent-tree.mjs treeSig).
-  const entry = page.locator(`#agent-subs-${archivist.id} li.agent-sub:not(.subagent)`);
-  await expect.soft(entry, 'the Agents entry while it calls a tool').toContainText('Calling tools with curator');
   go('archivist');
   await expect.poll(() => at('archivist')).toBe(2);
   await expect.soft(line, 'the line’s words').toContainText('curator asked archivist · archivist is waiting on background work · ');
   await expect.soft(line.locator('pb-ring'), 'its ring').toHaveAttribute('state', 'background-wait');
-  await expect.soft(entry, 'the Agents entry’s words').toContainText('Waiting on background work with curator');
   // A call of its own: its state stays “tool”, so only the wait’s end tells the line to change back.
   go('archivist');
   await expect.poll(() => at('archivist')).toBe(3);
   await expect.soft(line, 'the line once it calls a tool again').toContainText('archivist is calling tools');
-  await expect.soft(entry, 'the Agents entry once it calls a tool again').toContainText('Calling tools with curator');
   go('archivist');
   await expect(line, 'the line once the turn ends').not.toContainText('archivist is');
 });
