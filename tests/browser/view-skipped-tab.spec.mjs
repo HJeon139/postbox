@@ -176,6 +176,29 @@ test('#712a: with an app in view, Tab goes into it, out to the next control in d
   await holds(page, t, 'after Shift+Tab back into the app');
 });
 
+/**
+ * Where focus is after a Tab from an app's Full screen button that didn't reach its first control (#906): the page's
+ * focused element and whether its document has focus, and the same for the app's frame, with its readyState.
+ * @param {any} page @param {any} frame the app's iframe locator
+ */
+async function focusAfterTab(page, frame) {
+  const inPage = await page.evaluate(() => {
+    const a = document.activeElement;
+    return { active: a ? `${a.tagName.toLowerCase()}[${a.getAttribute('aria-label') ?? a.getAttribute('title') ?? ''}]` : null, hasFocus: document.hasFocus() };
+  });
+  const inApp = await frame
+    .contentFrame()
+    .locator('body')
+    .evaluate(() => ({
+      active: document.activeElement?.tagName.toLowerCase() ?? null,
+      id: document.activeElement?.id ?? null,
+      hasFocus: document.hasFocus(),
+      readyState: document.readyState,
+    }))
+    .catch((/** @type {Error} */ e) => ({ error: e.message }));
+  return { inPage, inApp };
+}
+
 test('#712a: scrolled away from the app, Tab out of it and on into the skipped item below reaches each next control', async ({ page, browserName }) => {
   // In Firefox the item below the app isn’t skipped when the case checks, so it can’t show what it’s for there; and a
   // Tab from the composer at 1,000 items took 29–32 ms with skipping on, against 17–31 ms on main (Linux Firefox).
@@ -185,13 +208,17 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
   );
   const { t, frame, inside, appItem, tallItem } = await room(page, 'Tab past an app scrolled away');
   const appKey = await appItem.getAttribute('data-key');
-  // Retried: in about 4 of 20 plain full Chromium runs, the first Tab from Full screen left the pad's document inactive,
-  // and the cause isn't found yet. The retry may cover a defect in the page; #906 tracks it.
-  await expect(async () => {
-    await appItem.getByRole('button', { name: 'Full screen', exact: true }).focus();
-    await page.keyboard.press('Tab');
-    await expect(inside, 'focus in the pad').toBeFocused({ timeout: 1000 });
-  }, 'Tab from Full screen into the pad').toPass({ timeout: 10_000 });
+  // One Tab, not retried. It once left the pad's document inactive in about 4 of 20 plain full Chromium runs, and 0 of
+  // 20 full runs on 27 November 2026 (13 plain, 7 lagged). If a Tab misses again, the failure carries what #906 needs
+  // to find the cause: where focus is in the page and in the pad, and whether the pad's document had loaded.
+  await appItem.getByRole('button', { name: 'Full screen', exact: true }).focus();
+  await page.keyboard.press('Tab');
+  await expect(inside, 'focus in the pad')
+    .toBeFocused()
+    .catch(async (err) => {
+      test.info().annotations.push({ type: 'focus after the Tab (#906)', description: JSON.stringify(await focusAfterTab(page, frame)) });
+      throw err;
+    });
 
   await test.step('Tab out of the app, its item skipped, lands on its next control and brings it into view', async () => {
     await wheel(page, 6000);
