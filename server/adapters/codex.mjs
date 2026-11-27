@@ -220,12 +220,11 @@ export class CodexAdapter {
     const remote = ctx.remote ?? null;
     const attach = remote?.attach ?? null;
     const cwd = remote ? remote.folder : await realFolder(await this.folderFor(ctx.persona, ctx.project));
-    const args = appServerArgs(ctx, cwd, this.workRoot);
     // Its own process group, so stopping the turn reaches everything the app-server started (#126); on a host, the daemon’s.
     /** @type {any} */
     const child = remote
       ? spawnRemoteCodex(remote, attach, cwd, this.bin, ctx.persona)
-      : this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
+      : this.spawn(this.bin, appServerArgs(ctx, cwd, this.workRoot), { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
     const exitedP = new Promise((r) => {
       child.once('exit', r);
       child.once('close', r);
