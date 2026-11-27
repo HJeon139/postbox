@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { needsYouNow } from '../shared/needs.mjs';
 import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
-import { settle } from './side-threads-fixture.mjs';
+import { held, settle } from './side-threads-fixture.mjs';
 import { until } from './stop-reply-fixture.mjs';
 
 const form = (id) => ({
@@ -145,3 +145,29 @@ test('stopping the turn drops the need its form made: the form waits quietly, as
     'the form is still there to answer',
   );
 });
+
+for (const kept of ['its turn', 'only the block']) {
+  test(`stopping a woken turn gives the need back to the older form it kept (${kept}), as before #1748`, async () => {
+    const r = room();
+    const older = r.block(); // open, from turn_last
+    // A session from before lastTurnId was kept holds the block only as the woken turn's keptId.
+    if (kept === 'only the block') arrange.setSession(r.rt, r.alpha.id, { lastTurnId: null });
+    r.setNeed('block', older.id);
+    /** @type {any} */
+    let tools = null;
+    const work = held();
+    r.adapter.next.push(async (c) => {
+      tools = c.tools;
+      await work.step(c);
+    });
+    r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' }); // not you moving on
+    await until(() => tools, 'the woken turn');
+    tools.show_block(form('f8'));
+    await until(() => r.needs()?.itemId !== older.id, 'the new form as the need');
+    arrange.stopTurn(r.rt, r.alpha.id);
+    work.release();
+    await until(() => !arrange.exiting(r.rt, r.alpha.id), 'the stopped turn to exit');
+    await settle(r.rt);
+    assert.equal(r.needs()?.itemId, older.id, 'the older form is the need again');
+  });
+}

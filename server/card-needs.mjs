@@ -188,8 +188,9 @@ function stoppedNeed(rt, turn) {
   const need = se?.needs;
   // A need names its thread only when it's away from the agent's own (awayFrom).
   if (need?.kind !== 'block' || rt.store.pending.item(need.threadId ?? se.threadId, need.itemId)?.turnId !== turn.id) return;
-  // What's left is what waited before it: the kept turns' cards. Not turnsOf's, whose last turn is this one by now.
-  rt.sessions.update(se.id, { needs: nextNeed(rt, se, { turnIds: se.keptTurnIds ?? [] }) });
+  // What's left is what waited before it: the kept turns' cards and the block the turn kept. Not turnsOf's, whose last
+  // turn is this one by now, nor runningKeep's, as the turn has left rt.turns.
+  rt.sessions.update(se.id, { needs: nextNeed(rt, se, { turnIds: se.keptTurnIds ?? [], keep: se.keptId ?? null }) });
 }
 
 /**
