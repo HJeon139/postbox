@@ -72,6 +72,10 @@ test('#966 at 375 px a wide code block and a wide table each scroll inside thems
     handle: se.handle,
     text: `A long line:\n\n\`\`\`js\n${line}\n\`\`\`\n`,
   });
+  // A long token with no space in a message’s words: a hash or a path, bare and in backticks.
+  const token = 'a1b2c3d4'.repeat(25);
+  const path = `/srv/${'deeply-nested-folder/'.repeat(8)}file.mjs`;
+  rt.threads.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `Hash ${token}, path \`${path}\`.` });
   const columns = Array.from({ length: 10 }, (_, i) => ({ id: `c${i}`, label: `Column ${i}` }));
   const rows = [{ id: 'r0', cells: Object.fromEntries(columns.map((c) => [c.id, `${c.label} value, long enough`])) }];
   rt.toolsFor(se.id).show_block({ block: { id: 'wide', type: 'table', version: 1, title: 'Wide', fallback: 'Wide', columns, rows } });
@@ -83,7 +87,8 @@ test('#966 at 375 px a wide code block and a wide table each scroll inside thems
     ['the code block', code],
     ['the table', table],
   ])) {
-    await box.scrollIntoViewIfNeeded();
+    // To the middle of the view, so no sticky bar at the top or the composer lies over where the wheel turns.
+    await box.evaluate((el) => el.scrollIntoView({ block: 'center' }));
     expect(await box.evaluate((el) => el.scrollWidth > el.clientWidth + 1), `${what} is wider than its box`).toBe(true);
     const b = /** @type {{ x: number, y: number, width: number, height: number }} */ (await box.boundingBox());
     await page.mouse.move(b.x + b.width / 2, b.y + Math.min(b.height / 2, 20));
@@ -92,5 +97,9 @@ test('#966 at 375 px a wide code block and a wide table each scroll inside thems
     // Nothing around it took the wheel: the box is where it was.
     expect((await box.boundingBox())?.x, `${what} stays put`).toBe(b.x);
   }
+  // The page clips what runs past it, so a word that doesn’t wrap would be cut off with nothing to scroll to it.
+  const words = page.locator('#main .md p', { hasText: 'Hash ' });
+  await expect(words).toHaveCount(1);
+  expect(await words.evaluate((el) => el.scrollWidth - el.clientWidth), 'the long word and path wrap inside their paragraph').toBeLessThanOrEqual(1);
   expect(await pageWidth(page), 'nothing past the window').toBe(375);
 });

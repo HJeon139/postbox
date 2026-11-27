@@ -363,7 +363,7 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .me-card { max-width: 82%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
 .turn.me .who { justify-content: flex-end; }
 
-.md { display: flex; flex-direction: column; gap: 10px; }
+.md { display: flex; flex-direction: column; gap: 10px; overflow-wrap: break-word; }
 .md p, .md li { max-width: 72ch; }
 .md ul, .md ol { padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 .md h3 { font-size: 14px; font-weight: 650; margin-top: 4px; }
