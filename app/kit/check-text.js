@@ -197,9 +197,10 @@
     }
     return { left, top, right, bottom, width: right - left, height: bottom - top };
   }
-  // Cut short on purpose: an ellipsis, a clamp to a number of lines, or a fade, as a topic thread’s long first message
-  // fades out above its Show all (#681).
-  const faded = (cs) => (cs.maskImage && cs.maskImage !== 'none') || (cs.webkitMaskImage && cs.webkitMaskImage !== 'none');
+  // Cut short on purpose: an ellipsis, a clamp to a number of lines, or a box that cuts its text and fades it out where
+  // it does, as a topic thread’s long first message fades out above its Show all (#681). A mask that isn’t a gradient
+  // (an icon’s, an SVG’s mask) isn’t a fade.
+  const faded = (cs) => /gradient\(/.test(`${cs.maskImage} ${cs.webkitMaskImage}`) && /hidden|clip/.test(`${cs.overflowX} ${cs.overflowY}`);
   const shortened = (el) => {
     for (let e = el; e && e !== document.body; e = e.parentElement) {
       const cs = getComputedStyle(e);
