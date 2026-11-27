@@ -126,6 +126,8 @@ for (const width of [375, 1280]) {
     await expectTidyText(page, 'the clean page');
   });
 
+  // A fresh page opens the project’s most recently active conversation (app/js/last-place.mjs): at 375 px one this
+  // file’s setup made, and at 1280 px the last the 375 px cases left, in file order.
   test(`#681 at ${width} px Postbox’s first screen passes the check`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await page.goto(`${scripted.app.origin}/`);
@@ -144,7 +146,9 @@ for (const width of [375, 1280]) {
     await synced(page, scripted.app);
     await settled(page);
     const skipped = await page.evaluate(
-      () => [...document.querySelectorAll('.transcript > .item')].filter((e) => !e.firstElementChild?.checkVisibility({ contentVisibilityAuto: true })).length,
+      () =>
+        [...document.querySelectorAll('.transcript > .item')].filter((e) => e.firstElementChild?.checkVisibility({ contentVisibilityAuto: true }) === false)
+          .length,
     );
     expect(skipped, 'items off screen are skipped').toBeGreaterThan(20);
     await expectTidyText(page, 'a long room at its end');
