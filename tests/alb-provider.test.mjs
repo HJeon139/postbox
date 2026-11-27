@@ -76,7 +76,7 @@ test('the allow list matches exactly: a subject or a group that differs in case 
 test('a token whose claims don’t name the person as the deployment says is refused: no principal is made up', async () => {
   for (const payload of [{ preferred_username: undefined }, { preferred_username: '' }, { preferred_username: 42 }, { name: undefined }])
     await assert.rejects(identify()(from({ 'x-amzn-oidc-data': tokenFor({ payload }) })), (/** @type {any} */ e) => {
-      assert.deepEqual([e.status, e.code], [401, 'sign-in']);
+      assert.deepEqual([e.status, e.code], [403, 'claims']);
       return true;
     });
 });

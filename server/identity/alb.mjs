@@ -9,7 +9,7 @@ import { httpError } from '../helpers.mjs';
 import { albKeys } from './alb-keys.mjs';
 import { checkAlbToken } from './alb-token.mjs';
 
-/** A refusal that says only “sign in”: why is kept on it for the server, as `reason`, and never sent. */
+/** A refusal that says only “sign in”: why is kept on it as `reason`, for the log the deployment slice adds, and never sent. */
 const signIn = (/** @type {unknown} */ reason) => Object.assign(httpError(401, 'Sign in to use this Postbox.'), { code: 'sign-in', reason });
 
 /** A claim’s text on one line, or nothing when it isn’t text. @param {unknown} value */
@@ -41,7 +41,15 @@ export function albProvider(settings, { get, now = Date.now }) {
     // written with (an email address, a name with a dot) is the provider’s to solve, and that person is reached by
     // @you (the owner’s ruling on #1742).
     const [username, name] = [settings.claims.username, settings.claims.name].map((claim) => line(checked.claims[claim]).slice(0, PROFILE.name));
-    if (!username || !name) throw signIn('claims');
+    // Signed by the deployment’s own load balancer, so they are signed in, and signing in again wouldn’t help.
+    if (!username || !name)
+      throw Object.assign(
+        httpError(
+          403,
+          'You’re signed in, but your sign-in doesn’t give the name and user name this Postbox reads. Ask whoever runs it to check its sign-in settings.',
+        ),
+        { code: 'claims' },
+      );
     if (!allowed(settings.allow, checked.subject, checked.claims))
       throw Object.assign(httpError(403, `You’re signed in as ${name}, and this Postbox isn’t open to you. Ask whoever runs it to add you.`), {
         code: 'not-allowed',
