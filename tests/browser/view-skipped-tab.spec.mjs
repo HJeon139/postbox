@@ -177,24 +177,34 @@ test('#712a: with an app in view, Tab goes into it, out to the next control in d
 });
 
 /**
- * Where focus is after a Tab from an app's Full screen button that didn't reach its first control (#906): the page's
- * focused element and whether its document has focus, and the same for the app's frame, with its readyState.
- * @param {any} page @param {any} frame the app's iframe locator
+ * Where focus is after a Tab from an app’s Full screen button that didn’t reach its first control (#906): the page’s
+ * focused element and whether its document has focus, and the same for the app’s frame, with its readyState. Each read
+ * is bounded, and one that fails says so, so the Tab’s own failure is never replaced.
+ * @param {any} page @param {any} frame the app’s iframe locator
  */
 async function focusAfterTab(page, frame) {
-  const inPage = await page.evaluate(() => {
-    const a = document.activeElement;
-    return { active: a ? `${a.tagName.toLowerCase()}[${a.getAttribute('aria-label') ?? a.getAttribute('title') ?? ''}]` : null, hasFocus: document.hasFocus() };
-  });
+  const inPage = await page
+    .evaluate(() => {
+      const a = document.activeElement;
+      return {
+        active: a ? `${a.tagName.toLowerCase()}[${a.getAttribute('aria-label') ?? a.getAttribute('title') ?? ''}]` : null,
+        hasFocus: document.hasFocus(),
+      };
+    })
+    .catch((/** @type {Error} */ e) => ({ error: e.message }));
   const inApp = await frame
     .contentFrame()
     .locator('body')
-    .evaluate(() => ({
-      active: document.activeElement?.tagName.toLowerCase() ?? null,
-      id: document.activeElement?.id ?? null,
-      hasFocus: document.hasFocus(),
-      readyState: document.readyState,
-    }))
+    .evaluate(
+      () => ({
+        active: document.activeElement?.tagName.toLowerCase() ?? null,
+        id: document.activeElement?.id ?? null,
+        hasFocus: document.hasFocus(),
+        readyState: document.readyState,
+      }),
+      undefined,
+      { timeout: 2000 },
+    )
     .catch((/** @type {Error} */ e) => ({ error: e.message }));
   return { inPage, inApp };
 }
@@ -208,15 +218,17 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
   );
   const { t, frame, inside, appItem, tallItem } = await room(page, 'Tab past an app scrolled away');
   const appKey = await appItem.getAttribute('data-key');
-  // One Tab, not retried. It once left the pad's document inactive in about 4 of 20 plain full Chromium runs, and 0 of
-  // 20 full runs on 27 November 2026 (13 plain, 7 lagged). If a Tab misses again, the failure carries what #906 needs
-  // to find the cause: where focus is in the page and in the pad, and whether the pad's document had loaded.
+  // One Tab, not retried (#906). If it misses, the failure prints where focus is in the page and in the pad, and the
+  // pad’s readyState: what the issue needs to find the cause.
   await appItem.getByRole('button', { name: 'Full screen', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(inside, 'focus in the pad')
     .toBeFocused()
     .catch(async (err) => {
-      test.info().annotations.push({ type: 'focus after the Tab (#906)', description: JSON.stringify(await focusAfterTab(page, frame)) });
+      const record = JSON.stringify(await focusAfterTab(page, frame));
+      // The list reporter prints a failed test’s output, so the record is in CI’s log, not only in its JSON report.
+      console.log(`Focus after the Tab (#906): ${record}`);
+      test.info().annotations.push({ type: 'focus after the Tab (#906)', description: record });
       throw err;
     });
 
