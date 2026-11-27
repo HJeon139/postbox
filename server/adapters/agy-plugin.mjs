@@ -1,11 +1,12 @@
 // The plugin Postbox puts in an Antigravity agent’s folder for a turn: its files, where it goes, and keeping it out of
 // git status.
 
-import { chmod, mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { agentSkillFiles } from './agent-plugin.mjs';
 import { HOOK_TIMEOUT_S } from './agy-hook.mjs';
 import { agyHooksJson } from './agy-hook-check.mjs';
+import { configHash, dropPlugin, notePlugin, PLUGIN_DIR, removePluginFolder } from './agy-plugin-record.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 import { postboxSkillsOn } from './skill-config.mjs';
 
@@ -25,10 +26,12 @@ export const agyPlugin = ({ mcpUrl, rules, hookCommand = null, hookTimeout = HOO
 });
 /**
  * Writes the plugin’s files (agyPlugin) into its folder, `dir`. hooks.json is removed first, since a turn before left it
- * read-only, and set read-only again once it’s written.
- * @param {string} dir @param {Record<string, string>} files
+ * read-only, and set read-only again once it’s written. With Postbox’s work root, the folder is noted beside it first, so
+ * if Postbox is killed mid-turn, its next start removes the plugin (#314).
+ * @param {string} dir @param {Record<string, string>} files @param {string | null} [root]
  */
-export async function writeAgyPlugin(dir, files) {
+export async function writeAgyPlugin(dir, files, root = null) {
+  if (root) await notePlugin(root, dir, configHash(files['mcp_config.json'] ?? ''));
   for (const [path, text] of Object.entries(files)) {
     const file = join(dir, path);
     await mkdir(dirname(file), { recursive: true });
@@ -40,19 +43,22 @@ export async function writeAgyPlugin(dir, files) {
 }
 
 /**
- * Removes the plugin a turn wrote, and the folders above it, only if the plugin was all they held.
- * @param {string} plugin
+ * Removes the plugin a turn wrote, and the folders above it, only if the plugin was all they held. With Postbox’s work
+ * root, the note of it beside that is dropped too (#314).
+ * @param {string} plugin @param {string | null} [root]
  */
-export async function removeAgyPlugin(plugin) {
-  await rm(plugin, { recursive: true, force: true }).catch(() => {});
-  for (const dir of [dirname(plugin), dirname(dirname(plugin))]) await rmdir(dir).catch(() => {});
+export async function removeAgyPlugin(plugin, root = null) {
+  // Dropped only once it’s gone: one the turn couldn’t remove, or can’t even look at, stays noted for the next start.
+  const gone = (await removePluginFolder(plugin, { throughLinks: true }).catch(() => false)) === true;
+  if (root && gone) await dropPlugin(root, plugin).catch(() => {});
 }
 
 /** The files of Postbox’s skills a persona keeps on (#207), for the plugin’s skills/ folder. */
 export const agySkillFiles = (persona) => agentSkillFiles(postboxSkillsOn(persona));
 
-/** Where the plugin goes in the agent’s folder. */
-export const PLUGIN_DIR = join('.agents', 'plugins', POSTBOX_SERVER);
+// Where the plugin goes in the agent’s folder: defined beside the record of where it was written, and kept here for
+// those that import it from this module.
+export { PLUGIN_DIR };
 
 /**
  * The repository’s exclude file for a folder, or null outside a git repository. Read from the files, without git:
