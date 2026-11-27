@@ -65,6 +65,7 @@ import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned, recordOnceWritten } from './prompt-sent.mjs';
 import { effortOf, modelOf, recorderFor, setupOf } from './setup.mjs';
+import { stderrTail } from './stderr-tail.mjs';
 
 export { KIRO_PUBLISHING, KIRO_TOOL_RULES, kiroAgent, kiroRules } from './kiro-cli-agent.mjs';
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
@@ -349,7 +350,6 @@ export class KiroCliAdapter {
         const sent = ctx.prompt ? { guide: kiroSystemPrompt(persona, guide), text: prompt } : null;
         if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt, sent ? recordOnceWritten(ctx, child, sent) : undefined);
         else if (sent && !attach) recordOnceSpawned(ctx, child, sent);
-        let stderr = '';
         const c = child;
         const exited = new Promise((r) => {
           c.once('exit', r);
@@ -367,9 +367,7 @@ export class KiroCliAdapter {
             ),
           ),
         );
-        child.stderr.on('data', (d) => {
-          stderr = (stderr + d).slice(-4000);
-        });
+        const stderr = stderrTail(child);
         const record = recorderFor(ctx, this.env.POSTBOX_KIRO_RECORD);
         createInterface({ input: child.stdout }).on('line', (line) => {
           if (!line.trim()) return;
@@ -402,8 +400,8 @@ export class KiroCliAdapter {
           if (overSizeLimit(mapper.error)) return resolve({ tooLarge: mapper.error });
           if (mapper.error) return reject(kiroError(mapper.error, mapper.error));
           if (code !== 0 || !mapper.finished) {
-            const message = kiroExitError(code, stderr);
-            return reject(kiroError(message, `${message} ${stderr}`));
+            const message = kiroExitError(code, stderr());
+            return reject(kiroError(message, `${message} ${stderr()}`));
           }
           resolve({});
         };

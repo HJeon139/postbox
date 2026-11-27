@@ -14,8 +14,9 @@
 import { expect, test } from '@playwright/test';
 import { escapeRegExp } from '../../shared/regex.mjs';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
-import { heldBackend, row, sideLine, sideRoom, words } from './side-threads.mjs';
+import { heldBackend, openAt, row, sideLine, sideRoom, words } from './side-threads.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -50,11 +51,7 @@ async function withSide(r) {
   return app.store.state.threads[side.id];
 }
 
-async function open(page, hash) {
-  await page.goto(`${app.origin}/${hash}`);
-  await synced(page, app);
-  await expect(page.locator('header.topbar')).toBeVisible();
-}
+const open = (page, hash) => openAt(page, app, hash);
 
 test('a turn still running in a side thread from before #372 shows in its conversation: its agent tree, the side-thread line and the row', async ({ page }) => {
   const { store } = app;
@@ -295,6 +292,6 @@ test.describe('at 375 px', () => {
     await open(page, `#/t/${r.room.id}`);
     await expect(page.locator('#main .pill', { hasText: 'is calling tools' }), 'the state on the line').toBeVisible();
     await settled(page);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth), 'no sideways scroll').toBeLessThanOrEqual(windowWidth(page));
+    expect(await pageWidth(page), 'no sideways scroll').toBeLessThanOrEqual(windowWidth(page));
   });
 });

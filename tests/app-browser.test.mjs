@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AppBrowser, STOPPED } from '../server/view-app/browser.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -83,4 +84,25 @@ test('stopping Postbox ends a download that’s running, and the download says P
   assert.equal(child.killed, true, 'the installer was killed');
   assert.deepEqual(await install, { ok: false, message: STOPPED });
   assert.equal(b.installing, null);
+});
+
+test('#1938 a failed download’s last line keeps a character whose bytes came in separate chunks, and is cleaned', async () => {
+  const f = folders();
+  const spawnImpl = /** @type {any} */ (
+    () => {
+      const child = /** @type {any} */ (new EventEmitter());
+      child.stderr = new PassThrough();
+      setImmediate(async () => {
+        for (const byte of Buffer.from('Error: café \u{1F600} \u202Edeliaf\u202C\n')) {
+          child.stderr.write(Buffer.from([byte]));
+          await new Promise((r) => setImmediate(r));
+        }
+        child.stderr.end();
+        setTimeout(() => child.emit('close', 1, null), 10);
+      });
+      return child;
+    }
+  );
+  const r = await new AppBrowser({ dir: tempDir('pb-app-browser-none-'), pkg: f.pkg, spawnImpl }).install();
+  assert.deepEqual(r, { ok: false, message: 'The download stopped (exit 1). Error: café \u{1F600} deliaf' });
 });
