@@ -24,7 +24,10 @@ const bodies = new Set(); // every .app-body mountApp made, until releaseApps fi
 const crashes = new Map(); // `${appId}:${v}` → message (a script error after the app was shown)
 const reloaded = new Set(); // `${appId}:${v}` you chose Reload for after its check crashed: run it, don’t show the crash again
 const viewing = new Map(); // appId → an older version you’re looking at, read-only
-const unloaded = new Set(); // appIds whose frames are unloaded while off screen
+// App bodies unloaded while off screen, by the body, not its app: an app’s own item and a review of it share the app’s
+// id, and only the item is watched for nearness, so the review must come back from a check while the item stays
+// unloaded (#1726).
+const unloaded = new WeakSet();
 const cap = () => Math.min(innerHeight * 0.8, 760);
 
 addEventListener('message', async (e) => {
@@ -336,7 +339,7 @@ function pauseAppFrames() {
 }
 
 function resumeAppFrames(bodies) {
-  for (const body of bodies) if (body.isConnected && !unloaded.has(body.dataset.appId)) body._remount?.();
+  for (const body of bodies) if (body.isConnected && !unloaded.has(body)) body._remount?.();
 }
 
 function mountAfterChecks(body, mount, placeholder) {
@@ -375,14 +378,14 @@ const observer = new IntersectionObserver(
         nearBodies.add(en.target);
         relookSoon();
         clearTimeout(en.target._unload);
-        if (unloaded.delete(id)) en.target._remount?.();
+        if (unloaded.delete(en.target)) en.target._remount?.();
       } else {
         nearBodies.delete(en.target);
         // Far off screen for a moment: unload, keeping the same height so nothing jumps.
         clearTimeout(en.target._unload);
         en.target._unload = setTimeout(() => {
-          if (!unloaded.has(id)) {
-            unloaded.add(id);
+          if (!unloaded.has(en.target)) {
+            unloaded.add(en.target);
             en.target._unmount?.();
           }
         }, 1500);
