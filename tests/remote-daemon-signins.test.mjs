@@ -164,6 +164,29 @@ test('signins: an answer is kept for SIGN_IN_KEEP_MS, then asked again', async (
   }
 });
 
+test('signins: a sign-out isn’t kept, so a sign-in fixed since is heard at the next asking', async () => {
+  const clock = fakeClock();
+  const sp = statusSpawn();
+  const s = setup({ spawn: sp.spawn, clock });
+  try {
+    const c = await hello(s);
+    c.send('signins');
+    await until(() => sp.calls.length === 2, 'the first asking');
+    for (const call of sp.calls) void sp.play(call, 'signed-out');
+    await c.msgs.next('signed');
+    // The person signs in on the host; Postbox asks again well within SIGN_IN_KEEP_MS.
+    c.send('signins');
+    await until(() => sp.calls.length === 4, 'the second asking to run the commands again');
+    for (const call of sp.calls.slice(2)) void sp.play(call, 'signed-in');
+    assert.deepEqual(
+      (await c.msgs.next('signed')).harnesses.map((h) => h.state),
+      ['signed-in', 'signed-in'],
+    );
+  } finally {
+    await s.done();
+  }
+});
+
 test('signins: a status command past SIGN_IN_STATUS_MS is killed and reads unknown', async () => {
   const clock = fakeClock();
   const sp = statusSpawn();

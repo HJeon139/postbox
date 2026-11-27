@@ -93,6 +93,7 @@ export function fakeHosts(d, { signIn = /** @type {any} */ (null) } = {}) {
   hosts.signIn = signIn;
   hosts.state = null; // overrides the status’s state
   hosts.signIns = null; // what the host last said of each harness’s sign-in (#1608), as the status carries it
+  hosts.signInsNow = async () => hosts.signIns; // what it says when asked now, at a turn’s start (#1608)
   hosts.theLink = link;
   hosts.link = () => link;
   hosts.ensureWelcome = async () => {

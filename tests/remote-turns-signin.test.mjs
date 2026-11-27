@@ -53,3 +53,25 @@ test('#1608: a harness signed out and a failed signInCheck give one notice, the 
   r.d.end(turn);
   await settled(r);
 });
+
+test('#1608: a turn’s start warns from what the host says now, not from an answer before it', async () => {
+  // Signed out when last asked, signed in since: no notice.
+  const fixed = rig();
+  fixed.hosts.signIns = signIns([{ name: 'claude-code', state: 'signed-out' }]);
+  fixed.hosts.signInsNow = async () => signIns([{ name: 'claude-code', state: 'signed-in', method: 'claude.ai', expiresAt: null }]);
+  const one = await running(fixed);
+  assert.deepEqual(signInNotes(fixed), [], 'a sign-in fixed since raises nothing');
+  fixed.d.end(one);
+  await settled(fixed);
+  // Signed in when last asked, signed out since: the notice.
+  const lapsed = rig();
+  lapsed.hosts.signIns = signIns([{ name: 'claude-code', state: 'signed-in', method: 'claude.ai', expiresAt: null }]);
+  lapsed.hosts.signInsNow = async () => signIns([{ name: 'claude-code', state: 'signed-out' }]);
+  const two = await running(lapsed);
+  assert.deepEqual(
+    signInNotes(lapsed).map((n) => n.title),
+    [`Claude Code on ${HOST} isn’t signed in`],
+  );
+  lapsed.d.end(two);
+  await settled(lapsed);
+});
