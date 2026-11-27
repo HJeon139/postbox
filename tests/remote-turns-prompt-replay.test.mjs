@@ -14,6 +14,7 @@ import { PROMPT_CALL_WAIT_MS, PROMPT_REPLAY_WAIT_MS } from '../shared/limits.mjs
 import * as arrange from './arrange.mjs';
 import { callLine, createFakeDaemon, FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { rig, running, settled, startUp, until } from './remote-turns-helpers.mjs';
+import { untilTurns } from './until-turns.mjs';
 
 const cards = (r) => r.store.items(r.t.id).filter((i) => i.kind === 'permission');
 const refusals = (r) => r.store.items(r.t.id).filter((i) => i.kind === 'system' && i.variant === 'prompt-refused');
@@ -170,9 +171,9 @@ async function reconnectedNeverCaughtUp(t) {
   r.link.reconnect();
   await lagUntil(t, () => reads() === 2, 'the read after the reconnect');
   r.d.prompt(turn, NEVER, 'p-1');
-  await lag();
   const held = () => heldPrompts(r.rt.turns.get(r.se().id));
-  assert.equal(held(), 1, 'the prompt waits for the read');
+  // The prompt crosses the fake daemon’s streams: wait for it, not a count of turns (#1657).
+  await untilTurns(() => held() === 1, 'the prompt to wait for the read');
   return { r, turn, reads, held };
 }
 
@@ -187,8 +188,7 @@ test('#353 a prompt waiting for a read that never catches up is refused at its c
     assert.equal(r.d.answers.length, 0, 'still waiting just short of the ceiling');
     assert.equal(held(), 1);
     t.mock.timers.tick(1);
-    await lag();
-    assert.equal(r.d.answers.length, 1, 'refused at the ceiling');
+    await untilTurns(() => r.d.answers.length === 1, 'the refusal at the ceiling');
     assert.equal(held(), 0, 'its watcher is gone');
     assert.equal(r.rt.remote.byTurn.get(turn).ceilings.size, 0, 'and its ceiling');
   } finally {
@@ -214,14 +214,12 @@ test('#353 a reconnect that starts the read over, and the prompt sent again, don
     const before = r.d.sent.filter((m) => m.type === 'prompt').length;
     r.link.reconnect();
     const moved = await lagUntil(t, () => reads() === 3 && r.d.sent.filter((m) => m.type === 'prompt').length > before, 'the read and the resend');
-    await lag();
-    assert.equal(held(), 2, 'the resend waits too');
+    await untilTurns(() => held() === 2, 'the resend to wait too');
     t.mock.timers.tick(PROMPT_REPLAY_WAIT_MS / 2 - moved - 1);
     await lag();
     assert.equal(r.d.answers.length, 0, 'still waiting just short of the ceiling from when it first came');
     t.mock.timers.tick(1);
-    await lag();
-    assert.equal(r.d.answers.length, 1, 'refused at that ceiling');
+    await untilTurns(() => r.d.answers.length === 1, 'the refusal at that ceiling');
     assert.equal(held(), 0, 'the resend’s wait ended at the same ceiling');
   } finally {
     t.mock.timers.reset();
@@ -240,13 +238,13 @@ test('#353 the ceiling bounds only the wait for the read: one that catches up ju
     t.mock.timers.tick(PROMPT_REPLAY_WAIT_MS - 1);
     await lag();
     r.d.caughtUp(turn, 'out');
-    await lag();
+    // Its bound starts once the caught-up has crossed the streams, so the clock moves only after that (#1657).
+    await untilTurns(() => r.rt.remote.byTurn.get(turn).replay === null, 'the read to catch up');
     t.mock.timers.tick(PROMPT_CALL_WAIT_MS - 1);
     await lag();
     assert.equal(r.d.answers.length, 0, 'past the ceiling, still within its bound');
     t.mock.timers.tick(1);
-    await lag();
-    assert.equal(r.d.answers.length, 1, 'refused at its bound');
+    await untilTurns(() => r.d.answers.length === 1, 'the refusal at its bound');
   } finally {
     t.mock.timers.reset();
   }
