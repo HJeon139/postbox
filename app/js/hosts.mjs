@@ -14,7 +14,7 @@ import { fill, h } from './dom.mjs';
 import { confirmRemove } from './hosts-confirm.mjs';
 import { editor, editorActions, openEditor, syncKeepUpdated } from './hosts-editor.mjs';
 import { paintStatus, statusLine, statusView } from './hosts-status.mjs';
-import { barSign, formHead, pickList } from './manage-list.mjs';
+import { barSign, formHead, listHead, pickList } from './manage-list.mjs';
 import { keepFocus, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -26,7 +26,7 @@ const S = () => client.state;
  * @typedef {{ root: HTMLElement, editing: string | null, draft: Draft | null, errors: Record<string, string>, formError: string,
  *   saving: boolean, addName: string, addError: string, added: string | null, adding: boolean, picked: Record<string, any>,
  *   setFoot: (...actions: any[]) => null, paint: () => void }} Panel
- *   adding: the New host form shows; picked: the list’s pick (app/js/manage-list.mjs); setFoot: pins the list’s bar
+ *   adding: the New host form shows; picked: the list’s pick (app/js/manage-list.mjs); setFoot: pins a form’s or the editor’s actions under the sheet
  */
 
 /**
@@ -84,8 +84,9 @@ function listen(p) {
 }
 
 /**
- * A repaint draws the list’s bar again, in the sheet’s foot, outside what keepFocus looks after: a control of the bar
- * that had focus (the +, after a host is removed) has it again, by its id. @param {() => void} paint
+ * A repaint draws the sheet’s foot again (the editor’s Save and Cancel), outside what keepFocus looks after: a control
+ * there that had focus has it again, by its id. The list’s bar is inside the panel, so keepFocus keeps its focus.
+ * @param {() => void} paint
  */
 function keepBarFocus(paint) {
   const at = /** @type {HTMLElement | null} */ (document.activeElement);
@@ -98,7 +99,7 @@ const hosts = () => Object.values(S().hosts ?? {}).sort((a, b) => a.createdAt - 
 
 /**
  * The tab as every list in the main menu is (#1735, app/js/manage-list.mjs): the hosts, one picked, with + − and Edit in
- * the bar under them, and the pick’s status under the list, since a host’s state is what you came to see. + shows the
+ * the row of their heading, and the pick’s status under the list, since a host’s state is what you came to see. + shows the
  * New host form in the list’s place.
  * @param {Panel} p
  */
@@ -127,11 +128,13 @@ const view = (p) => {
     controls: (r) => hostBar(p, r && S().hosts?.[r.key]),
   });
   const picked = all.find((x) => x.id === p.picked.host) ?? all[0];
-  // While a host is edited, the foot holds its Save and Cancel; else the list’s bar.
-  if (picked && p.editing === picked.id) p.setFoot(...editorActions(p, picked));
-  else p.setFoot(bar);
+  // While a host is edited, the foot holds its Save and Cancel, and the list’s bar is away until the edit ends.
+  const editing = Boolean(picked && p.editing === picked.id);
+  if (editing) p.setFoot(...editorActions(p, picked));
+  else p.setFoot();
   return [
     h('p.small.dim', 'Agents can run on another computer you reach with ssh, while Postbox stays here. Pick a host for an agent in its settings.'),
+    listHead('Hosts', editing ? null : bar, { pinned: true }),
     list,
     picked ? hostCard(p, picked) : null,
   ];

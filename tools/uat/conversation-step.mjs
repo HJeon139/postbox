@@ -55,13 +55,12 @@ export async function waitUntil(until, { now = Date.now, wait = sleep } = {}) {
 }
 
 /**
- * The clicks of a delete, the same for a conversation with one agent and for a room: the conversation’s menu, the
- * room’s form in the main menu, where Delete is (#1735), and the confirm, which opens over that form. Its Delete is
+ * The clicks of a delete, the same for a conversation with one agent and for a room: the room’s Manage button in the
+ * top bar, which opens its form in the main menu, where Delete is (#1735), and the confirm, which opens over that form. Its Delete is
  * pressed at `at` if one is given. @returns {Promise<string>}  what to say of the wait
  */
 async function confirmDelete(kit, t, at) {
-  await kit.clickAt(`document.querySelector(${js(`[aria-label="Actions for ${t.title}"]`)})`, 'the conversation’s menu');
-  await kit.clickAt(byText('document', '.menu .mi, [role=menuitem]', 'Manage room and members'), 'Manage room and members in its menu');
+  await kit.clickAt(`document.getElementById('conversation-actions')`, 'the room’s Manage button');
   await kit.clickAt(byText('document.querySelector(".dialog .d-foot")', 'button.danger', 'Delete…'), 'Delete… under the room’s form');
   const { wait, note } = delayUntil(at, Date.now());
   await waitUntil(Date.now() + wait);
@@ -72,7 +71,7 @@ async function confirmDelete(kit, t, at) {
 }
 
 /**
- * Deletes the conversation that’s open, through its menu and the confirm, at `at` if it’s given (the confirm is open
+ * Deletes the conversation that’s open, through its Manage button and the confirm, at `at` if it’s given (the confirm is open
  * and waiting), and waits for it to leave the state: a delete goes at once (#1224).
  */
 async function remove({ d, api, facts }, a) {

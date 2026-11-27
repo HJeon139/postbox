@@ -256,6 +256,8 @@ export function glossaryRegex(glossary) {
 export function mentionRegex(handles) {
   const hs = (handles ?? []).filter((h) => /^[A-Za-z0-9_-]+$/.test(h));
   if (!hs.length) return null;
+  // A handle may carry invisible format characters (Unicode Cf), as parseMentions reads one (#1840).
+  const alts = hs.map((h) => `\\p{Cf}*${[...h].join('\\p{Cf}*')}`);
   // lint-allow regex: only handles of letters, digits, _ and - are kept, just above.
-  return new RegExp(`(^|[^\\w@])@(${hs.join('|')})(?![\\w-])`, 'g');
+  return new RegExp(`(^|[^\\w@])@(${alts.join('|')})(?![\\w-])`, 'gu');
 }

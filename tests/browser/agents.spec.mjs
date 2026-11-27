@@ -313,15 +313,15 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
   test.describe(`at 375 px (${theme})`, () => {
     test.use({ viewport: { width: 375, height: 812 }, ...PHONE, colorScheme: theme });
 
-    test(`at 375 px (${theme}), the top bar fits a long title with no agent rings, and its menu names each agent (#320)`, async ({ page }) => {
+    test(`at 375 px (${theme}), the top bar fits a long title with no agent rings, and the room’s form names each agent (#320)`, async ({ page }) => {
       arrange.renameThread(app.rt, shelf.id, 'Index every book on the shelf, then check the index against the catalog');
       try {
         await open(page, `#/t/${shelf.id}`);
         expect(await page.locator('header.topbar').evaluate((t) => t.scrollWidth <= t.clientWidth), 'the top bar fits').toBe(true);
         await expect(page.locator('header.topbar pb-ring'), 'the top bar has no agent rings').toHaveCount(0);
-        // Where the sidebar is hidden, the conversation’s menu names its agents, each leading to its persona.
+        // Where the sidebar is hidden, the room’s form names its agents (persona-memory.spec.mjs goes on to its Edit).
         await page.locator('header.topbar #conversation-actions').click();
-        await expect(page.locator('.menu button.mi', { hasText: 'indexer' }), 'the menu names indexer').toBeVisible();
+        await expect(page.getByRole('option').filter({ hasText: '@indexer' }), 'the Members list names indexer').toBeVisible();
       } finally {
         arrange.renameThread(app.rt, shelf.id, 'Index the shelf');
       }

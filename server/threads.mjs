@@ -213,13 +213,15 @@ export class Threads {
   /**
    * The terms a thread knows: its own glossary over its parent’s, so a topic thread inherits its conversation’s
    * terms and its own definition wins. The browser’s glossaryOf (app/js/thread.mjs) merges the same way.
+   * Given a reader, each glossary is read as written too, so a term defined behind a held commit is known (#1819).
    * @param {string} threadId @param {(id: string) => any} [thread]  how its threads are read, published by default
    */
   glossaryFor(threadId, thread = undefined) {
+    const glossary = (/** @type {string} */ id) => (thread ? this.store.pending.glossary(id) : this.store.state.glossary[id]);
     return Object.assign(
       {},
       ...this.lineage(threadId, thread)
-        .map((id) => this.store.state.glossary[id] ?? {})
+        .map((id) => glossary(id) ?? {})
         .reverse(),
     );
   }

@@ -1,11 +1,11 @@
-// #1035: a room sets its own wake chain limit from its “Actions for …” menu, by keyboard alone. The field shows the
+// #1035: a room sets its own wake chain limit from its form in the main menu, by keyboard alone. The field shows the
 // server’s default; a bad value is refused inline and the dialog stays open with what was typed; a saved limit is what
 // the composer’s hint names and what the next wake is held at; “Use the default” clears it; and focus goes back to the
-// menu’s button when the dialog closes.
+// room’s button when the dialog closes.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { allowPageError, failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -26,17 +26,15 @@ failOnPageErrors(test);
 
 const TAKES = 'A room’s wake chain limit is a whole number from 1 to 10,000.';
 
-/** The room’s menu button, the dialog and its field, and a way to open the dialog by keyboard: from the room’s form. */
+/** The room’s button in the top bar, the dialog and its field, and a way to open the dialog by keyboard: from the room’s form. */
 function controls(page, room) {
-  const actions = page.getByRole('button', { name: `Actions for ${room.title}` });
+  const actions = page.getByRole('button', { name: `Manage ${room.title}` });
   const dialog = page.getByRole('dialog', { name: 'Wake chain limit' });
   const field = dialog.getByRole('spinbutton', { name: 'Agent wakes in a row' });
   const open = async () => {
     await actions.focus();
     await page.keyboard.press('Enter');
-    // The room’s form in the main menu holds it (#1735): the menu’s first item goes there.
-    await focusIs(page, /^menuitem: Manage room and members…/);
-    await page.keyboard.press('Enter');
+    // The room’s form in the main menu holds it (#1735): the button opens it at once.
     const more = page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Wake chain limit…' });
     await more.focus();
     await page.keyboard.press('Enter');

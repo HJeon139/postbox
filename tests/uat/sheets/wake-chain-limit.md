@@ -1,6 +1,6 @@
 # Wake chain limit
 
-**Where:** Conversation menu › Manage room and members… › Wake chain limit…, in a conversation or a room (#1735). Closing it returns focus to that button.
+**Where:** The room’s Manage button (the gear after its title) › Wake chain limit…, in a conversation or a room (#1735). Closing it returns focus to that button.
 
 ## Why it exists
 
@@ -15,17 +15,17 @@ After a chain of agent wakes without your message, the next waits for your Allow
 - “Use the default” clears the room’s own number.
 - The composer’s hint names the room’s limit (“…since your last message, of the room’s limit of 5.”), and a wake card says the limit it was raised under (“past the limit of 5”).
 - From a topic thread it sets its conversation’s limit.
-- By keyboard alone: Enter on ⋯, Enter on Manage room and members…, Tab to Wake chain limit…, Enter. The dialog opens over the room’s form, and focus returns to the button when it closes.
+- By keyboard alone: Enter on the room’s Manage button, Tab to Wake chain limit…, Enter. The dialog opens over the room’s form, and focus returns to the button when it closes.
 
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Open “Index planning”, open ⋯ › Manage room and members… › Wake chain limit…, type 0 and press Enter, then type 5 and press Enter.
+2. Open “Index planning”, press the gear after its title, then Wake chain limit…, type 0 and press Enter, then type 5 and press Enter.
 3. Open it again and choose “Use the default”.
 
 **Pass if:** 0 is refused under the field with the dialog still open; 5 closes the dialog and the button’s title then says “5 wakes in a row”; “Use the default” brings back “1,000 wakes in a row, the default”. Focus is on Wake chain limit… after each close, with the room’s form still open.
 
 ## Related
 
-- [conversation menu](../shell/top-bar/conversation-menu.md)
+- [the room’s Manage button](../shell/top-bar/conversation-menu.md)
 - [wake-limit confirm](../conversation/harness-cards/hop-confirm.md)
