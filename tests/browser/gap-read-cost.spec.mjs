@@ -108,7 +108,9 @@ for (const mode of ROOM_MODES)
  * reply was posted, against the page’s last applied seq, its stream’s state, whether its state holds the item, the
  * conversation’s loaded range, whether it’s open there, and whether the node exists by the time of the read. A page seq
  * short of the store’s means the event never arrived. One caught up with the item not in the state means the range
- * check dropped it on arrival (app/js/item-ranges.mjs). The item in the state with no node means it wasn’t drawn.
+ * check kept it out (app/js/item-ranges.mjs): as already loaded when the range’s seq is at or past the post’s, kept past
+ * the range’s end when `beyond`, or held for a load in flight when `loads` is above 0. The item in the state with no
+ * node means it wasn’t drawn.
  * @param {import('@playwright/test').Page} page @param {string} threadId @param {string} id
  */
 async function reachesPage(page, threadId, id) {
@@ -120,13 +122,16 @@ async function reachesPage(page, threadId, id) {
       .evaluate(
         async ([tid, iid]) => {
           const m = await import('/app/js/client.mjs');
+          const { beyondItem } = await import('/app/js/item-ranges.mjs');
           const range = m.client.ranges.get(tid);
           return {
             seq: m.client.seq,
             connection: m.client.connection,
             open: m.client.open.has(tid),
             inState: Boolean(m.itemIn(tid, iid)),
-            range: range ? { start: range.start, total: range.total } : null,
+            held: m.itemsOf(tid).length,
+            range: range ? { start: range.start, total: range.total, seq: range.seq, loads: range.loads } : null,
+            beyond: Boolean(beyondItem(range, tid, iid)),
             node: Boolean(document.querySelector(`[data-key="${iid}"]`)),
           };
         },
