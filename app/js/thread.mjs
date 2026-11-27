@@ -75,9 +75,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const pending = new Set();
   let raf = 0;
   const was = kept.get(`${inPanel}:${threadId}`);
-  // At the end of the transcript, one row per agent that’s thinking or calling tools: what it’s on right now,
-  // and a glimpse of its thinking. It goes while the agent writes, since the reply itself shows then. It sits in
-  // the message column, like the messages (#83).
+  // At the end of the transcript, one row per agent that’s thinking, calling tools or waiting on its background work
+  // (#189): what it’s on right now, and a glimpse of its thinking. It goes while the agent writes, since the reply
+  // itself shows then. It sits in the message column, like the messages (#83).
   const working = h('div.working.col', { 'aria-hidden': 'true' });
   const paintWorking = () => {
     // The agents whose turn is here: a conversation’s, unless its turn is in a side thread, and in a side thread, any

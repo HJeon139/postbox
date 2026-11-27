@@ -265,6 +265,8 @@ function reportCallbacks(rt, turn, live) {
       if (!live()) return;
       const allowed = {};
       if (patch.state && ['think', 'gen', 'tool'].includes(patch.state)) allowed.state = patch.state;
+      // Only a state can wait on background work (#189); any other change of state clears it (session-patch.mjs).
+      if (allowed.state && patch.background === true) allowed.background = true;
       if (patch.ctx === null || typeof patch.ctx === 'number') allowed.ctx = patch.ctx === null ? null : Math.max(0, Math.min(100, Math.round(patch.ctx)));
       if (Array.isArray(patch.subagents))
         // Each with what it was asked, its step now, its latest narration and the subagent that started it (#73).
