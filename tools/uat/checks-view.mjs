@@ -43,38 +43,49 @@ export const TEXT_LAYOUT = 'text-layout';
 /**
  * #681: text drawn over text or run into a control, cut off by its box, or broken mid-word, on a whole-window
  * screenshot, one finding for each problem however many screenshots show it. Each fails the run (checks-postbox.mjs,
- * failsRun). A screenshot the check couldn’t measure, or one of its checks that threw (check-error), is listed as
- * unverified instead, and fails nothing.
+ * failsRun). A screenshot the check couldn’t measure, one of its checks that threw (check-error), or one this check
+ * couldn’t read, is listed as unverified instead, and fails nothing.
  * @param {{ probes?: { layout?: any[] } }} f
  */
 function textLayout(f) {
   const out = new Map();
   for (const s of f.probes?.layout ?? []) {
-    const unmeasured = s.error ?? s.problems.find((p) => p.code === 'check-error')?.message;
-    if (unmeasured)
-      out.set(`unverified:${s.step}`, {
-        key: `${TEXT_LAYOUT}:unverified:${s.step}`,
-        issue: null,
-        title: 'text-layout couldn’t check a screenshot',
-        evidence: `At step ${s.step}: ${unmeasured}`,
-        verdict: 'measurement',
-        note: 'Not a defect: the layout check couldn’t measure this screenshot, so the run doesn’t verify it.',
-        unverified: { check: TEXT_LAYOUT, step: s.step },
-      });
-    for (const p of s.error ? [] : s.problems.filter((x) => x.code !== 'check-error')) {
-      // The same problem on each screenshot is one finding, the first: its key leaves out the width the message starts
-      // with, and the sizes it measured, which change with the width.
-      const key = `${TEXT_LAYOUT}:${p.code}:${p.message.replace(/^At \d+ px, /, '').replace(/\d+(?: × \d+)? px/g, '… px')}`;
-      if (!out.has(key))
-        out.set(key, {
-          key,
-          title: 'Text on a Postbox screen is drawn over other text or a control, cut off, or broken mid-word',
-          evidence: `At step ${s.step}, in a window ${s.width} px wide: ${p.message}`,
-        });
+    try {
+      sampleFindings(s, out);
+    } catch (e) {
+      out.set(`unverified:${s?.step}`, unverified(s?.step, `the check couldn’t read it: ${e.message}`));
     }
   }
   return [...out.values()];
 }
+
+/** A screenshot’s problems, added to out once each, or why it couldn’t be measured. @param {any} s @param {Map<string, object>} out */
+function sampleFindings(s, out) {
+  const unmeasured = s.error ?? s.problems.find((p) => p.code === 'check-error')?.message;
+  if (unmeasured) out.set(`unverified:${s.step}`, unverified(s.step, unmeasured));
+  for (const p of s.error ? [] : s.problems.filter((x) => x.code !== 'check-error')) {
+    // The same problem on each screenshot is one finding, the first: its key leaves out the width the message starts
+    // with, and the sizes it measured, which change with the width.
+    const key = `${TEXT_LAYOUT}:${p.code}:${p.message.replace(/^At \d+ px, /, '').replace(/\d+(?: × \d+)? px/g, '… px')}`;
+    if (!out.has(key))
+      out.set(key, {
+        key,
+        title: 'Text on a Postbox screen is drawn over other text or a control, cut off, or broken mid-word',
+        evidence: `At step ${s.step}, in a window ${s.width} px wide: ${p.message}`,
+      });
+  }
+}
+
+/** A screenshot the layout check couldn’t measure: listed, and failing nothing. @param {unknown} step @param {string} why */
+const unverified = (step, why) => ({
+  key: `${TEXT_LAYOUT}:unverified:${step}`,
+  issue: null,
+  title: 'text-layout couldn’t check a screenshot',
+  evidence: `At step ${step}: ${why}`,
+  verdict: 'measurement',
+  note: 'Not a defect: the layout check couldn’t measure this screenshot, so the run doesn’t verify it.',
+  unverified: { check: TEXT_LAYOUT, step },
+});
 
 export const VIEW_CHECKS = [
   { id: 'rows-skipped', inputs: ['probes'], issue: 712, run: rowsSkipped },

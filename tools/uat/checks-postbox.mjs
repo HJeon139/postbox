@@ -1,7 +1,8 @@
 // The run’s own Postbox must print nothing wrong: no error, no warning, and no exit of its own mid-run. A 500’s
 // TypeError reached the person’s terminal on `npm start` while every UAT run copied the same kind of line into its
 // log unread. The check reads what tools/uat/postbox-output.mjs records, and any finding fails the run: the runner
-// exits non-zero (tools/uat-run.mjs), so a script or session running UAT sees it without reading the report.
+// exits non-zero (tools/uat-run.mjs), so a script or session running UAT sees it without reading the report. What
+// text-layout finds on a screenshot fails the run too (#681, failsRun below).
 
 import { clip } from '../../shared/text.mjs';
 import { TEXT_LAYOUT } from './checks-view.mjs';

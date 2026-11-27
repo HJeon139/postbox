@@ -140,3 +140,13 @@ test('a check that threw is unverified, while the problems the others found stil
 test('text-layout says nothing of a run from before the probe', () => {
   assert.deepEqual(runChecks({ probes: {} }, { only: ['text-layout'] }), []);
 });
+
+test('a screenshot text-layout can’t read, with neither problems nor an error, is unverified and fails nothing', () => {
+  const found = runLayout([{ step: 4, width: 375 }]);
+  assert.deepEqual(
+    found.map((x) => [x.key, x.unverified]),
+    [['text-layout:unverified:4', { check: 'text-layout', step: 4 }]],
+  );
+  assert.match(found[0].evidence, /^At step 4: the check couldn’t read it: /);
+  assert.equal(failsRun(found), false);
+});
