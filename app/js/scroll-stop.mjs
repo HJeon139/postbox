@@ -18,8 +18,10 @@ function fit(box) {
 
 /**
  * Keeps a box’s tab stop to while it scrolls, from when it’s first laid out and as its size changes, as with the
- * window’s. Its content isn’t watched: each of these is drawn again, as a new box, when its content changes. Returns
- * the box, for h().
+ * window’s. Its content isn’t watched: each of these is drawn again, as a new box, when its content changes. The box
+ * must be in the page by the next frame: one still out of it then is let go, as one removed would be. A box in an
+ * item the transcript skips drawing (content-visibility) gets its stop once the item draws, a frame before it comes
+ * into view. Returns the box, for h().
  * @template {HTMLElement} T @param {T} box @returns {T}
  */
 export function scrollStop(box) {
