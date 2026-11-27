@@ -1,6 +1,7 @@
 // The UAT runner’s act against a real choice block (#1750): an option the tester names as its label and description
-// joined with “ — ” is picked by its label, as app/js/blocks.mjs draws it, and a name for no option still fails the
-// step. The runner’s own code, through a stand-in for its page.
+// joined with “ — ”, or by a newline, a colon or another dash (#1782), is picked by its label, as app/js/blocks.mjs
+// draws it, and a name for no option still fails the step. What it reads of the block lists each chip by its label. The
+// runner’s own code, through a stand-in for its page.
 
 import { expect, test } from '@playwright/test';
 import { driver } from '../../tools/uat/driver.mjs';
@@ -24,6 +25,17 @@ const NAMES = [
   ['Daily — with digest', 'Daily — with digest'],
   ['Daily — with digest — each morning', 'Daily — with digest'],
   ['Weekly with alerts', 'Weekly with alerts'],
+  ['each evening', 'Daily'],
+  // Joined some other way (#1782), each after another option, so each pick shows.
+  ['Weekly: every Monday', 'Weekly'],
+  ['each evening', 'Daily'],
+  ['Weekly – every Monday', 'Weekly'],
+  ['each evening', 'Daily'],
+  ['Weekly - every Monday', 'Weekly'],
+  ['each evening', 'Daily'],
+  ['Weekly—every Monday', 'Weekly'],
+  ['each evening', 'Daily'],
+  ['Weekly\nevery Monday', 'Weekly'],
   ['each evening', 'Daily'],
 ];
 
@@ -69,4 +81,8 @@ test('the runner picks a choice’s option by its label when the tester names it
     'Couldn’t find the option “Dailyish — each evening” on screen.',
   );
   expect(await picked(), 'and nothing else is picked').toEqual(['Daily']);
+  // What the tester reads: each chip by its label, not its label and description run together (#1782).
+  const read = (await d.items()).find((i) => i.key === key);
+  expect(read?.buttons).toEqual(expect.arrayContaining(['Weekly with alerts', 'Weekly', 'Daily', 'Daily — with digest', 'Text only']));
+  expect(read?.buttons, 'no label run into its description').not.toContain('Weeklyevery Monday');
 });
