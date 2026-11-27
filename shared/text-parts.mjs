@@ -24,33 +24,30 @@ export function partEnd(text, end) {
  */
 export const cutText = (text, n) => (text.length > n ? text.slice(0, partEnd(text, n)) : text);
 
+/** Half of a surrogate pair with no other half beside it: with the u flag, a whole pair is one code point, not Cs. */
+const LONE_HALF = /\p{Cs}/gu;
+
 /**
  * Words another program gave, such as a backend’s error, cleaned before they reach a step, its label or an agent’s note
- * (#1171, #1905): every character that hides or reorders text (INVISIBLE) goes, line and paragraph separators, control
- * characters and runs of space become one space, and the cut to `n` never splits a character.
+ * (#1171, #1905): cleaned as cleanLines cleans them, with line breaks as spaces too, and the cut to `n` never splits a
+ * character.
  * @param {string} text @param {number} n
  */
-export const cleanSaid = (text, n) =>
-  cutText(
-    text
-      .replace(/[\u2028\u2029]/g, ' ')
-      .replace(INVISIBLE, '')
-      .replace(/[\p{Cc}\s]+/gu, ' ')
-      .trim(),
-    n,
-  );
+export const cleanSaid = (text, n) => cutText(cleanLines(text, Number.POSITIVE_INFINITY).replace(/\n+/g, ' '), n);
 
 /**
  * Words another program gave, for a card that shows them as preformatted lines (a permission card’s detail; #1937):
- * cleaned as cleanSaid does, but its line breaks kept, since a line break there can’t hide or reorder anything. Every
- * kind of line break and separator becomes one, runs of other space and control characters become one space, and no
- * more than one blank line is kept in a row.
+ * every character that hides or reorders text (INVISIBLE) goes, and so does half a character left alone (a buffer cut
+ * from its end can start with one), but its line breaks stay, since a line break there can’t hide or reorder anything.
+ * Every kind of line break and separator becomes one, runs of other space and control characters become one space, no
+ * more than one blank line is kept in a row, and the cut to `n` never splits a character.
  * @param {string} text @param {number} n
  */
 export const cleanLines = (text, n) =>
   cutText(
     text
       .replace(/\r\n?|[\u2028\u2029]/g, '\n')
+      .replace(LONE_HALF, '') // before INVISIBLE, so two halves an invisible character split don’t join
       .replace(INVISIBLE, '')
       .replace(/[^\P{Cc}\n]/gu, ' ')
       .replace(/[^\S\n]+/gu, ' ')
@@ -70,6 +67,13 @@ export function tailText(text, n) {
   const from = text.length - n;
   return text.slice(/[\uDC00-\uDFFF]/.test(text[from]) ? from + 1 : from);
 }
+
+/**
+ * The last n characters of words another program gave, cleaned as cleanSaid cleans them: for an error whose newest
+ * words are its end, such as a CLI’s stderr (#1938). Never starts inside a character (tailText).
+ * @param {string} text @param {number} n
+ */
+export const cleanTail = (text, n) => tailText(cleanSaid(text, Number.POSITIVE_INFINITY), n);
 
 /**
  * A Markdown fence for text: longer than any run of backticks in it, so the text can't close it.
