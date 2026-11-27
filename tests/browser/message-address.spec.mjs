@@ -5,7 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { landed, longRoom } from './message-address.mjs';
+import { landed, longRoom, readOnPast, recordEnd } from './message-address.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -207,11 +207,11 @@ test('#168 in forced colors, the replies link’s icon takes the link color, and
 
 test('#168 Back to a message’s address from another conversation goes to the message again', async ({ page }) => {
   const { t, items } = longRoom(app, 'Address, back again');
+  await recordEnd(page);
   await page.goto(`${app.origin}/#/t/${t.id}?m=${items[3].id}`);
   await synced(page, app);
   await expect.poll(() => landed(page, items[3].id)).toBe('landed');
-  await page.keyboard.press('End');
-  await expect.poll(() => landed(page, items[3].id), { message: 'read on past it' }).toBe('not in view');
+  await readOnPast(page, items[3].id);
   // To another conversation within the page, as the rail goes there, and back.
   const away = longRoom(app, 'Address, elsewhere again').t;
   await synced(page, app);

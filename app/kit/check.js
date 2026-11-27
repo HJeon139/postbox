@@ -16,6 +16,7 @@
     cutOff,
     firstView,
     textInBoxes,
+    textOverMarks,
   } = window.__pbCheck;
   delete window.__pbCheck;
   // ── The pre-display check ─────────────────────────────────────────────────────────────
@@ -45,7 +46,7 @@
   if (new URLSearchParams(location.search).has('view')) {
     const scriptErrors = () => errors.map((e) => ({ code: 'script-error', message: e }));
     settled
-      .then(() => Promise.all([firstView(), textInBoxes(), smallText(innerWidth)]))
+      .then(() => Promise.all([firstView(), textInBoxes(), textOverMarks(), smallText(innerWidth)]))
       .then((found) => post({ type: 'check', width: innerWidth, problems: [...found.flat(), ...scriptErrors()] }));
     return;
   }

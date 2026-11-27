@@ -9,7 +9,7 @@ import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { rerenderAround, reviewApp } from './review-app.mjs';
-import { followOpen, reviewDraft, saveEdit, startComment, stopComment } from './review-draft.mjs';
+import { addComposing, followOpen, reviewDraft, saveEdit, startComment, stopComment } from './review-draft.mjs';
 import { keepReviewDraft } from './review-draft-store.mjs';
 import { inlineMd, itemWords, words } from './review-inline.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
@@ -305,8 +305,9 @@ export function renderReview(b, item, ctx, kit) {
           {
             type: 'button',
             onclick: () => {
-              // A comment open for editing goes as last typed.
+              // A comment open for editing goes as last typed, and one typed but not yet added goes too.
               saveEdit(d);
+              addComposing(d, b.format === 'app');
               submit(
                 item,
                 ctx,

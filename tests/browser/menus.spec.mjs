@@ -144,3 +144,25 @@ test('#36 in a short window, the composer’s + menu (above its button) and the 
     await expect(menu(page)).toHaveCount(0);
   }
 });
+
+test('after an older version, “Back to v30” runs v30, and the version button and the menu’s tick say v30, in full screen too', async ({ page }) => {
+  await open(page);
+  for (const fullScreen of [false, true]) {
+    await versions(page).click();
+    await item(page, 'v3 · ').click();
+    await expect(shown(page), 'v3 shown').toHaveText('Version 3');
+    if (fullScreen) {
+      await page.locator('.appframe').getByRole('button', { name: 'Full screen' }).click();
+      await expect(page.locator('.app-full.fullscreen')).toBeVisible();
+    }
+    await page.getByRole('button', { name: 'Back to v30', exact: true }).click();
+    await expect(shown(page), 'v30 shown').toHaveText('Version 30');
+    await expect(versions(page), 'the version button names v30').toHaveText(/^v30 · /);
+    await expect(versions(page), 'focus on the version button').toBeFocused();
+    await versions(page).click();
+    await expect(menu(page).locator('[aria-current="true"]'), 'the menu ticks v30').toHaveText(/^v30 · /);
+    await page.keyboard.press('Escape');
+    await expect(menu(page)).toHaveCount(0);
+    if (fullScreen) await expect(page.locator('.app-full.fullscreen'), 'still full screen').toBeVisible();
+  }
+});
