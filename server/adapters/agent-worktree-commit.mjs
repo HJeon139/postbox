@@ -119,7 +119,10 @@ async function commitIn(git, place, { branch, handle, theirs, subs = new Map(), 
   if (midway) return { why: `a ${midway} is in progress there` };
   if (entries.some((l) => l.startsWith('?? ') && l.endsWith('/'))) return { why: 'it holds a repository of its own' };
   const others = (links ?? []).filter((l) => !subs.has(l.path)).map((l) => l.path);
-  if (!links || (await gitlinksAt(git, theirs, others)).length !== others.length) return { why: 'it holds a repository of its own' };
+  // By name, not by count, so a path git read as a pattern (one the agent named `vendor/*`) can’t pass as the
+  // person’s own `vendor/lib`.
+  const own = new Set(links ? (await gitlinksAt(git, theirs, others)).map((l) => l.path) : []);
+  if (!links || !others.every((path) => own.has(path))) return { why: 'it holds a repository of its own' };
   const made = await record(g, { links, turned: turned.map((l) => ({ path: l.path, sha: /** @type {string} */ (subs.get(l.path)) })), handle });
   if (made.code === 0) return { committed: true };
   return { why: `git refused (${made.stderr.trim().split('\n').at(-1) || `it exited with ${made.code}`})` };
