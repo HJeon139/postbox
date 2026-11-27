@@ -145,9 +145,10 @@ function turnMessage(rt, se, message, where, slash) {
   // Postbox’s tools didn’t load last turn: told once, whatever the backend, and given back by a turn that never ran
   // (tools-down.mjs).
   const down = toolsDownNote(se, message);
-  if (down) message = { ...message, context: [down, ...(message.context ?? [])] };
-  if (down) saveBackendState(rt, sessionId, { postboxToolsDown: null });
-  if (down) message = { ...message, toolsDownTaken: se.backendState.postboxToolsDown };
+  if (down) {
+    message = { ...message, context: [down, ...(message.context ?? [])], toolsDownTaken: se.backendState.postboxToolsDown };
+    saveBackendState(rt, sessionId, { postboxToolsDown: null });
+  }
   // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
   // message.lint: fixes it owes, placed with the request rather than in the background.
   if (message.kind !== 'lint' && !slash) message = rt.checks.foldLint(sessionId, message);

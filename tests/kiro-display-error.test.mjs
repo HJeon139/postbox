@@ -94,3 +94,16 @@ test('#1171 a connection error worded another way still names its server, and a 
   assert.ok(step, 'read as Postbox’s server, whatever the verb');
   assert.match(step.detail, /timed out after 30s while starting/);
 });
+
+test('#1171 the words and type are read from either place Kiro puts them, when only one has them', () => {
+  for (const from of ['top', 'displayError']) {
+    const e = structuredClone(RECORDED);
+    const k = e.data.update._meta.kiro;
+    const drop = from === 'top' ? k.displayError : k;
+    delete drop.message;
+    delete drop.errorType;
+    const { ctx } = replay(withError(e));
+    assert.ok(postboxStep(ctx), `read from ${from} alone`);
+    assert.equal(ctx.calls.saved.postboxToolsDown, 'ran', `and noted, from ${from} alone`);
+  }
+});
