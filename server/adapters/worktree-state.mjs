@@ -3,6 +3,7 @@
 
 import { access, readFile, realpath, rm } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
+import { cutText } from '../../shared/text-parts.mjs';
 import { gitPointer } from './agy-git-dir.mjs';
 
 /**
@@ -67,5 +68,5 @@ export async function removeWorktree(git, repo, dir) {
  */
 export function gitsReason(result) {
   const lines = result.stderr.trim().split('\n');
-  return (lines.find((l) => l.startsWith('fatal:')) ?? lines[0])?.slice(0, 200) || `git exited with ${result.code}`;
+  return cutText(lines.find((l) => l.startsWith('fatal:')) ?? lines[0], 200) || `git exited with ${result.code}`;
 }

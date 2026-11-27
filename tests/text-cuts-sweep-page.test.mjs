@@ -19,3 +19,9 @@ test('#1686 a comment on a long selection names its place by the quote, cut whol
   const { placeOf } = await pageModule('review-comment-box.mjs', ['dom.mjs']);
   whole(placeOf({ quote: across(59) }, { format: 'markdown' }), 'the place');
 });
+
+test('#1686 a bar for a host whose name starts with an emoji is named by at least that whole emoji', async () => {
+  const { namesAt } = await pageModule('quota-fit.mjs');
+  const bar = (/** @type {string} */ host) => ({ backend: 'claude-code', full: 'Claude Code', host });
+  assert.deepEqual(namesAt([bar(`${EMOJI}x`), bar('b')], true), [`Claude @${EMOJI}`, 'Claude @b']);
+});

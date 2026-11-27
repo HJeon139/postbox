@@ -14,6 +14,7 @@ import { besideNote, noWorktreeStep, ownFolderFor } from '../server/adapters/age
 import { agentPlace, agentWorktree, turnFolders, worktreeNote } from '../server/adapters/agent-worktree.mjs';
 import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
 import { FolderQueue } from '../server/adapters/folder-queue.mjs';
+import { gitsReason } from '../server/adapters/worktree-state.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const A = { id: 'pe_Aaaa1111', handle: 'a' };
@@ -98,6 +99,10 @@ test('#1856 an agent in its own folder is told where the project is, and when gi
   const refused = besideNote(own, r.project, r.workRoot, 'fatal: it is already checked out');
   assert.match(refused, /couldn’t make you a git worktree \(fatal: it is already checked out\)/);
   assert.match(refused, /say so in your reply/);
+  // Git’s reason is cut whole, never inside a character (#1686).
+  const emoji = besideNote(own, r.project, r.workRoot, `fatal: ${'x'.repeat(112)}😀tail`);
+  assert.ok(emoji.includes(`(fatal: ${'x'.repeat(112)})`), emoji);
+  assert.equal(gitsReason({ code: 128, stderr: `fatal: ${'x'.repeat(192)}😀tail` }), `fatal: ${'x'.repeat(192)}`);
   // Brief, as the worktree’s note is: agy’s rules file has about 750 characters to spare.
   assert.ok(refused.length - r.project.folder.length < 600, String(refused.length));
   // Only for a turn that starts in such a folder: not in the project’s folder, a persona’s own, or a worktree.

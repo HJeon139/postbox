@@ -5,8 +5,6 @@
 // track lies above the words and fills the bar’s part, so it never costs them width (#1463). Two bars that would read
 // the same get the shortest start of their hosts’ names that tells them apart; a level where nothing can is passed over.
 
-import { cutText } from '/shared/text-parts.mjs';
-
 /** Short backend names, for a narrow line. */
 const SHORT = { 'claude-code': 'Claude', codex: 'Codex', 'kiro-cli': 'Kiro', 'antigravity-cli': 'agy', mock: 'Mock' };
 /** The gap between bars (workbench.css, .quota-line). */
@@ -14,8 +12,12 @@ export const LINE_GAP = 12;
 /** Room for a canvas measure and the drawn text to differ by. */
 const SLACK = 2;
 
-/** A host name’s first n characters, without the hyphen, dot or underscore they may end on. @param {string} host @param {number} n */
-const startOf = (host, n) => cutText(host, n).replace(/[-_.\s]+$/, '');
+/** A host name’s first n characters, each whole, without the hyphen, dot or underscore they may end on. @param {string} host @param {number} n */
+const startOf = (host, n) =>
+  Array.from(host)
+    .slice(0, n)
+    .join('')
+    .replace(/[-_.\s]+$/, '');
 
 /**
  * The names bars show at one level, each distinct: bars that share a name get the shortest start of their hosts’ names
@@ -30,7 +32,7 @@ export function namesAt(bars, short) {
     const group = base.flatMap((x, i) => (x === name ? [i] : []));
     if (group.length < 2) continue;
     const hosts = group.map((i) => bars[i].host ?? '');
-    const longest = Math.max(...hosts.map((x) => x.length));
+    const longest = Math.max(...hosts.map((x) => Array.from(x).length));
     const cut = Array.from({ length: longest }, (_, n) => n + 1).find((n) => new Set(hosts.map((x) => startOf(x, n))).size === hosts.length);
     if (!cut) return null;
     for (const i of group) if (bars[i].host) names[i] = `${name} @${startOf(/** @type {string} */ (bars[i].host), cut)}`;

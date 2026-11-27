@@ -119,3 +119,9 @@ test('settings are refused whole, saying what is missing: a hosted Postbox doesn
   assert.throws(() => signInSettings(null), /sign-in settings/);
   assert.throws(() => signInSettings('alb'), /sign-in settings/);
 });
+
+test('#1686 a name and a user name past a name’s length are cut whole, never inside a character', async () => {
+  const across = `${'x'.repeat(79)}😀tail`;
+  const who = await identify()(from({ 'x-amzn-oidc-data': tokenFor({ payload: { name: across, preferred_username: across } }) }));
+  assert.deepEqual([who.name, who.username], ['x'.repeat(79), 'x'.repeat(79)]);
+});
