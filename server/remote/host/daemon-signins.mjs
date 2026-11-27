@@ -70,15 +70,13 @@ function runStatus(d, name, path) {
     }
     d.checking.add(child);
     child.stdout?.setEncoding('utf8');
+    // Only the first STATUS_OUTPUT_CHARS are kept, as they come, so a CLI that floods its output holds no more here.
     child.stdout?.on('data', (/** @type {string} */ b) => {
-      if (stdout.length < STATUS_OUTPUT_CHARS) stdout += b;
+      if (stdout.length < STATUS_OUTPUT_CHARS) stdout = (stdout + b).slice(0, STATUS_OUTPUT_CHARS);
     });
     child.on('error', (/** @type {Error} */ e) => finish({ state: 'unknown' }, `couldn’t start: ${e.message}`));
     child.on('close', (/** @type {number | null} */ code, /** @type {string | null} */ signal) =>
-      finish(
-        signal ? { state: 'unknown' } : cmd.read({ exit: code, stdout: stdout.slice(0, STATUS_OUTPUT_CHARS) }),
-        signal ? `ended on ${signal}.` : undefined,
-      ),
+      finish(signal ? { state: 'unknown' } : cmd.read({ exit: code, stdout }), signal ? `ended on ${signal}.` : undefined),
     );
     timer = d.timers.setTimeout(() => {
       try {

@@ -235,6 +235,38 @@ test('signins: output past STATUS_OUTPUT_CHARS is cut, so it reads unknown, neve
   }
 });
 
+test('signins: what’s read of a flood of output stays at STATUS_OUTPUT_CHARS, the first of it', async () => {
+  const sp = statusSpawn();
+  const s = setup({ spawn: sp.spawn });
+  try {
+    const c = await hello(s);
+    c.send('signins');
+    await until(() => sp.calls.length === 2, 'the status commands');
+    const claude = sp.calls.find((x) => x.program.endsWith('claude'));
+    const codex = sp.calls.find((x) => x.program.endsWith('codex'));
+    // Signed-in JSON exactly STATUS_OUTPUT_CHARS long, then as much again: read whole, it isn’t JSON, so it’s unknown.
+    const head = JSON.stringify({ ...JSON.parse(recorded('claude-signed-in').stdout), pad: '' });
+    const exact = head.replace('"pad":""', `"pad":"${'x'.repeat(STATUS_OUTPUT_CHARS - head.length)}"`);
+    assert.equal(exact.length, STATUS_OUTPUT_CHARS);
+    const flood = `${exact}${'y'.repeat(STATUS_OUTPUT_CHARS)}`;
+    const quarter = flood.length / 4;
+    for (let i = 0; i < 4; i++) claude.child.stdout.write(flood.slice(i * quarter, (i + 1) * quarter));
+    claude.child.stdout.end();
+    await new Promise((resolve) => setImmediate(resolve));
+    claude.child.emit('close', 0, null);
+    await sp.play(codex, 'signed-in');
+    assert.deepEqual(
+      (await c.msgs.next('signed')).harnesses.map((h) => [h.name, h.state]),
+      [
+        ['claude-code', 'signed-in'],
+        ['codex', 'signed-in'],
+      ],
+    );
+  } finally {
+    await s.done();
+  }
+});
+
 test('signins: a status command still running when the daemon closes is killed with it', async () => {
   const sp = statusSpawn();
   const s = setup({ spawn: sp.spawn });
