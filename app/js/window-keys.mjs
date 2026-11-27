@@ -17,6 +17,12 @@ function inOtherScroller(el) {
   return false;
 }
 
+/**
+ * Whether the person is in a scroller of its own within scope: focus is in one, or their last click or touch was.
+ * @param {Element} target @param {Node} scope
+ */
+const inScroller = (target, scope) => inOtherScroller(target) || (!!lastDown && scope.contains(lastDown) && inOtherScroller(lastDown));
+
 /** Where Home and End move a caret or a choice: a field. */
 const FIELDS = 'input, textarea, select, [contenteditable]';
 /** Where Home and End are the element's own: a field, or a widget that moves its own selection with them. */
@@ -32,20 +38,21 @@ const edgeKey = (e) => (e.key === 'Home' || e.key === 'End') && !(e.altKey || e.
  */
 const pageEdgeKey = (e) => {
   const target = /** @type {Element} */ (e.target);
-  return !target.closest(OWN_KEYS) && !inOtherScroller(target) && !(lastDown && inOtherScroller(lastDown));
+  return !target.closest(OWN_KEYS) && !inScroller(target, document);
 };
 
-/** Whether a dialog is open over the page, or focus is in one. @param {Element} target */
-const overDialog = (target) => !!document.querySelector('[aria-modal="true"]') || !!target.closest('[role="dialog"]');
+/** The dialog focus is in, else the top one open over the page, else null. @param {Element} target @returns {Element | null} */
+const dialogOf = (target) => target.closest('[role="dialog"]') ?? [...document.querySelectorAll('[aria-modal="true"]')].at(-1) ?? null;
 
 /**
  * In a dialog, Home and End move a field’s caret or a scroller in it, and nothing else: the browser’s own scroll would
  * carry on to the conversation behind it, from a button, or from a widget that left the keys alone (#1884).
- * @param {KeyboardEvent} e
+ * A click in the dialog counts, one before it opened doesn’t.
+ * @param {KeyboardEvent} e @param {Element} dialog
  */
-function inDialog(e) {
+function inDialog(e, dialog) {
   const target = /** @type {Element} */ (e.target);
-  if (!target.closest(FIELDS) && !inOtherScroller(target)) e.preventDefault();
+  if (!target.closest(FIELDS) && !inScroller(target, dialog)) e.preventDefault();
 }
 
 /**
@@ -73,7 +80,8 @@ export function edgeKeys(windows) {
   document.addEventListener('keydown', (e) => {
     // Taken already, by a widget of its own.
     if (e.defaultPrevented || !edgeKey(e)) return;
-    if (overDialog(/** @type {Element} */ (e.target))) return inDialog(e);
+    const dialog = dialogOf(/** @type {Element} */ (e.target));
+    if (dialog) return inDialog(e, dialog);
     if (!pageEdgeKey(e)) return;
     // A long room’s window, or a short room’s transcript: without either, there’s no conversation for the keys.
     const w = [...windows].find((x) => !x.inPanel) ?? null;

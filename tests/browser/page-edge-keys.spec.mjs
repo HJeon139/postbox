@@ -20,8 +20,7 @@ failOnPageErrors(test);
 test.use({ viewport: { width: 1280, height: 800 } });
 
 /** Opens a room of 60 messages at its end, and records whether the page takes each Home or End, as the window hears it last. */
-async function open(page, title, path = '') {
-  const room = longRoom(app, title);
+async function open(page, title, path = '', room = longRoom(app, title)) {
   await page.goto(`${app.origin}/#/t/${room.t.id}${path}`);
   await synced(page, app);
   await expect(page.locator('#main > .item').last()).toBeVisible();
@@ -134,4 +133,63 @@ test('#1884 End in a dialog doesn’t scroll the conversation behind it', async 
   await frames(page);
   await settled(page);
   expect(await top(page), 'the conversation stayed at the top').toBe(0);
+});
+
+test('#1884 End after a click on a long dialog’s text scrolls the dialog', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await open(page, 'Keys, long dialog');
+  await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('appearance')));
+  const body = page.locator('.dialog .d-body');
+  await body.evaluate((b) =>
+    b.append(Object.assign(document.createElement('p'), { id: 'zz-tall', textContent: 'A long panel.', style: 'height:2000px;flex:none' })),
+  );
+  await page.locator('#zz-tall').click({ position: { x: 20, y: 5 } });
+  await page.keyboard.press('End');
+  await expect.poll(() => body.evaluate((b) => b.scrollTop), { message: 'the dialog scrolled' }).toBeGreaterThan(0);
+  expect(await taken(page), 'the page left End to the dialog').toEqual([false]);
+});
+
+test('#1884 End in a dialog opened after a click in Work doesn’t scroll the conversation', async ({ page }) => {
+  await open(page, 'Keys, dialog after Work', '?work');
+  await page
+    .locator('.workpane .wp-body')
+    .evaluate((b) => b.append(Object.assign(document.createElement('p'), { id: 'zz-tall', textContent: 'A long turn.', style: 'height:3000px;flex:none' })));
+  await page.locator('#zz-tall').click({ position: { x: 20, y: 20 } });
+  await page.evaluate(() => scrollTo(0, 0));
+  await settled(page);
+  await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('appearance')));
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('End');
+  await frames(page);
+  await settled(page);
+  expect(await top(page), 'the conversation stayed at the top').toBe(0);
+});
+
+test('#1884 End on the pane’s handle moves the handle, not the conversation', async ({ page }) => {
+  await open(page, 'Keys, handle', '?work');
+  await page.evaluate(() => scrollTo(0, 0));
+  await settled(page);
+  const handle = page.locator('.rp-handle');
+  const was = await handle.getAttribute('aria-valuenow');
+  await handle.focus();
+  await page.keyboard.press('End');
+  await frames(page);
+  await settled(page);
+  await expect(handle, 'the handle took End').not.toHaveAttribute('aria-valuenow', String(was));
+  // The column narrows, so the place you read is kept a few pixels down; End would have gone thousands.
+  expect(await atEnd(page), 'the conversation didn’t go to the end').toBe(false);
+});
+
+test('#1884 End after a click in a side thread is left to the thread, and doesn’t scroll the conversation', async ({ page }) => {
+  const room = longRoom(app, 'Keys, side thread');
+  const topic = app.rt.startTopic(room.t.id, room.items.at(-1).id).threadId;
+  arrange.post(app.rt, topic, { kind: 'agent', sessionId: room.se.id, handle: 'researcher', text: 'In the thread.', status: 'done' });
+  await open(page, 'Keys, side thread', `/side/${topic}`, room);
+  const body = page.locator('.sidepanel .sp-body');
+  await body.evaluate((b) =>
+    b.append(Object.assign(document.createElement('p'), { id: 'zz-tall', textContent: 'A long thread.', style: 'height:3000px;flex:none' })),
+  );
+  await page.locator('#zz-tall').click({ position: { x: 20, y: 20 } });
+  await leftAlone(page);
+  await expect.poll(() => body.evaluate((b) => b.scrollTop), { message: 'the thread scrolled' }).toBeGreaterThan(0);
 });
