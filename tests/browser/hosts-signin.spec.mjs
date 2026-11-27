@@ -5,6 +5,7 @@
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, synced } from './postbox.mjs';
 import { axe, startRemote } from './remote-hosts.mjs';
+import { expectTidyText } from './text-layout.mjs';
 
 /** @type {Awaited<ReturnType<typeof startRemote>>} */
 let started;
@@ -82,4 +83,22 @@ test('#1608 placing an agent on a host where its harness isn’t signed in says 
   await expect(again.locator('#pe-where')).toBeVisible();
   await expect(again.locator('#pe-where-signin')).toHaveCount(0);
   expect(await axe(page)).toEqual([]);
+});
+
+test('#1608 at 375 px the card’s and Runs on’s sign-in warnings are tidy: nothing over, cut off or broken mid-word', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const host = hostWith('narrow.example.com', { 'claude-code': 'signed-out', codex: 'signed-out', 'kiro-cli': 'signed-in' });
+  const settings = await openSettings(page, () => import('/app/js/sheets.mjs').then((m) => m.openSettings('hosts')));
+  // The list shows one card, the picked host’s: pick this one.
+  await settings.getByRole('option', { name: new RegExp(host.name.replace(/\./g, '\\.')) }).click();
+  const card = settings.getByRole('region', { name: host.name, exact: true });
+  await expect(card.locator('.ho-signin')).toHaveCount(2);
+  await card.locator('.ho-signin').last().scrollIntoViewIfNeeded();
+  await expectTidyText(page, 'the host’s card with two sign-in warnings');
+  const persona = started.app.rt.createPersona({ handle: 'on-narrow', backend: 'codex', remote: { hostId: host.id } });
+  const sheet = await openSettings(page, () => null);
+  await page.evaluate((id) => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', id)), persona.id);
+  await expect(sheet.locator('#pe-where-signin')).toBeVisible();
+  await sheet.locator('.pe-signin').scrollIntoViewIfNeeded();
+  await expectTidyText(page, 'Runs on with its sign-in warning');
 });
