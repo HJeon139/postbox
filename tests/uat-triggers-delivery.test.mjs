@@ -176,6 +176,7 @@ test('each delivery trigger carries its requirements, and a phase’s coverage r
   const want = {
     'held-behind-card': ['AT-1'],
     'held-released': ['AT-1', 'AT-2'],
+    'chain-stopped': ['AT-5'],
     'mention-past-cap': ['DL-1', 'DL-5'],
     'edit-while-waiting': ['DL-7', 'AT-6'],
     'fail-before-output': ['DL-3'],

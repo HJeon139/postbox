@@ -4,7 +4,7 @@
 
 ## Why it exists
 
-A room’s title, its members and its limits were each changed somewhere else: a rename sheet, + and − in the sidebar’s header, items of the ⋯ menu. Now every control of a room is in one place, managed as every other kind of thing is, and the other ways only open it.
+A room’s title, its members and its permissions were each changed somewhere else: a rename sheet, + and − in the sidebar’s header, items of the ⋯ menu. Now every control of a room is in one place, managed as every other kind of thing is, and the other ways only open it.
 
 ## Expected functionality
 
@@ -16,7 +16,7 @@ A room’s title, its members and its limits were each changed somewhere else: a
 - **Title:** Enter or Save saves it. Opened from the list, Save goes back to the list; opened from the room itself, Save closes the menu and focus returns to where you opened it. There is no rename sheet of its own.
 - **Members** lists the room’s agents and the people of this Postbox in one list. Its + and − are at the right end of the “Members” heading’s row, at every width. An agent’s row says what it does, then what it runs with and its state. The row follows the room while the form is open, and says how many messages wait for the agent. With an agent picked, the bar also has Edit, which shows its persona’s form, and a button that says how many messages wait and opens its queue; while nothing waits it stays, dimmed, and says why. + opens a menu of the agents you have that aren’t in the room, then New agent…; one pick adds an agent, and a toast says who joined. − removes the picked agent from the room, after a confirm that says so: “Remove critic from Planning?”, with what ends (its part here, and its session here: added back, it starts a new one and reads the room again) and what stays (its messages here, any apps it wrote here, the agent itself, its settings and other rooms). Its earlier messages keep its name with no mark, and the room gets a “critic left” line (#1743).
 - − is off, dimmed and still in the tab order, when the pick is the room’s only agent or a person. The line under the list says why in words: the people of this Postbox are in every room, and a room keeps at least one agent.
-- **More** has [Wake chain limit…](../wake-chain-limit.md) and Permissions…, each opening over the form.
+- **More** has Permissions…, opening over the form.
 - Delete… and Save are pinned under the form.
 
 ## Steps to reproduce

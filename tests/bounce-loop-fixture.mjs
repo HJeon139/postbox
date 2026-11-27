@@ -1,18 +1,24 @@
 // The player the bounce-loop tests share (tests/bounce-loop.test.mjs): each agent plays its own recorded replies, in
-// order, as the room wakes it, and the room’s chain limit, set low, bounds each test as it bounds a room.
+// order, as the room wakes it, and stops at LIMIT turns, which bounds each test. The chain’s own cap is 1,000 wakes,
+// fixed for the server since #1623, so it can’t be set low for one room.
 
 import { readFileSync } from 'node:fs';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { HOP_LIMIT } from '../shared/limits.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const runsOf = (file) => JSON.parse(readFileSync(new URL(`fixtures/uat/${file}`, import.meta.url), 'utf8')).runs;
 /** The runs of 21 November (#1553), and the batch 9–10 UAT’s of 23 November (#1591), whose rows also say what woke each turn. */
 const RUNS = { ...runsOf('bounce-loops-2026-11-21.json'), ...runsOf('ack-loops-2026-11-23.json') };
 const DIR = tempDir('pb-bounce-loop-');
-/** The room’s chain limit for these tests: past it a wake waits on a card, which ends the run. */
+/** The turns these tests run at most: past it the player says nothing, which ends the run. */
 export const LIMIT = 40;
+// The chain’s cap must sit past the player’s limit, or it ends a loop first and the tests read it as ended by a rule.
+// A POSTBOX_CHAIN_LIMIT exported from UAT work lowers it for the whole process.
+if (HOP_LIMIT <= LIMIT)
+  throw new Error(`The bounce-loop tests need the chain’s cap past ${LIMIT} wakes; POSTBOX_CHAIN_LIMIT sets it to ${HOP_LIMIT}. Unset it to run them.`);
 
 /** One agent’s recorded replies from a turn on: its words, and whether it reacted to the message that woke it. */
 export const playsFrom = (run, handle, from) =>
@@ -43,6 +49,7 @@ class Recorded {
     const mine = this.plays[se.handle];
     const play = mine.length > 1 ? mine.shift() : mine[0];
     this.calls.push({ handle: se.handle, text: message.text ?? '' });
+    if (this.calls.length > LIMIT) return;
     const waker = this.rt.store
       .items(se.threadId)
       .filter((i) => i.kind === 'agent' && i.handle !== se.handle && i.text?.trim())
@@ -75,7 +82,6 @@ export function room(plays) {
   store.emit('project', { id: 'p1', name: 'P', folder: DIR });
   const ids = Object.keys(plays).map((handle) => rt.createPersona({ handle }).id);
   const t = rt.createThread({ projectId: 'p1', title: 'UAT', personaIds: ids });
-  rt.threads.patch(t.id, { chainLimit: LIMIT });
   return { store, rt, adapter, t };
 }
 
@@ -83,4 +89,5 @@ export const settle = async (rt) => {
   for (let i = 0; i < 2000 && rt.turns.size; i++) await new Promise((r) => setTimeout(r, 2));
   await new Promise((r) => setTimeout(r, 10));
 };
-export const heldOnCard = (store, t) => store.items(t.id).some((i) => i.kind === 'hop' && i.status === 'open');
+/** Whether the run went past LIMIT turns, where the player stopped it: a loop the room didn’t end. */
+export const hitLimit = (adapter) => adapter.calls.length > LIMIT;

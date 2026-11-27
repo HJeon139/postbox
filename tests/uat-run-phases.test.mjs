@@ -18,7 +18,7 @@ test('delivery with --phases 1,2 passes the trigger check, and plays only those 
   assert.deepEqual(phases, [1, 2]);
   assert.deepEqual(
     scenario.phases.map((p) => p.title),
-    ['Phase 1: Two wakes held at once (A1)', 'Phase 2: A mention past the catch-up cap (A2)'],
+    ['Phase 1: A chain stops at its cap, with no card (A1)', 'Phase 2: A mention past the catch-up cap (A2)'],
   );
   // Its step cap is those phases’ caps added up, not the whole scenario’s 50.
   assert.equal(stepCap(scenario, undefined), 12);

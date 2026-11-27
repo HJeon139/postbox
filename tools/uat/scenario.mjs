@@ -14,8 +14,8 @@
 // so it runs with --compat like Codex and the Kiro CLI.
 //
 // How long a run is (see tests/uat/e2e/README.md, “How long a run is”): `- steps: N` in the header caps a scenario’s
-// steps, and --steps overrides it. `- chain-limit: 3` in the header starts the run’s Postbox with that chain limit
-// (POSTBOX_CHAIN_LIMIT, shared/limits.mjs), so a phase that needs the wake card reaches it in a few wakes (#508). A phase can open with its own settings, before its text:
+// steps, and --steps overrides it. `- chain-limit: 3` in the header starts the run’s Postbox with that cap of agent wakes
+// in a chain (POSTBOX_CHAIN_LIMIT, shared/limits.mjs), so a phase that needs the chain to stop reaches it in a few wakes (#508, #1623). A phase can open with its own settings, before its text:
 //   - triggers: wake-full-text, stop-keep-jobs   what Postbox must show for the phase to be done (tools/uat/triggers.mjs)
 //   - steps: 10                                  the most steps the phase gets before the run records a coverage gap
 // A phase with triggers ends when they’ve all happened, or at its cap. One without works as it always has: the tester
@@ -134,7 +134,7 @@ export function parseScenario(md) {
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- [\w-]+: /.test(l)).join('\n'),
     steps: count(meta.steps),
     // `- chain-limit: 3` (#508): the chain limit the run’s Postbox enforces (POSTBOX_CHAIN_LIMIT, shared/limits.mjs), so a
-    // phase reaches the wake card in a few wakes rather than the default of 1,000. Mistyped, it’s refused, not run as
+    // phase reaches the chain’s stop in a few wakes rather than the default of 1,000. Mistyped, it’s refused, not run as
     // the default of 1,000.
     chainLimit: chainLimitOf(meta['chain-limit']),
     // `- measure-key-frame: on` (#508, PF-1): with `- seed: big-room`, the run measures the room’s key-to-frame times and

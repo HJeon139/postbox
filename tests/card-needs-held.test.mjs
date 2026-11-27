@@ -9,7 +9,7 @@ import { heldStore, setup } from './stop-reply-fixture.mjs';
 test('a wake request held behind a commit becomes the need when the card before it is answered', async () => {
   const h = await heldStore();
   const { rt, t, se } = await setup(async () => {}, h.store);
-  const card = () => arrange.post(rt, t.id, { kind: 'hop', fromSessionId: se.id, from: se.handle, to: 'beta', status: 'open', text: 'please' });
+  const card = () => arrange.post(rt, t.id, { kind: 'hop', join: true, fromSessionId: se.id, from: se.handle, to: 'beta', status: 'open', text: 'please' });
   const first = card();
   arrange.setSession(rt, se.id, { needs: { kind: 'hop', itemId: first.id, text: 'hop' }, state: 'needs' });
   await h.store.flush();

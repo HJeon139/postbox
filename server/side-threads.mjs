@@ -1,19 +1,18 @@
-// Agents waking agents, in the conversation where the person reads (#372): the wake limit, who answers for a persona
+// Agents waking agents, in the conversation where the person reads (#372): the chain’s loop guard, who answers for a persona
 // in a topic thread or an old side thread (its one session in the conversation: no forks, #228), the card that asks to
 // add an agent the conversation doesn’t have, and the lines of side threads from before #372. Functions take the
 // Runtime first (designs/architecture/code-size.md, “What a move may change”).
 
 import { HOP_LIMIT } from '../shared/limits.mjs';
 import { endFixes } from './apps.mjs';
+import { atCap, stopChain } from './chain-stop.mjs';
 import { joinConversation } from './conversation-join.mjs';
 import { clip } from './helpers.mjs';
-import { roomChainLimit } from './room-chain-limit.mjs';
 import { dropScheduledWake } from './scheduled-wakes.mjs';
-import { askToAdd, askToWake, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
+import { askToAdd, closeOwnCard, dropHeld } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
-// The server’s default chain limit, 1,000 unless POSTBOX_CHAIN_LIMIT sets another; a room can set its own (#1035), which
-// roomChainLimit reads.
+// The chain’s cap, 1,000 wakes in a row unless POSTBOX_CHAIN_LIMIT sets another (#1623: no room sets its own).
 export { HOP_LIMIT };
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
@@ -25,11 +24,11 @@ export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one
  * An agent wakes another (#110, #228, #372): by an @-mention in what it said (itemId, that message). It
  * reaches the persona’s one session in the conversation, as an entry in its inbox there, which answers there; a busy
  * one takes it when its turn ends. `bounce`: the wake is a reply going back on its own to the agent that woke its writer,
- * not a mention its writer wrote (reply-back.mjs, #1518). A card past the chain limit keeps it, so the note on a
- * wake held there says it’s a reply, and so does the entry, so a turn only such replies woke may end quietly (#1543);
- * otherwise a reply that came back is a mention like any other (#1523). `wake: false` stores it for the end of the waker’s turn to wake (mention-entries.mjs). A persona the
- * conversation doesn’t have needs the person: a card asks to add it. After the room’s chain limit of wakes in a row without you (1,000 unless the person set
- * another, #1035), the next one waits for your confirm.
+ * not a mention its writer wrote (reply-back.mjs, #1518). An add card keeps it, so the note on a wake held there says
+ * it’s a reply, and so does the entry, so a turn only such replies woke may end quietly (#1543); otherwise a reply that
+ * came back is a mention like any other (#1523). `wake: false` stores it for the end of the waker’s turn to wake
+ * (mention-entries.mjs). A persona the conversation doesn’t have needs the person: a card asks to add it. Past
+ * HOP_LIMIT wakes in a row without you, the chain stops: the wake doesn’t go, and the room says so once (#1623).
  */
 
 export function agentWake(
@@ -69,14 +68,15 @@ export function agentWake(
   const back = replyIn === undefined ? replyInOf(rt, from) : replyIn;
   const backKind = back && rt.store.pending.thread(back)?.kind; // a topic open_topic just opened may still be held
   const at = backKind === 'topic' ? back : parent.id;
-  // Told before any card, so a wake that waits for Allow still tells it (Allow carries no side thread).
+  // Told before any card or refusal, so a wake that waits for Allow still tells it (Allow carries no side thread).
   if (backKind === 'side') sideThreadsGone(rt, from);
   // A card keeps the mention’s message, so Allow wakes from it rather than posting it again.
   // A bounce keeps its mark on the card, so what is held is told as a reply, not a mention (#1518).
   const card = { text, replyIn: at === parent.id ? null : at, fromTurnId, itemId, ...(bounce ? { bounce } : {}) };
   if (!target) return wakeAbsent(rt, from, parent, p, card, prose);
-  // No limit between two agents (#492): the room shows the chain’s count, with a hint to Stop past CHAIN_HINT.
-  if (!confirmed && (parent.hops ?? 0) >= roomChainLimit(rt, parent.id)) return askToWake(rt, from, parent, p, card);
+  // A loop guard, not a limit to manage (#1623): no card and nothing for the person, who sees one line. The person’s
+  // Allow on an add card is their acting, which started the count again.
+  if (!confirmed && atCap(parent)) return stopChain(rt, parent);
   const hop = (parent.hops ?? 0) + 1;
   rt.threads.patch(parent.id, { hops: hop });
   // A mention is already the waker’s message there, so the wake’s number in the chain (#114) goes on the
@@ -93,9 +93,6 @@ export function agentWake(
   const waits = rt.running.busy(target.id);
   const entry = { sessionId: target.id, threadId: at, source: 'mention', itemId: it.id, from: from.handle, ...(retryId ? { retryId } : {}), bounce };
   rt.delivery.send(entry, { wake });
-  // A card asking to wake it is stale once it’s woken now, or at the end of the waker’s turn under way (#439); one
-  // woken once its own turn ends keeps the card the person may answer.
-  if (!waits) retireStale(rt, at, target, `@${from.handle} woke it`);
   // itemId: the message the wake went out as, so a turn’s further mentions reuse it rather than post it again.
   return { ok: true, itemId: it.id, message: waits ? `Woke @${p.handle}: it’s busy, so it answers when its current turn ends.` : `Woke @${p.handle}.` };
 }
@@ -116,7 +113,7 @@ const replyInOf = (rt, se) => {
 /**
  * When the last agent working in a conversation ends its turn with nothing left to answer, the chain of wakes has ended,
  * as when an agent acks a hand-off without waking anyone, so its count starts again (#492): separate chains don’t add up
- * to the chain limit. A wake waiting on a card keeps it, until you answer the card.
+ * to the cap, and a chain the cap stopped can start again. A wake waiting on an add card keeps it, until you answer.
  * @param {any} rt @param {string} threadId  where the turn that ended spoke
  */
 export function endChain(rt, threadId) {

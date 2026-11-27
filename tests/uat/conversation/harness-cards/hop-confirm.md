@@ -1,23 +1,28 @@
-# Wake-limit confirm
+# Add-agent confirm, and the chain’s one line
 
-![Wake-limit confirm](../../screenshots/hop-confirm.png)
+![Add-agent confirm](../../screenshots/hop-confirm.png)
 
-**Where:** After the room’s chain limit of agent-to-agent wakes in one chain: 1,000 unless the room sets another in its form in the main menu, Wake chain limit… (three until #320, ten until #492, 50 until #1035). A chain ends when you act or no agent is left working on it.
+**Where:** In a conversation, when an agent @-mentions or wakes an agent the conversation doesn’t have (#228). Until it’s retaken, the screenshot shows the wake-limit card this replaced (#1623).
 
 ## Why it exists
 
-Stops two agents from looping on each other.
+An agent can’t bring another into your conversation by itself: only you decide who is in it, so the card asks you. Agents waking each other is never asked about. At the cap of agent wakes in a row without you, a loop guard, the chain stops with one line in the room and no card, and your next message starts it again (#1623).
 
 ## Expected functionality
 
-- Says which agent wants to wake which and why; allow or decline.
-- Only one waits at a time.
+- The card says which agent wants to add which, and its reason; Add or Don’t add.
+- Only one waits at a time. Another wake that needs a card while it waits is held on it, and the card says whose (#439): Add sends them too, and Don’t add tells each agent its message didn’t go.
+- At the cap, 1,000 wakes in a row unless `POSTBOX_CHAIN_LIMIT` sets another number, the next wake doesn’t go. The room says “Agents stopped waking each other after 1,000 wakes in a row. Your next message lets them start again.” once, with no card, no button and nothing that needs you.
+- A wake-limit card from before #1623 shows as a line, such as “waker asked to wake woken · allowed”, with no buttons.
 
 ## Steps to reproduce
 
-1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. The demo never reaches the limit on its own: scene 7’s loop in “Index planning” ends itself after about 20 wakes, far under 1,000, and the mock @researcher it ran with then answers the next loop with “That settles it.” at once. So after the demo, make a new room with @indexer and @researcher (main menu › Rooms › +, New room); then press the gear after its title, and in the room’s form choose Wake chain limit… and set it to 3.
-3. In the new room, send “@indexer check the editions with the researcher, in a loop”. The two wake each other in the conversation; after the third wake, the fourth waits on the card “Let researcher wake indexer?”.
-4. Choose Let researcher wake indexer, and set the limit back afterward.
+1. Start a Postbox of your own with a low cap and the mock agents: `POSTBOX_CHAIN_LIMIT=3 POSTBOX_BACKENDS=mock node server/index.mjs --port 4190 --data <a temp folder> --fresh`, and open <http://127.0.0.1:4190/>.
+2. Make a room with @indexer and @researcher, and send “@indexer ping researcher in a loop”.
+3. In a Postbox started without those two variables, in a room with one Claude Code agent, ask it to send a one-line question, by an @-mention, to another agent you have that isn’t in the room, and choose Add on the card.
 
-**Pass if:** The card says which agent wants to wake which, past the limit of 3, with the reason; no fourth wake happens before you allow it, and it happens once you do.
+**Pass if:** In step 2 the agents stop after three wakes, and the room shows the one line once, with no card, and the room’s row shows nothing that needs you. In step 3 the card names both agents and the reason, and Add adds the other agent with a “joined” line, and it gets the question.
+
+## How to check
+
+`npx playwright test tests/browser/chain-stop.spec.mjs tests/browser/chain-stop-loop.spec.mjs` and `node --test tests/process/chain-limit.test.mjs`.

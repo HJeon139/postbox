@@ -64,7 +64,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
   - **harness-cards/**
     - [Permission card](conversation/harness-cards/permission-card.md)
     - [Refusal card](conversation/harness-cards/refusal-card.md)
-    - [Wake-limit confirm](conversation/harness-cards/hop-confirm.md)
+    - [Add-agent confirm](conversation/harness-cards/hop-confirm.md)
     - [New teammate proposal](conversation/harness-cards/proposal-card.md)
     - [Requested call line](conversation/harness-cards/requested-call-line.md)
     - [Tool request card](conversation/harness-cards/tool-request-card.md)
@@ -86,7 +86,6 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
 - **sheets/**
   - [New agent sheet](sheets/new-agent.md)
   - [New conversation and New room](sheets/new-conversation-and-room.md)
-  - [Wake chain limit](sheets/wake-chain-limit.md)
   - [Delete conversation](sheets/delete-conversation.md)
   - [Delete session](sheets/delete-session.md)
   - [Attach a Claude Code session](sheets/attach-session.md)

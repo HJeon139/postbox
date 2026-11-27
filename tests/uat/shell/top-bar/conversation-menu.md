@@ -8,7 +8,7 @@ A room’s controls are in one place, its form in the main menu (#1735). This bu
 
 ## Expected functionality
 
-- It opens [the room’s form](../../sheets/settings/rooms.md) in the main menu: its title, its Members list, Wake chain limit… and Permissions…, and Delete… beside Save. Nothing opens between the click and the form.
+- It opens [the room’s form](../../sheets/settings/rooms.md) in the main menu: its title, its Members list and Permissions…, and Delete… beside Save. Nothing opens between the click and the form.
 - In Members, each agent’s row says what it does, then its backend, model, effort and state as text, with full model ids (“Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle”) (the ring’s word: “idle”, “thinking”). A mock agent says “mock” after its name (#12).
 - An agent’s row follows the room while the form is open: its state changes as a turn starts and ends, and it says how many messages wait for it (“· 2 queued”), so every agent’s queue is in view without a pick.
 - With an agent picked, the list’s bar has Edit, which shows its persona’s form with focus in its first field (#60), and a button that says how many messages wait for it (“2 messages queued”) and opens its queue (#427). The button follows the queue, and while nothing waits it stays, dimmed, and says why.
