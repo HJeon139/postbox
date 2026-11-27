@@ -289,7 +289,7 @@
       cap,
     );
     const names = series.map((sr, k) => fitLabels([sr.name], cap - 16 - values[k].w)[0]);
-    return { room: Math.ceil(Math.max(...names.map((n, k) => 16 + n.w + values[k].w))), names: names.map((n) => n.text) };
+    return { room: Math.ceil(Math.max(14, ...names.map((n, k) => 16 + n.w + values[k].w))), names: names.map((n) => n.text) };
   }
   // A line chart’s x labels, each measured whole and centered on its point, kept inside the chart. They’re a step apart,
   // about five at most, with the last always shown, and the step grows until no two are closer than 8 px. Only a label

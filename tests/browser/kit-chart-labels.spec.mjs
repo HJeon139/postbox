@@ -20,10 +20,12 @@ const LABELS = [...NOTES, ...DATES, LONG];
 // A chart of dates alone, where the digits’ width sets the margin.
 // A line chart whose first x label and series name are long: its x labels sit centered on their points, and its end
 // labels had a fixed 96 px on the right.
-// Line charts of ten dates and of six months, whose x labels must each be drawn whole, apart, even at 375 px.
+// Line charts of ten dates and of six months, whose x labels must each be drawn whole, apart, even at 375 px; and one
+// whose series name is far past the end labels’ 40% cap; and one with no series yet.
 const TEN_DAYS = Array.from({ length: 10 }, (_v, i) => `2024-11-${String(i + 1).padStart(2, '0')}`);
 const MONTHS = ['January 2025', 'February 2025', 'March 2025', 'April 2025', 'May 2025', 'June 2025'];
-const CHART = `<div id="bars"></div><div id="heat"></div><div id="dates"></div><div id="line"></div><div id="days"></div><div id="months"></div><script>
+const CAPPED = `${'a very long series name '.repeat(8)}end`;
+const CHART = `<div id="bars"></div><div id="heat"></div><div id="dates"></div><div id="line"></div><div id="days"></div><div id="months"></div><div id="capped"></div><div id="empty"></div><script>
 const cats = ${JSON.stringify(LABELS)};
 postbox.charts.stacked(document.getElementById('bars'), {
   label: 'Passages per asset',
@@ -48,6 +50,9 @@ postbox.charts.line(document.getElementById('line'), {
 });
 for (const [id, x] of [['days', ${JSON.stringify(TEN_DAYS)}], ['months', ${JSON.stringify(MONTHS)}]])
   postbox.charts.line(document.getElementById(id), { label: id, x, series: [{ name: 'Passages', values: x.map((_v, i) => 3 + (i % 4)) }] });
+// A line chart with no series yet, which keeps its grid.
+postbox.charts.line(document.getElementById('empty'), { label: 'Empty', x: ['a', 'b'], series: [], yMax: 10 });
+postbox.charts.line(document.getElementById('capped'), { label: 'Capped', x: ['a', 'b', 'c'], series: [{ name: ${JSON.stringify(CAPPED)}, values: [1, 2, 3] }] });
 </script>`;
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -102,6 +107,10 @@ test('long category labels on the kit’s bar chart and heatmap stay inside the 
         await frame.locator(`#${id} svg text`).evaluateAll((ts) => ts.filter((t) => t.querySelector('title')).map((t) => t.textContent)),
         `no x label of #${id} is cut at ${width} px`,
       ).toEqual([]);
+    await expect(frame.locator('#empty svg line'), 'a line chart with no series keeps its grid').not.toHaveCount(0);
+    expect(await frame.locator('#empty svg').innerHTML(), 'and nothing in it is placed at NaN').not.toContain('NaN');
+    if (width === 1280)
+      await expect(frame.locator('#capped svg text title'), 'a series name past 40% of the chart is cut, its full name in a title').toHaveText(CAPPED);
   }
   await page.close();
 });
