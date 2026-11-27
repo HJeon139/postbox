@@ -17,7 +17,8 @@ import { newId } from './store.mjs';
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
 /**
- * App check problems that are warnings: the app is shown, with notes, and the agent is told. Text under 12 px holds a
+ * App check problems that are warnings: the app is shown, with notes, and the agent is told, except the hints below,
+ * which alone leave no note. Text under 12 px holds a
  * version back at 1000 × 680, as the critique’s floor does (#997): agents shipped the labels this flagged when it was a
  * warning. At 375 px it stays a warning: an SVG scaled to fit a narrow pane draws its labels small.
  */

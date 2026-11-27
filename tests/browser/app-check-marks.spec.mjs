@@ -23,6 +23,7 @@ const dots = DOTS.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="6" fill="var(-
 const ring = '<circle cx="330" cy="190" r="12" fill="none" stroke="var(--s2)" stroke-width="2"/>';
 // The fit line, a straight line of two points, as a fit almost always is.
 const fit = '<path d="M40 215 L380 55" fill="none" stroke="var(--s3)" stroke-width="2"/>';
+// Scaled to fit a narrow pane, so the 375 px frame finds no overflow, and the only finding is the labels’.
 const scatter = (id, labels) =>
   `<h2 style="color:var(--text);margin:8px">Runs got faster as sleep grew</h2><svg id="${id}" width="420" height="240" viewBox="0 0 420 240" style="max-width:100%;height:auto" role="img" aria-label="Pace against sleep">${dots}${ring}${fit}${labels}</svg>`;
 
@@ -126,7 +127,7 @@ const overMarks = (id) =>
     .filter((p) => p.code === 'text-over-marks')
     .map((p) => p.message);
 
-test('#952 labels drawn over a chart’s dot, ring and fit line are a warning that names them, and the chart still shows', () => {
+test('#952 labels drawn over a chart’s dot, ring and fit line are a hint for the agent that names them, and the version passes', () => {
   const [message] = overMarks('onmarks');
   expect(message, says('onmarks')).toMatch(/^In svg#onmarks, 3 labels sit on the chart’s marks/);
   expect(message).toContain('“6:25” (on a dot)');
