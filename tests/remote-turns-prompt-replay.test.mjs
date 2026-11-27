@@ -105,7 +105,8 @@ test('#353 after a restart, a prompt whose call the replayed stream never shows 
     await lag();
     assert.equal(d.answers.length, 0, 'then for its bound');
     t.mock.timers.tick(1);
-    await lagUntil(t, () => d.answers.length === 1, 'the answer');
+    // Without moving the clock again, so it's refused at exactly its bound (#1657).
+    await untilTurns(() => d.answers.length === 1, 'the answer');
   } finally {
     t.mock.timers.reset();
   }
