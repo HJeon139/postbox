@@ -8,6 +8,11 @@
 // Postbox names one, in an agents folder, holding that exact text, is ever removed, so the person’s other agents are
 // never touched. A link at agents is followed, as the turn’s own write and removal follow it: a dotfile manager often
 // links ~/.kiro/agents, and the removal is of that one file, not of a folder (unlike Antigravity’s plugin, #1858).
+//
+// What the sweep leaves: a file on a disk not mounted at the start, or in a folder it can’t look into then (its note is
+// dropped, and the file stays when the disk comes back); a file left by a crash before notes were kept. A kiro-cli the
+// killed Postbox started runs in its own process group, so it can outlive Postbox; a start in that window removes its
+// agent file, whose MCP URL is already dead.
 
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
@@ -54,8 +59,8 @@ async function noted(root) {
   }
 }
 
-/** The most an agent file’s text runs to: the guide and the persona’s rules, well under this. */
-const MOST = 64 * 1024;
+/** The most an agent file’s text runs to: the guide and the persona’s instructions, which have no limit of their own. */
+const MOST = 1024 * 1024;
 
 /**
  * Whether the file is still the one noted, by its text. Read only when it’s a regular file of a sane size, never a link,
@@ -86,7 +91,8 @@ const gone = (file) =>
 export async function writeKiroAgent(file, text, root) {
   await change(root, (notes) => [...notes.filter((n) => n.file !== resolve(file)), { file: resolve(file), sha256: hashOf(text) }]);
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, text);
+  // Never over a file or a link already there, and readable only by you, as the host daemon writes one (cleanup.mjs).
+  await writeFile(file, text, { flag: 'wx', mode: 0o600 });
 }
 
 /**

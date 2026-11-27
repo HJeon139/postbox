@@ -170,7 +170,7 @@ test('#1864 a link or an oversized file at the noted path is left, though its te
   writeFileSync(target, '{}');
   const link = join(p.home, 'agents', 'postbox-kiro-1e1e1e1e.json');
   symlinkSync(target, link);
-  const text = 'x'.repeat(65 * 1024);
+  const text = 'x'.repeat(1024 * 1024 + 1);
   const big = join(p.home, 'agents', 'postbox-kiro-2d2d2d2d.json');
   writeFileSync(big, text);
   const notes = [
@@ -181,4 +181,32 @@ test('#1864 a link or an oversized file at the noted path is left, though its te
   await sweepKiroAgents(p.workRoot);
   assert.ok(existsSync(link) && existsSync(big), 'both left');
   assert.deepEqual(record(p.data), [], 'and dropped from the record');
+});
+
+test('#1864 an agent file in a folder that can’t be looked into stays noted when the turn ends', {
+  skip: (process.platform === 'win32' || ROOT) && 'POSIX modes, not root',
+}, async () => {
+  const p = place();
+  await writeKiroAgent(p.file, '{}', p.workRoot);
+  chmodSync(join(p.home, 'agents'), 0o444);
+  await removeKiroAgent(p.file, p.workRoot);
+  chmodSync(join(p.home, 'agents'), 0o755);
+  assert.ok(existsSync(p.file), 'still there');
+  assert.deepEqual(record(p.data), [p.file], 'and still noted');
+});
+
+test('#1864 an agent file of a long persona’s turn is still removed at start', async () => {
+  const p = place();
+  await writeKiroAgent(p.file, JSON.stringify({ prompt: 'r'.repeat(100_000) }), p.workRoot);
+  await sweepKiroAgents(p.workRoot);
+  assert.equal(existsSync(p.file), false);
+});
+
+test('#1864 a turn never writes its agent file through a link or over a file already at its path', async () => {
+  const p = place();
+  const target = join(p.data, 'yours.txt');
+  writeFileSync(target, 'yours\n');
+  symlinkSync(target, p.file);
+  await assert.rejects(writeKiroAgent(p.file, '{}', p.workRoot), { code: 'EEXIST' });
+  assert.equal(readFileSync(target, 'utf8'), 'yours\n');
 });
