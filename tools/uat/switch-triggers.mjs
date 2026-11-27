@@ -19,12 +19,12 @@ import { clip } from './trigger-facts.mjs';
  * @type {Record<string, { backend: string, model: string, effort: string|null }>}
  */
 export const SWITCH_TARGETS = {
-  // Claude only: each Claude model on each Claude backend, with every effort used once (switch.md).
-  'sdk-sonnet-low': { backend: 'agent-sdk', model: 'sonnet', effort: 'low' },
+  // Claude only: each Claude model on Claude Code, with every effort used once (switch.md).
+  'cc-sonnet-low': { backend: 'claude-code', model: 'sonnet', effort: 'low' },
   'cc-haiku-high': { backend: 'claude-code', model: 'haiku', effort: 'high' },
-  'sdk-opus-max': { backend: 'agent-sdk', model: 'opus', effort: 'max' },
+  'cc-opus-max': { backend: 'claude-code', model: 'opus', effort: 'max' },
   'cc-sonnet-xhigh': { backend: 'claude-code', model: 'sonnet', effort: 'xhigh' },
-  'sdk-haiku-medium': { backend: 'agent-sdk', model: 'haiku', effort: 'medium' },
+  'cc-haiku-medium': { backend: 'claude-code', model: 'haiku', effort: 'medium' },
   'cc-opus-low': { backend: 'claude-code', model: 'opus', effort: 'low' },
   // Across every backend and back (switch-compat.md).
   'codex-auto-high': { backend: 'codex', model: 'auto', effort: 'high' },

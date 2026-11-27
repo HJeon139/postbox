@@ -59,7 +59,7 @@ test('#1864 Postbox’s start sweeps the agent files its data folder notes', asy
   const workRoot = join(p.data, 'workspaces');
   await writeKiroAgent(p.file, '{}', workRoot);
   const none = async () => null;
-  await registerBackends(new AdapterRegistry(), { dataDir: p.data, demo: false, probes: { claude: none, sdk: none, kiro: none, agy: none, codex: none } });
+  await registerBackends(new AdapterRegistry(), { dataDir: p.data, demo: false, probes: { claude: none, kiro: none, agy: none, codex: none } });
   assert.equal(existsSync(p.file), false);
 });
 

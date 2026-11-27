@@ -1,5 +1,5 @@
 // What Claude Code’s init says: its commands, moved out of claude-stream.mjs, and whether Postbox’s own MCP server
-// failed to start (#1161). The Agent SDK’s init is the same.
+// failed to start (#1161).
 
 import { POSTBOX_SERVER } from './setup.mjs';
 import { toolsDown } from './tools-down.mjs';

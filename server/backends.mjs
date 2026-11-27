@@ -3,7 +3,6 @@
 
 import { join } from 'node:path';
 import { quotaKeyOf } from '../shared/quota-key.mjs';
-import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
 import { agyUsage, usageProbe } from './adapters/agy-usage.mjs';
 import { AntigravityCliAdapter, agyVersion, findAgy } from './adapters/antigravity-cli.mjs';
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
@@ -18,7 +17,6 @@ import { recordQuotaOf, reportedAt } from './quota-usage.mjs';
  */
 export const PROBES = {
   claude: () => claudeVersion(findClaude()),
-  sdk: () => loadAgentSdk(),
   kiro: () => kiroVersion(findKiro()),
   agy: () => agyVersion(findAgy()),
   codex: () => codexVersion(findCodex()),
@@ -41,8 +39,6 @@ export async function registerBackends(adapters, { dataDir, demo, probes }) {
   if (real) await sweepKiroAgents(workRoot);
   const claude = real ? await look.claude() : null;
   if (real) adapters.register(new ClaudeCodeAdapter({ workRoot }), { here: !!claude });
-  const sdk = real ? await look.sdk() : null;
-  if (sdk) adapters.register(new AgentSdkAdapter({ sdk, workRoot }));
   // An Isolated Kiro persona runs with a Kiro home of Postbox’s own (#117), next to the workspaces.
   const kiro = real ? await look.kiro() : null;
   if (real) adapters.register(new KiroCliAdapter({ workRoot, isolatedHome: join(dataDir, 'kiro-home') }), { here: !!kiro });

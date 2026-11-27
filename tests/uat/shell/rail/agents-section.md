@@ -38,7 +38,7 @@ The person needs to see what each agent runs with, from wherever they are. The c
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. Open “Index planning”. Check the Agents section above Direct messages.
-3. Click @indexer’s name: its persona sheet opens. Change its effort, save, and send @indexer a message: that turn runs at the new effort. Then switch its Backend to the Agent SDK with another model and effort, and save: its row names the new model and effort, with no “not”.
+3. Click @indexer’s name: its persona sheet opens. Change its effort, save, and send @indexer a message: that turn runs at the new effort. Then switch its Backend to the Kiro CLI with another model and effort, and save: its row names the new model and effort, with no “not”.
 4. Tab to a row, press Enter, and press Escape: focus is back on the row.
 5. Send `@indexer /compact`, then `@indexer /delete` and Cancel.
 6. Under an agent reply, choose Reply in thread, and ask something there. The conversation’s own agent answers; the thread’s panel names it in a line, and the sidebar lists no new agent.

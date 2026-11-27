@@ -1,6 +1,6 @@
 # Working on Postbox
 
-Postbox is a local web app where one person directs a team of AI agents on their own computer: conversations, catalog blocks, sandboxed agent apps, and real backends (Claude Code, the Agent SDK, Kiro, Codex, Antigravity). Node with zero runtime dependencies, plain ES modules, no build step.
+Postbox is a local web app where one person directs a team of AI agents on their own computer: conversations, catalog blocks, sandboxed agent apps, and real backends (Claude Code, Kiro, Codex, Antigravity). Node with zero runtime dependencies, plain ES modules, no build step.
 
 Its value is one loop: the person configures an agile team of agents to their vision, walks away while the team builds and holds each other to the definition of done, and comes back to a working implementation with its evidence: the review record, the test results and the version history. Function comes first; anything that isn’t part of that loop works against Postbox (designs/intent.md, “Purpose” and “Function first”).
 

@@ -51,8 +51,8 @@ const NOT_TEXT = /[\p{Cc}\p{Cs}]/gu;
 const clipName = (s) => clipText(String(s).replace(NOT_TEXT, '').replace(INVISIBLE, ''), 40);
 
 /**
- * Why an agent whose backend isn’t registered in this Postbox (#874: `POSTBOX_BACKENDS=mock`, `--demo`, the Agent SDK
- * or agy missing, or a name this version doesn’t know) can’t run: for its turn, for a request about it, or for its turn
+ * Why an agent whose backend isn’t registered in this Postbox (#874: `POSTBOX_BACKENDS=mock`, `--demo`,
+ * agy missing, or a name this version doesn’t know) can’t run: for its turn, for a request about it, or for its turn
  * on a host Postbox can’t follow after a restart (#909), which `interrupted()` ends with its own period. A backend
  * Postbox knows goes by its harness’s label; any other by its name, in quotes.
  * @param {string} handle @param {string} backend @param {'turn' | 'request' | 'interrupted'} kind

@@ -68,10 +68,10 @@ test('the model that answered the last turn, marked in words when it isn’t the
 });
 
 test('an effort changed since the last turn says both', () => {
-  const se = { backend: 'agent-sdk', lastEffort: 'low' };
-  const f = runsWith(se, { backend: 'agent-sdk', model: 'claude-opus-5-5', effort: 'xhigh' }, config);
+  const se = { backend: 'claude-code', lastEffort: 'low' };
+  const f = runsWith(se, { backend: 'claude-code', model: 'claude-opus-5-5', effort: 'xhigh' }, config);
   assert.equal(chipEffort(f), 'low effort, set to extra high');
-  assert.equal(factsText(f), 'Agent SDK · claude-opus-5-5 · low effort on the last turn, set to extra high');
+  assert.equal(factsText(f), 'Claude Code · claude-opus-5-5 · low effort on the last turn, set to extra high');
 });
 
 test('the setting is what the server runs with: the persona, then the defaults, with no setting of the session’s own', () => {
@@ -100,8 +100,8 @@ test('the overview says how to install Claude Code only when Postbox looked for 
   const missing = { realBackends: true, versions: { claudeCode: null } };
   // Nothing real to run on: the agents run on the mock.
   assert.match(installNote({ ...missing, adapters: ['mock'] }) ?? '', /run on the mock until it is: scripted replies, not a model/);
-  // The Agent SDK loaded without it.
-  assert.match(installNote({ ...missing, adapters: ['mock', 'agent-sdk'] }) ?? '', /run on the Agent SDK or the mock until it is/);
+  // Another backend is here without it.
+  assert.match(installNote({ ...missing, adapters: ['mock', 'kiro-cli'] }) ?? '', /run on the other backends here or the mock until it is/);
   // Installed, or not looked for (--demo, POSTBOX_BACKENDS=mock): no line.
   assert.equal(installNote({ realBackends: true, versions: { claudeCode: '2.1.296' }, adapters: ['mock', 'claude-code'] }), null);
   assert.equal(installNote({ realBackends: false, versions: { claudeCode: null }, adapters: ['mock'] }), null);

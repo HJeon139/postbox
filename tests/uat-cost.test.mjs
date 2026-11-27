@@ -86,7 +86,7 @@ test('the report’s usage line says what the agents spent', async (t) => {
   assert.match(readFileSync(join(dir, 'report.md'), 'utf8'), /Usage: agents \$1\.94, tester \$0\.30\./);
 });
 
-// A run with agents on Codex, Kiro or Antigravity: only Claude Code and the Agent SDK report dollars, so “agents $0.01” read as what
+// A run with agents on Codex, Kiro or Antigravity: only Claude Code reports dollars, so “agents $0.01” read as what
 // all four cost (the inbox measurement of 16 November, #1399’s report).
 const usage = (thread, input, output) => ({
   method: 'thread/tokenUsage/updated',
@@ -110,7 +110,7 @@ test('the harnesses a run used that report no cost are named, and a run on Claud
   assert.deepEqual(uncosted({ streams, kiroStreams: [], agyStreams: [] }), []);
 });
 
-test('the report’s usage line says the agents’ dollars are Claude Code’s and the Agent SDK’s alone when other harnesses ran', async (t) => {
+test('the report’s usage line says the agents’ dollars are Claude Code’s alone when other harnesses ran', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'uat-cost-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const facts = { streams, codexStreams, kiroStreams: [], agyStreams: [], state: null, probes: {}, samples: [], agentModels: '@researcher claude-opus-5-5' };
@@ -118,10 +118,7 @@ test('the report’s usage line says the agents’ dollars are Claude Code’s a
   await writeReport({ dir, scenario: { title: 'Mixed' }, issues: [], findings: [], timeline: [], started: 0, tester: { spent: 0.3 }, facts, logLines: [] });
   quiet.mock.restore();
   const line = readFileSync(join(dir, 'report.md'), 'utf8');
-  assert.ok(
-    line.includes('Usage: agents $1.94 on Claude Code and the Agent SDK alone (Codex reports no cost: 1,015 Codex tokens), tester $0.30.'),
-    line.slice(0, 400),
-  );
+  assert.ok(line.includes('Usage: agents $1.94 on Claude Code alone (Codex reports no cost: 1,015 Codex tokens), tester $0.30.'), line.slice(0, 400));
 });
 
 test('a report’s length and cost are read back whatever its usage line holds', () => {
@@ -138,7 +135,7 @@ test('a report’s length and cost are read back whatever its usage line holds',
     ),
     [14, 0.01, 0.15, 0.16],
   );
-  // As it reads since the Agent SDK’s dollars count too (#1674).
+  // As a report read while the Agent SDK’s dollars counted too (#1674): still read back.
   assert.deepEqual(
     read('Usage: agents $1.31 on Claude Code and the Agent SDK alone (Kiro reports no cost: 4.70 Kiro credits), tester $0.17.'),
     [14, 1.31, 4.7, 0.17],
