@@ -10,9 +10,8 @@
 // claims of the identity provider’s user info, its parts are base64url with their padding kept, and it is signed
 // with ES256.
 //
-// Nothing calls this yet: the provider that reads the header, the allow list and the address a hosted Postbox
-// answers are their own changes. It reads no header itself and fetches nothing: the caller hands it the token and a
-// way to a key (server/identity/alb-keys.mjs).
+// The provider (server/identity/alb.mjs) calls it on every request of a Postbox given sign-in settings. It reads no
+// header itself and fetches nothing: the caller hands it the token and a way to a key (server/identity/alb-keys.mjs).
 
 import { createPublicKey, createVerify } from 'node:crypto';
 

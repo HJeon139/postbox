@@ -16,8 +16,8 @@
 // the flood lasts. People whose key is kept are unaffected. The deployment’s network rules are what close that
 // (designs/architecture/hosted.md, “What it costs”).
 //
-// It fetches nothing itself: the caller gives it `get`, so nothing here reaches the network in a test, and the
-// provider that wires this in chooses how (its own change).
+// It fetches nothing itself: the caller gives it `get`, so nothing here reaches the network in a test. Today that is
+// `start()`’s `signIn` option; the real fetch, with its timeout and size bound, is its own change.
 //
 // Not confirmed: the form the endpoint serves a key in. Its documentation doesn’t say (read 26 November 2026). An
 // answer that isn’t a P-256 public key is handed back once, so the check can say it was the key’s form and not its
