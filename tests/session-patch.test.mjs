@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
+import { sessionPatch } from '../server/session-patch.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 import { keepEvent } from '../tools/uat/room-events.mjs';
 import * as arrange from './arrange.mjs';
@@ -84,4 +85,17 @@ test('#508: the checks’ history ignores a session.patch for a session it hasn�
   assert.equal(sessions.has('se_new'), false);
   keepEvent(6, 'session', { id: 'se_new', state: 'idle', finishedAt: 1, updatedAt: 6 }, sessions);
   assert.equal(keepEvent(7, 'session.patch', { id: 'se_new', patch: { state: 'think', updatedAt: 7 } }, sessions)?.data.state, 'think');
+});
+
+test('#189: a change of state that doesn’t say it waits on background work clears the wait, and nothing else does', () => {
+  const waiting = { id: 'se_1', state: 'tool', background: true, currentStep: 'Waiting for a background job' };
+  // A call of its own starts: the same state, so only the flag changes.
+  assert.deepEqual(sessionPatch(waiting, { state: 'tool', currentStep: 'Run the tests' }).patch, { background: false, currentStep: 'Run the tests' });
+  // Its turn ends.
+  assert.deepEqual(sessionPatch(waiting, { state: 'idle' }).patch, { state: 'idle', background: false });
+  // It waits again, and a change of something other than its state leaves the wait.
+  assert.deepEqual(sessionPatch(waiting, { state: 'tool', background: true }).patch, {});
+  assert.deepEqual(sessionPatch(waiting, { ctx: 40 }).patch, { ctx: 40 });
+  // A session that never waited isn’t given the field.
+  assert.deepEqual(sessionPatch({ id: 'se_2', state: 'think' }, { state: 'tool' }).patch, { state: 'tool' });
 });
