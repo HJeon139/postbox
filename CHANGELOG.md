@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.2.1 (2026-11-27)
+
+### Fixes
+
+- **app:** a long project name wraps in its page's header too
+- **permissions:** keep room for a rule's source beside a long tool list
+- **project:** wrap a long folder on the project's page
+- **apps:** bring back a review's app after another app's check while its own item is unloaded
+
 ## 5.2.0 (2026-11-27)
 
 ### Features
