@@ -126,3 +126,23 @@ test('#1796 a stop asked for its session and kept by its host too lets the recor
   await until(() => !r.rt.remote.stopping.has(turn), 'the stop confirmed');
   await until(() => r.store.state.hostStops?.[r.host.id] === undefined, 'the host’s record let the stop go');
 });
+
+test('#1796 a kept stop whose start went unconfirmed is asked again after a restart, not taken as over from a welcome that doesn’t list it', async () => {
+  const first = rig();
+  first.store.emit('host.forget', { id: first.host.id, add: ['pe_gone'] });
+  first.store.emit('host.forget', { id: first.host.id, stop: { turn: 'host-turn-x', personaId: 'pe_gone', unconfirmed: true, at: 1 } });
+  first.rt.remote.close();
+  const r = rig({ store: first.store, d: first.d });
+  watchForgets(r.rt.hostService);
+  r.rt.restoreRemoteTurns();
+  await until(() => r.link.connected, 'the welcome of the new connection');
+  r.hosts.emit('status', r.host.id, r.hosts.status(r.host.id));
+  // The daemon never had the turn: it answers the stop with no-turn, which confirms it.
+  await until(() => !r.rt.remote.stopping.has('host-turn-x'), 'the stop confirmed');
+  assert.ok(
+    r.d.received.some((/** @type {any} */ m) => m.type === 'stop' && m.turn === 'host-turn-x'),
+    'asked, as its start may still reach the daemon',
+  );
+  await until(() => r.store.state.hostStops?.[r.host.id] === undefined, 'the host’s record let the stop go');
+  await until(() => forgets(r).includes('pe_gone'), 'and the removal went');
+});
