@@ -107,3 +107,36 @@ test('#1735 Settings takes the full height on every tab, so switching tabs moves
   await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeInViewport({ ratio: 1 });
   await expect(dialog.getByRole('button', { name: 'Delete…', exact: true })).toBeInViewport({ ratio: 1 });
 });
+
+// A quick press comes with its move, with no frame between (#1632): the sheet took what to hold only in the next frame,
+// so content that grew above a control in its body in that frame moved it from under the press. Save and Create agent
+// are in the sheet’s foot, which nothing above moves; a skill’s checkbox is in the body. The press now takes hold at once.
+test('#1632 a skill’s checkbox, pressed as it’s reached, stays under the press while the sheet grows above it', async ({ page }) => {
+  const persona = started.app.rt.createPersona({ handle: 'quick-press', backend: 'claude-code' });
+  const lists = await lateLists(page);
+  await page.goto(`${started.app.origin}/`);
+  await synced(page, started.app);
+  await page.evaluate((id) => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', id)), persona.id);
+  await expect.poll(lists.asked, { message: 'the sheet to ask for both lists' }).toBe(2);
+  lists.letGo();
+  const box = page.getByRole('checkbox', { name: /skill-12/ });
+  // As in a browser with no scroll anchoring of its own (Safari), where only the sheet’s hold keeps it.
+  await page.addStyleTag({ content: '.d-body { overflow-anchor: none; }' });
+  await box.scrollIntoViewIfNeeded();
+  await settled(page);
+  const { pressedAt, at } = await box.evaluate((b) => {
+    const r = b.getBoundingClientRect();
+    const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, pointerType: 'mouse', isPrimary: true };
+    b.dispatchEvent(new PointerEvent('pointermove', at));
+    b.dispatchEvent(new PointerEvent('pointerdown', at));
+    const first = /** @type {HTMLElement} */ (b.closest('.d-body')?.firstElementChild);
+    // Grown in place, as a list that takes its “Looking for…” line’s place does: the sheet finds what it holds by its place.
+    first.style.paddingTop = '160px';
+    return { pressedAt: r.top, at };
+  });
+  await settled(page);
+  const top = await box.evaluate((b) => b.getBoundingClientRect().top);
+  expect(Math.abs(top - pressedAt), `the checkbox is ${top - pressedAt} px from the press`).toBeLessThan(1);
+  const under = await page.evaluate(({ clientX, clientY }) => document.elementFromPoint(clientX, clientY)?.closest('[role="checkbox"]')?.textContent ?? '', at);
+  expect(under, 'the skill is still under the press').toMatch(/skill-12/);
+});
