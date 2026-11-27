@@ -107,12 +107,13 @@ export function report(pr, head, v) {
 export const GH_TIMEOUT_MS = 120_000;
 
 /**
- * gh’s JSON output for `args`; throws, naming the call, when gh takes longer than o.timeout.
- * @param {string[]} args @param {{ timeout?: number }} [o]
+ * gh’s JSON output for `args`; throws, naming the call, when gh takes longer than o.timeout. o.run stands in for
+ * execFileSync in a test.
+ * @param {string[]} args @param {{ timeout?: number, run?: typeof execFileSync }} [o]
  */
-export function ghJson(args, { timeout = GH_TIMEOUT_MS } = {}) {
+export function ghJson(args, { timeout = GH_TIMEOUT_MS, run = execFileSync } = {}) {
   try {
-    return JSON.parse(execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout }));
+    return JSON.parse(String(run('gh', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout })));
   } catch (e) {
     if (/** @type {NodeJS.ErrnoException} */ (e).code === 'ETIMEDOUT') throw new Error(`gh ${args.join(' ')} didn’t answer in ${timeout / 1000} s`);
     throw e;
