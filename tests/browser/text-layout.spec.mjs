@@ -135,8 +135,8 @@ for (const width of [375, 1280]) {
     await expectTidyText(page, 'Postbox’s first screen');
   });
 
-  // A long room: the transcript lets the browser skip the items off screen (#712), whose content can’t be measured
-  // where it isn’t drawn, and at 375 px the agents’ strip floats over the transcript scrolled under it.
+  // A long room: the transcript lets the browser skip the items off screen (#712), and the check draws them while it
+  // measures, then leaves the view following the end, as it was.
   test(`#681 at ${width} px a long room at its end passes the check`, async ({ page }) => {
     const { rt } = scripted.app;
     const t = scripted.room(`Long room at ${width}`, [`long${width}`]);
@@ -152,10 +152,17 @@ for (const width of [375, 1280]) {
     );
     expect(skipped, 'items off screen are skipped').toBeGreaterThan(20);
     await expectTidyText(page, 'a long room at its end');
+    const view = await page.evaluate(() => {
+      const t = /** @type {HTMLElement} */ (document.querySelector('#main.transcript'));
+      const s = document.scrollingElement;
+      return { mode: t.dataset.viewMode, gap: Math.round(s.scrollHeight - s.scrollTop - s.clientHeight) };
+    });
+    expect(view, 'the view still follows the end').toEqual({ mode: 'following', gap: 0 });
   });
 
   // The step keeps the end of what the call returned, but its box clamps it from the top, so the last lines are the
-  // ones hidden: a defect the check finds on a real screen, kept here as one until the clamp keeps the end in view.
+  // ones hidden (#1944): a defect the check finds on a real screen, kept here as one until the clamp keeps the end in
+  // view.
   test(`#681 at ${width} px a running step’s long output, cut off at its end, is reported`, async ({ page }) => {
     const who = `runner${width}`;
     const t = scripted.room(`Clamped output at ${width}`, [who]);
