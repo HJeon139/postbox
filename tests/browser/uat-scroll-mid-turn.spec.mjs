@@ -8,8 +8,9 @@ import { driver } from '../../tools/uat/driver.mjs';
 import { newProbes } from '../../tools/uat/probes.mjs';
 import { VIEW_CHECKS } from '../../tools/uat/room-checks-view.mjs';
 import { interruptAct } from '../../tools/uat/steps.mjs';
+import { recordViews } from '../../tools/uat/view-probe.mjs';
 import * as arrange from '../arrange.mjs';
-import { failOnPageErrors, frames, startPostbox } from './postbox.mjs';
+import { failOnPageErrors, frames, settled, startPostbox } from './postbox.mjs';
 import { runnerPage } from './runner-page.mjs';
 import { LONG, open as openIn, room as roomIn } from './view-read-fixture.mjs';
 
@@ -89,7 +90,11 @@ test('a scroll interrupt pages back and forth while a reply streams, and view-mo
     );
     const views = /** @type {any[]} */ (facts.probes.views ?? []).filter((v) => v.where === 'main');
     const reading = views.filter((v) => v.mode === 'reading');
-    expect(views.length, 'two samples a move, mid-turn').toBe(8);
+    expect(
+      views.map((v) => v.mode),
+      'two samples a move, mid-turn: three moves back, then End',
+    ).toEqual(['reading', 'reading', 'reading', 'reading', 'reading', 'reading', 'following', 'following']);
+    expect(views[7].settled, 'End’s second sample settled, so its pair is compared').toBe(true);
     expect(
       reading.map((v) => v.settled),
       'each reading sample settled, so view-moved reads it',
@@ -99,7 +104,11 @@ test('a scroll interrupt pages back and forth while a reply streams, and view-mo
     // While the reply still streams: view-moved compared the pairs with no input between, each move’s two samples, and
     // found the view held. With nothing compared it would say so, and not be silent.
     expect(viewMoved.run(facts), 'view-moved compared mid-stream pairs and stayed silent').toEqual([]);
+    // And once the reply ends and redraws as done, the view that followed it still does.
     await turn.end();
+    await settled(page);
+    await recordViews(d.kit.ev, facts, 4);
+    expect(viewMoved.run(facts), 'view-moved silent across the reply ending too').toEqual([]);
   } finally {
     await turn.end();
   }

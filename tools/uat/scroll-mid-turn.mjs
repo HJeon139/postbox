@@ -62,8 +62,9 @@ function viewSaid(views) {
 }
 
 /**
- * Makes each move while the agent works, sampling the view after each.
- * @param {{ d: any, facts: any, step: number, pause?: () => Promise<void> }} ctx  pause: the wait between moves
+ * Makes each move while the agent works, sampling the view after each, and again a pause later.
+ * @param {{ d: any, facts: any, step: number, pause?: () => Promise<void> }} ctx  pause: the wait between a move’s two
+ *   samples
  * @param {{ moves?: unknown }} interrupt
  * @returns {Promise<string>}  what happened, for the tester
  */
