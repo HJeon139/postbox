@@ -110,3 +110,25 @@ test('#1726 an app paused for a check that is unloaded far off screen meanwhile 
   );
   await expect(holder.locator('iframe.app-iframe'), 'no frame far off screen').toHaveCount(0);
 });
+
+test('#1726 an app scrolled back near reloads, and unloads again when scrolled far away', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const { rt } = app;
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: 'Again', personaIds: [arrange.persona(rt, 'librarian').id] });
+  const tools = rt.toolsFor(arrange.agentIn(rt, t.id).id);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  tools.show_app({ id: 'again', title: 'Again', code: TALL, permissions: [] });
+  await expect.poll(() => rt.store.state.apps.again?.check.status, { message: 'the app to pass its check' }).toMatch(/^(passed|note)$/);
+  for (let i = 1; i <= 80; i++)
+    arrange.post(rt, t.id, { kind: 'user', text: `Later ${i}: a line to give the page some length, long enough to wrap in a narrow window.` });
+  await synced(page, app);
+  const holder = page.locator('.app-holder');
+  const unloaded = holder.locator('.app-placeholder', { hasText: 'Unloaded while off screen' });
+  await expect(unloaded, 'unloaded far off screen').toHaveCount(1);
+
+  await holder.scrollIntoViewIfNeeded();
+  await expect(holder.locator('iframe.app-iframe'), 'reloaded when scrolled near').toHaveAttribute('data-sized', '1');
+  await page.getByText('Later 80:').scrollIntoViewIfNeeded();
+  await expect(unloaded, 'unloaded again when scrolled far away').toHaveCount(1);
+});
