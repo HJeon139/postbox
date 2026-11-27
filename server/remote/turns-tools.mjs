@@ -15,7 +15,7 @@ import { recordedTools } from '../scheduled-wakes.mjs';
 import { withUrgent } from '../subagent-end.mjs';
 import { closedTo, READ_TOOLS } from '../tool-gate.mjs';
 import { linkOf } from './turns-need.mjs';
-import { KEPT_REPLIES, KEPT_REPLY_CHARS, key, STOPPED_TEXT, send, sessionOfTurn, updateRemote } from './turns-shared.mjs';
+import { KEPT_REPLIES, KEPT_REPLY_CHARS, key, remoteOf, STOPPED_TEXT, send, sessionOfTurn, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Live} Live */
@@ -36,7 +36,8 @@ export async function onTool(rts, hostId, m) {
   const k = key(m.turn, m.id);
   const link = linkOf(rts, hostId);
   const se = sessionOfTurn(rts, m.turn);
-  const done = se?.remoteTurn?.replies?.find((/** @type {any} */ r) => r.turn === m.turn && r.id === m.id);
+  // Read as written: a reply kept behind a held commit still answers the repeat, which isn’t applied again (#623, #439).
+  const done = (se && remoteOf(rts, se.id))?.remoteTurn?.replies?.find((/** @type {any} */ r) => r.turn === m.turn && r.id === m.id);
   if (done) return void send(link, 'reply', { turn: m.turn, id: m.id, ok: done.ok, text: done.text });
   if (rts.applying.has(k)) return;
   const live = rts.byTurn.get(m.turn);
@@ -63,10 +64,10 @@ export async function onTool(rts, hostId, m) {
   const text = cutText(queued ? r.text : withUrgent(rts.rt, live.sessionId, r.text, live.rt), REMOTE_LIMITS.replyChars);
   // The reply is kept for the daemon’s repeats, which come after a hello until one is heard: a link that drops
   // before it lands mustn’t post a hand-off, or schedule a wake, twice (#439).
-  const now = rts.rt.s.sessions[live.sessionId];
-  if (now?.remoteTurn && !REPEATABLE.has(m.name)) {
-    const replies = [...(now.remoteTurn.replies ?? []), { turn: m.turn, id: m.id, ok: r.ok, text: cutText(text, KEPT_REPLY_CHARS) }].slice(-KEPT_REPLIES);
-    updateRemote(rts, now.id, { replies });
+  // Added to the replies as written, so one kept behind a held commit isn’t dropped (#623).
+  if (!REPEATABLE.has(m.name)) {
+    const kept = { turn: m.turn, id: m.id, ok: r.ok, text: cutText(text, KEPT_REPLY_CHARS) };
+    updateRemote(rts, live.sessionId, (turn) => ({ replies: [...(turn.replies ?? []), kept].slice(-KEPT_REPLIES) }));
   }
   // A queued call’s agent already has its answer (the shim’s, once the daemon took it), so Postbox’s refusal goes to
   // it at its next turn instead.
