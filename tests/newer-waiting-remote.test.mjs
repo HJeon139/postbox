@@ -5,7 +5,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { rig, running, settled, starts, until } from './remote-turns-helpers.mjs';
-import { sleep } from './side-threads-fixture.mjs';
 
 const PERSON = '[Postbox] A newer message from the person is waiting for you; it reaches you when this turn ends, unless it’s removed.';
 
@@ -30,6 +29,7 @@ test('#694: on a host, a slow tool call of a turn Send now replaced names nothin
   const r = rig();
   const turn = await running(r);
   let open = () => {};
+  let reached = false;
   const gate = new Promise((ok) => {
     open = () => ok(undefined);
   });
@@ -39,6 +39,7 @@ test('#694: on a host, a slow tool call of a turn Send now replaced names nothin
     return {
       ...tools,
       cancel_wake: async (...b) => {
+        reached = true;
         await gate;
         return tools.cancel_wake(...b);
       },
@@ -46,14 +47,15 @@ test('#694: on a host, a slow tool call of a turn Send now replaced names nothin
   };
   // cancel_wake is a call the agent waits for; a queued one, such as define_term, never gets the note on a host.
   r.d.tool(turn, 'cancel_wake', { id: 'sc_none' });
-  await sleep(20);
+  // The call has to be at the gate before Send now replaces its turn (#1657).
+  await until(() => reached, 'the call to reach the gate');
   r.rt.sendMessage(r.t.id, { text: 'change of course', sendNow: true });
   r.d.end(turn);
   await until(() => starts(r.d).length === 2 && r.rt.turns.size === 1, 'the next turn to start');
   const next = starts(r.d)[1].turn;
   r.rt.sendMessage(r.t.id, { text: 'and also this' });
   open();
-  await sleep(20);
+  await until(() => r.d.replies.some((x) => x.turn === turn), 'the stopped turn’s reply');
   const stale = r.d.replies.find((x) => x.turn === turn);
   assert.ok(stale, 'the stopped turn’s call is answered');
   assert.doesNotMatch(stale.text, /newer message/, 'and its reply names nothing');

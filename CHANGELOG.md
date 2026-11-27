@@ -2,6 +2,34 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.3.1 (2026-11-27)
+
+### Fixes
+
+- **remote:** find a host turn's folder while its turn is held behind a commit
+- **remote:** drop a redundant Resume check; close the held tests' store whatever its release does
+- **remote:** the person's Resume of a removed conversation is refused, not an error
+- **remote:** a resume, and the person's Resume, read the remote turn as written
+- **remote:** read a remote turn's session as written where the read decides a write
+- **chain:** tell a stopped agent its message didn't go, and to send it later
+- **tools:** find the wake line before and after the scheduled wake fires
+- **links:** link no room asset inside a glossary term's text
+- **tools:** retarget shoot-uat's shots to what the demo shows now
+- **rail:** let a long status word give way too, after the names' first letters
+- **rail:** keep a room's status word whole in its sidebar row
+- **ui:** start every dialog with focus inside it
+- **tools:** shoot only what the demo shows, and fail on a missed shot
+- **mock:** say in words what each refused block held
+- **threads:** stop promising side threads on the Threads page
+- **activity:** point a refused step at its card without saying where
+- **markdown:** match no glossary term inside a link's text
+- **markdown:** draw streamed math once, from its source
+- **wakes:** a closed card tells its agent to send its message again, not to ask
+- **wakes:** a chain counted past a lowered cap still stops with its one line
+- **wakes:** an agent whose wake was held on a card is told when it goes
+- **composer:** the composer no longer counts agent wakes against a limit
+- **wakes:** the chain cap stops a wake with one line in the room, and no card
+
 ## 5.3.0 (2026-11-27)
 
 ### Features
