@@ -16,22 +16,25 @@ const own = (name) => `(function () {\n${kit(name)}\n})();`;
  * An expression for page.evaluate (Playwright’s, or the UAT driver’s), which resolves to the problems on the page at
  * the window’s width, as { code, message }: text-overlap, text-overflow, text-cut-off, text-on-control and
  * mid-word-break. It measures text over text twice, a second apart, as the pre-display check does, so the page should
- * hold still for that second. It leaves the page as it found it: check-layout.js runs animation frames on a timer, for
- * the hidden frames it was written for, so the page’s own are put back as soon as it loads, and the window’s scroll after.
+ * hold still for that second. It leaves the page as the person had it: check-layout.js runs animation frames on a timer,
+ * for the hidden frames it was written for, so the page’s own are put back as soon as it loads, and the window’s scroll
+ * after, at the end if it was there. Items it drew keep the heights the browser now remembers for them.
  * Only kit/kit.js’s rgb and lum, which this check doesn’t call, are stood in for.
  */
 export const TEXT_LAYOUT = `(async () => {
-  const kept = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame };
+  const kept = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame, x: scrollX, y: scrollY, end: false };
   window.__pbCheck = { rgb: () => null, lum: () => 0 };
-  // The transcript lets the browser skip the items off screen (#712), and asking what’s drawn at a point finds nothing
-  // of one until a frame draws it, so everything is drawn while the check measures. Drawn, the items above take their
-  // real heights, and the page’s view holds its place (view-state.mjs) over two frames; the scroll it’s put back to is
-  // where it is after that, so a view that followed the end still does.
-  const drawn = document.head.appendChild(document.createElement('style'));
-  drawn.textContent = '* { content-visibility: visible !important; }';
-  await new Promise((ok) => kept.raf.call(window, () => kept.raf.call(window, ok)));
-  Object.assign(kept, { x: scrollX, y: scrollY });
+  const page = document.scrollingElement;
+  const drawn = document.createElement('style');
   try {
+    // The transcript lets the browser skip the items off screen (#712), and asking what’s drawn at a point finds
+    // nothing of one until a frame draws it, so everything is drawn while the check measures. Drawn, the items above
+    // take their real heights, and the page’s view holds its place (view-state.mjs) over two frames; the scroll it’s
+    // put back to is where it is after that, or the end, if it was at the end (within 2 px, view-geometry.mjs).
+    drawn.textContent = '* { content-visibility: visible !important; }';
+    document.head.append(drawn);
+    await new Promise((ok) => kept.raf.call(window, () => kept.raf.call(window, ok)));
+    Object.assign(kept, { x: scrollX, y: scrollY, end: page.scrollHeight - page.scrollTop - page.clientHeight <= 2 });
     ${own('check-layout.js')}
     // The page isn’t a hidden frame: its own animation frames run, and its own ids cancel them.
     window.requestAnimationFrame = kept.raf;
@@ -47,6 +50,6 @@ export const TEXT_LAYOUT = `(async () => {
     delete window.__pbCheck;
     window.requestAnimationFrame = kept.raf;
     window.cancelAnimationFrame = kept.caf;
-    scrollTo({ left: kept.x, top: kept.y, behavior: 'instant' });
+    scrollTo({ left: kept.x, top: kept.end ? page.scrollHeight : kept.y, behavior: 'instant' });
   }
 })()`;
