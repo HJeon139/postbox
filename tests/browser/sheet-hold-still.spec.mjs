@@ -141,9 +141,9 @@ test('#1632 a skill’s checkbox, pressed as it’s reached, stays under the pre
   expect(under, 'the skill is still under the press').toMatch(/skill-12/);
 });
 
-// #1884’s hole in the sheet: a frame after the pointer moves or the window loses focus, the sheet held what was under
-// the pointer without taking in a scroll of its body it hadn’t heard of yet, and pulled the body back, ending the
-// scroll. The scroll’s step is a write in a frame callback ahead of the one the blur asks for, as a smooth scroll steps.
+// #1884’s rule in the sheet: a frame after the pointer moves or the window loses focus, the sheet held what was under
+// the pointer without taking in a scroll of its body it hadn’t heard of yet, and pulled the body back. The scroll is a
+// write in a frame callback ahead of the one the blur asks for.
 test('#1884 a scroll of the sheet’s body in the frame the window loses focus stands', async ({ page }) => {
   const persona = started.app.rt.createPersona({ handle: 'scroll-blur', backend: 'claude-code' });
   const lists = await lateLists(page);

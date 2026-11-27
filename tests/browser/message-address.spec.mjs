@@ -252,10 +252,10 @@ test('#168 an address to a message far from both ends loads only the range aroun
   expect(held, 'the range around it, not the whole room').toBeLessThan(560);
 });
 
-// #1884: End after going to a message didn’t scroll at all, twice on CI. The view held its anchor a frame after a blur
-// or a pointer move (pointed()) without taking in a scroll it hadn’t heard of yet, and pulled the view back to the
-// message exactly, ending the scroll. Here the scroll’s step is a write in a frame callback, ahead of the one the blur
-// asks for: the browser’s smooth scroll steps in that frame the same way, its scroll event a frame later.
+// #1884: a blur or a pointer move holds the anchor a frame later (pointed()). A scroll in that frame whose event hasn’t
+// told the transcript yet, here a write in an earlier frame callback, is yours, as follow() takes it: held without it,
+// the view went back to the message. The browser’s own scrolls are heard by then. This isn’t the End miss CI recorded,
+// which had no write of ours after End.
 test('#1884 reading at a message, a scroll in the frame the window loses focus stands', async ({ page }) => {
   const { t, items } = longRoom(app, 'Address, blur while scrolling');
   await page.goto(`${app.origin}/#/t/${t.id}?m=${items[3].id}`);

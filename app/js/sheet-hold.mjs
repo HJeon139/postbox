@@ -75,7 +75,7 @@ export function holdSheet(dialog) {
     return true;
   };
   body.addEventListener('scroll', scrolledByYou, { passive: true });
-  // So is a scroll in this frame its event hasn’t told of yet: held back, it ended there (#1884).
+  // So is a scroll in this frame its event hasn’t told of yet, made by a frame callback before this one (#1884).
   const stop = onPointerMoved(() => {
     if (scrolledByYou()) return;
     hold();
