@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { png } from '../png.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { viewRadio } from './review.mjs';
 
@@ -139,6 +140,6 @@ test.describe('at 375 px', () => {
         };
       });
     await expect.poll(fit, { message: 'it loads, fits the block, and stays 4:1' }).toEqual({ loaded: true, fits: true, ratio: 4 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'the page doesn’t scroll sideways').toBe(true);
+    expect(await pageWidth(page), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
   });
 });

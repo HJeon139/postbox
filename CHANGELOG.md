@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.5.1 (2026-11-27)
+
+### Fixes
+
+- **thread:** wrap a long word, path or inline code in an agent's words
+- **app:** the page clips sideways overflow, so a widening only a layout sees can't rewrap the thread
+
 ## 5.5.0 (2026-11-27)
 
 ### Features

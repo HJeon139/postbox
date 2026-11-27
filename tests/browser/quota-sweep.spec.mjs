@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -73,7 +74,6 @@ const problems = (page) =>
     const line = /** @type {HTMLElement} */ (document.querySelector('.composer .quota-line'));
     const lineBox = line.getBoundingClientRect();
     if (line.scrollWidth > line.clientWidth) out.push(`the line overflows: ${line.scrollWidth} > ${line.clientWidth}`);
-    if (document.documentElement.scrollWidth > innerWidth) out.push('the page scrolls sideways');
     // 20 px of bars, under 4 px that cover the gap from the card down (#1463).
     if (lineBox.height > 24.5) out.push(`the line is ${lineBox.height} px high`);
     for (const m of line.querySelectorAll('[role="meter"]'))
@@ -151,7 +151,8 @@ for (const [which, bars] of CASES)
       await page.setViewportSize({ width, height: 800 });
       await frames(page);
       await frames(page);
-      for (const p of [...(await problems(page)), ...(await outOfOrder(page))]) found.push(`${width} px: ${p}`);
+      const sideways = (await pageWidth(page)) > (await page.evaluate(() => innerWidth)) ? ['the page scrolls sideways'] : [];
+      for (const p of [...(await problems(page)), ...sideways, ...(await outOfOrder(page))]) found.push(`${width} px: ${p}`);
     }
     expect(found.slice(0, 20), `${found.length} problems`).toEqual([]);
   });

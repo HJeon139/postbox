@@ -131,6 +131,14 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; }
+/* overflow-x: clip on both, not hidden: nothing laid out wider than the window widens the page. On a phone the viewport
+   grows to fit overflowing content, so even a box measured and removed in one task laid the page out wider, the
+   transcript rewrapped, and the clamp read as you scrolling up (#966). Neither alone holds: the root’s clip is the
+   viewport’s, and the body’s is its own box. clip makes no scroll container, so sticky bars and inner scrolling stay.
+   Postbox’s page only: an agent app’s sandboxed page (pb-sandbox) lays itself out as its author wrote it. So the page’s
+   scrollWidth is the window’s even when something lays out past it: a check for sideways overflow reads the widest
+   element’s rect instead (tests/browser/page-width.mjs). */
+html:not(.pb-sandbox), html:not(.pb-sandbox) > body { overflow-x: clip; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -355,7 +363,7 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .me-card { max-width: 82%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
 .turn.me .who { justify-content: flex-end; }
 
-.md { display: flex; flex-direction: column; gap: 10px; }
+.md { display: flex; flex-direction: column; gap: 10px; overflow-wrap: break-word; }
 .md p, .md li { max-width: 72ch; }
 .md ul, .md ol { padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 .md h3 { font-size: 14px; font-weight: 650; margin-top: 4px; }
