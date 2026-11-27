@@ -5,6 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, frames, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -178,6 +179,6 @@ test.describe('at 375 px', () => {
       width,
     );
     expect(inside, 'each card inside the window').toEqual([true, true]);
-    expect(await page.evaluate(() => document.scrollingElement.scrollWidth), 'no sideways scroll').toBeLessThanOrEqual(width);
+    expect(await pageWidth(page), 'no sideways scroll').toBeLessThanOrEqual(width);
   });
 });

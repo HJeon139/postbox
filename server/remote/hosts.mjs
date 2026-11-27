@@ -40,8 +40,8 @@
 // This module makes the manager and holds its methods; its parts are beside it, each taking the manager’s state first:
 // hosts-status.mjs (the host, its token and its status), hosts-links.mjs (the links and why each host is needed),
 // hosts-requests.mjs (the sign-in check and Remove, through the daemon), hosts-signins.mjs (each harness’s sign-in)
-// and hosts-update.mjs (installs, one at a time
-// per host, and installing this version by itself where the person said so).
+// and hosts-update.mjs (installs, one at a time per host, and installing this version by itself where the person
+// said so).
 
 import { EventEmitter } from 'node:events';
 import { connectNow, disconnected, dropLink, dropRenamed, ensureWelcome, isRenamed, linkOf, need, release } from './hosts-links.mjs';

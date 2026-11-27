@@ -81,7 +81,8 @@ test('a host that doesn’t answer within SIGNED_WAIT_MS reads as unknown', asyn
 });
 
 test('each welcome asks once: the same session doesn’t ask again, and a new one does', async () => {
-  const s = setup();
+  let how = /** @type {any} */ ({});
+  const s = setup({ daemon: createFakeDaemon({ autoEnd: false, signins: () => how }) });
   try {
     s.mgr.need('h1', 'turn:t1');
     await until(() => s.mgr.status('h1').signIns !== null, 'the first answer');
@@ -90,6 +91,7 @@ test('each welcome asks once: the same session doesn’t ask again, and a new on
     s.mgr.need('h1', 'turn:t2');
     assert.equal(asked(s), 1, 'the same session');
     const first = s.mgr.status('h1').signIns;
+    how = { codex: { state: 'signed-out' } };
     s.daemon.drop();
     await until(() => s.ssh.calls.length === 2 && asked(s) === 2, 'asked after the new welcome');
     await until(() => s.mgr.status('h1').signIns !== first, 'the new answer');
@@ -155,6 +157,72 @@ test('asked now while the host isn’t connected, the answer is null', async () 
   const s = setup({ daemon: createFakeDaemon({ autoEnd: false }) });
   try {
     assert.equal(await s.mgr.signInsNow('h1'), null);
+  } finally {
+    s.done();
+  }
+});
+
+test('an asking whose connection drops after signins arrives resolves to null at once, and needs the host no longer', async () => {
+  const s = setup({ daemon: createFakeDaemon({ autoEnd: false, signins: 'silent' }) });
+  try {
+    await s.mgr.ensureWelcome('h1');
+    await until(() => asked(s) === 1, 'the asking');
+    const asking = s.mgr.signInsNow('h1');
+    s.daemon.drop();
+    const answer = await Promise.race([asking, new Promise((resolve) => setTimeout(() => resolve('still waiting'), 200))]);
+    assert.equal(answer, null, 'the drop ends the asking, not SIGNED_WAIT_MS');
+    // Released: nothing else needs the host, so the link doesn’t dial it again.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(s.ssh.calls.length, 1, 'no new session for an asking that ended');
+    assert.notEqual(s.mgr.status('h1').state, 'reconnecting');
+  } finally {
+    s.done();
+  }
+});
+
+test('an answer that reaches an asking after its session was replaced is dropped, and signIns stays as it was', async () => {
+  let how = /** @type {any} */ ({ codex: { state: 'signed-out' } });
+  const s = setup({ daemon: createFakeDaemon({ autoEnd: false, signins: () => how }) });
+  try {
+    s.mgr.need('h1', 'turn:t1');
+    await until(() => s.mgr.status('h1').signIns !== null, 'the first answer');
+    const first = s.mgr.status('h1').signIns;
+    // The asking’s own listeners, so the old session’s answer can be handed to it after the new session’s welcome. Its
+    // 'state' listener isn’t added: on the real link a drop ends the asking first, and this checks the guard behind it.
+    const link = s.mgr.link('h1');
+    const on = link.on;
+    const heard = [];
+    link.on = (ev, fn) => {
+      if (ev === 'message') heard.push(fn);
+      return ev === 'state' ? link : on.call(link, ev, fn);
+    };
+    how = 'silent';
+    const old = s.mgr.signInsNow('h1');
+    await until(() => asked(s) === 2, 'the old session’s asking');
+    s.daemon.drop();
+    await until(() => asked(s) === 3, 'the new session’s asking');
+    link.on = on;
+    heard[0]({ type: 'signed', harnesses: [{ name: 'codex', state: 'signed-in' }] });
+    assert.equal(await old, null, 'the old session’s asking resolves to nothing');
+    assert.equal(s.mgr.status('h1').signIns, first, 'and keeps nothing');
+  } finally {
+    s.done();
+  }
+});
+
+test('an answer the same as the last keeps the last, so it publishes no new host status', async () => {
+  const s = setup({ daemon: createFakeDaemon({ autoEnd: false, signins: { codex: { state: 'signed-out' } } }) });
+  const emitted = [];
+  s.mgr.on('status', (_id, st) => emitted.push(st));
+  try {
+    s.mgr.need('h1', 'turn:t1');
+    await until(() => s.mgr.status('h1').signIns !== null, 'the first answer');
+    const first = s.mgr.status('h1').signIns;
+    const before = emitted.length;
+    s.clock.advance(1000);
+    const again = await s.mgr.signInsNow('h1');
+    assert.equal(again, first, 'the same answer is the same object, with its first time');
+    assert.equal(emitted.length, before, 'no host status for an answer that changed nothing');
   } finally {
     s.done();
   }

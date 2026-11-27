@@ -100,7 +100,7 @@ export function stepRow(s) {
       // What the call was given and the end of what it returned, as its harness reported them (server/harness-tools.mjs),
       // each only where the step doesn’t already say it (its label names the command; its output carries why it failed).
       s.input && !saidBy(s.label, s.input) ? h('span.step-input.mono', s.input) : null,
-      s.output ? h('span.step-output.mono', s.output) : null,
+      s.output ? h('span.step-output.mono', { tabindex: '0', 'aria-label': `Output of ${s.label}` }, s.output) : null,
     ),
     dur,
   );

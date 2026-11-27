@@ -46,8 +46,9 @@ export function hostStatus(hosts, id) {
 }
 
 /**
- * What the host last said of each harness’s sign-in (#1608), for its card and the “Runs on” warning: when, and per
- * harness its state, with the method and when it runs out when signed in, and nothing else. null before it said.
+ * What the host last said of each harness’s sign-in (#1608), for its card and the “Runs on” warning: when it first
+ * gave that answer, and per harness its state, with the method and when it runs out when signed in, and nothing else.
+ * null before it said.
  * @param {import('./hosts-status.mjs').SignIns | null | undefined} s
  */
 function signInFields(s) {

@@ -2,56 +2,11 @@
 // (tests/remote-daemon-setup.mjs) whose children answer as the CLIs did in tests/fixtures/remote/signin/.
 
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
-import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { SIGN_IN_KEEP_MS, SIGN_IN_STATUS_MS } from '../server/remote/host/daemon-signins.mjs';
 import { STATUS_OUTPUT_CHARS } from '../server/remote/host/harness-signin.mjs';
+import { SIGN_IN_KEEP_MS, SIGN_IN_STATUS_MS } from '../shared/remote-protocol.mjs';
 import { fakeClock, hello, PROGRAMS_FOUND, setup, until } from './remote-daemon-setup.mjs';
-
-/** @param {string} name */
-const recorded = (name) => JSON.parse(readFileSync(new URL(`./fixtures/remote/signin/${name}.json`, import.meta.url), 'utf8'));
-const FIXTURE = { claude: 'claude', codex: 'codex', 'kiro-cli': 'kiro' };
-
-/** Programs found with each harness there. */
-const ALL_FOUND = async () => {
-  const p = structuredClone(PROGRAMS_FOUND);
-  p.harnesses = p.harnesses.map((h) => (h.name === 'kiro-cli' ? { ...h, path: '/home/user/.local/bin/kiro-cli', version: '3.6.2' } : h));
-  return p;
-};
-
-/**
- * A spawn whose children are held until the test answers them: answer(i, how) plays recorded run `how` (such as
- * signed-in) for the call’s program, as the CLI printed it and exited.
- */
-function statusSpawn() {
-  const calls = [];
-  const spawn = (program, args, options) => {
-    const child = Object.assign(new EventEmitter(), { kills: [], kill: (sig) => child.kills.push(sig) && true });
-    if (options.stdio[1] === 'pipe') child.stdout = new PassThrough();
-    calls.push({ program, args, options, child });
-    return child;
-  };
-  /** Resolves once the child has closed. @param {any} call @param {string} how */
-  const play = async (call, how) => {
-    const run = recorded(`${FIXTURE[call.program.split('/').at(-1)]}-${how}`);
-    call.child.stdout?.end(run.stdout);
-    // As a child does: its close comes once its output has been read.
-    await new Promise((resolve) => setImmediate(resolve));
-    call.child.emit('close', run.exit, null);
-  };
-  return { spawn, calls, play };
-}
-
-/** Everything the connection carried, as text. @param {any} c */
-function carried(c) {
-  let text = '';
-  c.output.on('data', (b) => {
-    text += String(b);
-  });
-  return () => text;
-}
+import { ALL_FOUND, carried, recorded, statusSpawn } from './remote-daemon-signins-helpers.mjs';
 
 test('signins: each found harness’s status command runs as an argument list with no shell or stdin, and signed carries only its state', async () => {
   const sp = statusSpawn();
@@ -78,11 +33,11 @@ test('signins: each found harness’s status command runs as an argument list wi
     for (const call of sp.calls) void sp.play(call, 'signed-in');
     const signed = await c.msgs.next('signed');
     assert.deepEqual(signed.harnesses, [
-      { name: 'claude-code', state: 'signed-in', method: 'claude.ai', expiresAt: Date.parse('2026-12-06T02:42:14.007Z') },
+      { name: 'claude-code', state: 'signed-in', method: 'claude.ai', expiresAt: Date.parse('2026-12-01T00:00:00.000Z') },
       { name: 'kiro-cli', state: 'signed-in', method: 'BuilderId' },
       { name: 'codex', state: 'signed-in' },
     ]);
-    for (const raw of ['robin', 'example.com', 'Organization', '00000000-0000', 'awsapps', 'max', 'firstParty'])
+    for (const raw of ['robin', 'example.com', 'Organization', '00000000-0000', 'awsapps', '"pro"', 'firstParty'])
       assert.ok(!text().includes(raw), `“${raw}” from a command’s output never crosses`);
   } finally {
     await s.done();
@@ -272,6 +227,38 @@ test('signins: output past STATUS_OUTPUT_CHARS is cut, so it reads unknown, neve
       (await c.msgs.next('signed')).harnesses.map((h) => [h.name, h.state]),
       [
         ['claude-code', 'unknown'],
+        ['codex', 'signed-in'],
+      ],
+    );
+  } finally {
+    await s.done();
+  }
+});
+
+test('signins: what’s read of a flood of output stays at STATUS_OUTPUT_CHARS, the first of it', async () => {
+  const sp = statusSpawn();
+  const s = setup({ spawn: sp.spawn });
+  try {
+    const c = await hello(s);
+    c.send('signins');
+    await until(() => sp.calls.length === 2, 'the status commands');
+    const claude = sp.calls.find((x) => x.program.endsWith('claude'));
+    const codex = sp.calls.find((x) => x.program.endsWith('codex'));
+    // Signed-in JSON exactly STATUS_OUTPUT_CHARS long, then as much again: read whole, it isn’t JSON, so it’s unknown.
+    const head = JSON.stringify({ ...JSON.parse(recorded('claude-signed-in').stdout), pad: '' });
+    const exact = head.replace('"pad":""', `"pad":"${'x'.repeat(STATUS_OUTPUT_CHARS - head.length)}"`);
+    assert.equal(exact.length, STATUS_OUTPUT_CHARS);
+    const flood = `${exact}${'y'.repeat(STATUS_OUTPUT_CHARS)}`;
+    const quarter = flood.length / 4;
+    for (let i = 0; i < 4; i++) claude.child.stdout.write(flood.slice(i * quarter, (i + 1) * quarter));
+    claude.child.stdout.end();
+    await new Promise((resolve) => setImmediate(resolve));
+    claude.child.emit('close', 0, null);
+    await sp.play(codex, 'signed-in');
+    assert.deepEqual(
+      (await c.msgs.next('signed')).harnesses.map((h) => [h.name, h.state]),
+      [
+        ['claude-code', 'signed-in'],
         ['codex', 'signed-in'],
       ],
     );

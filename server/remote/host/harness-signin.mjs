@@ -2,9 +2,25 @@
 // its exit code and output read. Only a state, a method’s short name and when the sign-in runs out are read: the
 // outputs also hold the account’s email, organization and folders, which never leave this module. Anything not plainly
 // signed in or out is unknown, so a CLI too old for its status command never reads as signed out.
+//
+// Kiro keeps its sign-in outside KIRO_HOME (only an empty HOME signed it out when the fixtures were recorded), so an
+// Isolated persona’s KIRO_HOME doesn’t change what `whoami`, run in the host’s own environment, answers.
+//
+// The commands aren’t only reads (measured 27 November 2026 on macOS, tests/fixtures/remote/signin/README.md): three
+// runs each of `claude auth status` and `codex login status` changed none of their stored credentials, but kiro-cli’s
+// `whoami` wrote its data.sqlite3, which holds its sign-in token, and the binary refreshes an expired token when it
+// loads one, under a lock of its own. A refresh racing a Kiro turn’s appears to be Kiro’s to settle, going by its lock
+// and a stale-token check named for Builder ID; two at once weren’t tested. Postbox reads none of it.
 
-/** A method is a short name such as claude.ai or BuilderId, as the protocol’s ID shape allows; anything else is left out. */
-const METHOD_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
+/**
+ * The method names each harness is known to give, so nothing else reaches the host’s status and the event log (#1608).
+ * Claude Code’s authMethod, and Kiro’s accountType: BuilderId as recorded, and the others kiro-cli 3.6.2’s binary
+ * names beside it. A name not listed is left out, as if the CLI hadn’t said.
+ */
+const METHODS = {
+  'claude-code': new Set(['claude.ai', 'oauth_token', 'api_key', 'api_key_helper', 'third_party']),
+  'kiro-cli': new Set(['BuilderId', 'IamIdentityCenter', 'ExternalIdP', 'ApiKey']),
+};
 
 /** How much of a status command’s output is read; theirs are a few hundred bytes. */
 export const STATUS_OUTPUT_CHARS = 64 * 1024;
@@ -37,7 +53,7 @@ export function readClaude(r) {
   const o = json(r.stdout);
   if (r.exit === 1 && o?.loggedIn === false) return { state: 'signed-out' };
   if (r.exit !== 0 || o?.loggedIn !== true) return { state: 'unknown' };
-  return { state: 'signed-in', ...method(o.authMethod), expiresAt: expiry(o.loginExpiresAt) };
+  return { state: 'signed-in', ...method('claude-code', o.authMethod), expiresAt: expiry(o.loginExpiresAt) };
 }
 
 /** Codex’s `codex login status`: exit 0 when signed in, 1 when not; what it prints isn’t read. @param {StatusRun} r @returns {Reading} */
@@ -54,7 +70,7 @@ export function readCodex(r) {
 export function readKiro(r) {
   const o = json(r.stdout);
   if (!o) return { state: 'unknown' };
-  if (r.exit === 0) return { state: 'signed-in', ...method(o.accountType) };
+  if (r.exit === 0) return { state: 'signed-in', ...method('kiro-cli', o.accountType) };
   return { state: r.exit === 1 ? 'signed-out' : 'unknown' };
 }
 
@@ -68,8 +84,8 @@ function json(text) {
   }
 }
 
-/** { method } for a short name, else nothing. @param {unknown} v */
-const method = (v) => (typeof v === 'string' && METHOD_RE.test(v) ? { method: v } : {});
+/** { method } for a name the harness is known to give, else nothing. @param {keyof typeof METHODS} harness @param {unknown} v */
+const method = (harness, v) => (typeof v === 'string' && METHODS[harness].has(v) ? { method: v } : {});
 
 /** When a sign-in runs out, in epoch ms: from an ISO time or a number, else null. @param {unknown} v */
 function expiry(v) {

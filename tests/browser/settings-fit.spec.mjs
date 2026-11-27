@@ -4,6 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -54,11 +55,13 @@ async function settings(page, width, tab) {
 }
 
 /** Where the dialog is, and whether the page scrolls sideways. */
-const placed = (page) =>
-  page.evaluate(() => {
+const placed = async (page) => {
+  const at = await page.evaluate(() => {
     const d = /** @type {Element} */ (document.querySelector('.dialog')).getBoundingClientRect();
-    return { left: d.left, right: d.right, width: innerWidth, sideways: document.documentElement.scrollWidth > innerWidth };
+    return { left: d.left, right: d.right, width: innerWidth };
   });
+  return { ...at, sideways: (await pageWidth(page)) > at.width };
+};
 
 for (const width of [320, 375, 768, 1024, 1280, 1920])
   test(`#1497 at ${width} px Settings is inside the window, and each persona row keeps its host and description readable`, async ({ page }) => {

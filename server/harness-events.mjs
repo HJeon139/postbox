@@ -38,6 +38,7 @@
 // work ledger’s calls, background jobs, the subagents on the ring, the glimpse and the ring’s state. Moved from
 // server/adapters/claude-stream.mjs, which built them for Claude Code alone, while each other adapter built its own.
 
+import { tailText } from '../shared/text-parts.mjs';
 import { HarnessText } from './harness-text.mjs';
 import { byOf, firstSentence, HarnessTools, moveSubagent, SUBAGENT_TOOLS } from './harness-tools.mjs';
 import { describeTool } from './tool-labels.mjs';
@@ -188,7 +189,7 @@ export class HarnessEvents {
   on_tool_output(e) {
     const t = this.st.tools.get(e.id);
     if (!t || t.done || t.quiet || !e.text) return;
-    t.output = `${t.output ?? ''}${e.text}`.slice(-500);
+    t.output = tailText(`${t.output ?? ''}${e.text}`, 500); // never starting inside a character (#1938)
     this.ctx.activity({ id: e.id, label: t.label, state: 'running', detail: t.output, ...byOf(t) });
   }
 

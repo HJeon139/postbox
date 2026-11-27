@@ -4,8 +4,7 @@
 // (askNow), so it warns from the session it runs over, not one before it, and a sign-in the person fixed since is
 // heard (#1608). Each function takes the host manager’s state first (hosts-status.mjs).
 
-import { message, refusesType } from '../../shared/remote-protocol.mjs';
-import { SIGN_IN_STATUS_MS } from './host/daemon-signins.mjs';
+import { message, refusesType, SIGN_IN_STATUS_MS } from '../../shared/remote-protocol.mjs';
 import { need, release } from './hosts-links.mjs';
 import { update } from './hosts-status.mjs';
 
@@ -52,8 +51,8 @@ export function askNow(m, id) {
 
 /**
  * Sends `signins` over the session that welcomed, keeping the host connected while it waits, and keeps the answer,
- * which it resolves to. The last answer stands until a new one comes; a connection lost first leaves it, resolves to
- * null, and the next welcome asks again.
+ * which it resolves to; one the same as the last keeps the last. The last answer stands until a new one comes; a
+ * connection lost first leaves it, resolves to null, and the next welcome asks again.
  * @param {Manager} m @param {string} id @param {any} welcome @returns {Promise<SignIns | null>}
  */
 async function ask(m, id, welcome) {
@@ -67,8 +66,11 @@ async function ask(m, id, welcome) {
     const harnesses = await signed(m, l, found);
     const entry = m.signIns.get(id);
     if (!harnesses || m.closed || !entry || entry.welcome !== welcome) return null;
-    entry.value = { at: m.now(), harnesses };
-    update(m, id);
+    // An answer the same as the last keeps the last, at its first time, so it publishes no new host status (#1608).
+    if (JSON.stringify(entry.value?.harnesses) !== JSON.stringify(harnesses)) {
+      entry.value = { at: m.now(), harnesses };
+      update(m, id);
+    }
     return entry.value;
   } finally {
     release(m, id, why);

@@ -9,8 +9,10 @@ import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { claudeArgs } from '../server/adapters/claude-code-args.mjs';
+import { CodexAdapter, codexSteeringArgs } from '../server/adapters/codex.mjs';
 import { checkoutSteering, withSteering } from '../server/adapters/steering.mjs';
 import { remoteCtx, starts } from './claude-code-remote-fixture.mjs';
+import { fakeAppServer } from './codex-fixture.mjs';
 import { createFakeDaemon, fixtureLines } from './fake-daemon.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -163,4 +165,59 @@ test('#319 a turn on a host is given none: its folder is the host’s, and this 
   const [start] = starts(d);
   const settings = JSON.parse(start.argv[start.argv.indexOf('--settings') + 1]);
   assert.equal(settings.claudeMdExcludes, undefined, JSON.stringify(settings));
+});
+
+// Codex (#319): it loads AGENTS.md from the nearest folder holding a root marker down to its working folder, `.git` by
+// default (Codex 0.167.0, `project_root_markers`). Measured without a model turn (thread/start’s instructionSources):
+// with `postbox.lock`, which Postbox keeps in its data folder, as a marker too, an agent in the data folder loads the
+// data folder’s and its own AGENTS.md and not the checkout’s, and the checkout itself still loads it.
+
+test('#319 Codex: an agent in the data folder inside a clone stops its AGENTS.md walk at the data folder', () => {
+  const { checkout, data } = clone();
+  for (const folder of [join(data, 'workspaces', 'dev'), join(data, 'research')])
+    assert.deepEqual(codexSteeringArgs(folder, data), ['-c', 'project_root_markers=[".git","postbox.lock"]'], folder);
+  assert.deepEqual(codexSteeringArgs(checkout, data), [], 'the checkout itself keeps its rules');
+  assert.deepEqual(codexSteeringArgs(join(checkout, 'server'), data), []);
+});
+
+test('#319 Codex: a data folder in no repository, or a project under the clone’s data/ while the data folder is elsewhere, is left as it is', () => {
+  const { data } = clone();
+  const home = tempDir('pb-steering-home-');
+  mkdirSync(join(home, 'workspaces', 'dev'), { recursive: true });
+  assert.deepEqual(codexSteeringArgs(join(home, 'workspaces', 'dev'), home), []);
+  // The person’s decision of 27 November: a project folder in <clone>/data is left alone when the data folder isn’t it.
+  assert.deepEqual(codexSteeringArgs(join(data, 'research'), home), []);
+});
+
+test('#319 Codex: a turn in the data folder inside a clone starts the app-server with the data folder as a root', async () => {
+  const { data } = clone();
+  // An agent with no folder, in a workspace, and one whose project is in the data folder (the issue’s own case).
+  for (const project of [null, { folder: join(data, 'research') }]) {
+    /** @type {string[][]} */
+    const seen = [];
+    const adapter = new CodexAdapter({
+      workRoot: join(data, 'workspaces'),
+      spawnImpl: (_bin, args) => {
+        seen.push(args);
+        return fakeAppServer([]);
+      },
+    });
+    const ctx = {
+      persona: { handle: 'dev', model: 'gpt-5.6-terra', effort: 'medium', permissionMode: 'acceptEdits' },
+      project,
+      handles: ['dev'],
+      state: {},
+      signal: new AbortController().signal,
+      mcpUrl: 'http://127.0.0.1:1/mcp?session=s1',
+      text: () => {},
+      activity: () => {},
+      status: () => {},
+      saveState: () => {},
+      checkpoint: () => {},
+      pathOf: () => null,
+    };
+    await adapter.deliver({}, { kind: 'user', text: 'Say hello.' }, ctx);
+    const i = seen[0].indexOf('project_root_markers=[".git","postbox.lock"]');
+    assert.ok(i > 0 && seen[0][i - 1] === '-c', `${JSON.stringify(project)}: ${seen[0].join(' ')}`);
+  }
 });

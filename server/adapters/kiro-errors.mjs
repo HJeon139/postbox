@@ -1,6 +1,6 @@
 // Kiro turn failures: readable exit text and a structured network cause for scheduled-wake recovery (#466, #467).
 
-import { cutText } from '../../shared/text-parts.mjs';
+import { cleanTail } from '../../shared/text-parts.mjs';
 import { NETWORK_CODES } from '../harness-failure.mjs';
 
 /** The first of the classifier’s network codes in a text, such as Kiro’s “read EADDRNOTAVAIL”. @param {string} text */
@@ -22,7 +22,8 @@ export function kiroExitError(code, stderr = '') {
     return 'An MCP server didn’t start, so Kiro didn’t run the turn. Check that Postbox is reachable, and your own servers if this persona loads them.';
   if (code === 4) return 'Kiro couldn’t find the agent Postbox wrote for this turn.';
   // Kiro logs a lot at INFO on stderr; the lines that aren’t say what went wrong.
-  const why = cutText(
+  // Cleaned as a CLI’s words are, and their end, where the newest words are (#1938).
+  const why = cleanTail(
     String(stderr)
       .split('\n')
       .filter((line) => line.trim() && !/^\[INFO\]|ExperimentalWarning|--trace-warnings/.test(line))

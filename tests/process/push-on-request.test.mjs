@@ -147,3 +147,13 @@ test('#562’s review: a repository planted where Postbox makes its own is never
   assert.equal(await pushPlan(r.work, { branch: null }), null, 'a FIFO is no HEAD, and reading it doesn’t hang');
   assert.equal(await pushPlan(join(r.work, 'sub'), { branch: 'feat/now' }), null, 'no walking up out of the agent’s folder');
 });
+
+test('#1938 what the remote said when it refused Postbox’s push is cleaned before the error quotes it', async () => {
+  const r = await repo();
+  const hook = "#!/bin/sh\nprintf 'banner: \\342\\200\\256detaf\\342\\200\\254 the host is down\\n' >&2\nexit 1\n";
+  await writeFile(join(r.remote, 'hooks', 'pre-receive'), hook, { mode: 0o755 });
+  const refused = await runPush({ url: r.remote, ...(await pushPlan(r.work, { branch: 'feat/now' })) });
+  assert.equal(refused.ok, false);
+  assert.match(refused.error, /banner: detaf the host is down/);
+  assert.doesNotMatch(refused.error, /[\u202A-\u202E]|\p{Cc}/u);
+});
