@@ -3,8 +3,8 @@
 // (tests/browser/text-layout.mjs) and the UAT runner’s check of each whole-window screenshot (tools/uat/layout-probe.mjs,
 // tools/uat/checks-view.mjs) fail, at 375 and 1280 px; on a clean page, and on Postbox’s own screens, both pass: its
 // first screen, a long room whose items off screen are skipped, a finished turn’s folded steps, a topic thread’s first
-// message faded out above Show all, and Jump to latest over the transcript. A running step’s long output, which its box cuts off at the end, is
-// reported.
+// message faded out above Show all, Jump to latest over the transcript, and a running step’s long output, which
+// shows its last line (#1944).
 
 import { expect, test } from '@playwright/test';
 import { TEXT_LAYOUT } from '../../tools/text-layout.mjs';
@@ -189,12 +189,11 @@ for (const width of [375, 1280]) {
     await expectTidyText(page, 'a finished turn’s folded steps');
   });
 
-  // The step keeps the end of what the call returned, but its box clamps it from the top, so the last lines are the
-  // ones hidden (#1944): a defect the check finds on a real screen, kept here as one until the clamp keeps the end in
-  // view.
-  test(`#681 at ${width} px a running step’s long output, cut off at its end, is reported`, async ({ page }) => {
+  // The step keeps the end of what the call returned (stepOutput, server/step-text.mjs), and its box shows that end: it
+  // scrolls, anchored to its last line, so the newest lines are the ones in view (#1944).
+  test(`#681 at ${width} px a running step’s long output shows its last line and passes the check`, async ({ page }) => {
     const who = `runner${width}`;
-    const t = scripted.room(`Clamped output at ${width}`, [who]);
+    const t = scripted.room(`Long output at ${width}`, [who]);
     scripted.scripts.set(who, async ({ emit }) => {
       emit({ kind: 'tool_call', id: 'b1', name: 'Bash', input: { command: 'npm test' }, final: true });
       emit({ kind: 'tool_result', id: 'b1', text: OUTPUT });
@@ -207,13 +206,11 @@ for (const width of [375, 1280]) {
     await expect.poll(() => scripted.at(who)).toBe(1);
     const output = page.locator('.live-steps .step-output');
     await expect(output).toContainText('test 30 passed');
-    expect(await output.evaluate((el) => el.scrollHeight > el.clientHeight + 10), 'the output is clamped').toBe(true);
-    const found = await textLayout(page);
-    expect(
-      found.map((p) => p.code),
-      'the step’s cut-off output',
-    ).toEqual(['text-cut-off']);
-    expect(found[0].message).toContain('span.step-output');
+    expect(await output.evaluate((el) => el.scrollHeight > el.clientHeight + 10), 'the output is longer than its box').toBe(true);
+    expect(await output.evaluate(lastLineShows), 'its last line is in view').toBe(true);
+    await expect(output, 'a keyboard reaches it, by name').toHaveAttribute('aria-label', /^Output of /);
+    await expect(output).toHaveAttribute('tabindex', '0');
+    await expectTidyText(page, 'a running step’s long output');
     scripted.go(who);
     await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
   });
@@ -270,6 +267,16 @@ test('#681 the check leaves the page’s animation frames its own while it measu
   })()`);
   expect(own, 'requestAnimationFrame is the page’s own while the check runs, and after').toBe(true);
 });
+
+/** Whether the last line of a box’s text is inside what the box shows. @param {Element} el */
+function lastLineShows(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const lines = [...range.getClientRects()];
+  const last = lines[lines.length - 1];
+  const box = el.getBoundingClientRect();
+  return Boolean(last) && last.top >= box.top - 1 && last.bottom <= box.bottom + 1;
+}
 
 const OUTPUT = Array.from({ length: 30 }, (_, i) => `test ${i + 1} passed in 0.${i} s`).join('\n');
 const ROOT = [
