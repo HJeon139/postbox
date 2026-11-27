@@ -79,9 +79,9 @@ export function keepsCard(rts, it) {
  * Postbox gives up on a session’s turn on its host when nothing here is running it to Stop: one waiting to be
  * attached again (after a restart, or after its link gave up), and a resume waiting for the host. Delete and
  * removing the host call it, after Stop, so nothing attaches or resumes for a conversation deleted or a host Postbox
- * no longer knows. A wake that turn was retries or stops (retryHostWake, #466). The host turn is asked to stop (the daemon stops it as a whole), now if the host is
- * connected, else at its next welcome; it’s in state `stopping`, not `done`, until the daemon confirms it (askStop).
- * Its cards can’t be answered any more. Returns whether there was a turn on the host to give up on.
+ * no longer knows. A wake that turn was retries or stops (retryHostWake, #466). The host turn is asked to stop (the
+ * daemon stops it as a whole), now if the host is connected, else at its next welcome; it’s in state `stopping`, not
+ * `done`, until the daemon confirms it (askStop). Its cards can’t be answered any more. Returns whether there was a turn on the host to give up on.
  * @param {RemoteTurns} rts @param {string} sessionId
  */
 export function cancel(rts, sessionId) {
