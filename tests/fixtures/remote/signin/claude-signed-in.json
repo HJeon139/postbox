@@ -4,6 +4,6 @@
   "command": ["claude", "auth", "status"],
   "config": "signed in as the recording computer was",
   "exit": 0,
-  "stdout": "{\n  \"loggedIn\": true,\n  \"authMethod\": \"claude.ai\",\n  \"apiProvider\": \"firstParty\",\n  \"analyticsDisabled\": false,\n  \"projectsDirectory\": \"/home/someone/.claude/projects\",\n  \"configDirectory\": \"/home/someone/.claude\",\n  \"loginExpiresAt\": \"2026-12-06T02:42:14.007Z\",\n  \"email\": \"robin@example.com\",\n  \"orgId\": \"00000000-0000-4000-8000-000000000000\",\n  \"orgName\": \"Robin Example’s Organization\",\n  \"subscriptionType\": \"max\"\n}\n",
+  "stdout": "{\n  \"loggedIn\": true,\n  \"authMethod\": \"claude.ai\",\n  \"apiProvider\": \"firstParty\",\n  \"analyticsDisabled\": false,\n  \"projectsDirectory\": \"/home/someone/.claude/projects\",\n  \"configDirectory\": \"/home/someone/.claude\",\n  \"loginExpiresAt\": \"2026-12-01T00:00:00.000Z\",\n  \"email\": \"robin@example.com\",\n  \"orgId\": \"00000000-0000-4000-8000-000000000000\",\n  \"orgName\": \"Robin Example’s Organization\",\n  \"subscriptionType\": \"pro\"\n}\n",
   "stderr": ""
 }

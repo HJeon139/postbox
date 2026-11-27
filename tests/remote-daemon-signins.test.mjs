@@ -33,11 +33,11 @@ test('signins: each found harness’s status command runs as an argument list wi
     for (const call of sp.calls) void sp.play(call, 'signed-in');
     const signed = await c.msgs.next('signed');
     assert.deepEqual(signed.harnesses, [
-      { name: 'claude-code', state: 'signed-in', method: 'claude.ai', expiresAt: Date.parse('2026-12-06T02:42:14.007Z') },
+      { name: 'claude-code', state: 'signed-in', method: 'claude.ai', expiresAt: Date.parse('2026-12-01T00:00:00.000Z') },
       { name: 'kiro-cli', state: 'signed-in', method: 'BuilderId' },
       { name: 'codex', state: 'signed-in' },
     ]);
-    for (const raw of ['robin', 'example.com', 'Organization', '00000000-0000', 'awsapps', 'max', 'firstParty'])
+    for (const raw of ['robin', 'example.com', 'Organization', '00000000-0000', 'awsapps', '"pro"', 'firstParty'])
       assert.ok(!text().includes(raw), `“${raw}” from a command’s output never crosses`);
   } finally {
     await s.done();

@@ -25,7 +25,7 @@ test('each harness’s status command is the one recorded, without its program',
 
 test('Claude Code signed in keeps its method and when it runs out, and nothing else of the output', () => {
   const r = readClaude(run('claude-signed-in'));
-  assert.deepEqual(r, { state: 'signed-in', method: 'claude.ai', expiresAt: Date.parse('2026-12-06T02:42:14.007Z') });
+  assert.deepEqual(r, { state: 'signed-in', method: 'claude.ai', expiresAt: Date.parse('2026-12-01T00:00:00.000Z') });
 });
 
 test('Claude Code with an empty config folder is signed out', () => {
@@ -65,4 +65,15 @@ test('a method that isn’t a short name, or a time that isn’t one, is left ou
   assert.deepEqual(readClaude({ exit: 0, stdout: odd }), { state: 'signed-in', expiresAt: null });
   const kiro = JSON.parse(run('kiro-signed-in').stdout);
   assert.deepEqual(readKiro({ exit: 0, stdout: JSON.stringify({ ...kiro, accountType: kiro.startUrl }) }), { state: 'signed-in' });
+});
+
+test('a method name no harness is known to give is left out, so only known names reach the event log', () => {
+  const claude = JSON.parse(run('claude-signed-in').stdout);
+  for (const authMethod of ['claude.ai', 'oauth_token', 'api_key', 'api_key_helper', 'third_party'])
+    assert.equal(readClaude({ exit: 0, stdout: JSON.stringify({ ...claude, authMethod }) }).method, authMethod, authMethod);
+  assert.equal(Object.hasOwn(readClaude({ exit: 0, stdout: JSON.stringify({ ...claude, authMethod: 'Robin_Example' }) }), 'method'), false);
+  const kiro = JSON.parse(run('kiro-signed-in').stdout);
+  for (const accountType of ['BuilderId', 'IamIdentityCenter', 'ExternalIdP', 'ApiKey'])
+    assert.equal(readKiro({ exit: 0, stdout: JSON.stringify({ ...kiro, accountType }) }).method, accountType, accountType);
+  assert.deepEqual(readKiro({ exit: 0, stdout: JSON.stringify({ ...kiro, accountType: 'claude.ai' }) }), { state: 'signed-in' }, 'another harness’s name');
 });

@@ -23,7 +23,7 @@ export const HEARD_EVERY_MS = 10_000;
  *   signIns: what the host last said of each harness’s sign-in, null before it first said (hosts-signins.mjs, #1608).
  * @typedef {{ at: number, harnesses: { name: string, state: import('../../shared/remote-protocol.mjs').SignInState,
  *   method?: string, expiresAt?: number | null }[] }} SignIns
- *   at: when the host answered, on this laptop’s clock. harnesses: one per harness its welcome found.
+ *   at: when the host first gave this answer, on this laptop’s clock: the same answer again keeps it. harnesses: one per harness its welcome found.
  * @typedef {{ ok: boolean, code: number | null, at: number }} SignInCheck
  * @typedef {{ link: HostLink, name: string, token: string, idleTimer: any, sent: string[] | null, session: string[] | null }} Entry
  *   sent: the signInCheck the last session opened sent in hello; session: the one the current session sent.
