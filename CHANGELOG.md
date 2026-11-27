@@ -2,6 +2,45 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.3.0 (2026-11-27)
+
+### Features
+
+- **apps:** tell only the agent of labels over a chart's marks, as the person chose
+
+### Fixes
+
+- **kit:** a line chart with no points draws its empty grid again
+- **kit:** keep a line chart with no series on its grid, and test the cap
+- **kit:** draw a line chart's x labels whole, spaced by their width
+- **apps:** test a one-path grid by its subpaths, so a long path can't make the regex backtrack
+- **kit:** let a part that takes focus itself open a comment on a click
+- **kit:** give a line chart's end and axis labels the room they take
+- **kit:** measure chart labels as they're drawn, tabular figures included
+- **apps:** name hints beside an unfinished check in the waiting reply, and test a rotated label
+- **apps:** cap labels over marks at three charts, and drop the false finds the integrator found
+- **kit:** open a review comment on a click anywhere in a highlighted part
+- **kit:** make room for long category labels on bar charts and heatmaps
+- **apps:** keep the version button on the current version after Back
+- **review:** send a comment typed in an open box with Submit review
+- **apps:** keep hints from crowding out findings, tell them once, and off an unfinished check's note
+- **apps:** a node's name is the label centered in it, so a small area chart's value still counts
+- **apps:** let a rounded box drawn as a path be a node, and scale the label band vertically
+- **apps:** size the label's tested band by its font, and keep area charts out of nodes
+- **apps:** test the middle of a label, and let a node's name sit in its node, for text over marks
+- **apps:** read only a clip the check can place, and count a ring scatter as a chart
+- **apps:** catch labels on a chart's straight fit line, and keep the check within its time
+- **apps:** warn the agent of chart labels drawn over the chart's dots and lines
+
+## 5.2.1 (2026-11-27)
+
+### Fixes
+
+- **app:** a long project name wraps in its page's header too
+- **permissions:** keep room for a rule's source beside a long tool list
+- **project:** wrap a long folder on the project's page
+- **apps:** bring back a review's app after another app's check while its own item is unloaded
+
 ## 5.2.0 (2026-11-27)
 
 ### Features

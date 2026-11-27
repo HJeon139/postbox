@@ -23,7 +23,6 @@ test('#1721 a reply whose questions are for an agent it @-mentions gets no form 
   const { rt, store, t, adapter } = setup();
   const lead = rt.createPersona({ handle: 'lead' });
   rt.ensureSession(t.id, lead.id);
-  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
   const se = Object.values(store.state.sessions).find((s) => s.handle === 'lead' && s.threadId === t.id);
   adapter.next.push(async (c) => c.text(review('@critic')));
   rt.sendMessage(t.id, { text: '@lead hand the rework to critic' });

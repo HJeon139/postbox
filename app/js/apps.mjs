@@ -442,11 +442,12 @@ const shownVersion = (app, review = false) => viewing.get(app.id) ?? (standsIn(a
 /**
  * Renders an app (current or viewed version) into `container`. Used by transcript items and app reviews.
  * @param {HTMLElement} container @param {string} appId
- * @param {{ review?: boolean, onPin?: (anchor: string) => void, onBack?: () => void, onAnchors?: (names: string[]) => void }} [opts]
- *   onAnchors hears the parts the app names for comments, none included, once its page has loaded (#855)
+ * @param {{ review?: boolean, onPin?: (anchor: string) => void, onBack?: () => void, onLatest?: () => void, onAnchors?: (names: string[]) => void }} [opts]
+ *   onAnchors hears the parts the app names for comments, none included, once its page has loaded (#855); onLatest
+ *   draws the app’s item again on “Back to” the current version, so its version button and menu say it too
  */
 export function mountApp(container, appId, opts = {}) {
-  const { review = false, onPin, onBack, onAnchors } = opts;
+  const { review = false, onPin, onBack, onLatest, onAnchors } = opts;
   const app = client.state.apps[appId];
   if (!app) {
     container.replaceChildren(h('p.small.dim', 'This app isn’t available any more.'));
@@ -539,7 +540,7 @@ export function mountApp(container, appId, opts = {}) {
               hidden: !!app.retired && !onBack,
               onclick: () => {
                 viewing.delete(appId);
-                (onBack ?? (() => mountApp(container, appId, opts)))();
+                (onBack ?? onLatest ?? (() => mountApp(container, appId, opts)))();
               },
             },
             onBack ? 'Close' : `Back to v${app.current}`,
@@ -612,7 +613,12 @@ export function renderAppItem(item, ctx) {
     ctx.rerender();
     document.querySelector(`[data-key="${CSS.escape(item.id)}"] .app-retired [aria-haspopup]`)?.focus();
   };
-  mountApp(holder, app.id, app.retired ? { onBack: back } : {});
+  // Back to the current version draws the item again, with focus on its version button, where the menu would leave it.
+  const latest = () => {
+    ctx.rerender();
+    document.querySelector(`[data-key="${CSS.escape(item.id)}"] .app-bar [aria-haspopup]`)?.focus({ preventScroll: true });
+  };
+  mountApp(holder, app.id, app.retired ? { onBack: back } : { onLatest: latest });
   // Re-rendered while full screen (another version, say): the new box takes the old one’s place.
   // (Only a re-render: the old box is still on the page. Coming back to the conversation later starts in the column.)
   if (full && !full.overlay.isConnected) exitFull({ focus: false });

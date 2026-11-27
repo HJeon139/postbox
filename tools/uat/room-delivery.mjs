@@ -63,9 +63,9 @@ const ownOf = (card) => ({ fromSessionId: card.fromSessionId, from: card.from, t
  * Each card’s history from the events: the card as added, the statuses it went through, when it was settled (null
  * while open), and every wake held on it, with whether a later patch took it off while the card was still open, and
  * that patch’s place across the run’s epochs (removedAt, placeOf), for what happened around it.
- * Retiring a card sends its own wake and those held on it on (server/wake-cards.mjs’s retireStale), and one that
- * still needs a card raises the next card, or is held on it: movedTo names the card that took a wake over, and
- * movedFrom the card it came from, its own wake’s (own) as a held one’s.
+ * In runs from before #1623, retiring a card sent its own wake and those held on it on, and one that still needed a
+ * card raised the next card, or was held on it: movedTo names the card that took a wake over, and movedFrom the card it
+ * came from, its own wake’s (own) as a held one’s. Postbox now closes a card only when its asker is stopped or removed, and moves no wake, so a run of today moves none.
  * @param {any[]} events
  */
 export function cardHistory(events) {

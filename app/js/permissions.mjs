@@ -527,7 +527,6 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     sub: t ? `In “${t.title}”` : 'Its rules, in the folder of its latest conversation',
     body: [body],
     size: 'lg',
-    initialFocus: () => body.querySelector('[role="radio"][aria-checked="true"], button, input'),
   });
   paint();
   void load().then(() => {

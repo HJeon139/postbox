@@ -2,7 +2,6 @@
 // the store’s status, and the configuration the page reads once.
 
 import { pageInbox } from '../shared/inbox-page.mjs';
-import { HOP_LIMIT } from '../shared/limits.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { liveSnapshots } from './live-buffer.mjs';
 import { publicHeaders, publicLive, publicState } from './public-state.mjs';
@@ -41,9 +40,6 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, hea
       effortLevels: EFFORT_LEVELS,
       defaultEffort: DEFAULT_EFFORT,
       permissionModes: PERMISSION_MODES,
-      // The server’s wake chain limit for a room with none of its own (#1035): the browser’s shared/limits.mjs knows
-      // only the default, not POSTBOX_CHAIN_LIMIT.
-      defaultChainLimit: HOP_LIMIT,
       demo,
       // Whether Postbox looked for real backends, and the Claude Code it found: if none, the overview says how (#12).
       realBackends: real,

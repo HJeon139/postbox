@@ -73,6 +73,19 @@ test('a reply links the room’s assets and changed files it names, and nothing 
   await expect(reply(page).locator('a', { hasText: 'nothing.md' })).toHaveCount(0);
 });
 
+test('an asset named inside a glossary term’s text stays text, so no link sits in the focusable term', async ({ page }) => {
+  const se = arrange.sessionsIn(app.rt, conv.id)[0];
+  arrange.post(app.rt, conv.id, {
+    ...{ kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, status: 'done' },
+    text: `Terms: [the plan in \`notes/plan.md\`](term:plan) and [the picture ${ids.dot}](term:pic), and plainly ${ids.dot}.`,
+  });
+  await open(page, '');
+  const terms = page.locator('.transcript .md').filter({ hasText: 'Terms:' });
+  await expect(terms.locator('.term'), 'both terms').toHaveCount(2);
+  await expect(terms.locator('.term a'), 'no link in a term').toHaveCount(0);
+  await expect(terms.locator('a.room-ref'), 'the plain id outside the terms is still a link').toHaveCount(1);
+});
+
 test('a link opens the asset in the pane, Markdown drawn, and Back returns to the lists', async ({ page }) => {
   await open(page, '');
   await reply(page).getByRole('link', { name: 'notes/plan.md' }).click();

@@ -1,11 +1,13 @@
-// POSTBOX_CHAIN_LIMIT (#508, tests/uat-chain-limit.test.mjs): the server’s default chain limit. A Postbox started under
-// it enforces that limit in a room with none of its own, and tells agents that number; a room set to its own (#1035)
-// keeps it. Without the variable, the default is 1,000 (#1035); with a value that isn’t a whole number from 1 to 10,000,
-// it refuses to start. Each case is a process of its own, since the module reads the variable once, when it loads.
+// The wake chain’s loop guard (#1623; designs/intent.md, principle 6), in a real Postbox. POSTBOX_CHAIN_LIMIT (#508)
+// sets the cap of agent wakes in a row without the person, 1,000 unless set. Two mock agents that ask each other to
+// check “in a loop” (server/adapters/mock.mjs, @indexer and @researcher) stop at the cap: the room shows one line, and
+// there’s no card, no need and no notification. With a value that isn’t a whole number from 1 to 10,000, Postbox refuses
+// to start. Each case is a process of its own, since shared/limits.mjs reads the variable once, when it loads.
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
@@ -16,12 +18,12 @@ const dir = mkdtempSync(join(tmpdir(), 'pb-chain-limit-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 /** Runs a module script in a Node process at ROOT, with POSTBOX_CHAIN_LIMIT set or not. */
-function node(args, env, { input } = {}) {
+function node(args, env) {
   return new Promise((resolve) => {
     const p = spawn(process.execPath, args, {
       cwd: ROOT,
       env: { PATH: process.env.PATH, HOME: dir, ...env },
-      stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
     let err = '';
@@ -31,67 +33,93 @@ function node(args, env, { input } = {}) {
     p.stderr.on('data', (d) => {
       err += d;
     });
-    const timer = setTimeout(() => p.kill('SIGKILL'), 30_000);
+    const timer = setTimeout(() => p.kill('SIGKILL'), 60_000);
     p.on('exit', (code) => {
       clearTimeout(timer);
       resolve({ code, out, err });
     });
-    if (input) p.stdin.end(input);
   });
 }
 
-// Wakes between two agents in a room with nothing set (four), and in a room set to 8 (nine): what the limit does with
-// each, as a line of JSON.
-const CHAIN = `
+/** A port nothing listens on now, for the Postbox a script starts. */
+const freePort = () =>
+  new Promise((resolve) => {
+    const s = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = /** @type {any} */ (s.address());
+      s.close(() => resolve(port));
+    });
+  });
+
+// A Postbox listening on its port, with the mock backend: the person asks @indexer, over HTTP with the page’s token, to
+// check with @researcher in a loop, and the script waits until no turn runs. What the room holds then, as a line of JSON.
+const LOOP = `
+import { start } from './server/index.mjs';
 import { HOP_LIMIT } from './shared/limits.mjs';
-import { roomText } from './server/adapters/guide.mjs';
-import * as arrange from './tests/arrange.mjs';
-import { setup } from './tests/side-threads-fixture.mjs';
-const f = setup();
-const own = f.rt.createThread({ projectId: 'p1', title: 'Own', personaIds: [f.a.id, f.b.id] });
-arrange.setThread(f.rt, own.id, { chainLimit: 8 });
-const wakes = (threadId, n) => {
-  const [alpha, beta] = arrange.sessionsIn(f.rt, threadId);
-  const results = [];
-  for (let i = 0; i < n; i++) {
-    const [from, to] = i % 2 ? [beta, 'alpha'] : [alpha, 'beta'];
-    results.push(f.rt.agentWake(from.id, to, 'hand-off ' + (i + 1)).waiting === true);
-  }
-  return { waiting: results, n: f.store.items(threadId).find((x) => x.kind === 'hop')?.n ?? null };
-};
-const told = roomText([{ handle: 'beta', role: '' }]).match(/the room’s chain limit of agent wakes in one chain \\(([\\d,]+) unless the person set another\\)/)?.[1];
-console.log(JSON.stringify({ HOP_LIMIT, unset: wakes(f.t.id, 4), own: wakes(own.id, 9), told }));
+const { LOOP_PORT: port, LOOP_DATA: data } = process.env;
+const app = await start({ port: Number(port), dataDir: data, fresh: true, quiet: true, claudeHome: data });
+const { rt, store } = app;
+store.emit('project', { id: 'p1', name: 'Loop', folder: data });
+// The mock agents a fresh Postbox starts with, or new ones of the same handles.
+const ids = ['indexer', 'researcher'].map((handle) => (rt.personas.byHandle(handle) ?? rt.createPersona({ handle, backend: 'mock', permissionMode: 'auto', tools: [] })).id);
+const t = rt.createThread({ projectId: 'p1', title: 'Loop', personaIds: ids });
+const origin = 'http://127.0.0.1:' + port;
+const page = await fetch(origin + '/', { headers: { 'sec-fetch-mode': 'navigate', 'sec-fetch-site': 'none', 'sec-fetch-dest': 'document' } });
+const cookie = page.headers.get('set-cookie').split(';')[0];
+const notified = [];
+// A turn that ends says so (level info); what asks for the person is any other.
+store.subscribe((ev) => ev.type === 'notify' && ev.data.level !== 'info' && notified.push(ev.data));
+const sent = await fetch(origin + '/api/threads/' + t.id + '/messages', {
+  method: 'POST',
+  headers: { cookie, origin, 'content-type': 'application/json' },
+  body: JSON.stringify({ text: '@indexer ping researcher in a loop' }),
+});
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+for (let quiet = 0, i = 0; quiet < 10 && i < 600; i++) {
+  await sleep(50);
+  quiet = rt.turns.size ? 0 : quiet + 1;
+}
+const items = store.items(t.id);
+const sessions = Object.values(store.state.sessions).filter((s) => s.threadId === t.id);
+console.log(JSON.stringify({
+  HOP_LIMIT,
+  sent: sent.status,
+  lines: items.filter((x) => x.kind === 'system' && x.variant === 'chain-stopped').map((x) => x.wakes),
+  cards: items.filter((x) => x.kind === 'hop').length,
+  needs: sessions.filter((s) => s.needs || s.state === 'needs').map((s) => s.handle),
+  notified,
+  turns: items.filter((x) => x.kind === 'agent' && x.handle).map((x) => x.handle),
+}));
+await app.close();
 process.exit(0);
 `;
-const goes = (n) => Array(n).fill(false);
 
-test('under POSTBOX_CHAIN_LIMIT=3 an unset room’s fourth wake waits on a card numbered 4, a room set to 8 asks at its ninth, and the guide says 3', async () => {
-  const r = await node(['--input-type=module', '-e', CHAIN], { POSTBOX_CHAIN_LIMIT: '3' });
+test('#1623 under POSTBOX_CHAIN_LIMIT=3 two agents that loop stop at the cap: one line in the room, no card, no need, nothing that asks for the person', async () => {
+  const env = { LOOP_PORT: String(await freePort()), LOOP_DATA: join(dir, 'loop-3'), POSTBOX_CHAIN_LIMIT: '3', POSTBOX_BACKENDS: 'mock' };
+  const r = await node(['--input-type=module', '-e', LOOP], env);
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(JSON.parse(r.out.trim()), {
-    HOP_LIMIT: 3,
-    unset: { waiting: [...goes(3), true], n: 4 },
-    own: { waiting: [...goes(8), true], n: 9 },
-    told: '3',
-  });
+  const got = JSON.parse(r.out.trim().split('\n').at(-1));
+  assert.equal(got.sent, 201);
+  assert.equal(got.HOP_LIMIT, 3);
+  assert.deepEqual(got.lines, [3], `one line, naming the cap it stopped at: ${JSON.stringify(got)}`);
+  assert.equal(got.cards, 0, 'no card');
+  assert.deepEqual(got.needs, [], 'no one needs the person');
+  assert.deepEqual(got.notified, [], 'no notification that asks for the person');
+  assert.ok(got.turns.length >= 4 && got.turns.length <= 5, `the person’s turn, three wakes and the one the cap stopped: ${got.turns}`);
 });
 
-test('without the variable the default is 1,000: four wakes all go in an unset room, and the guide says 1,000', async () => {
-  const r = await node(['--input-type=module', '-e', CHAIN], {});
+const LIMIT = "import { HOP_LIMIT } from './shared/limits.mjs'; console.log(HOP_LIMIT);";
+
+test('without the variable the cap is 1,000', async () => {
+  const r = await node(['--input-type=module', '-e', LIMIT], {});
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(JSON.parse(r.out.trim()), {
-    HOP_LIMIT: 1000,
-    unset: { waiting: goes(4), n: null },
-    own: { waiting: [...goes(8), true], n: 9 },
-    told: '1,000',
-  });
+  assert.equal(r.out.trim(), '1000');
 });
 
-test('POSTBOX_CHAIN_LIMIT can set the default as high as 10,000, but no higher', async () => {
+test('POSTBOX_CHAIN_LIMIT can set the cap as high as 10,000, but no higher', async () => {
   for (const limit of ['1000', '10000']) {
-    const r = await node(['--input-type=module', '-e', CHAIN], { POSTBOX_CHAIN_LIMIT: limit });
+    const r = await node(['--input-type=module', '-e', LIMIT], { POSTBOX_CHAIN_LIMIT: limit });
     assert.equal(r.code, 0, `${limit}: ${r.err}`);
-    assert.equal(JSON.parse(r.out.trim()).HOP_LIMIT, Number(limit));
+    assert.equal(r.out.trim(), limit);
   }
   const r = await node([join(ROOT, 'server', 'index.mjs'), '--port', '0', '--data', join(dir, 'data-high'), '--fresh'], {
     POSTBOX_CHAIN_LIMIT: '10001',

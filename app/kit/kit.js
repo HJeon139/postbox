@@ -13,6 +13,7 @@
 //                                 --s1…--s8 for series and --seq-* for heatmaps
 //   postbox.narrate(text, { voice, speed })   → Promise<{ url, ms }>, a clip read aloud by Postbox’s local voice
 //   postbox.narration(el, passages, { voice, speed, onPassage })   a player with a transcript that follows along
+//                                 (both in app/kit/narration.js, inlined after this)
 // It also reports size changes and script errors to Postbox, and runs the pre-display check.
 (function () {
   const me = document.currentScript;
@@ -132,6 +133,20 @@
     }
   }
 
+  // In review mode a click anywhere in a highlighted part pins a comment on it, as the review’s hint says, not only a
+  // click on its name tag. A click on one of the app’s own controls in the part still works the app. In nested parts,
+  // the innermost takes it.
+  const CONTROLS = 'a,button,input,select,textarea,label,summary,[tabindex],[contenteditable]';
+  addEventListener('click', (e) => {
+    if (!reviewing || e.defaultPrevented || !(e.target instanceof Element)) return;
+    const hits = Object.entries(anchorMap).filter(([, el]) => el?.isConnected && el.contains(e.target));
+    const inner = hits.find(([, el]) => !hits.some(([, other]) => other !== el && el.contains(other)));
+    const control = e.target.closest(CONTROLS);
+    // A part that takes focus itself, as a card may, isn’t a control inside it.
+    if (!inner || (control && control !== inner[1] && inner[1].contains(control))) return;
+    post({ type: 'pin', anchor: inner[0] });
+  });
+
   // Bundled libraries come from Postbox over the bridge and run as inline scripts. A sandboxed page can’t load
   // files in every browser (the Claude desktop app’s browser pane blocks them), and this way it never has to.
   const libs = {};
@@ -220,6 +235,93 @@
       : `<div class="pb-legend">${items.map(([n, c]) => `<span><i class="${key}" style="background:var(--${c})"></i>${esc(n)}</span>`).join('')}</div>`;
   const path = (pts) => 'M' + pts.map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('L');
   const svg = (w, h, inner, label) => `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">${inner}</svg>`;
+  // Labels measured as the charts draw them: an SVG <text> in a .pb-chart, so it has their font and tabular figures (a
+  // canvas can’t set those, and measured digits too narrow, so a date label was cut). The probe is in the page only
+  // while it measures. A label wider than its room ends in “…” on a whole character, with its full name in a title;
+  // the table view names every one in full.
+  function fitLabels(labels, room) {
+    const box = document.createElement('div');
+    box.className = 'pb-chart';
+    box.style.position = 'absolute';
+    box.style.visibility = 'hidden';
+    const probe = document.createElementNS(_NS, 'text');
+    box.appendChild(document.createElementNS(_NS, 'svg')).appendChild(probe);
+    document.body.appendChild(box);
+    const width = (t) => {
+      probe.textContent = t;
+      return probe.getComputedTextLength();
+    };
+    const dots = width('…');
+    const fitted = labels.map((label) => {
+      const t = String(label);
+      const full = width(t);
+      if (full <= room) return { text: esc(t), w: full };
+      // The longest run of whole characters that fits with its “…”, by a binary search over where each one ends.
+      const ends = [];
+      let at = 0;
+      for (const c of graphemes(t)) ends.push((at += c.length));
+      let lo = 0;
+      let hi = ends.length - 1;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (probe.getSubStringLength(0, ends[mid]) + dots <= room) lo = mid;
+        else hi = mid - 1;
+      }
+      const cut = t.slice(0, ends[lo]) + '…';
+      return { text: `${esc(cut)}<title>${esc(t)}</title>`, w: width(cut) };
+    });
+    box.remove();
+    return fitted;
+  }
+  const graphemes = (t) => (window.Intl?.Segmenter ? [...new Intl.Segmenter().segment(t)].map((x) => x.segment) : Array.from(t));
+  // Room for a chart’s category labels, drawn right-aligned left of its marks: the longest label’s width, up to half
+  // the chart’s, so a long name (a note’s path) never runs off the page’s left edge, which an agent can’t fix in the kit.
+  function labelRoom(labels, w) {
+    const fitted = fitLabels(labels, Math.floor(w / 2) - 10);
+    return { left: Math.ceil(Math.max(0, ...fitted.map((x) => x.w))) + 10, labels: fitted.map((x) => x.text) };
+  }
+  // A line chart’s end labels, each series’ name and last value right of its line: the room the widest takes, up to
+  // 40% of the chart, where a longer name ends in “…” with its full name in a title.
+  function endLabels(series, f, w) {
+    const cap = Math.floor(w * 0.4);
+    const values = fitLabels(
+      series.map((sr) => f(sr.values[sr.values.length - 1])),
+      cap,
+    );
+    const names = series.map((sr, k) => fitLabels([sr.name], cap - 16 - values[k].w)[0]);
+    return { room: Math.ceil(Math.max(14, ...names.map((n, k) => 16 + n.w + values[k].w))), names: names.map((n) => n.text) };
+  }
+  // A line chart’s x labels, each measured whole and centered on its point, kept inside the chart. They’re a step apart,
+  // about five at most, with the last always shown, and the step grows until no two are closer than 8 px. Only a label
+  // that still has no room, beside its neighbors or the chart’s edge, is cut, with its full name in a title.
+  function xLabels(xs, x, w, y0) {
+    const n = xs.length;
+    if (!n) return '';
+    const full = fitLabels(xs, Infinity);
+    const placed = (every) => {
+      const at = [];
+      for (let i = 0; i < n; i += every) at.push(i);
+      if (at[at.length - 1] !== n - 1) at.push(n - 1);
+      const centers = at.map((i) => Math.min(Math.max(x(i), full[i].w / 2 + 1), w - full[i].w / 2 - 1));
+      // How far each label has to its neighbors, past their halves and 8 px apart.
+      const free = at.map((_i, k) => {
+        const left = k ? centers[k] - centers[k - 1] - full[at[k - 1]].w / 2 - 8 : Infinity;
+        const right = k < at.length - 1 ? centers[k + 1] - centers[k] - full[at[k + 1]].w / 2 - 8 : Infinity;
+        return Math.min(left, right, centers[k] - 1, w - 1 - centers[k]);
+      });
+      return { at, centers, free };
+    };
+    let every = Math.max(1, Math.ceil(n / 5));
+    let layout = placed(every);
+    while (every < n - 1 && layout.at.some((i, k) => layout.free[k] < full[i].w / 2)) layout = placed(++every);
+    return layout.at
+      .map((i, k) => {
+        const room = 2 * layout.free[k];
+        const label = full[i].w <= room ? full[i] : fitLabels([xs[i]], room)[0];
+        return `<text x="${layout.centers[k]}" y="${y0}" fill="var(--dim)" text-anchor="middle">${label.text}</text>`;
+      })
+      .join('');
+  }
   const gridY = (ticks, y, x0, x1, f) =>
     ticks
       .map(
@@ -308,22 +410,20 @@
         el,
         (w) => {
           const narrow = w < 420;
-          const m = { l: 40, r: narrow || series.length > 4 ? 14 : 96, t: 8, b: 24 },
+          const ends = narrow || series.length > 4 ? null : endLabels(series, f, w);
+          const m = { l: 40, r: ends ? ends.room : 14, t: 8, b: 24 },
             h = spec.height || 220;
           const x = scale(0, xs.length - 1, m.l, w - m.r),
             y = scale(0, max, h - m.b, m.t);
           let s = gridY(niceTicks(max, 4), y, m.l, w - m.r, f);
-          xs.forEach((v, i) => {
-            if (i % Math.ceil(xs.length / 5) === 0 || i === xs.length - 1)
-              s += `<text x="${x(i)}" y="${h - 6}" fill="var(--dim)" text-anchor="middle">${esc(v)}</text>`;
-          });
-          for (const sr of series) {
+          s += xLabels(xs, x, w, h - 6);
+          series.forEach((sr, k) => {
             s += `<path d="${path(sr.values.map((v, i) => [x(i), y(v)]))}" fill="none" stroke="var(--${sr.color})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
             const last = sr.values[sr.values.length - 1];
             s += ring(x(xs.length - 1), y(last), sr.color);
-            if (m.r > 20)
-              s += `<text x="${x(xs.length - 1) + 8}" y="${y(last)}" dominant-baseline="middle" fill="var(--text)">${esc(sr.name)} <tspan fill="var(--dim)">${f(last)}</tspan></text>`;
-          }
+            if (ends)
+              s += `<text x="${x(xs.length - 1) + 8}" y="${y(last)}" dominant-baseline="middle" fill="var(--text)">${ends.names[k]} <tspan fill="var(--dim)">${f(last)}</tspan></text>`;
+          });
           return (
             legend(
               series.map((sr) => [sr.name, sr.color]),
@@ -369,7 +469,8 @@
       mount(
         el,
         (w) => {
-          const m = { l: 100, r: 48, t: 4, b: 22 },
+          const room = labelRoom(cats, w);
+          const m = { l: room.left, r: 48, t: 4, b: 22 },
             row = 34,
             bar = 20,
             h = m.t + cats.length * row + m.b;
@@ -380,9 +481,9 @@
                 `<line x1="${x(t)}" x2="${x(t)}" y1="${m.t}" y2="${h - m.b}" stroke="var(--line)"/><text x="${x(t)}" y="${h - 6}" fill="var(--dim)" text-anchor="middle">${fmt(t)}${spec.percent === false ? '' : '%'}</text>`,
             )
             .join('');
-          cats.forEach((c, i) => {
+          cats.forEach((_c, i) => {
             const y0 = m.t + i * row + (row - bar) / 2;
-            s += `<text x="${m.l - 8}" y="${y0 + bar / 2}" fill="var(--text)" text-anchor="end" dominant-baseline="middle">${esc(c)}</text>`;
+            s += `<text x="${m.l - 8}" y="${y0 + bar / 2}" fill="var(--text)" text-anchor="end" dominant-baseline="middle">${room.labels[i]}</text>`;
             let acc = 0;
             series.forEach((sr, k) => {
               const v = spec.percent === false ? sr.values[i] : (sr.values[i] / totals[i]) * 100;
@@ -418,7 +519,8 @@
       mount(
         el,
         (w) => {
-          const m = { l: 92, r: 4, t: 18, b: 4 },
+          const room = labelRoom(spec.rows, w);
+          const m = { l: room.left, r: 4, t: 18, b: 4 },
             cw = (w - m.l - m.r) / spec.cols.length,
             ch = 26,
             h = m.t + spec.rows.length * ch + m.b;
@@ -428,7 +530,7 @@
             .map((c, j) => (j % every ? '' : `<text x="${m.l + j * cw + cw / 2}" y="10" fill="var(--dim)" text-anchor="middle">${esc(c)}</text>`))
             .join('');
           spec.rows.forEach((r, i) => {
-            s += `<text x="${m.l - 8}" y="${m.t + i * ch + ch / 2}" fill="var(--text)" text-anchor="end" dominant-baseline="middle">${esc(r)}</text>`;
+            s += `<text x="${m.l - 8}" y="${m.t + i * ch + ch / 2}" fill="var(--text)" text-anchor="end" dominant-baseline="middle">${room.labels[i]}</text>`;
             spec.values[i].forEach((v, j) => {
               s += `<rect x="${m.l + j * cw + 1}" y="${m.t + i * ch + 1}" width="${cw - 2}" height="${ch - 2}" rx="3" fill="var(--seq-${step(v)})"><title>${esc(r)} · ${esc(spec.cols[j])}: ${v}</title></rect>`;
             });
@@ -447,113 +549,4 @@
     },
   };
   window.postbox.charts = charts;
-
-  // ── Narration ─────────────────────────────────────────────────────────────────────────
-  // Needs the narrate.speak permission (and its agent needs the tool). Audio is made on the host by a local
-  // Kokoro voice, one passage at a time, and only when you press Play, so the pre-display check makes none.
-  const clipCache = new Map();
-  async function narrate(text, opts = {}) {
-    const key = `${opts.voice || ''}|${opts.speed || 1}|${text}`;
-    if (!clipCache.has(key)) {
-      clipCache.set(
-        key,
-        call('query', { tool: 'narrate.speak', args: { text, voice: opts.voice, speed: opts.speed } }).then((r) => {
-          const bytes = Uint8Array.from(atob(r.wav), (c) => c.charCodeAt(0));
-          return { url: URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' })), ms: r.ms };
-        }),
-      );
-      clipCache.get(key).catch(() => clipCache.delete(key));
-    }
-    return clipCache.get(key);
-  }
-  narrStyle();
-  function narrStyle() {
-    const st = document.createElement('style');
-    st.textContent = `.pb-narr{display:flex;flex-direction:column;gap:10px}.pb-narr-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-      .pb-narr-status{font-size:12px;color:var(--dim)}.pb-narr ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
-      .pb-narr li button{all:unset;box-sizing:border-box;display:block;width:100%;padding:6px 10px;border-radius:6px;border-left:3px solid transparent;color:var(--dim);cursor:pointer;line-height:1.45}
-      .pb-narr li button:hover{background:var(--chip)}.pb-narr li button:focus-visible{outline:2px solid var(--focus,var(--accent));outline-offset:1px}
-      .pb-narr li button[aria-current="true"]{color:var(--text);background:var(--sunk);border-left-color:var(--accent)}`;
-    document.head.appendChild(st);
-  }
-  function narration(el, passages, opts = {}) {
-    const list = (passages || []).map((p, i) =>
-      typeof p === 'string' ? { id: `p${i + 1}`, text: p } : { id: p.id || `p${i + 1}`, text: String(p.text || '') },
-    );
-    const make = (tag, cls, text) => {
-      const n = document.createElement(tag);
-      if (cls) n.className = cls;
-      if (text != null) n.textContent = text;
-      return n;
-    };
-    const root = make('div', 'pb-narr');
-    const bar = make('div', 'pb-narr-bar');
-    const btn = make('button', 'btn', 'Play');
-    btn.type = 'button';
-    const status = make('span', 'pb-narr-status', `${list.length} passage${list.length === 1 ? '' : 's'} · read aloud by a local voice`);
-    status.setAttribute('role', 'status');
-    bar.append(btn, status);
-    const ol = make('ol');
-    ol.setAttribute('aria-label', opts.label || 'Transcript');
-    const items = list.map((p, i) => {
-      const li = make('li');
-      const b = make('button', null, p.text);
-      b.type = 'button';
-      b.addEventListener('click', () => play(i));
-      li.append(b);
-      ol.append(li);
-      return b;
-    });
-    root.append(bar, ol);
-    el.replaceChildren(root);
-    sizeNow();
-    const audio = new Audio();
-    let at = -1;
-    let playing = false;
-    const mark = (i) => {
-      items.forEach((b, j) => {
-        if (j === i) b.setAttribute('aria-current', 'true');
-        else b.removeAttribute('aria-current');
-      });
-      opts.onPassage?.(i, list[i]);
-    };
-    async function play(i = Math.max(at, 0)) {
-      if (i >= list.length) return stop(true);
-      at = i;
-      playing = true;
-      btn.textContent = 'Pause';
-      mark(i);
-      status.textContent = `Preparing passage ${i + 1} of ${list.length}…`;
-      try {
-        const clip = await narrate(list[i].text, opts);
-        if (!playing || at !== i) return;
-        audio.src = clip.url;
-        await audio.play();
-        status.textContent = `Reading passage ${i + 1} of ${list.length}`;
-        if (i + 1 < list.length) narrate(list[i + 1].text, opts).catch(() => {});
-      } catch (e) {
-        playing = false;
-        btn.textContent = 'Play';
-        status.textContent = `The voice isn’t available: ${e.message || e}. The transcript is all here.`;
-      }
-    }
-    function stop(finished) {
-      playing = false;
-      audio.pause();
-      btn.textContent = finished ? 'Play again' : 'Play';
-      status.textContent = finished ? 'Finished.' : `Paused at passage ${at + 1} of ${list.length}`;
-      if (finished) at = -1;
-    }
-    audio.addEventListener('ended', () => play(at + 1));
-    btn.addEventListener('click', () => (playing ? stop(false) : play()));
-    return {
-      play,
-      pause: () => stop(false),
-      get index() {
-        return at;
-      },
-    };
-  }
-  window.postbox.narrate = narrate;
-  window.postbox.narration = narration;
 })();

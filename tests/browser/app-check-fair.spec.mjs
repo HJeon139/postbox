@@ -80,12 +80,13 @@ const APPS = {
     [40, 40, 'server', 170, 40, 'imports'],
     [170, 40, 'store', 300, 110, 'writes'],
     [300, 110, 'files', 170, 180, 'reads'],
-    [170, 180, 'client', 40, 110, 'calls'],
+    // Named below-left, clear of the edge from files that comes in at its upper right (#952 warns of a label on it).
+    [170, 180, 'client', 40, 110, 'calls', -52, 20],
     [40, 110, 'pages', 40, 40, 'loads'],
   ]
     .map(
-      ([x1, y1, k, x2, y2, e]) =>
-        `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--line-strong)"/><circle cx="${x1}" cy="${y1}" r="7" fill="var(--accent)"/><text x="${x1 + 12}" y="${y1 - 10}" ${TEXT}>${k}</text><rect x="${(x1 + x2) / 2 - 26}" y="${(y1 + y2) / 2 - 11}" width="52" height="20" fill="var(--bg)"/><text x="${(x1 + x2) / 2 - 22}" y="${(y1 + y2) / 2 + 4}" ${TEXT}>${e}</text>`,
+      ([x1, y1, k, x2, y2, e, dx = 12, dy = -10]) =>
+        `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--line-strong)"/><circle cx="${x1}" cy="${y1}" r="7" fill="var(--accent)"/><text x="${x1 + dx}" y="${y1 + dy}" ${TEXT}>${k}</text><rect x="${(x1 + x2) / 2 - 26}" y="${(y1 + y2) / 2 - 11}" width="52" height="20" fill="var(--bg)"/><text x="${(x1 + x2) / 2 - 22}" y="${(y1 + y2) / 2 + 4}" ${TEXT}>${e}</text>`,
     )
     .join('')}</svg>`,
   // A line chart with its legend of line keys in a frame.

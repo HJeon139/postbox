@@ -13,7 +13,7 @@ It answers “where am I, and what needs me?” from anywhere: the path to the o
 - The sidebar toggle (left) hides and shows the rail; ⌘\ does the same, and the choice is remembered after a reload.
 - The Postbox mark opens the places menu (see [Postbox menu](postbox-menu.md)).
 - Breadcrumbs read Project › Conversation; the project crumb opens that project.
-- No agent rings (#320): each agent’s ring and its [quick panel](../rail/agents-section.md) are in the sidebar’s Agents section, and the room’s form, from the gear after the title, names each agent in its Members list, with what it runs with, at every width.
+- No agent rings (#320): each agent’s ring and its row are in the sidebar’s [Agents section](../rail/agents-section.md), and the room’s form, from the gear after the title, names each agent in its Members list, with what it runs with, at every width.
 - With two agents in a room at 1280 px, the conversation’s title and the project show in full (#105).
 - At any width, nothing in the top bar overflows or runs under anything else (#72). When it doesn’t fit, it drops, in order: the project above the conversation’s title, then the demo banner’s sentence (it folds to “Demo”). The title keeps about 100 px before anything drops for it. Postbox measures what fits, so it depends on the window’s width, not on a fixed breakpoint, and everything comes back when there’s room again.
 - The gear after the title opens [the room’s form](conversation-menu.md) in the main menu. It is no menu.
@@ -40,4 +40,4 @@ It answers “where am I, and what needs me?” from anywhere: the path to the o
 - [postbox menu](postbox-menu.md)
 - [the room’s Manage button](conversation-menu.md)
 - [rail](../rail/rail.md)
-- [agents section and quick panel](../rail/agents-section.md)
+- [agents section](../rail/agents-section.md)
