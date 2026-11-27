@@ -57,8 +57,9 @@ const BAD = `${STYLE}
 // part shorter, a word broken at soft hyphens, a word set to break anywhere that fills the line before it breaks, a
 // button beside its text, a checkbox in its label, a button under a dialog that text in the dialog crosses, a hidden
 // button under text, an opaque button floating with the window over a paragraph and over part of another button, as
-// Jump to latest does over the transcript, folded steps in a closed details over the paragraph under it, a word set
-// to hyphenate and break anywhere, and text hidden for screen readers in a 1 px box, which breaks a letter a line.
+// Jump to latest does over the transcript, folded steps, and text sitting right in a closed details, over the paragraph
+// under each, a word set to hyphenate and break anywhere, and text hidden for screen readers in a 1 px box, which
+// breaks a letter a line.
 const CLEAN = `${STYLE}
 <section style="width: 120px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">This label is far too long for its box</section>
 <section class="mono" style="width: 4ch; overflow-wrap: anywhere">Configuration</section>
@@ -82,6 +83,7 @@ const CLEAN = `${STYLE}
   <div style="position: sticky; top: 0; height: 0"><button style="position: absolute; left: 30px; background: Canvas">Jump to latest</button></div>
   <button>Good: react</button>
 </section>
+<section><details><summary>Notes</summary>Plain notes sitting right in the details</details><p style="margin: 0">The paragraph under the closed notes.</p></section>
 <section><details><summary>3 steps</summary><div>read books/manifest.json</div><a href="#">Open this turn in Work</a></details><p style="margin: 0">The reply’s first paragraph, right under the folded steps.</p></section>
 <section lang="en" class="mono" style="width: 3ch; hyphens: auto; overflow-wrap: anywhere">Configuration</section>
 <section class="mono" style="overflow-wrap: anywhere">Read aloud:

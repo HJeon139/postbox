@@ -51,7 +51,8 @@
     return out;
   }
   hidden.reset = () => hiddenMemo.clear();
-  // The content of a closed <details>, all but its summary: the browser lays it out, but doesn’t draw it (#681).
+  // The content of a closed <details>, all but its summary: the browser lays it out, but doesn’t draw it (#681). It takes
+  // an element or a text node, since text can sit in the details itself.
   const folded = (el) => el.parentElement?.localName === 'details' && !el.parentElement.open && el.localName !== 'summary';
 
   // What of a box its ancestors let show (and, for text, its own element): each one whose overflow isn’t visible cuts
@@ -118,7 +119,7 @@
     const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       const el = n.parentElement;
-      if (!n.textContent.trim() || !el || el.closest('script, style, .katex') || hidden(el)) continue;
+      if (!n.textContent.trim() || !el || el.closest('script, style, .katex') || hidden(el) || folded(n)) continue;
       // A rotated label’s boxes are upright, so they’d cross its neighbors’: it isn’t measured.
       const m = el.closest('svg') && el.getScreenCTM?.();
       if (m && Math.abs(m.b) > 0.01) continue;
@@ -225,6 +226,6 @@
   Object.assign(window.__pbCheck, {
     textOverflow: guard('text-overflow', textOverflow),
     textOverlap: guard('text-overlap', textOverlap),
-    ...{ clip, px, where, jump, hidden, shownPart, guard, lineBoxes, opaque, meeting },
+    ...{ clip, px, where, jump, hidden, folded, shownPart, guard, lineBoxes, opaque, meeting },
   });
 })();

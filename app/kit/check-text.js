@@ -5,7 +5,7 @@
 // biome-ignore lint/suspicious/noRedundantUseStrict: the page runs this as a classic script, which isn’t strict without it.
 'use strict';
 {
-  const { rgb, lum, clip, where, hidden, guard } = window.__pbCheck;
+  const { rgb, lum, clip, where, hidden, folded, guard } = window.__pbCheck;
   // The smallest text a person can read at a glance: the critique’s floor (VE12). An SVG drawn a little under its
   // viewBox’s size draws a 12 px label at 11.7 px, which reads the same, so a label counts as small under 11.5 px.
   const MIN_SIZE = 12;
@@ -158,7 +158,7 @@
     const seen = new Set();
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       const el = n.parentElement;
-      if (!n.textContent.trim() || !el || seen.has(el) || el.closest('svg, script, style, .katex') || !shown(el)) continue;
+      if (!n.textContent.trim() || !el || seen.has(el) || el.closest('svg, script, style, .katex') || !shown(el) || folded(n)) continue;
       seen.add(el);
       out.push({ el, t: n.textContent, size: parseFloat(getComputedStyle(el).fontSize) });
     }

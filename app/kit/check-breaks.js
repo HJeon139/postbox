@@ -6,7 +6,7 @@
 // biome-ignore lint/suspicious/noRedundantUseStrict: the page runs this as a classic script, which isn’t strict without it.
 'use strict';
 {
-  const { clip, px, where, jump, hidden, shown, shownPart, lineBoxes, opaque, meeting, guard } = window.__pbCheck;
+  const { clip, px, where, jump, hidden, folded, shown, shownPart, lineBoxes, opaque, meeting, guard } = window.__pbCheck;
   const CONTROLS = 'button, [role=button], [role=checkbox], [role=radio], [role=tab], a[href], input:not([type=hidden]), select, textarea, summary';
   const range = document.createRange();
 
@@ -183,7 +183,7 @@
     const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n = walk.nextNode(); n && out.length < 3; n = walk.nextNode()) {
       const el = n.parentElement;
-      if (!el || !n.textContent.trim() || el.closest('script, style, svg, .katex') || !shown(el) || asked(el)) continue;
+      if (!el || !n.textContent.trim() || el.closest('script, style, svg, .katex') || !shown(el) || folded(n) || asked(el)) continue;
       const found = shortPart(n);
       if (found)
         out.push({
