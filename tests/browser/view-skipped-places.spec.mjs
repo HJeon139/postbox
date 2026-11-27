@@ -1,7 +1,7 @@
 // Skipped items and a screen reader (#1048). With items off screen skipped (content-visibility: auto, #712a), Chromium
 // keeps no accessibility tree for a skipped item’s contents, so a reader reached only the items that had drawn: 23 of
 // a 500-item room’s messages. The item’s own box isn’t skipped, so each item is an article that carries its place among
-// the room’s items, “4 of 500”, whether it has drawn or not, and focusing one (Alt+↑/↓) draws it. Chromium’s DevTools
+// the room’s items, “4 of 500”, whether it has drawn or not, and Alt+↑/↓ reaches each in turn. Chromium’s DevTools
 // protocol doesn’t list aria-posinset, so the place is read from the DOM, beside the articles in the tree.
 
 import { expect, test } from '@playwright/test';
@@ -66,11 +66,17 @@ test.describe('the window off', () => {
     const fewer = await places(page);
     expect(fewer.items).toEqual(counted(fewer.items));
     // A new item takes the next place, and every other item’s count grows with it.
-    await page.locator('#composer textarea, [data-composer] textarea, textarea').first().fill('One more.');
+    await page.locator('#composer-input').fill('One more.');
     await page.keyboard.press('Enter');
     await expect.poll(async () => (await places(page)).items.length).toBe(items.length);
     const after = await places(page);
     expect(after.items).toEqual(counted(after.items));
+    // Alt+↑ from the composer reaches the last item, which says it’s the last of them.
+    await page.locator('#composer-input').focus();
+    await page.keyboard.press('Alt+ArrowUp');
+    const n = String(after.items.length);
+    await expect(page.locator(':focus')).toHaveAttribute('aria-posinset', n);
+    await expect(page.locator(':focus')).toHaveAttribute('aria-setsize', n);
   });
 });
 
