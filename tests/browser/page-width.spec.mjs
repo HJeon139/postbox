@@ -4,7 +4,7 @@
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { pageWidth } from './page-width.mjs';
-import { PHONE, startPostbox, synced } from './postbox.mjs';
+import { PHONE, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -89,6 +89,8 @@ test('#966 at 375 px a wide code block and a wide table each scroll inside thems
   ])) {
     // To the middle of the view, so no sticky bar at the top or the composer lies over where the wheel turns.
     await box.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    // Items around it draw as they come into view and can resize, so read its place once that’s done.
+    await settled(page);
     expect(await box.evaluate((el) => el.scrollWidth > el.clientWidth + 1), `${what} is wider than its box`).toBe(true);
     const b = /** @type {{ x: number, y: number, width: number, height: number }} */ (await box.boundingBox());
     await page.mouse.move(b.x + b.width / 2, b.y + Math.min(b.height / 2, 20));
