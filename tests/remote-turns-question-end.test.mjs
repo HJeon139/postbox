@@ -60,11 +60,13 @@ test('#1059 a two-question call the host ends before the second was shown: it’
   const second = questions(r)[1];
   assert.equal(second.block.prompt, 'Which fruits?');
   assert.equal(r.rt.permissionWaits.has(second.id), false, 'nothing waits on it: its answer comes as a message');
-  assert.notEqual(r.se().needs?.itemId, second.id, 'no call waits on it, so mid-turn it isn’t what the turn needs');
+  // As any asking block shown mid-turn (#1748), it’s what the agent needs from now, with the turn running on (#1868).
+  await until(() => r.se().needs?.itemId === second.id, 'the second question as the need');
+  assert.equal(r.se().remoteTurn?.state, 'running', 'while the turn runs on');
+  assert.notEqual(r.se().state, 'needs', 'and the agent is still working');
   r.d.end(turn);
   await settled(r);
-  // As any asking block, it’s what the agent needs once its turn ends, not before: no call waits on it.
-  assert.equal(r.se().needs?.itemId, second.id);
+  assert.equal(r.se().needs?.itemId, second.id, 'and the turn’s end keeps it');
   const before = starts(r.d).length;
   pick(r, second, 'Plum');
   await until(() => starts(r.d).length > before, 'the agent’s next turn');

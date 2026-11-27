@@ -2,6 +2,45 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.5 (2026-11-27)
+
+### Fixes
+
+- **view:** label an item by its words only while it has focus
+- **view:** each drawing of an item gets an id of its own, so a redraw doesn't take focus
+- **view:** an item is an article named by its own words, made so before it's on the page
+- **view:** a card that is already a group keeps its role, and the working rows don't recount
+- **view:** each transcript item says its place, so a screen reader reaches skipped ones
+
+## 5.4.4 (2026-11-27)
+
+### Fixes
+
+- **needs:** a view request kept through another agent's wake doesn't ring again at its end
+- **needs:** a request asked again during a wake stays its kept turn's
+- **needs:** a tool or view request asked again in a later turn is that turn's need
+- **needs:** a view request is turn-tied, as a tool request is
+- **needs:** stopping a turn drops the need its tool or view request made
+- **needs:** a host question shown at its call's end is the need at once
+- **needs:** a view request rings with a notice at its turn's end
+- **needs:** a tool or view request raised mid-turn is the need at once
+
+## 5.4.3 (2026-11-27)
+
+### Fixes
+
+- **text:** cut a signed-in name, git's worktree refusal and a quota host at a whole character
+- **remote:** forget checks both of a persona's folders on a host before removing either
+- **text:** cut a job's output path and a hook's scanned text whole, and fix the sweep's notes
+- **remote:** forget removes a deleted Isolated Kiro agent's home on a host too
+- **adapters:** an Isolated Kiro agent's home on a host is its own, by persona id, not its handle
+- **text:** cut names a backend sends, search queries and diagnostics whole
+- **text:** cut what the page shortens to a length whole
+- **text:** cut what a remote host and its install say whole
+- **text:** cut tools' and harnesses' errors and output whole
+- **text:** cut a retired app's reason and the names and text people read whole
+- **claude-code:** let a turn that ends on postbox's react end with no text
+
 ## 5.4.2 (2026-11-27)
 
 ### Fixes

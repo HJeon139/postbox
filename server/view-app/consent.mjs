@@ -6,6 +6,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutText } from '../../shared/text-parts.mjs';
+import { askAgain } from '../ask-again.mjs';
 import { releaseNeed } from '../card-needs.mjs';
 import { httpError } from '../helpers.mjs';
 import { STOPPED } from './browser.mjs';
@@ -44,9 +45,14 @@ export function keepAnswer(dir, answer) {
 export function askToSee(rt, sessionId, threadId, endSegment) {
   const se = rt.session(sessionId);
   const open = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && x.status === 'open');
+  // One card per conversation, offered again only to the agent that asked: another agent’s call finds it and gets no
+  // need of its own, and the answer goes to the agent that asked.
+  if (open?.sessionId === sessionId) askAgain(rt, se, open, threadId);
   if (!open) {
     endSegment();
-    rt.threads.addItem(threadId, { kind: 'viewask', sessionId, handle: se.handle, turnId: rt.turns.get(sessionId)?.id ?? null, status: 'open' });
+    const it = rt.threads.addItem(threadId, { kind: 'viewask', sessionId, handle: se.handle, turnId: rt.turns.get(sessionId)?.id ?? null, status: 'open' });
+    // It is the agent’s need from now, while the turn runs on, as an asking block just shown is (#1868, card-needs.mjs offerShown).
+    rt.bus.emit('block.asking', { se, item: it, threadId });
   }
   return {
     ok: true,

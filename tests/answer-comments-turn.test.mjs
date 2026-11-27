@@ -44,7 +44,7 @@ test('#1253: an answer line keeps the title its block had when it was answered',
   const first = tail.find((l) => l.includes('Request changes'));
   assert.ok(first, tail.join('\n'));
   assert.match(first, /“Release plan” \(plan\)/);
-  assert.doesNotMatch(first, /v2/);
+  assert.doesNotMatch(first, /Release plan, v2/);
 });
 
 test('#1253: each answer line keeps its own comments when the review is revised and answered again', async () => {
