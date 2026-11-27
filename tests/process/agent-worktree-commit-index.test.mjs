@@ -162,7 +162,8 @@ test('#1844 after the commit, what git knew of each unchanged file stays in the 
   git(w.dir, ['merge', '-q', '--ff-only', git(w.p.folder, ['rev-parse', 'HEAD']).trim()]);
   writeFileSync(join(w.dir, 'README.md'), 'edited\n');
   assert.equal(await w.commit(), true, w.logs.join('\n'));
-  assert.equal(git(w.dir, ['status', '--porcelain']), '', 'the worktree’s index is the commit’s');
+  // Read before any status, which would refresh the index and write back what it found.
   const debug = git(w.dir, ['ls-files', '--debug', 'kept.txt']);
   assert.doesNotMatch(debug, /size: 0\b/, 'its size is still known, so the next status needn’t read it again');
+  assert.equal(git(w.dir, ['status', '--porcelain']), '', 'the worktree’s index is the commit’s');
 });
