@@ -155,7 +155,7 @@ Each is one line: the decision, why, and where its detail is.
 | [diagram-legibility.md](architecture/diagram-legibility.md) | The checks on a reply, and the pipeline that brings their findings to the agent |
 | [security-boundaries.md](architecture/security-boundaries.md) | This computer alone, the page’s token, `!` commands, and what reaches the browser |
 | [people.md](architecture/people.md) | Who is asking, a person’s record and profile, and what agents are told of them |
-| [hosted.md](architecture/hosted.md) | One Postbox for a team on a server (proposed): the address it answers, sign-in at the load balancer, what assumed one computer, and the slices |
+| [hosted.md](architecture/hosted.md) | One Postbox for a team on a server (proposed): the address it answers, sign-in at the load balancer, who may reach a room, what assumed one computer, and the slices |
 | [work-ledger.md](architecture/work-ledger.md) | The work ledger, what a command committed, and Restore |
 | [run-clock.md](architecture/run-clock.md) | Run clocks for timed trials, off by default: state, the turn’s line, holds and stops, and the outage limit |
 | [remote-hosts.md](architecture/remote-hosts.md) | The daemon, its protocol, the shim, turn states, the SSH connection, security and keeping a host up to date |
