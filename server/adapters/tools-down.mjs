@@ -27,9 +27,9 @@ const NOTE = {
  * The note for this turn when Postbox’s tools didn’t load last turn, or ''. The runtime adds it to the turn’s notices,
  * which every backend gives the agent, and clears it, so it’s told once, whatever the backend. A turn that failed or
  * was stopped before it left a reply part or step gives it back (toolsDownLost), so it’s told again only after such a
- * turn (#1161, #1162, #489). A
- * command is the whole prompt, since Claude Code runs it only when the prompt is /name and its arguments (#67), and a
- * re-attached turn sends the agent nothing (#120): the note waits for the next turn that can carry it.
+ * turn (#1161, #1162, #489). A command is the whole prompt, since Claude Code runs it only when the prompt is /name and
+ * its arguments (#67), and a re-attached turn sends the agent nothing (#120): the note waits for the next turn that can
+ * carry it.
  * @param {any} se  the session @param {any} message
  */
 export function toolsDownNote(se, message) {
@@ -41,8 +41,9 @@ export function toolsDownNote(se, message) {
 
 /**
  * Gives a note back to the session when the turn that took it failed or was stopped before it reached the agent, which
- * never got it: a CLI that couldn’t start, or one stopped before it said anything (#1171). The caller decides that; a turn that ran and then failed told the agent, and isn’t
- * told again. Only when nothing has set a note since, so a newer one stands.
+ * never got it: a CLI that couldn’t start, or one stopped before it said anything (#1171). The caller decides that; a
+ * turn that ran and then failed told the agent, and isn’t told again. Only when nothing has set a note since, so a
+ * newer one stands.
  * @param {any} se  the session as stored now @param {string | null | undefined} took  what the turn took
  * @param {(patch: object) => void} save  saves to the session’s backend state
  */
