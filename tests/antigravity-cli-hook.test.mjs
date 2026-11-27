@@ -73,7 +73,7 @@ async function turn(persona, { version = '1.4.7', hookScript, hookProbe = async 
     (e) => e,
   );
   const left = readdirSync(join(root, 'work'), { recursive: true }).map(String);
-  return { error, spawned, left };
+  return { error, spawned, left, root };
 }
 
 /** Changes hooks.json during a run, as an agent with Shell could. @param {string} cwd */
@@ -138,4 +138,23 @@ test('a hook that doesn’t answer stops Run everything with Web off, and other 
   const restart = await turn({ permissionMode: 'bypass' }, { hookProbe: breaks, state, runs: ['missing-session', 'first'] });
   assert.match(String(restart.error?.message), OPTIONS);
   assert.equal(restart.spawned.length, 1);
+});
+
+// #314: a turn notes its plugin beside the work root while agy runs, so a Postbox killed then removes it as it starts
+// again (agy-plugin-record.mjs), and drops the note once it has removed the plugin itself.
+test('#314 a turn’s plugin is noted beside the work root while agy runs, and dropped once removed', async () => {
+  /** @type {unknown} */
+  let during = null;
+  const { error, root } = await turn(
+    {},
+    {
+      onSpawn: (cwd) => {
+        during = JSON.parse(readFileSync(join(cwd, '..', '..', 'agy-plugins.json'), 'utf8'));
+      },
+    },
+  );
+  assert.equal(error, null);
+  assert.equal(Array.isArray(during) && during.length, 1, 'noted while agy runs');
+  assert.ok(String(/** @type {string[]} */ (during)[0]).endsWith(PLUGIN_DIR), 'the plugin’s own folder');
+  assert.deepEqual(JSON.parse(readFileSync(join(root, 'agy-plugins.json'), 'utf8')), [], 'and dropped once the turn removed it');
 });

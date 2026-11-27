@@ -4,6 +4,7 @@
 import { join } from 'node:path';
 import { quotaKeyOf } from '../shared/quota-key.mjs';
 import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
+import { sweepAgyPlugins } from './adapters/agy-plugin-record.mjs';
 import { agyUsage, usageProbe } from './adapters/agy-usage.mjs';
 import { AntigravityCliAdapter, agyVersion, findAgy } from './adapters/antigravity-cli.mjs';
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
@@ -36,6 +37,8 @@ export async function registerBackends(adapters, { dataDir, demo, probes }) {
   const real = (probes !== undefined || process.env.POSTBOX_BACKENDS !== 'mock') && !demo;
   const look = { ...PROBES, ...probes };
   const workRoot = join(dataDir, 'workspaces');
+  // An Antigravity turn’s plugin that a killed Postbox left in an agent’s folder goes first, before any turn (#314).
+  if (real) await sweepAgyPlugins(workRoot);
   const claude = real ? await look.claude() : null;
   if (real) adapters.register(new ClaudeCodeAdapter({ workRoot }), { here: !!claude });
   const sdk = real ? await look.sdk() : null;

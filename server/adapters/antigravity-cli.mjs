@@ -618,7 +618,7 @@ export class AntigravityCliAdapter {
         await excludePlugin(cwd).catch(() => false);
       }
       const hookCommand = useHook ? agyHookCommand(this.hookScript) : null;
-      await writeAgyPlugin(plugin, agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand, skills: await agySkillFiles(persona) }));
+      await writeAgyPlugin(plugin, agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand, skills: await agySkillFiles(persona) }), this.workRoot);
       // The agent can change the plugin during a run, so the hook is checked again before each (PR #1515’s review).
       const confirmed = async () =>
         Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript, probe: this.hookProbe })));
@@ -647,7 +647,7 @@ export class AntigravityCliAdapter {
           await this.run({ ...each, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed: await confirmed() });
         }
       } finally {
-        await removeAgyPlugin(plugin);
+        await removeAgyPlugin(plugin, this.workRoot);
         await commitTurn(cwd, persona, ctx.project, this.workRoot); // what the turn left, in its own worktree (#1709)
       }
     });
