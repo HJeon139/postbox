@@ -1,11 +1,11 @@
 // #1844: the commit at the end of an Antigravity turn (#1709) is built from a copy of the worktree’s index that Postbox
 // keeps outside the agent’s folders, under git’s lock on that index, so what a process the agent left running stages
-// in the worktree while the commit runs is refused, and doesn’t reach it. Against real git, in the shared temp home,
+// in the worktree while the commit runs, through the lock or around it, doesn’t reach it. Against real git, in the shared temp home,
 // with git’s runner wrapped to act at a chosen command as such a process could.
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -18,16 +18,18 @@ const agent = { id: 'pe_a', handle: 'gem' };
 const branch = (/** @type {string} */ name) => `postbox/pr_${name}-gem-pe_a`;
 
 /**
- * Stages as a process the agent left running would, while Postbox commits. git refuses it while Postbox holds the
- * index’s lock (`index.lock`: File exists), and either way the process ran. @param {() => unknown} stage
+ * Stages in a worktree’s index while Postbox commits, as a process the agent left running could, around git’s lock:
+ * into a file of its own, renamed over the index, so the index really changes under the commit and the test shows the
+ * commit is built from Postbox’s copy, not that the lock refused it (#1844). @param {string} dir  the worktree
+ * @param {string[]} args  git’s @param {string} [input]
  */
-const tryStage = (stage) => {
-  try {
-    stage();
-  } catch {
-    // Refused on Postbox’s lock: the attempt is what the test needs, not that git took it.
-  }
-};
+function stageAround(dir, args, input) {
+  const admin = git(dir, ['rev-parse', '--absolute-git-dir']).trim();
+  const around = join(admin, 'index.around');
+  copyFileSync(join(admin, 'index'), around);
+  execFileSync('git', args, { cwd: dir, input, stdio: 'pipe', env: { ...process.env, GIT_INDEX_FILE: around } });
+  renameSync(around, join(admin, 'index'));
+}
 
 /**
  * An agent’s worktree with a file it wrote, and git’s runner wrapped: `at(args)` runs before each command Postbox
@@ -68,7 +70,7 @@ async function nestedWithFilter(dir, marker) {
   git(sub, ['commit', '-qm', 'one']);
   writeFileSync(join(sub, '.git', 'config'), `${readFileSync(join(sub, '.git', 'config'), 'utf8')}[filter "x"]\n\tclean = "touch ${marker}; cat"\n`);
   writeFileSync(join(sub, 'f'), 'two\n');
-  return () => git(dir, ['update-index', '--add', '--cacheinfo', `160000,${git(sub, ['rev-parse', 'HEAD']).trim()},sub`]);
+  return () => stageAround(dir, ['update-index', '--add', '--cacheinfo', `160000,${git(sub, ['rev-parse', 'HEAD']).trim()},sub`]);
 }
 
 test('#1844 a gitlink staged in the worktree as the commit’s add runs runs nothing, and stays off the branch', async () => {
@@ -77,12 +79,12 @@ test('#1844 a gitlink staged in the worktree as the commit’s add runs runs not
   let slipped = false;
   const w = await turn('staged-at-add', (args) => {
     if (!args.includes('add') || slipped) return;
-    tryStage(slip);
+    slip();
     slipped = true;
   });
   slip = await nestedWithFilter(w.dir, marker);
   assert.equal(await w.commit(), true, w.logs.join('\n'));
-  assert.equal(slipped, true, 'the gitlink was staged, or refused on Postbox’s lock, as the add ran');
+  assert.equal(slipped, true, 'the gitlink was staged in the worktree’s index as the add ran');
   assert.equal(existsSync(marker), false, 'the nested repository’s filter didn’t run');
   const files = git(w.p.folder, ['ls-tree', '-r', branch('staged-at-add')]);
   assert.doesNotMatch(files, /^160000 /m, 'no nested repository on the agent’s branch');
@@ -142,11 +144,11 @@ test('#1844 every step of the commit reads Postbox’s copy, not what’s staged
     // A conflict and a gitlink in the worktree’s own index, which neither the status nor the gitlink check may see.
     const blob = git(dir, ['rev-parse', 'HEAD:README.md']).trim();
     const unmerged = [1, 2, 3].map((n) => `100644 ${blob} ${n}\tREADME.md\n`).join('');
-    tryStage(() => execFileSync('git', ['update-index', '--index-info'], { cwd: dir, input: `0 ${'0'.repeat(40)}\tREADME.md\n${unmerged}`, stdio: 'pipe' }));
-    tryStage(() => git(dir, ['update-index', '--add', '--cacheinfo', `160000,${git(dir, ['rev-parse', 'HEAD']).trim()},ghost`]));
+    stageAround(dir, ['update-index', '--index-info'], `0 ${'0'.repeat(40)}\tREADME.md\n${unmerged}`);
+    stageAround(dir, ['update-index', '--add', '--cacheinfo', `160000,${git(dir, ['rev-parse', 'HEAD']).trim()},ghost`]);
   });
   assert.equal(await w.commit(), true, w.logs.join('\n'));
-  assert.equal(staged, true, 'the worktree’s index was staged in, or refused on Postbox’s lock, as the status ran');
+  assert.equal(staged, true, 'the worktree’s index was staged in as the status ran');
   assert.equal(git(w.dir, ['show', 'HEAD:agent.txt']), 'the agent’s work\n');
   assert.doesNotMatch(git(w.p.folder, ['ls-tree', '-r', branch('staged-at-status')]), /^160000 /m, 'no gitlink on the agent’s branch');
 });
@@ -178,4 +180,26 @@ test('#1844 after the commit, what git knew of each unchanged file stays in the 
   const debug = git(w.dir, ['ls-files', '--debug', 'kept.txt']);
   assert.doesNotMatch(debug, /size: 0\b/, 'its size is still known, so the next status needn’t read it again');
   assert.equal(git(w.dir, ['status', '--porcelain']), '', 'the worktree’s index is the commit’s');
+});
+
+test('#1844 the worktree’s index takes the time of the index the commit wrote, so git still checks files written in that second', async () => {
+  const { project: p, workRoot } = await project('index-time');
+  const dir = await agentWorktree(agent, p, workRoot);
+  await writeFile(join(dir, 'agent.txt'), 'the agent’s work\n');
+  let written = 0;
+  const wrapped = async (/** @type {string} */ cwd, /** @type {string[]} */ args, /** @type {{ index?: string }} */ o = {}) => {
+    const out = await runGit(cwd, args, { ...gitTimeoutFor(args), ...o });
+    if (args.includes('commit') && o.index) {
+      written = statSync(o.index).mtimeMs;
+      // Past a second’s boundary before Postbox puts that index in place, the case git’s racy check is about: the time
+      // is the mechanism here, not a wait for something to happen.
+      await new Promise((done) => setTimeout(done, 1100));
+    }
+    return out;
+  };
+  assert.equal(await commitTurn(dir, agent, p, workRoot, { git: wrapped, log: () => {} }), true);
+  const admin = git(dir, ['rev-parse', '--absolute-git-dir']).trim();
+  assert.ok(written > 0, 'the commit wrote its index');
+  // To the millisecond, as Node sets it; without it, the index would be a second or more later.
+  assert.ok(Math.abs(statSync(join(admin, 'index')).mtimeMs - written) < 1, 'the installed index keeps the time git gave it');
 });

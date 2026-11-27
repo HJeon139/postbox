@@ -2,7 +2,7 @@
 // (agent-worktree-commit.mjs, #1844), and git’s lock on that worktree’s index, held while it is.
 
 import { constants, createReadStream } from 'node:fs';
-import { open, rename, rm, writeFile } from 'node:fs/promises';
+import { open, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** @typedef {{ committed: boolean } | { why: string }} Outcome  whether it committed, or why it didn’t */
@@ -37,6 +37,10 @@ export async function withIndexCopy(admin, dir, commit) {
     if ('committed' in done && done.committed) {
       // Streamed, as the copy was, so a large index isn’t held in memory whole.
       await lock.writeFile(createReadStream(index));
+      // With the copy’s own times, as git’s index would have: git trusts a file whose time is before its index’s, so a
+      // later time would hide a file written in the same second as the commit (git’s racy check).
+      const st = await stat(index);
+      await lock.utimes(st.atimeMs / 1000, st.mtimeMs / 1000);
       written = true;
     }
     return done;
