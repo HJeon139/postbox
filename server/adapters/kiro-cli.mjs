@@ -60,6 +60,7 @@ import { kiroMemoryOff } from './kiro-memory.mjs';
 import { kiroResult, REFUSED } from './kiro-result.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
 import { KINDS, toolOf } from './kiro-tools.mjs';
+import { withoutToolMarkup } from './model-markup.mjs';
 import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned, recordOnceWritten } from './prompt-sent.mjs';
@@ -145,7 +146,7 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
     if (kind !== 'agent_thought_chunk') endThought();
     switch (kind) {
       case 'agent_message_chunk': {
-        const text = u.content?.type === 'text' ? String(u.content.text ?? '') : '';
+        const text = withoutToolMarkup(u.content?.type === 'text' ? String(u.content.text ?? '') : '');
         if (!text) return;
         return emit({ kind: 'text', text });
       }
