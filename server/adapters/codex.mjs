@@ -6,6 +6,7 @@ import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 import { cleanTail } from '../../shared/text-parts.mjs';
 import { withQuota } from '../harness-failure.mjs';
+import { LOCK as DATA_FOLDER_LOCK } from '../home.mjs';
 import { codexApproval } from './codex-approval.mjs';
 import { codexEffortOf, createCodexMapper, errorText } from './codex-mapper.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
@@ -102,7 +103,7 @@ function appServerArgs(ctx, cwd, workRoot) {
  * @returns {string[]}
  */
 export function codexSteeringArgs(folder, dataDir) {
-  return inCheckoutData(folder, dataDir) ? ['-c', 'project_root_markers=[".git","postbox.lock"]'] : [];
+  return inCheckoutData(folder, dataDir) ? ['-c', `project_root_markers=${JSON.stringify(['.git', DATA_FOLDER_LOCK])}`] : [];
 }
 
 /** The Codex thread a turn continues: a fork’s source, else the session’s own, or none. @param {any} state */

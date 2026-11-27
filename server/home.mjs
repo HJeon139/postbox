@@ -17,7 +17,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 export const postboxHome = (env = process.env, home = homedir()) => (env.POSTBOX_HOME ? resolve(env.POSTBOX_HOME) : join(home, '.postbox'));
 
 const STORE_FILE = /^(store\.json|snapshot\.json|events-\d+\.jsonl)$/;
-const LOCK = 'postbox.lock';
+export const LOCK = 'postbox.lock';
 
 /** Whether a folder, or the folder a link leads to, holds conversations: an event log or a snapshot. */
 export function holdsStore(dir) {
