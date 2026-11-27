@@ -79,11 +79,18 @@ test('#1171 only an mcp_connection_error naming the server first reads as Postbo
 });
 
 test('#1171 Kiro’s words reach the step cleaned: no bidi or zero-width characters, no line breaks, no split character', () => {
-  const sneaky = `MCP server "postbox" failed to connect: ‮deliaf‬​\nretry later ${'é'.repeat(10)}${'😀'.repeat(300)}`;
+  const sneaky = `MCP server "postbox" failed to connect: \u202edeliaf\u202c\u200b\nretry later ${'é'.repeat(10)}${'😀'.repeat(300)}`;
   const { ctx } = replay(withError(changed({ message: sneaky })));
   const step = postboxStep(ctx);
   assert.ok(step, 'still Postbox’s server');
-  assert.doesNotMatch(step.detail, /[‮‬​\n]/u, 'no hidden or reordering characters, no line break');
+  assert.doesNotMatch(step.detail, /[\u202e\u202c\u200b\n]/u, 'no hidden or reordering characters, no line break');
   assert.match(step.detail, /fetch|deliaf retry later/, 'the words kept, on one line');
   assert.doesNotMatch(step.detail, /\p{Cs}/u, 'no lone surrogate from the cut');
+});
+
+test('#1171 a connection error worded another way still names its server, and a line separator becomes a space', () => {
+  const { ctx } = replay(withError(changed({ message: 'MCP server "postbox" timed out after 30s\u2028while starting' })));
+  const step = postboxStep(ctx);
+  assert.ok(step, 'read as Postbox’s server, whatever the verb');
+  assert.match(step.detail, /timed out after 30s while starting/);
 });

@@ -18,7 +18,7 @@ function room() {
   const store = new Store(null);
   /** @type {any[]} */
   const sent = [];
-  const fail = { next: false, downAgain: /** @type {string | null} */ (null) };
+  const fail = { next: false, downAgain: /** @type {string | null} */ (null), afterWords: false };
   const adapter = {
     name: 'mock',
     async folderFor() {
@@ -31,6 +31,8 @@ function room() {
         fail.next = false;
         // As a backend whose tools failed to load again before it failed: a newer note than the one this turn took.
         if (fail.downAgain) ctx.saveState({ postboxToolsDown: fail.downAgain });
+        // A turn that reached the agent and then failed: it wrote words first.
+        if (fail.afterWords) ctx.text('Working on it.');
         throw Object.assign(new Error('spawn kiro-cli ENOENT'), { code: 'ENOENT' });
       }
       ctx.text('Done.');
@@ -103,4 +105,13 @@ test('#1171 a failed turn that set a newer note keeps that one, not the one it t
   r.fail.downAgain = 'refused';
   await r.turn('Try again.');
   assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'refused');
+});
+
+test('#1171 a turn that reached the agent and then failed doesn’t give the note back, so it isn’t told twice', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.next = true;
+  r.fail.afterWords = true;
+  await r.turn('Try again.');
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null, 'the agent read it in the turn that ran');
 });

@@ -1,8 +1,8 @@
-// What Kiro reports in a display_error (#489, #1171). When an MCP server fails to start, kiro-cli (3.1.0, and 3.6.2 as
-// tests/fixtures/kiro-cli/auto-shell-files.jsonl records it) sends a session_info_update with _meta.kiro.kind
-// “display_error” and errorType “mcp_connection_error”, and the turn still ends as a success, with the model offered none of that server’s tools. When the server is Postbox’s, the agent
-// can’t show, send or read anything through Postbox that turn, as with any backend (tools-down.mjs).
-
+// What Kiro reports in a display_error (#489, #1171). When an MCP server fails to start, kiro-cli sends a
+// session_info_update with _meta.kiro.kind “display_error” and errorType “mcp_connection_error”, as 3.6.2 does in the
+// turn tests/fixtures/kiro-cli/auto-shell-files.jsonl records, and the turn still ends as a success, with the model
+// offered none of that server’s tools. When the server is Postbox’s, the agent can’t show, send or read anything
+// through Postbox that turn, as with any backend (tools-down.mjs).
 import { INVISIBLE } from '../../shared/invisible.mjs';
 import { cutText } from '../../shared/text-parts.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
@@ -11,8 +11,8 @@ import { toolsDown } from './tools-down.mjs';
 const MAX = 400;
 let seen = 0; // display_errors reported, for their steps’ ids
 
-/** A server that didn’t start, as Kiro words it at the start of the message: `MCP server "postbox" failed to connect: …`. */
-const CONNECT = /^MCP server "([^"]{1,80})" failed to connect\b/;
+/** The server a connection error names at the start, as `MCP server "postbox" failed to connect: …`; the verb isn’t held. */
+const CONNECT = /^MCP server "([^"]{1,80})"/;
 
 /**
  * The words Kiro gave, cleaned before they reach a step, its label or the agent’s note (#1171): every character that
@@ -22,6 +22,7 @@ const CONNECT = /^MCP server "([^"]{1,80})" failed to connect\b/;
 const messageOf = (k) =>
   cutText(
     String(k?.message ?? k?.displayError?.message ?? '')
+      .replace(/[\u2028\u2029]/g, ' ')
       .replace(INVISIBLE, '')
       .replace(/[\p{Cc}\s]+/gu, ' ')
       .trim(),
@@ -34,7 +35,7 @@ const labelOf = (server) => (server ? `MCP server ${server} didn’t load` : 'Ki
 /**
  * A display_error becomes a failed step; when it says Postbox’s server didn’t start, the agent hears of it at its next
  * turn too. Only an mcp_connection_error that names its server at the start reads as a server that didn’t start
- * (#1171): another error, such as a tool’s (mcp_tool_error), or one that only mentions a server, is Kiro’s error.
+ * (#1171): another error, such as a tool’s (mcp_tool_error), or one that only mentions a server later, is Kiro’s error.
  * @param {any} ctx @param {any} k  _meta.kiro
  */
 export function reportDisplayError(ctx, k) {

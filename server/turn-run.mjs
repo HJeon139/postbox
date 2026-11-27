@@ -142,7 +142,8 @@ function turnMessage(rt, se, message, where, slash) {
     message = { ...message, context: [...notUrgent(se.context), ...(message.context ?? [])] };
     rt.sessions.update(sessionId, (now) => ({ context: (now.context ?? []).filter((/** @type {string} */ x) => !se.context.includes(x)) })); // only what it read
   }
-  // Postbox’s tools didn’t load last turn: told once, whatever the backend (tools-down.mjs).
+  // Postbox’s tools didn’t load last turn: told once, whatever the backend, and given back by a turn that never ran
+  // (tools-down.mjs).
   const down = toolsDownNote(se, message);
   if (down) message = { ...message, context: [down, ...(message.context ?? [])] };
   if (down) saveBackendState(rt, sessionId, { postboxToolsDown: null });

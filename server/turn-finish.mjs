@@ -46,7 +46,8 @@ export function endTurn(rt, turn, err) {
   settleReplies(rt, turn, items, err);
   rt.bus.emit('turn.replied', { turn, se, items, err });
   if (err && err.name !== 'AbortError') {
-    toolsDownLost(se, turn.toolsDownTaken, (patch) => saveBackendState(rt, se.id, patch));
+    // Only a turn that never reached the agent, with no reply part or step of its own, gives the note back (#1171).
+    if (!turn.first) toolsDownLost(se, turn.toolsDownTaken, (patch) => saveBackendState(rt, se.id, patch));
     endFailed(rt, se, turn, err);
     return;
   }
