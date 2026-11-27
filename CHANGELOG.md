@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.3.3 (2026-11-27)
+
+### Fixes
+
+- **view:** Home and End are the page's only where a conversation is
+- **view:** a click in a dialog's scroller keeps its Home and End
+- **view:** the page takes Home and End in every room, not only a long one
+
 ## 5.3.2 (2026-11-27)
 
 ### Fixes
