@@ -24,10 +24,14 @@ export function partEnd(text, end) {
  */
 export const cutText = (text, n) => (text.length > n ? text.slice(0, partEnd(text, n)) : text);
 
+/** Half of a surrogate pair with no other half beside it. */
+const LONE_HALF = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
 /**
  * Words another program gave, such as a backend’s error, cleaned before they reach a step, its label or an agent’s note
  * (#1171, #1905): every character that hides or reorders text (INVISIBLE) goes, line and paragraph separators, control
- * characters and runs of space become one space, and the cut to `n` never splits a character.
+ * characters and runs of space become one space, half a character left alone (a buffer cut from its end can start
+ * with one) goes, and the cut to `n` never splits a character.
  * @param {string} text @param {number} n
  */
 export const cleanSaid = (text, n) =>
@@ -35,6 +39,7 @@ export const cleanSaid = (text, n) =>
     text
       .replace(/[\u2028\u2029]/g, ' ')
       .replace(INVISIBLE, '')
+      .replace(LONE_HALF, '')
       .replace(/[\p{Cc}\s]+/gu, ' ')
       .trim(),
     n,
@@ -50,6 +55,13 @@ export function tailText(text, n) {
   const from = text.length - n;
   return text.slice(/[\uDC00-\uDFFF]/.test(text[from]) ? from + 1 : from);
 }
+
+/**
+ * The last n characters of words another program gave, cleaned as cleanSaid cleans them: for an error whose newest
+ * words are its end, such as a CLI’s stderr (#1938). Never starts inside a character (tailText).
+ * @param {string} text @param {number} n
+ */
+export const cleanTail = (text, n) => tailText(cleanSaid(text, Number.POSITIVE_INFINITY), n);
 
 /**
  * A Markdown fence for text: longer than any run of backticks in it, so the text can't close it.

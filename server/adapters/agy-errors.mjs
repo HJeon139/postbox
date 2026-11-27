@@ -1,6 +1,6 @@
 // Why an Antigravity turn failed, in words the person reads: when its quota resets, and its exit code’s reason.
 
-import { cutText } from '../../shared/text-parts.mjs';
+import { cleanSaid } from '../../shared/text-parts.mjs';
 
 /**
  * When a quota resets, from agy’s “Resets in 155h28m23s” (#396, as the “Agent research” room recorded it), or null.
@@ -14,7 +14,8 @@ export function resetIn(error, now) {
 
 /** Why a turn failed, from its exit code, when the stream didn’t say. agy logs to a file, so stderr is short. */
 export function exitError(code, stderr = '') {
-  const why = cutText(
+  // Cleaned as a CLI’s words are (#1938).
+  const why = cleanSaid(
     String(stderr)
       .split('\n')
       .filter((l) => l.trim() && !/^warning:/i.test(l))

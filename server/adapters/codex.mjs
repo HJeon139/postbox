@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process';
 import { realpath } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
+import { cleanTail } from '../../shared/text-parts.mjs';
 import { withQuota } from '../harness-failure.mjs';
 import { codexApproval } from './codex-approval.mjs';
 import { codexEffortOf, createCodexMapper, errorText } from './codex-mapper.mjs';
@@ -285,12 +286,12 @@ export class CodexAdapter {
     child.on('close', (code) => {
       exited = true;
       endError ??= remoteEnd(child);
+      // Its stderr’s last words, cleaned and never starting mid-character (#1938).
+      const said = cleanTail(stderr, 500);
       const err =
         endError ??
         new Error(
-          code !== 0
-            ? why(`Codex app-server exited with code ${code}${stderr ? ` (${stderr.trim().slice(-500)})` : ''}`)
-            : why('Codex app-server exited before the turn completed'),
+          code !== 0 ? why(`Codex app-server exited with code ${code}${said ? ` (${said})` : ''}`) : why('Codex app-server exited before the turn completed'),
         );
       fail(err);
       finish(err);
