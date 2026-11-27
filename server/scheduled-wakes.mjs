@@ -148,8 +148,8 @@ export function settleScheduledWake(rt, turn, err) {
   // and the schedule stays running for the turn attached again, which carries the wake and settles it (#466).
   const r = rt.store.pending.session(turn.sessionId)?.remoteTurn;
   if (r?.state === 'lost') return;
-  // Nor while the wake’s own host turn still waits to be attached, or to be resumed, when that attach’s or resume’s own
-  // start failed: the attach or the resume that comes once the host is back carries the wake (#466).
+  // Nor while the wake’s own host turn still waits to be attached, or to be resumed, when that attach’s or resume’s
+  // own start failed: the attach or the resume that comes once the host is back carries the wake (#466).
   const waits = ON_HOST.has(r?.state) || Boolean(r?.resume);
   if (waits && typeof sc.turnId === 'string' && r.rtTurn === sc.turnId && sc.turnId !== turn.id) return;
   if (!isNetworkFailure(err)) return finishSchedule(rt, sc, 'done');
