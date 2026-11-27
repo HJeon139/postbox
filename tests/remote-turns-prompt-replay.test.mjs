@@ -60,7 +60,8 @@ async function restartedReplaying(t, request) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   startUp(r);
   await lagUntil(t, () => d.received.some((m) => m.type === 'read' && m.turn === 'host-turn-1'), 'the replay');
-  await lag();
+  // The checks that it still waits mean something only once the prompt is held, so wait for that, not a fixed lag (#1657).
+  await untilTurns(() => heldPrompts(r.rt.turns.get(r.se().id)) === 1, 'the prompt to be held');
   return { r, d };
 }
 
@@ -125,7 +126,8 @@ test('#353 after a reconnect, a prompt waits for the read to catch up, then its 
     r.link.reconnect();
     await lagUntil(t, () => reads() === 2, 'the read after the reconnect');
     r.d.prompt(turn, FIXTURE_PROMPT, 'p-1');
-    await lag();
+    // Held first, or the clock moves before its wait starts and the check below holds of nothing (#1657).
+    await untilTurns(() => heldPrompts(r.rt.turns.get(r.se().id)) === 1, 'the prompt to be held');
     t.mock.timers.tick(PROMPT_CALL_WAIT_MS * 2);
     await lag();
     assert.equal(r.d.answers.length, 0, 'no answer while the read is still catching up');
