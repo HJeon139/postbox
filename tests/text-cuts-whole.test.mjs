@@ -191,3 +191,17 @@ test('#1686 a proposed agent’s description, a write’s destination, and a sub
   whole(where?.target?.name, 'the write’s destination');
   whole(whereOf('Bash', { command: `git push ${across(120)} main` })?.target?.name, 'a push’s remote');
 });
+
+test('#1937 a permission card’s and a refusal’s tool and summary are cleaned and cut whole, whichever backend sent them', async () => {
+  const r = room();
+  await r.during(async () => {
+    const turn = r.rt.turns.get(r.se.id);
+    void r.rt.requestPermission(r.se.id, { tool: `mcp__x__‮${across(111)}`, summary: 'use ‮loot', input: {} });
+    r.rt.recordDenial(turn, { tool: `mcp__x__‮${across(111)}`, label: 'use ‮loot', input: {}, toolUseId: 'tu_1' });
+  });
+  for (const it of [r.items('permission')[0], r.items('denial')[0]]) {
+    whole(it?.tool, `the ${it?.kind}’s tool`);
+    assert.doesNotMatch(String(it?.tool), /‮/u, `the ${it?.kind}’s tool is cleaned`);
+    assert.equal(it?.summary, 'use loot', `the ${it?.kind}’s summary is cleaned`);
+  }
+});
