@@ -203,17 +203,19 @@ test('#1937 an MCP server’s request for input shows on its card cleaned and bo
       return { allow: false };
     },
   };
-  // What a server’s own message could carry: a right-to-left override, a zero-width space, a line break and a line
-  // separator, and far more text than a card holds, with an emoji where the cut falls.
-  const said = 'Please confirm the deploy \u202Edeliated \u202C\u200B\nnext line\u2028more ';
-  const message = `${said}${'x'.repeat(1199 - (said.length - 3))}\u{1F600} and the rest`;
+  // What a server’s own message could carry: a right-to-left override, a zero-width space, a bell, a line break and a
+  // line separator, and far more text than a card holds, with an emoji where the cut falls.
+  const said = 'Please confirm the \u0007deploy \u202Edeliated \u202C\u200B\nnext line\u2028more ';
+  // Cleaning drops three invisible characters, the bell’s extra space and the space before the line break, so the
+  // emoji starts at 1,199, across the cut.
+  const message = `${said}${'x'.repeat(1199 - (said.length - 5))}\u{1F600} and the rest`;
   await codexApproval(ctx, { id: 7, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message } });
   const detail = String(asked[0]?.detail ?? '');
   assert.match(detail, /^Please confirm the deploy/);
-  assert.doesNotMatch(detail, /[\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2028\u2029\n\r]/u);
+  assert.doesNotMatch(detail, /[\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2028\u2029\r]/u);
   assert.doesNotMatch(detail, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/, 'no lone surrogate');
   assert.ok(detail.length <= 1200, `bounded, not ${detail.length}`);
-  assert.match(detail, /next line more/, 'a line break becomes a space');
+  assert.match(detail, /deliated\nnext line\nmore/, 'a line break stays one, on a card that shows its lines; a separator becomes one');
 });
 
 test('#1937 an MCP tool’s description on its card is cleaned too: it’s the server’s words', async () => {
@@ -230,4 +232,32 @@ test('#1937 an MCP tool’s description on its card is cleaned too: it’s the s
   const detail = JSON.parse(String(asked[0]?.detail ?? '{}'));
   assert.equal(detail.description, 'Ships liated the build.');
   assert.deepEqual(detail.arguments, { to: 'prod' }, 'the arguments as sent');
+});
+
+test('#1937 an ordinary request for input reads on its card as the server wrote it, its lines kept', async () => {
+  /** @type {any[]} */
+  const asked = [];
+  const ctx = {
+    askPermission: async (/** @type {any} */ a) => {
+      asked.push(a);
+      return { allow: false };
+    },
+  };
+  const message = 'Deploy which build?\n\n- 1.4.2 (staging)\n- 1.4.1 (prod)';
+  await codexApproval(ctx, { id: 9, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message } });
+  assert.equal(asked[0]?.detail, message);
+});
+
+test('#1937 an MCP tool’s name, the card’s headline, is cleaned: it comes from the server', async () => {
+  /** @type {any[]} */
+  const asked = [];
+  const ctx = {
+    askPermission: async (/** @type {any} */ a) => {
+      asked.push(a);
+      return { allow: false };
+    },
+  };
+  const meta = { codex_approval_kind: 'mcp_tool_call', tool_name: 'ship\u202Edorp', tool_params: {} };
+  await codexApproval(ctx, { id: 10, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message: '', _meta: meta } });
+  assert.equal(asked[0]?.summary, 'use deploy tool shipdorp');
 });

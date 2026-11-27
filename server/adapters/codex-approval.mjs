@@ -1,11 +1,11 @@
 // Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses.
 
-import { cleanSaid, cutText } from '../../shared/text-parts.mjs';
+import { cleanLines, cleanSaid } from '../../shared/text-parts.mjs';
 import { draftOf } from '../write-guard.mjs';
 import { codexAlwaysOffer } from './codex-always.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
-/** Of an MCP server’s request for input shown on its card: as a step’s detail is bounded (STEP_TEXT.detail). */
+/** Of an MCP server’s request for input shown on its card, well within a card’s 4,000 (permission-cards.mjs). */
 const ASKED_MAX = 1200;
 
 /** Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses. */
@@ -17,8 +17,9 @@ export async function codexApproval(ctx, msg) {
     // “create_issue”?”): either way the card names the tool and shows its arguments, never a generic prompt (#150).
     const named = /run tool ["“]([^"”]+)["”]/i.exec(String(p.message ?? ''))?.[1];
     if (meta.codex_approval_kind === 'mcp_tool_call' || named) {
-      const server = cutText(String(p.serverName ?? 'mcp'), 80);
-      const name = cutText(String(meta.tool_name ?? meta.toolName ?? named ?? 'tool'), 80);
+      // The server’s and its tool’s names, the card’s headline: cleaned as its words are (#1937).
+      const server = cleanSaid(String(p.serverName ?? 'mcp'), 80);
+      const name = cleanSaid(String(meta.tool_name ?? meta.toolName ?? named ?? 'tool'), 80);
       // Postbox tools only update the current conversation. Let those run directly;
       // the MCP endpoint still validates every call and the UI actions are intentionally user-scoped.
       if (server === POSTBOX_SERVER) return { action: 'accept', content: {} };
@@ -44,12 +45,12 @@ export async function codexApproval(ctx, msg) {
       });
       return answer?.allow ? { action: 'accept', content: {} } : { action: 'decline' };
     }
-    const server = cutText(String(p.serverName ?? 'MCP server'), 80);
+    const server = cleanSaid(String(p.serverName ?? 'MCP server'), 80);
     const answer = await ctx.askPermission({
       tool: `mcp__${server}__elicitation`,
       summary: `respond to ${server}`,
-      // The server’s own words, on a card the person approves: cleaned and bounded, as Codex’s other words are (#1937).
-      detail: cleanSaid(String(p.message ?? 'The MCP server requests input.'), ASKED_MAX),
+      // The server’s own words, on a card the person approves: cleaned and bounded, their lines kept (#1937).
+      detail: cleanLines(String(p.message ?? 'The MCP server requests input.'), ASKED_MAX),
       toolUseId: msg.id,
       suppressAlways: true,
     });
