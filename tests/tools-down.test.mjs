@@ -178,3 +178,15 @@ test('#1171 a newer note still waiting for writes to reopen stands against the o
   toolsDownBack(r.rt, r.se.id, { toolsDownTaken: 'ran' });
   assert.equal(r.rt.backendWait.get(r.se.id)?.postboxToolsDown, 'refused');
 });
+
+test('#1171 a turn the store’s outage stopped after it reached the agent doesn’t give the note back', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.hang = true;
+  r.fail.afterWords = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  r.store.writable = false;
+  r.store.tellStatus();
+  assert.equal(r.rt.backendWait.get(r.se.id)?.postboxToolsDown, undefined, 'the agent read it in the turn that ran');
+});
