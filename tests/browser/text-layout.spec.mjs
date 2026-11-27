@@ -26,8 +26,9 @@ const STYLE = `<style>
   button { font: inherit; }
 </style>`;
 
-// One of each problem: text over text, an opaque button misplaced over text, text cut off by its box (twice: the
-// second inside a faded section whose fade isn’t what cuts it), and a word broken three letters a line.
+// One of each problem: text over text, an opaque button misplaced over text, and one over its own sticky box’s title,
+// text cut off by its box (twice: the second inside a faded box that clips, whose fade isn’t what cuts it), and a word
+// broken three letters a line.
 const BAD = `${STYLE}
 <section style="position: relative; height: 40px">
   <span>Overlapping words here</span>
@@ -38,7 +39,11 @@ const BAD = `${STYLE}
   <button style="position: absolute; left: 40px; top: 0">Send now</button>
 </section>
 <section style="width: 120px; overflow: hidden; white-space: nowrap">This label is far too long for its box</section>
-<section style="mask-image: linear-gradient(#000, #000); -webkit-mask-image: linear-gradient(#000, #000)">
+<section style="position: sticky; top: 0; height: 40px; background: Canvas">
+  <h2 style="margin: 0; font-size: 16px">A dialog’s own title</h2>
+  <button style="position: absolute; left: 40px; top: 0">Close</button>
+</section>
+<section style="overflow: hidden; mask-image: linear-gradient(#000, #000); -webkit-mask-image: linear-gradient(#000, #000)">
   <div style="width: 120px; overflow: hidden; white-space: nowrap">A faded section, its label still cut</div>
 </section>
 <section class="mono" style="width: 3ch; overflow-wrap: anywhere">Configuration</section>`;
@@ -90,6 +95,8 @@ for (const width of [375, 1280]) {
     const found = await textLayout(page);
     expect.soft([...new Set(found.map((p) => p.code))].sort(), 'one of each problem the page was built with').toEqual(CODES);
     expect.soft(found.filter((p) => p.code === 'text-cut-off').length, 'both labels cut off, the faded section’s too').toBe(2);
+    const title = found.filter((p) => p.code === 'text-on-control' && p.message.includes('A dialog’s own title'));
+    expect.soft(title.length, 'a close button over its own sticky box’s title').toBe(1);
     for (const p of found) {
       // Each names its element by a selector path, and quotes no more than 40 characters of its text and an ellipsis.
       expect.soft(p.message, 'names where it is').toMatch(/\((?:[\w.#:()-]+(?: > )?)+\)/);
@@ -185,7 +192,7 @@ for (const width of [375, 1280]) {
     // The pill floats over the transcript, opaque: scrolled until a line of its text is under it.
     expect(await page.evaluate(lineUnderPill), 'a line of text under the pill').toBe(true);
     await settled(page);
-    expect(await page.evaluate(lineUnderPill), 'still a line of text under the pill, once the page settles').toBe(true);
+    expect(await page.evaluate(lineUnderPill, 0), 'the line is still under the pill once the page settles').toBe(true);
     await expect(pill).toBeVisible();
     await expectTidyText(page, 'Jump to latest over the transcript');
   });
@@ -218,9 +225,9 @@ const LONG = (n) => `Message ${n}. The loop alternates a thought, an action and 
 
 /**
  * Whether a line of the transcript’s text is under Jump to latest, scrolled down a few pixels at a time until one is,
- * as far as a message and its actions are tall.
+ * up to tries times, as far as a message and its actions are tall. With no tries, it only measures.
  */
-function lineUnderPill() {
+function lineUnderPill(tries = 50) {
   const range = document.createRange();
   const crosses = (/** @type {DOMRect} */ pill) => {
     const walk = document.createTreeWalker(document.querySelector('.transcript') ?? document.body, NodeFilter.SHOW_TEXT);
@@ -233,10 +240,10 @@ function lineUnderPill() {
     }
     return false;
   };
-  for (let i = 0; i < 50; i++) {
+  const under = () => {
     const pill = document.querySelector('.jump button')?.getBoundingClientRect();
-    if (pill && crosses(pill)) return true;
-    scrollBy({ top: 4, behavior: 'instant' });
-  }
-  return false;
+    return Boolean(pill && crosses(pill));
+  };
+  for (let i = 0; i < tries && !under(); i++) scrollBy({ top: 4, behavior: 'instant' });
+  return under();
 }
