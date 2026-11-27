@@ -32,7 +32,6 @@ import { parseArgs } from 'node:util';
 import { launch, sleep } from './browser.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { lastCheckPass, MID_TURN, runChecks } from './uat/checks.mjs';
-import { failsRun } from './uat/checks-postbox.mjs';
 import { dollarFolders, streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
@@ -61,6 +60,7 @@ import { exportTrajectories } from './uat/run-atif.mjs';
 import { overdueStop, runBound, watchRun } from './uat/run-bound.mjs';
 import { endFailedRun, endRun } from './uat/run-end.mjs';
 import { runEnv } from './uat/run-env.mjs';
+import { runExit } from './uat/run-exit.mjs';
 import { runFacts } from './uat/run-facts.mjs';
 import { keeper, readReceived, readSpend, readStore, readStreams, readTranscripts, readUi } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
@@ -123,6 +123,8 @@ const { values: opt } = parseArgs({
 
 // What verifying and filing need from here (tools/uat/review.mjs).
 const REVIEW = { root: ROOT, testerModel: opt['tester-model'] };
+// The run’s folder, once main() has made it, for run.json’s exit code (tools/uat/run-exit.mjs, #482).
+let runDir = null;
 
 // ── Run ────────────────────────────────────────────────────────────────────────────────────
 
@@ -134,6 +136,7 @@ async function main() {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
   const paths = await runPaths(dir, { root: ROOT, main: mainCheckout({ root: ROOT }) });
+  runDir = dir;
   keepOnExit(paths);
   makeWorkspace(scenario, paths, dir);
   // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
@@ -529,11 +532,11 @@ if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
     .then((findings) => {
       // Postbox printed an error or a warning, or crashed, or a screenshot showed text over text, cut off or broken
       // mid-word (#681): the run fails, so a script running it sees that without the report. A run stopped by a signal
-      // still exits 130 (tools/uat/stop.mjs).
-      if (failsRun(findings)) process.exitCode ||= 1;
+      // still exits 130 (tools/uat/stop.mjs). run.json records the code (#482).
+      process.exitCode = runExit(runDir, { findings });
     })
     .catch((e) => {
       console.error(`UAT run failed: ${e.stack ?? e.message}`);
       // A run stopped by a signal exits as stopped (130, tools/uat/stop.mjs), whatever it failed with meanwhile.
-      process.exit(process.exitCode || 1);
+      process.exit(runExit(runDir, { failed: true }));
     });
