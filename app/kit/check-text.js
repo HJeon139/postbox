@@ -5,7 +5,7 @@
 // biome-ignore lint/suspicious/noRedundantUseStrict: the page runs this as a classic script, which isn’t strict without it.
 'use strict';
 {
-  const { rgb, lum, clip, where, hidden, guard } = window.__pbCheck;
+  const { rgb, lum, clip, where, hidden, folded, guard } = window.__pbCheck;
   // The smallest text a person can read at a glance: the critique’s floor (VE12). An SVG drawn a little under its
   // viewBox’s size draws a 12 px label at 11.7 px, which reads the same, so a label counts as small under 11.5 px.
   const MIN_SIZE = 12;
@@ -158,7 +158,7 @@
     const seen = new Set();
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       const el = n.parentElement;
-      if (!n.textContent.trim() || !el || seen.has(el) || el.closest('svg, script, style, .katex') || !shown(el)) continue;
+      if (!n.textContent.trim() || !el || seen.has(el) || el.closest('svg, script, style, .katex') || !shown(el) || folded(n)) continue;
       seen.add(el);
       out.push({ el, t: n.textContent, size: parseFloat(getComputedStyle(el).fontSize) });
     }
@@ -205,14 +205,22 @@
     }
     return false;
   };
+  // A box that fades its text out where it cuts it, as a topic thread’s long first message fades out above its Show
+  // all (#681), cuts it on purpose. Only the box that does the cutting counts, and only a gradient: an icon’s or an
+  // SVG’s mask isn’t a fade.
+  const faded = (el) => {
+    const cs = getComputedStyle(el);
+    return /gradient\(/.test(`${cs.maskImage} ${cs.webkitMaskImage}`);
+  };
   // What cuts a label short: the element, an SVG’s edge, or another ancestor whose overflow is hidden, or the page’s
   // top or left edge, where no one can scroll. A box that scrolls doesn’t cut: you scroll to the rest. A label cut away
-  // whole is hidden on purpose (a carousel’s other slides, a closed accordion).
+  // whole is hidden on purpose (a carousel’s other slides, a closed accordion). The first box that cuts it decides: one
+  // that fades it out there cuts it on purpose, and the label isn’t reported (an empty string).
   function cutBy(el, r) {
     let { left, top, right, bottom } = r;
     let by = null;
-    const cut = (l, t, rt, b, who) => {
-      if (l > left + 2 || t > top + r.height / 3 || rt < right - 2 || b < bottom - r.height / 3) by = by ?? who;
+    const cut = (l, t, rt, b, who, box = null) => {
+      if (by === null && (l > left + 2 || t > top + r.height / 3 || rt < right - 2 || b < bottom - r.height / 3)) by = box && faded(box) ? '' : who;
       [left, top, right, bottom] = [Math.max(left, l), Math.max(top, t), Math.min(right, rt), Math.min(bottom, b)];
     };
     for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
@@ -221,7 +229,7 @@
       const y = /hidden|clip/.test(cs.overflowY);
       if (!x && !y) continue;
       const b = a.getBoundingClientRect();
-      cut(x ? b.left : -Infinity, y ? b.top : -Infinity, x ? b.right : Infinity, y ? b.bottom : Infinity, where(a));
+      cut(x ? b.left : -Infinity, y ? b.top : -Infinity, x ? b.right : Infinity, y ? b.bottom : Infinity, where(a), a);
     }
     cut(-scrollX, -scrollY, Infinity, Infinity, 'the page’s edge');
     return right - left > 0 && bottom - top > 0 ? by : null;
@@ -248,5 +256,6 @@
     lowContrast: guard('contrast', lowContrast),
     smallText: (w, code = 'text-too-small') => guard(code, (x) => smallText(x, code))(w),
     cutOff: guard('text-cut-off', cutOff),
+    shown,
   });
 }
