@@ -2,8 +2,9 @@
 // over a button, cut text off and break words a few letters a line, both the browser specs’ helper
 // (tests/browser/text-layout.mjs) and the UAT runner’s check of each whole-window screenshot (tools/uat/layout-probe.mjs,
 // tools/uat/checks-view.mjs) fail, at 375 and 1280 px; on a clean page, and on Postbox’s own screens, both pass: its
-// first screen, a topic thread’s first message faded out above Show all, and Jump to latest over the transcript. A
-// running step’s long output, which its box cuts off at the end, is reported.
+// first screen, a long room whose items off screen are skipped, a topic thread’s first message faded out above Show
+// all, and Jump to latest over the transcript. A running step’s long output, which its box cuts off at the end, is
+// reported.
 
 import { expect, test } from '@playwright/test';
 import { TEXT_LAYOUT } from '../../tools/text-layout.mjs';
@@ -130,6 +131,23 @@ for (const width of [375, 1280]) {
     await page.goto(`${scripted.app.origin}/`);
     await synced(page, scripted.app);
     await expectTidyText(page, 'Postbox’s first screen');
+  });
+
+  // A long room: the transcript lets the browser skip the items off screen (#712), whose content can’t be measured
+  // where it isn’t drawn, and at 375 px the agents’ strip floats over the transcript scrolled under it.
+  test(`#681 at ${width} px a long room at its end passes the check`, async ({ page }) => {
+    const { rt } = scripted.app;
+    const t = scripted.room(`Long room at ${width}`, [`long${width}`]);
+    for (let i = 1; i <= 80; i++) arrange.post(rt, t.id, { kind: 'user', text: LONG(i) });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+    await synced(page, scripted.app);
+    await settled(page);
+    const skipped = await page.evaluate(
+      () => [...document.querySelectorAll('.transcript > .item')].filter((e) => !e.firstElementChild?.checkVisibility({ contentVisibilityAuto: true })).length,
+    );
+    expect(skipped, 'items off screen are skipped').toBeGreaterThan(20);
+    await expectTidyText(page, 'a long room at its end');
   });
 
   // The step keeps the end of what the call returned, but its box clamps it from the top, so the last lines are the
