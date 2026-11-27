@@ -1,0 +1,107 @@
+// The server of a hosted Postbox: one task of its image and the service that keeps exactly one running
+// (designs/architecture/hosted.md, “One server, one disk”). It is the part that changes with every release and the
+// one most likely to fail to start, so it is a part of its own: its failure leaves the network, the disk and the
+// edge as they were.
+
+import { Stack } from 'aws-cdk-lib';
+import { SubnetType } from 'aws-cdk-lib/aws-ec2';
+import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
+import {
+  Capability,
+  Cluster,
+  ContainerImage,
+  CpuArchitecture,
+  FargateService,
+  FargateTaskDefinition,
+  LinuxParameters,
+  LogDrivers,
+  OperatingSystemFamily,
+} from 'aws-cdk-lib/aws-ecs';
+import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import { RetentionDays } from 'aws-cdk-lib/aws-logs';
+import { Construct } from 'constructs';
+import { NODE_USER } from './data.mjs';
+import { PORT } from './network.mjs';
+
+/** The image’s scratch volume, the one place besides /data its user can write (Dockerfile). */
+const SCRATCH = '/run/postbox';
+
+/**
+ * @typedef {object} PostboxServerProps
+ * @property {import('aws-cdk-lib/aws-ec2').IVpc} vpc
+ * @property {import('aws-cdk-lib/aws-ec2').ISecurityGroup} serverGroup
+ * @property {import('aws-cdk-lib/aws-efs').IFileSystem} disk
+ * @property {import('aws-cdk-lib/aws-efs').IAccessPoint} folder
+ * @property {import('aws-cdk-lib/aws-elasticloadbalancingv2').IApplicationTargetGroup} targets
+ * @property {{ root: string, commit?: string }} source  the clone the image is built from, and its commit for the build line
+ * @property {object} hosted  Postbox’s hosted settings, as its settings file holds them (server/hosted-settings.mjs)
+ */
+
+export class PostboxServer extends Construct {
+  /** @param {Construct} scope @param {string} id @param {PostboxServerProps} props */
+  constructor(scope, id, props) {
+    super(scope, id);
+    const task = this.task(props);
+    this.service = new FargateService(this, 'Service', {
+      cluster: new Cluster(this, 'Cluster', { vpc: props.vpc }),
+      taskDefinition: task,
+      securityGroups: [props.serverGroup],
+      // No public address: it reaches the key endpoint and its hosts out through the VPC’s NAT gateway.
+      vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
+      assignPublicIp: false,
+      // “One server, one disk”: one writer. The old task stops before the new one starts, never two at once.
+      desiredCount: 1,
+      minHealthyPercent: 0,
+      maxHealthyPercent: 100,
+      circuitBreaker: { rollback: true },
+    });
+    // Registered by its address and port. Who reaches whom is PostboxNetwork’s to say, so no rule is added here.
+    props.targets.addTarget(this.service.loadBalancerTarget({ containerName: 'Postbox', containerPort: PORT }));
+  }
+
+  /**
+   * One task: as the image’s own user, with no Linux capability, a disk it can’t write to but for /data and its
+   * scratch volume, and a role that holds one thing, the data folder.
+   * @param {PostboxServerProps} props
+   */
+  task({ disk, folder, source, hosted }) {
+    const access = { accessPointId: folder.accessPointId, iam: 'ENABLED' };
+    const task = new FargateTaskDefinition(this, 'Task', {
+      cpu: 512,
+      memoryLimitMiB: 1024,
+      runtimePlatform: { cpuArchitecture: CpuArchitecture.ARM64, operatingSystemFamily: OperatingSystemFamily.LINUX },
+      volumes: [
+        { name: 'data', efsVolumeConfiguration: { fileSystemId: disk.fileSystemId, transitEncryption: 'ENABLED', authorizationConfig: access } },
+        { name: 'scratch' },
+      ],
+    });
+    // The role may mount the disk only through the access point, so as the image’s user in the data folder.
+    task.taskRole.addToPrincipalPolicy(
+      new PolicyStatement({
+        actions: ['elasticfilesystem:ClientMount', 'elasticfilesystem:ClientWrite'],
+        resources: [disk.fileSystemArn],
+        conditions: { StringEquals: { 'elasticfilesystem:AccessPointArn': folder.accessPointArn } },
+      }),
+    );
+    const linuxParameters = new LinuxParameters(this, 'Linux');
+    linuxParameters.dropCapabilities(Capability.ALL);
+    const settings = `${SCRATCH}/hosted.json`;
+    const container = task.addContainer('Postbox', {
+      image: ContainerImage.fromAsset(source.root, { platform: Platform.LINUX_ARM64, buildArgs: { POSTBOX_COMMIT: source.commit ?? '' } }),
+      // The settings reach the container as text, and Postbox reads a file: the command writes one, then starts it.
+      environment: { POSTBOX_HOSTED: Stack.of(this).toJsonString(hosted) },
+      command: ['sh', '-c', `printf '%s' "$POSTBOX_HOSTED" > ${settings} && exec node bin/postbox.mjs --hosted ${settings} --data /data --port ${PORT}`],
+      user: `${NODE_USER}:${NODE_USER}`,
+      readonlyRootFilesystem: true,
+      linuxParameters,
+      portMappings: [{ containerPort: PORT }],
+      logging: LogDrivers.awsLogs({ streamPrefix: 'postbox', logRetention: RetentionDays.ONE_MONTH }),
+    });
+    container.addMountPoints(
+      { containerPath: '/data', sourceVolume: 'data', readOnly: false },
+      { containerPath: SCRATCH, sourceVolume: 'scratch', readOnly: false },
+    );
+    this.logGroup = container.logDriverConfig?.options?.['awslogs-group'] ?? '';
+    return task;
+  }
+}
