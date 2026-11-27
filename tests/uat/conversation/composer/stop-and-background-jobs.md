@@ -23,11 +23,11 @@ An agent can start a command in the background (Bash with `run_in_background`, a
 - Stop with no background job running stops at once, without asking.
 - **Send now** (or a message sent with Send now from the queue) stops the agent without asking, and keeps its jobs running. The reply it interrupted reads “Interrupted by Send now at hh:mm”, not “Stopped by you” (#215), and the agent hears that Send now ended its turn but not its jobs.
 - After Stop, the agent reads “· stopping” beside its name until its process has exited, usually within a second or two, then “Stopped by you”. A message you send meanwhile appears at once and the agent starts on it when the old process has gone.
-- A job’s own Stop stops it; its step reads “Stopped”, and the agent hears about it on its next turn.
+- A job’s own Stop stops it; its step reads “Stopped”, and the agent hears about it on its next turn. Once pressed, it stays pressed until the stop is done, even as new steps land, so pressing it again sends nothing, and focus stays on it. If the stop is refused, it can be pressed again (#1837).
 
 ## Steps to reproduce
 
-Automated: `npx playwright test stop` (`tests/browser/stop.spec.mjs` and `tests/browser/stop-steps.spec.mjs`, a scripted agent, no real processes). `PB_SHOT=tests/uat/screenshots/kept-job-unsure.png npx playwright test stop -g "#164"` retakes the screenshot.
+Automated: `npx playwright test stop` (`tests/browser/stop.spec.mjs` and `tests/browser/stop-steps.spec.mjs`, a scripted agent, no real processes), and `npx playwright test live-press -g "job"` for a job’s Stop pressed while new steps land. `PB_SHOT=tests/uat/screenshots/kept-job-unsure.png npx playwright test stop -g "#164"` retakes the screenshot.
 
 With a real agent:
 1. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>.
