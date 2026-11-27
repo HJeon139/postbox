@@ -116,7 +116,7 @@ const HEADLESS_NOTE =
 // with ids such as `postbox::show_block` (tests/fixtures/kiro-cli/block.jsonl), and on kiro-cli 3.6.2 `load_resource`
 // with ids such as `tool::postbox::show_block` (tool-load-deepseek.jsonl). Both are named, so an agent isn’t sent
 // looking for one its Kiro doesn’t have.
-const TOOL_LOAD_NOTE = `## Postbox’s tools\n\nKiro loads MCP tools on demand. The first time you use one of Postbox’s in a session, load it with whichever loader you have: \`load_resource\` with its id, such as \`tool::${POSTBOX_SERVER}::show_block\` or \`tool::${POSTBOX_SERVER}::read_message\`, or \`tool_load\` with \`${POSTBOX_SERVER}::show_block\`. Then run it with \`tool_call\` and the id the loader gave back, without loading it again. If neither loader is among your tools, or it doesn’t find Postbox’s, check again on your next turn rather than relying on an earlier answer, and say which in your reply.`;
+const TOOL_LOAD_NOTE = `## Postbox’s tools\n\nKiro loads MCP tools on demand. The first time you use one of Postbox’s in a session, load it with whichever loader you have: \`load_resource\` with its id, such as \`tool::${POSTBOX_SERVER}::show_block\` or \`tool::${POSTBOX_SERVER}::read_message\`, or \`tool_load\` with \`${POSTBOX_SERVER}::show_block\`. Then run it with \`tool_call\` and the id the loader gave back, without loading it again. If you have neither loader, or yours doesn’t find Postbox’s tools, say which in your reply, and check again on your next turn rather than relying on this answer.`;
 
 // Kiro still lists a denied server’s tools to the model; it only refuses the call. In the mixed-room UAT, an Isolated
 // agent offered “Manage scoped AWS credentials” from a server a managed install had added, so it’s told.
