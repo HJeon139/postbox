@@ -13,7 +13,7 @@ export const LIST_TIMEOUT_MS = 15_000;
 /**
  * Settings for a listing, over the person’s own: no hooks run, so a listing never runs their SessionStart hooks, up to
  * once a minute for each open sheet. Hooks an organization manages still run. Claude Code’s listing passes them with
- * --settings, and the Agent SDK’s as its settings option (#1302, #1486).
+ * --settings (#1302, #1486).
  */
 export const LISTING_SETTINGS = Object.freeze({ disableAllHooks: true });
 

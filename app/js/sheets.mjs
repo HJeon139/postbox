@@ -325,7 +325,7 @@ function toolsHelp(backend) {
   if (backend === 'codex') return 'In Auto, Web turns network on in Codex’s sandbox. Codex doesn’t turn other tools off for one agent.';
   return capsOf(backend).tools === 'none'
     ? 'This backend can’t turn a tool off for one agent: an unticked one is only a request, which the agent is told. Its permissions still apply.'
-    : 'On Claude Code, the Agent SDK and the Kiro CLI, an unticked tool is turned off. A ticked one still follows its permissions.';
+    : 'On Claude Code and the Kiro CLI, an unticked tool is turned off. A ticked one still follows its permissions.';
 }
 
 // ── New agent ───────────────────────────────────────────────────────────────────────────

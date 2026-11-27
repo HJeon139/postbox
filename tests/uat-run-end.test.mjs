@@ -94,7 +94,7 @@ test('#1664 an end that fails as well is logged, and the run fails with what thr
   );
 });
 
-// #1696: an Agent SDK run stopped at its budget while a turn the budget let finish was at work. The report and run.json
+// #1696: a run stopped at its budget while a turn the budget let finish was at work. The report and run.json
 // said the agents spent $0.72, from the streams read before that turn reported, and the budget in the same files $0.84,
 // read live. The run reads the agents’ streams again before each report, so both give one total.
 test('#1696 each report reads what the agents spent as the budget does, after a turn at work reports', async (t) => {
@@ -102,7 +102,6 @@ test('#1696 each report reads what the agents spent as the budget does, after a 
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const paths = {
     streams: join(root, 'cc'),
-    sdkStreams: join(root, 'sdk'),
     kiroStreams: join(root, 'kiro'),
     agyStreams: join(root, 'agy'),
     codexStreams: join(root, 'codex'),
@@ -111,15 +110,15 @@ test('#1696 each report reads what the agents spent as the budget does, after a 
   const result = (usd) => `${JSON.stringify({ type: 'result', total_cost_usd: usd })}\n`;
   // What the run last read, before a failed step’s turn reported: the first report reads the streams again too.
   const facts = readSpend(paths);
-  writeFileSync(join(paths.sdkStreams, '1-researcher.jsonl'), result(0.72));
-  writeFileSync(join(paths.sdkStreams, '2-researcher.jsonl'), '');
+  writeFileSync(join(paths.streams, '1-researcher.jsonl'), result(0.72));
+  writeFileSync(join(paths.streams, '2-researcher.jsonl'), '');
   const budget = new RunBudget({ cap: 10, testerShare: 1, agentsShare: 8, now: () => 0 });
   budget.track({ streams: streamResults(...dollarFolders(paths)), tester: { spent: 0 } });
   const reports = [];
   await endRun({
     refresh: () => Object.assign(facts, readSpend(paths)),
     report: async () => void reports.push({ usage: agentsSpent(dollarStreams(facts)), budget: budget.spent().agents }),
-    review: async () => appendFileSync(join(paths.sdkStreams, '2-researcher.jsonl'), result(0.12)),
+    review: async () => appendFileSync(join(paths.streams, '2-researcher.jsonl'), result(0.12)),
     judge: async () => {},
   });
   assert.ok(Math.abs((reports[0]?.usage ?? 0) - 0.72) < 1e-9, `the first report’s usage line: ${reports[0]?.usage}`);

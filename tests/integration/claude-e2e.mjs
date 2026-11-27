@@ -9,7 +9,7 @@
 // reachable without them, through ANTHROPIC_API_KEY or Bedrock (AWS_CONFIG_FILE and AWS_SHARED_CREDENTIALS_FILE are
 // pointed at the person’s own files when unset; the test never reads them), plus an allowlist of the person’s user
 // settings (reachModel). A sign-in kept in ~/.claude doesn’t carry over. Of those, `apiKeyHelper`, `awsCredentialExport`
-// and `awsAuthRefresh` are the person’s own commands, which the Agent SDK’s bundled Claude Code runs as it would in their
+// and `awsAuthRefresh` are the person’s own commands, which Claude Code runs as it would in their
 // own sessions; the test logs the names of the keys it copied, never their values.
 //
 // The fixture’s folder is removed when the file ends (tempDir), and on Ctrl-C or SIGTERM (onKill). A run killed with
@@ -28,7 +28,6 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { loadAgentSdk } from '../../server/adapters/agent-sdk.mjs';
 import { findClaude } from '../../server/adapters/claude-code.mjs';
 import { start } from '../../server/index.mjs';
 import * as arrange from '../arrange.mjs';
@@ -48,14 +47,13 @@ function skipReason() {
   return false;
 }
 export const why = skipReason();
-export const sdkWhy = why || ((await loadAgentSdk()) ? false : '@anthropic-ai/claude-agent-sdk isn’t installed');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=Postbox e2e', '-c', 'user.email=e2e@example.com', ...args], { cwd, stdio: 'pipe' });
 
-// How the person's Claude Code reaches the model, and nothing else, copied from their user settings: the Agent SDK's
-// own bundled Claude Code doesn't get the setup a wrapper on PATH adds, so without these its turn on Bedrock never
-// answers (two runs on 6 Nov waited out the 240 s with nothing in the room). Only an allowlist is copied, so no env
+// How the person's Claude Code reaches the model, and nothing else, copied from their user settings, since the
+// fixture's HOME has none: a Claude Code without the setup a wrapper on PATH adds never answers on Bedrock without
+// these (two runs on 6 Nov waited out the 240 s with nothing in the room). Only an allowlist is copied, so no env
 // value named like a secret lands in the fixture, and nothing that changes what's tested (CLAUDE_CONFIG_DIR would move
 // the user settings away from the fixture's HOME, so the user hook would never load and its check would pass on no
 // evidence). The top-level keys name commands (a credential export, an auth refresh, a key helper) that the person's
@@ -196,7 +194,7 @@ function useHome(t, home) {
 /**
  * One real turn of `backend` in `mode` that asks for the push, with the fixture’s approving hook where `hooksIn` says.
  * Every card it shows is answered no. Returns the cards.
- * @param {import('node:test').TestContext} t @param {'claude-code'|'agent-sdk'} backend @param {string} mode
+ * @param {import('node:test').TestContext} t @param {'claude-code'} backend @param {string} mode
  * @param {HooksIn} [hooksIn]
  */
 export async function pushTurn(t, backend, mode, hooksIn = 'settings') {

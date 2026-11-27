@@ -113,7 +113,7 @@ function turnHooks(rt, turn, live) {
       turn.control = c;
     },
     /**
-     * The agent’s skills and commands (#67), from init (names) or the SDK’s supportedCommands() (with descriptions
+     * The agent’s skills and commands (#67), from init (names) or a list the harness sends later (with descriptions
      * and argument hints): [{ name, description?, argumentHint?, skill? }]. Kept on the session for the / menu.
      */
     commands(list) {
@@ -127,10 +127,6 @@ function turnHooks(rt, turn, live) {
      */
     job(j) {
       rt.recordJob(turn, j);
-    },
-    /** A line the agent reads at the start of its next turn, as a Postbox notice (sessions.tell). @param {string} text */
-    tell(text) {
-      rt.sessions.tell(turn.sessionId, text);
     },
     /** The backend refused a tool call without asking: { toolUseId, tool, input, label, reason, reasonType, who }. */
     denied(d) {

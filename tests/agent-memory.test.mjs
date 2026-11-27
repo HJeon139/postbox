@@ -9,7 +9,6 @@ const OWN = 'Memory: its own. No other agent, and none of your own sessions, rea
 
 test('#480 each backend’s memory line', () => {
   assert.equal(memoryLine('claude-code'), OWN);
-  assert.equal(memoryLine('agent-sdk'), OWN);
   assert.equal(memoryLine('codex'), 'Memory: off. Codex keeps one memory for everything it runs, so Postbox turns it off.');
   assert.equal(
     memoryLine('antigravity-cli'),

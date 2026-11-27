@@ -11,6 +11,7 @@ import './keys.mjs';
 import './live-frames.mjs';
 import { startLagLog } from './lag-log.mjs';
 import { goHome, lastIn, latestIn, remember } from './last-place.mjs';
+import { focusAddressed } from './needs-nav.mjs';
 import { notify } from './notify-toast.mjs';
 import { closeThread, loaded, whenLoaded } from './open-threads.mjs';
 import { mountPane } from './pane.mjs';
@@ -193,7 +194,10 @@ initHoverCards(hoverContent);
 
 // ── Boot ────────────────────────────────────────────────────────────────────────────────
 
-addEventListener('hashchange', () => render());
+addEventListener('hashchange', () => {
+  render();
+  focusAddressed();
+});
 // Asked to open what’s already open (Work at the same turn): go there again.
 addEventListener('pb-pane', (e) => {
   const r = route();
@@ -207,6 +211,7 @@ try {
   else {
     connect();
     render();
+    focusAddressed();
     // After the first paint, so the lag log costs the page’s start nothing (#821).
     requestAnimationFrame(() => setTimeout(startLagLog, 0));
   }

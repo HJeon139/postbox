@@ -192,7 +192,6 @@ export function permissionBlock(it, ctx) {
             'div.small.perm-always',
             { id: `${titleId}-always` },
             it.always.lines.map((l) => h('p', l.rule ? ['Always allow ', h('code', l.rule), l.text.slice(`Always allow ${l.rule}`.length)] : l.text)),
-            it.always.moved ? h('p.dim', it.always.moved) : null,
             // What Always allow gives up on a write outside Postbox (#112): the draft step, for that tool.
             it.outside ? h('p', `From now on ${by} can use `, h('code', it.tool), ' without showing you a draft.') : null,
           )

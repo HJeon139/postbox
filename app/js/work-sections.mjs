@@ -184,7 +184,7 @@ export function effortSection(s, entries, threadId, win) {
           ),
         )
       : h('p.empty-note', 'No turns yet.'),
-    anyPrice || !s.turns.length ? null : h('p.small.dim', 'Spend shows for Claude Code and Agent SDK turns.'),
+    anyPrice || !s.turns.length ? null : h('p.small.dim', 'Spend shows for Claude Code turns.'),
     idleList(s, entries, threadId, win),
   );
 }
