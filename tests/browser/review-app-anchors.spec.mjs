@@ -83,6 +83,45 @@ test('#855 an app that names parts keeps its tags, and a tag’s click opens a c
   await expect(page.getByRole('textbox', { name: 'Comment on chart' }), 'a comment box on the chart').toBeVisible();
 });
 
+test('a click anywhere in a highlighted part opens a comment on it, and a click on a control in the part still works the app', async ({ page }) => {
+  // The chart is inside a panel that is a part too: the innermost part takes the click. The chart takes focus itself, as a
+  // card may, which doesn’t make it one of the app’s own controls inside it.
+  const PARTS = `<main style="padding:12px;color:var(--text)"><section id="p" style="padding:24px"><div id="c" tabindex="0" style="height:120px;padding:8px">Chart<button id="b" type="button" style="color:var(--text);background:var(--panel)">Count</button><output id="o">0</output></div></section></main>
+<script>document.getElementById('b').onclick = () => { const o = document.getElementById('o'); o.textContent = String(+o.textContent + 1); };
+postbox.anchors({ panel: document.getElementById('p'), chart: document.getElementById('c') });</script>`;
+  const { block } = await review(page, 'parts', PARTS);
+  const frame = block.frameLocator('iframe.app-iframe');
+  // A spot in the chart’s outline, well away from its name tag and its button.
+  const part = await frame.locator('#c').boundingBox();
+  if (!part) throw new Error('The chart has no box.');
+  const at = { x: part.x + part.width / 2, y: part.y + part.height - 12 };
+  await page.mouse.move(at.x, at.y, { steps: 4 });
+  await expect(block.locator('iframe.app-iframe'), 'the app takes the pointer').toHaveCSS('pointer-events', 'auto');
+  await page.mouse.click(at.x, at.y);
+  await expect(page.getByRole('textbox', { name: 'Comment on chart' }), 'a comment box on the chart').toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Comment on panel' }), 'not on the panel around it').toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Comment on chart' }).press('Escape');
+  // The app’s own button inside the part does what it does, and opens no comment.
+  await frame.getByRole('button', { name: 'Count' }).click();
+  await expect(frame.locator('#o')).toHaveText('1');
+  await expect(page.getByRole('textbox', { name: 'Comment on chart' }), 'no comment box from the app’s button').toHaveCount(0);
+});
+
+test('a comment typed in a part’s box but not yet added goes with Submit review, on that part', async ({ page }) => {
+  const { block, blockId } = await review(page, 'typed', NAMED);
+  const part = await block.frameLocator('iframe.app-iframe').locator('#c').boundingBox();
+  if (!part) throw new Error('The chart has no box.');
+  const at = { x: part.x + part.width / 2, y: part.y + part.height - 10 };
+  await page.mouse.move(at.x, at.y, { steps: 4 });
+  await expect(block.locator('iframe.app-iframe'), 'the app takes the pointer').toHaveCSS('pointer-events', 'auto');
+  await page.mouse.click(at.x, at.y);
+  await page.getByRole('textbox', { name: 'Comment on chart' }).fill('typed on the chart');
+  await block.getByRole('button', { name: 'Submit review', exact: true }).click();
+  await expect
+    .poll(() => calls.find((m) => m.kind === 'event' && m.event.blockId === blockId)?.event.values.comments, { message: 'the typed comment goes on the chart' })
+    .toEqual([expect.objectContaining({ anchor: 'chart', text: 'typed on the chart' })]);
+});
+
 test('#855 an app that names its parts only after an await gets the hint for its parts, not “no parts”', async ({ page }) => {
   const { block } = await review(page, 'late', LATE);
   await expect(block.locator('.rv-pins p'), 'once it names its title').toHaveText('Or click a highlighted part of the app to comment on it.');

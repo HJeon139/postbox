@@ -4,7 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { landed, longRoom, uncovered } from './message-address.mjs';
+import { landed, longRoom, readOnPast, recordEnd, uncovered } from './message-address.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -35,12 +35,12 @@ test('#168 going to an ask in the conversation on screen keeps Work open, and ad
 
 test('#168 Back to a message’s address after opening Work doesn’t pull the view back to the message', async ({ page }) => {
   const { t, items } = longRoom(app, 'Address, Back');
+  await recordEnd(page);
   await page.goto(`${app.origin}/#/t/${t.id}?m=${items[3].id}`);
   await synced(page, app);
   await expect.poll(() => landed(page, items[3].id)).toBe('landed');
   // Read on, down to the end, then follow a link within the conversation, here to Work, and come back with Back.
-  await page.keyboard.press('End');
-  await expect.poll(() => landed(page, items[3].id), { message: 'read on past it' }).toBe('not in view');
+  await readOnPast(page, items[3].id);
   await page.evaluate((id) => {
     location.hash = `#/t/${id}?work`;
   }, t.id);
@@ -76,6 +76,7 @@ test('#168 going to the same ask again after opening Work goes to it again', asy
   // Only this agent needs you, so ⌃J pressed again comes back to it rather than moving on to another.
   for (const other of Object.values(rt.store.state.sessions)) if (other.needs) arrange.setSession(rt, other.id, { state: 'idle', needs: null });
   arrange.setSession(rt, se.id, { state: 'needs', needs: { kind: 'block', itemId: ask.id, text: 'Pick one' } });
+  await recordEnd(page);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
@@ -86,8 +87,7 @@ test('#168 going to the same ask again after opening Work goes to it again', asy
   await expect(page.locator('#work-button')).toHaveAttribute('aria-pressed', 'true');
   // End scrolls the conversation only when focus isn’t in Work, which may take it as it opens.
   await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
-  await page.keyboard.press('End');
-  await expect.poll(() => landed(page, ask.id), { message: 'read on past it' }).toBe('not in view');
+  await readOnPast(page, ask.id);
   await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
   await page.keyboard.press('Control+j');
   await expect(page).toHaveURL(new RegExp(`\\?work&m=${ask.id}$`));

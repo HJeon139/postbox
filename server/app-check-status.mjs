@@ -1,11 +1,12 @@
 // Saving an app is separate from its browser check; receipts and reads name the current version (#337).
 
-/** @param {any} app */
+/** What the agent hears of a check: its problems, and the hints only it is told (#952). @param {any} app */
 export function appCheckStatus(app) {
+  const found = [...(app.check?.problems ?? []), ...(app.check?.hints ?? [])];
   return {
     version: app.current,
     status: app.check?.status ?? 'pending',
-    problems: (app.check?.problems ?? []).map(({ code, message }) => ({ code, message })),
+    problems: found.map(({ code, message }) => ({ code, message })),
   };
 }
 

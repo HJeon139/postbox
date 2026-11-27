@@ -24,6 +24,8 @@ Feedback on long documents needs to be anchored to lines, batched, and followed 
 - A Markdown image (`![alt](address)`) shows as the image, from Postbox’s own media (at `127.0.0.1` or `localhost`) or an origin Postbox allows. One that can’t load, comes from another origin or has no full https address says “This image couldn’t load” in its place, with its alt text (#218).
 - In a diff, an added or removed table row, list item or code line stays in place inside its block, marked added or removed.
 - Comments are drafted, then submitted with a verdict (comment, approve, request changes).
+- A comment still being typed in an open box goes with Submit review, after the drafts; a blank box adds nothing.
+- In a review of an app, a click anywhere in a highlighted part, or on its name tag, opens a comment on that part, the innermost one when parts nest; a click on one of the app’s own controls in the part still works the app.
 - Once you submit, each of your comments is a thread on the block, shown as yours (“You”) on its line, once, right away (#1143). The agent hears each one’s thread, and resolves it when it revises. A revision keeps your threads, each following its text to its new line, open or resolved, across a reload. Your comments aren’t counted as a reviewer’s in the review bar.
 - When the agent reports what came of an approved draft (“Filed as #105”), the result shows under your answer, and the review stays answered: nothing asks you to approve it again (#106).
 - While it waits on you, it can be dismissed, and its agent can withdraw it, as a [choice](choice.md) can.
