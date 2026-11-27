@@ -39,6 +39,18 @@ test('#466 a wake whose host turn waits to be attached retries when a turn for i
   clearTimeout(r.rt.timers.get(sc.id));
 });
 
+test('#466 a wake left to its host turn’s resume retries when its agent moves and a turn for it starts elsewhere', async () => {
+  const { r, sc, registered } = await waitingOnResume();
+  registered();
+  moveOff(r);
+  // A turn for the moved agent starts on this computer (turn-run.mjs); the resume it waited on won’t carry the wake.
+  r.rt.remote.leaveMoved(r.se().id);
+  assert.equal(r.store.state.schedules[sc.id]?.attempt, 1, 'the wake retries where its agent runs now');
+  assert.ok(r.rt.timers.has(sc.id), 'its bounded retry is armed');
+  assert.equal(line(r, sc).status, 'pending');
+  clearTimeout(r.rt.timers.get(sc.id));
+});
+
 test('#466 a wake left to its host turn’s resume is settled when that turn is given up, not left running', async () => {
   const { r, sc } = await waitingOnResume();
   // Removing the host gives up on the turn, which only waits on its resume now (stopTurnsOn).

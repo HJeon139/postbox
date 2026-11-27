@@ -222,9 +222,11 @@ function renamedBusy(rts, e, hostId, se) {
  */
 export function leaveMoved(rts, sessionId, hostId) {
   const r = remoteOf(rts, sessionId)?.remoteTurn; // as written (#623)
-  if (!r?.turn || r.hostId === hostId || rts.restoring.get(r.turn) !== sessionId) return;
-  // A wake that turn was retries where its agent runs now, as reattach’s give-up does (#466).
+  if (!r?.turn || r.hostId === hostId) return;
+  // A wake that turn was, waiting to be attached or resumed, retries where its agent runs now, as reattach’s give-up
+  // does (#466).
   retryHostWake(rts.rt, sessionId);
+  if (rts.restoring.get(r.turn) !== sessionId) return;
   rts.restoring.delete(r.turn);
   rts.noteAttach(sessionId);
   rts.early.delete(r.turn);
