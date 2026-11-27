@@ -27,13 +27,17 @@ const STYLE = `<style>
   button { font: inherit; }
 </style>`;
 
-// One of each problem: text over text, an opaque button misplaced over text, and one over its own sticky box’s title,
-// text cut off by its box (twice: the second inside a faded box that clips, whose fade isn’t what cuts it), and a word
-// broken three letters a line.
+// One of each problem: text over text, an opaque button misplaced over text, over text with no box of its own
+// (display: contents), and over its own sticky box’s title, text cut off by its box (twice: the second inside a faded
+// box that clips, whose fade isn’t what cuts it), and a word broken three letters a line.
 const BAD = `${STYLE}
 <section style="position: relative; height: 40px">
   <span>Overlapping words here</span>
   <span style="position: absolute; left: 0; top: 0">Drawn over the first</span>
+</section>
+<section style="position: relative; height: 40px">
+  <span style="display: contents">Words with no box of their own</span>
+  <button style="position: absolute; left: 40px; top: 0">Go</button>
 </section>
 <section style="position: relative; height: 40px">
   <span>A sentence a button sits on</span>
@@ -98,6 +102,8 @@ for (const width of [375, 1280]) {
     expect.soft(found.filter((p) => p.code === 'text-cut-off').length, 'both labels cut off, the faded section’s too').toBe(2);
     const title = found.filter((p) => p.code === 'text-on-control' && p.message.includes('A dialog’s own title'));
     expect.soft(title.length, 'a close button over its own sticky box’s title').toBe(1);
+    const boxless = found.filter((p) => p.code === 'text-on-control' && p.message.includes('Words with no box'));
+    expect.soft(boxless.length, 'text in a display: contents box under a button').toBe(1);
     for (const p of found) {
       // Each names its element by a selector path, and quotes no more than 40 characters of its text and an ellipsis.
       expect.soft(p.message, 'names where it is').toMatch(/\([\w.#:() >-]+\)/);
@@ -152,12 +158,14 @@ for (const width of [375, 1280]) {
     );
     expect(skipped, 'items off screen are skipped').toBeGreaterThan(20);
     await expectTidyText(page, 'a long room at its end');
-    const view = await page.evaluate(() => {
-      const t = /** @type {HTMLElement} */ (document.querySelector('#main.transcript'));
+    // Once the page has had its frames after the check: its view publishes what it is on a scroll.
+    await settled(page);
+    await expect(page.locator('#main.transcript'), 'the view still follows the end').toHaveAttribute('data-view-mode', 'following');
+    const gap = await page.evaluate(() => {
       const s = document.scrollingElement;
-      return { mode: t.dataset.viewMode, gap: Math.round(s.scrollHeight - s.scrollTop - s.clientHeight) };
+      return s.scrollHeight - s.scrollTop - s.clientHeight;
     });
-    expect(view, 'the view still follows the end').toEqual({ mode: 'following', gap: 0 });
+    expect(gap, 'at the end, within the view’s 2 px').toBeLessThanOrEqual(2);
   });
 
   // The step keeps the end of what the call returned, but its box clamps it from the top, so the last lines are the
