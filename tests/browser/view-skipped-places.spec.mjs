@@ -92,8 +92,8 @@ test.describe('the window off', () => {
     const fewer = await places(page);
     expect(fewer.items).toEqual(counted(fewer.items));
     // A new item takes the next place, and every other item’s count grows with it.
-    await page.locator('#composer-input').fill('One more.');
-    await page.keyboard.press('Enter');
+    // Posted with no agent to answer it, so no reply lands after the checks below have read the last place.
+    app.rt.threads.addItem(conv, { kind: 'user', text: 'Note: one more.' });
     await expect.poll(async () => (await places(page)).items.length).toBe(items.length);
     const after = await places(page);
     expect(after.items).toEqual(counted(after.items));
@@ -114,8 +114,7 @@ test.describe('the window off', () => {
     // item after it is one place further on.
     app.rt.threads.addItem(conv, { kind: 'command', command: 'ls', cwd: '.', status: 'done', exitCode: 0, output: '' });
     app.rt.threads.addItem(conv, { kind: 'user', text: 'Note: after the command' });
-    // Whatever else arrives meanwhile (the agent’s answer to “One more.”), each article’s place is its index among the
-    // shown items, and the group’s index is skipped, not reused.
+    // Each article’s place is its index among the shown items, and the group’s index is skipped, not reused.
     await expect(page.locator('#main > .item').filter({ hasText: 'Note: after the command' })).toHaveCount(1);
     const command = page.locator('#main > .item.cmd-block');
     await expect(command).toHaveAttribute('role', 'group');
