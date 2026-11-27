@@ -1,9 +1,11 @@
 // The run’s own Postbox must print nothing wrong: no error, no warning, and no exit of its own mid-run. A 500’s
 // TypeError reached the person’s terminal on `npm start` while every UAT run copied the same kind of line into its
 // log unread. The check reads what tools/uat/postbox-output.mjs records, and any finding fails the run: the runner
-// exits non-zero (tools/uat-run.mjs), so a script or session running UAT sees it without reading the report.
+// exits non-zero (tools/uat-run.mjs), so a script or session running UAT sees it without reading the report. What
+// text-layout finds on a screenshot fails the run too (#681, failsRun below).
 
 import { clip } from '../../shared/text.mjs';
+import { TEXT_LAYOUT } from './checks-view.mjs';
 
 export const POSTBOX_OUTPUT = 'postbox-output';
 
@@ -96,5 +98,9 @@ function postboxOutput(f) {
 
 export const POSTBOX_OUTPUT_CHECKS = [{ id: POSTBOX_OUTPUT, inputs: ['postboxOutput'], issue: null, run: postboxOutput }];
 
-/** Whether a run’s findings fail it: any of this check’s does. @param {{ check?: string }[]} findings */
-export const failsRun = (findings) => findings.some((f) => f.check === POSTBOX_OUTPUT);
+/**
+ * Whether a run’s findings fail it: any of this check’s does, and any problem text-layout found on a screenshot
+ * (tools/uat/checks-view.mjs, #681), though not one it couldn’t verify.
+ * @param {{ check?: string, unverified?: any }[]} findings
+ */
+export const failsRun = (findings) => findings.some((f) => f.check === POSTBOX_OUTPUT || (f.check === TEXT_LAYOUT && !f.unverified));

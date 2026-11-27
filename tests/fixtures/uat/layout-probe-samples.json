@@ -1,0 +1,56 @@
+{
+  "bad": [
+    {
+      "width": 375,
+      "problems": [
+        {
+          "code": "text-overlap",
+          "message": "At 375 px, “Overlapping words here” (section:nth-of-type(1) > span:nth-of-type(1)) is drawn over “Drawn over the first” (section:nth-of-type(1) > span:nth-of-type(2)) by 139 × 18 px. Give the text room: let it wrap, or make its column wider."
+        },
+        {
+          "code": "text-cut-off",
+          "message": "At 375 px, “This label is far too long for its box” (section:nth-of-type(3)) is cut off by section:nth-of-type(3). Give it room: move it inside, make the box bigger, or let the box’s overflow show."
+        },
+        {
+          "code": "text-on-control",
+          "message": "At 375 px, “A sentence a button sits on” (section:nth-of-type(2) > span) runs into the control “Send now” (section:nth-of-type(2) > button) by 87 × 18 px. Give the text room, or move the control off it."
+        },
+        {
+          "code": "mid-word-break",
+          "message": "At 375 px, “Configuration” (section.mono) breaks mid-word, leaving “Con” on a line by itself. Give it room to fit whole, or let it scroll."
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "problems": [
+        {
+          "code": "text-overlap",
+          "message": "At 1280 px, “Overlapping words here” (section:nth-of-type(1) > span:nth-of-type(1)) is drawn over “Drawn over the first” (section:nth-of-type(1) > span:nth-of-type(2)) by 139 × 18 px. Give the text room: let it wrap, or make its column wider."
+        },
+        {
+          "code": "text-cut-off",
+          "message": "At 1280 px, “This label is far too long for its box” (section:nth-of-type(3)) is cut off by section:nth-of-type(3). Give it room: move it inside, make the box bigger, or let the box’s overflow show."
+        },
+        {
+          "code": "text-on-control",
+          "message": "At 1280 px, “A sentence a button sits on” (section:nth-of-type(2) > span) runs into the control “Send now” (section:nth-of-type(2) > button) by 87 × 18 px. Give the text room, or move the control off it."
+        },
+        {
+          "code": "mid-word-break",
+          "message": "At 1280 px, “Configuration” (section.mono) breaks mid-word, leaving “Con” on a line by itself. Give it room to fit whole, or let it scroll."
+        }
+      ]
+    }
+  ],
+  "clean": [
+    {
+      "width": 375,
+      "problems": []
+    },
+    {
+      "width": 1280,
+      "problems": []
+    }
+  ]
+}

@@ -21,6 +21,7 @@ import { availableParallelism } from 'node:os';
 import { expect, test } from '@playwright/test';
 import { play } from '../../tools/demo.mjs';
 import { settled, startPostbox, synced } from './postbox.mjs';
+import { textLayout } from './text-layout.mjs';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 const VARIANTS = [
@@ -196,6 +197,8 @@ async function checkScene(browser, app, name, hash, prepare) {
               await drawn(shown);
             }
             expect.soft(await axe(shown), `axe in ${name}, ${variant}`).toEqual([]);
+            // Text over text, cut off or broken mid-word (#681), at each width: the theme doesn’t move text, so once.
+            if (theme === 'dark') expect.soft(await textLayout(shown), `text layout in ${name}, ${variant}`).toEqual([]);
             expect.soft(shownErrors, `${name}, ${variant}: the page threw no exceptions and logged no errors`).toEqual([]);
           } finally {
             await context.close();
