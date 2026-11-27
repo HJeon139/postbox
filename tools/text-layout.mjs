@@ -23,6 +23,10 @@ const own = (name) => `(function () {\n${kit(name)}\n})();`;
 export const TEXT_LAYOUT = `(async () => {
   const kept = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame, x: scrollX, y: scrollY };
   window.__pbCheck = { rgb: () => null, lum: () => 0 };
+  // The transcript lets the browser skip the items off screen (#712), and asking what’s drawn at a point finds nothing
+  // of one until a frame draws it, so everything is drawn while the check measures.
+  const drawn = document.head.appendChild(document.createElement('style'));
+  drawn.textContent = '* { content-visibility: visible !important; }';
   try {
     ${own('check-layout.js')}
     // The page isn’t a hidden frame: its own animation frames run, and its own ids cancel them.
@@ -35,6 +39,7 @@ export const TEXT_LAYOUT = `(async () => {
     const found = await Promise.all([c.textOverlap(w), c.textOverflow(w), c.cutOff(w), c.textOnControl(w), c.midWordBreaks(w)]);
     return found.flat();
   } finally {
+    drawn.remove();
     delete window.__pbCheck;
     window.requestAnimationFrame = kept.raf;
     window.cancelAnimationFrame = kept.caf;
