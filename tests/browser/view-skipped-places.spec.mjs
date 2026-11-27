@@ -74,9 +74,32 @@ test.describe('the window off', () => {
     // Alt+↑ from the composer reaches the last item, which says it’s the last of them.
     await page.locator('#composer-input').focus();
     await page.keyboard.press('Alt+ArrowUp');
-    const n = String(after.items.length);
-    await expect(page.locator(':focus')).toHaveAttribute('aria-posinset', n);
-    await expect(page.locator(':focus')).toHaveAttribute('aria-setsize', n);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const at = document.activeElement?.getAttribute('aria-posinset');
+          return !!at && at === document.activeElement?.getAttribute('aria-setsize');
+        }),
+      )
+      .toBe(true);
+    // A command the person ran is a group (thread.mjs): it keeps that role and says no place, and still counts, so the
+    // item after it is one place further on.
+    app.rt.threads.addItem(conv, { kind: 'command', command: 'ls', cwd: '.', status: 'done', exitCode: 0, output: '' });
+    app.rt.threads.addItem(conv, { kind: 'user', text: 'Note: after the command' });
+    // Whatever else arrives meanwhile (the agent’s answer to “One more.”), each article’s place is its index among the
+    // shown items, and the group’s index is skipped, not reused.
+    await expect(page.locator('#main > .item').filter({ hasText: 'Note: after the command' })).toHaveCount(1);
+    const command = page.locator('#main > .item.cmd-block');
+    await expect(command).toHaveAttribute('role', 'group');
+    await expect(command).not.toHaveAttribute('aria-posinset', /./);
+    const withGroup = (/** @type {(string | null)[][]} */ items) =>
+      items.map(([role], i) => (role === 'group' ? ['group', null, null] : ['article', String(i + 1), String(items.length)]));
+    await expect
+      .poll(async () => {
+        const { items: now } = await places(page);
+        return JSON.stringify(now) === JSON.stringify(withGroup(now));
+      })
+      .toBe(true);
   });
 });
 
