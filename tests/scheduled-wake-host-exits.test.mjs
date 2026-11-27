@@ -133,3 +133,19 @@ test('#466 a resume whose own start lost the network leaves the wake to the resu
   assert.equal(r.store.state.schedules[sc.id], undefined);
   assert.equal(starts(d).length, 2, 'the wake ran once, through the resume');
 });
+
+test('#466 a wake’s own host turn interrupted there settles the wake, rather than leaving it to the resume', async () => {
+  const d = createFakeDaemon({ autoEnd: false });
+  const r = rig({ store: new Store(null), d });
+  const sc = r.rt.schedule(r.se().id, { inMs: 60_000, note: 'Check the host.' });
+  clearTimeout(r.rt.timers.get(sc.id));
+  fireScheduledWake(r.rt, sc);
+  await until(() => starts(d).length === 1, 'the wake’s turn to start on the host');
+  await until(() => r.store.state.schedules[sc.id]?.turnId === r.se().remoteTurn?.rtTurn, 'the schedule to name its turn');
+  // The host interrupts the turn with its process unkilled: it waits for the person, with a resume (#872).
+  d.interrupt(starts(d)[0].turn, { unkilled: true });
+  await until(() => line(r, sc).status !== 'running', 'the wake to settle');
+  assert.equal(line(r, sc).status, 'done');
+  assert.equal(r.store.state.schedules[sc.id], undefined);
+  r.rt.remote.close();
+});
