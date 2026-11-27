@@ -17,11 +17,12 @@ On 22 October 2026, an agent revised a review block three times while the person
 - An answer for a revision the page hasn’t drawn yet (the update is still on its way) is refused, says so, and nothing reaches the agent; the new version and its notice replace the error when they arrive.
 - When it goes through, the agent reads “The person acted in block “issue” (revision 2)”.
 - An answer you give while the agent is still working waits until its turn ends. If the agent updates that block before then, its update is refused, and so is an outcome it reports on your answer: your answer stays on screen with nothing new under it, and the agent is told what you answered and to read it first.
+- An answer whose reply is slow to come back can find the agent has already read it and revised the block (#518). Whatever you start on the new revision stays when that reply arrives: a comment, a verdict, a value typed into a form. The comments that answer sent show as your threads on the block, not as drafts again, even if a later revision was dismissed on another page, and the verdict on screen is the one your next Submit sends.
 - The notice is a plain callout, not amber, and nothing in it appears only on hover.
 
 ## Steps to reproduce
 
-1. Run `npx playwright test answers` (`tests/browser/answers.spec.mjs`). It checks the review and choice cases above.
+1. Run `npx playwright test answers review-answer-race block-answer-race review-answer-late` (`tests/browser/answers.spec.mjs`, `tests/browser/review-answer-race.spec.mjs`, `tests/browser/block-answer-race.spec.mjs`, `tests/browser/review-answer-late.spec.mjs`). They check the review, choice and form cases above, the slow reply included.
 2. With a real agent (see the README’s real-agent setup), ask: “Show me a three-line draft as a review block, then run `sleep 40`, then update the block with a new line added above its first line.”
 3. While it sleeps, comment on line 2 and choose Request changes, but don’t submit. Watch the update arrive.
 4. Check, before any click, the notice, the diff, and that your comment now sits on line 3: it moved down with its line, untagged, since the line itself didn’t change. Submit once.

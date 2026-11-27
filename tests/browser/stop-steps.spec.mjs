@@ -80,6 +80,7 @@ async function stopWith(page, title, choice, text = 'Start a background loop tha
     .click();
   await expect.poll(() => store.state.sessions[se.id].state, { message: 'the agent’s process to exit' }).toBe('idle');
   await synced(page, app);
+  return room;
 }
 /** The background job’s own Stop, by its label. */
 const jobStop = (page) => page.locator('.bg-jobs').getByRole('button', { name: `Stop the background job “${BG}”`, exact: true });
@@ -126,3 +127,16 @@ for (const [how, text] of [
     await jobStop(page).click();
     await expect(page.locator('.bg-jobs li'), 'the row goes').toHaveCount(0);
   });
+
+// #1837: a stopped reply whose job runs on draws its job rows anew when its steps change (paintActivity), and focus on
+// the job’s Stop stays on it.
+test('#1837 focus on a kept job’s Stop stays on it when the stopped reply’s steps change', async ({ page }) => {
+  const room = await stopWith(page, 'Keep running, focus', 'keep');
+  await expect(jobStop(page)).toHaveCount(1);
+  await jobStop(page).focus();
+  const reply = app.store.items(room.id).findLast((i) => i.kind === 'agent' && i.activity?.steps?.length);
+  app.store.emit('item.patch', { threadId: room.id, id: reply.id, patch: { activity: reply.activity } });
+  await synced(page, app);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await expect(jobStop(page), 'still focused once its rows are drawn anew').toBeFocused();
+});

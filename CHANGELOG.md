@@ -2,6 +2,35 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.6 (2026-11-27)
+
+### Fixes
+
+- **review:** an answer that landed before a click doesn't take what the click sent
+- **review:** unmark only what a refused answer sent, so another answer's comments aren't sent again
+- **review:** let any landed answer, a dismissal included, take the comments sent before it
+- **review:** take a sent comment out of the draft only once its answer landed
+- **review:** take back what a settled answer sent where the newer revision is drawn
+- **review:** keep the newer revision's draft over a reload after an old answer settles
+- **review:** take back only what a settled answer sent when the review was revised
+- **review:** keep a draft started on a newer revision when an older answer settles
+
+## 4.52.5 (2026-11-27)
+
+### Fixes
+
+- **mentions:** a mention with a format character shows as a mention, as it wakes
+- **mentions:** a copied line whose mention carries a format character is still a copy
+- **mentions:** an invisible format character in an @handle no longer stops the wake (#1840)
+
+## 4.52.4 (2026-11-26)
+
+### Fixes
+
+- **view:** a pointer resting on a button holds it beside a reply at its estimate
+- **sheets:** an agent sheet takes hold of what's pressed as it's pressed
+- **view:** a press holds what it pressed beside a reply at its estimate
+
 ## 4.52.3 (2026-11-26)
 
 ### Fixes
