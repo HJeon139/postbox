@@ -78,6 +78,36 @@ const APPS = {
   spark: `<svg id="spark" width="200" height="90" role="img" aria-label="Visits"><path d="M10 60 L30 20 L50 44 L70 30 L90 46 L110 34 L130 40 L150 38 L150 70 L10 70 Z" fill="none" stroke="var(--s1)" stroke-width="2"/><text x="128" y="45" ${T}>42</text></svg>`,
   // A region larger than a node, its edge a line, with a label inside its box on that edge.
   region: `<svg id="region" width="420" height="240" role="img" aria-label="Costs"><path d="M20 220 L400 220 L400 20 Z" fill="none" stroke="var(--s2)" stroke-width="2"/><text x="200" y="125" ${T}>Forbidden</text></svg>`,
+  // A halo as d3’s examples draw one: a stroked copy of the label behind it, which keeps it legible over the line.
+  haloCopy: `<svg id="haloCopy" width="420" height="240" role="img" aria-label="Fit">${dots}${fit}<text x="196" y="140" ${T} stroke="var(--bg)" stroke-width="4">5:56</text><text x="196" y="140" ${T}>5:56</text></svg>`,
+  // Gridlines drawn as one path, a level stroke to each subpath, under a label.
+  gridPath: `<svg id="gridPath" width="420" height="240" role="img" aria-label="Runs">${dots}<path d="M40 30H400M40 90H400" stroke="var(--text)"/><text x="150" y="34" ${T}>Fastest runs</text></svg>`,
+  // A panel on its own background, with a label on one of its dots: the background is under the dot, so it hides nothing.
+  panel: `<svg id="panel" width="420" height="240" role="img" aria-label="Runs"><rect x="10" y="10" width="200" height="110" fill="var(--bg)"/><circle cx="60" cy="60" r="6" fill="var(--s1)"/><text x="50" y="64" ${T}>Peak</text></svg>`,
+  // Four charts, each with a label on a dot: the check names three, so its findings never crowd out the rest.
+  four: [1, 2, 3, 4]
+    .map(
+      (i) =>
+        `<svg id="four${i}" width="200" height="80" role="img" aria-label="Runs"><circle cx="60" cy="40" r="6" fill="var(--s1)"/><text x="50" y="44" ${T}>Peak</text></svg>`,
+    )
+    .join(''),
+  // A tick label rotated −45°, with a dot in the empty corner of its box on screen, clear of its letters.
+  rotated: `<svg id="rotated" width="300" height="160" role="img" aria-label="Runs"><text x="100" y="100" transform="rotate(-45 100 100)" ${T}>September</text><circle cx="104" cy="60" r="4" fill="var(--s1)"/></svg>`,
+  // Data dots in a group whose id starts with “key”, and labels on them: a key is furniture, “key-events” isn’t.
+  keyGroup: `<svg id="keyGroup" width="300" height="120" role="img" aria-label="Events"><g id="key-events"><circle cx="60" cy="60" r="6" fill="var(--s1)"/><text x="50" y="64" ${T}>Launch</text></g></svg>`,
+  // An axis in a group named “x-axis”, its title on its line: furniture, with its prefix.
+  xAxis: `<svg id="xAxis" width="420" height="80" role="img" aria-label="Hours"><g class="x-axis"><path d="M20 26 V20 H380 V26" stroke="var(--text)" fill="none"/></g><text x="170" y="25" ${T}>Hours</text></svg>`,
+  // A chart heavy enough to take the check past its time: 10 series of 3,000 points, each starting at the top corner
+  // and ending at the bottom one, so its box covers the plot, and 200 labels in the gaps between the lines, clear of
+  // them. Every label is tested against every series, point by point. The check stops looking at its budget, so the
+  // frame still answers.
+  heavy: `<svg id="heavy" width="800" height="420" role="img" aria-label="Load">${Array.from({ length: 10 }, (_, s) => {
+    const y = 40 + s * 36;
+    const wave = Array.from({ length: 3000 }, (_, i) => ` L${(20 + i * 0.25).toFixed(1)} ${(y + Math.sin(i / 21) * 2).toFixed(1)}`).join('');
+    return `<path d="M0 0 L0 ${y}${wave} L800 ${y} L800 420" fill="none" stroke="var(--s1)" stroke-width="1"/>`;
+  }).join(
+    '',
+  )}${Array.from({ length: 200 }, (_, i) => `<text x="${40 + (i % 20) * 37}" y="${62 + Math.floor(i / 20) * 36}" font-size="11" fill="var(--text)">Run ${i}</text>`).join('')}</svg>`,
   // An axis as d3 draws one: its domain path, tick lines, and tick labels beside them, and its title on the line.
   axes: `<svg id="axes" width="420" height="80" role="img" aria-label="Hours"><g class="axis" transform="translate(20,20)"><path class="domain" d="M0 6 V0 H360 V6" stroke="var(--text)" fill="none"/>${[
     0, 90, 180, 270, 360,
@@ -134,6 +164,8 @@ test('#952 labels drawn over a chart’s dot, ring and fit line are a hint for t
   expect(message).toContain('“6:11” (on a ring)');
   expect(message).toContain('“5:56” (on a line)');
   expect(message).not.toContain('Hill circuit');
+  // What to do comes before the labels, which the server’s cut at 300 characters can reach.
+  expect(message.indexOf('Place each')).toBeLessThan(message.indexOf('“6:25”'));
   // Not its status: a label on a dot’s fill can also fail contrast, depending on where the platform’s font puts it,
   // and that finding is the person’s.
 });
@@ -171,11 +203,45 @@ test('#952 a label on the edge of a region larger than a node, or of a small are
 });
 
 test('#952 a dot on the first line of a three-line callout is under it', () => {
-  // The warning quotes the label’s text as SVG joins its lines, with no space between them.
-  expect(overMarks('callout')[0], says('callout')).toContain('“Best weekof the year,after rest” (on a dot)');
+  // The warning quotes the label’s lines joined with a space, as the person reads them.
+  expect(overMarks('callout')[0], says('callout')).toContain('“Best week of the year, after rest” (on a dot)');
 });
 
-for (const id of ['clear', 'counts', 'nodes', 'faint', 'clipped', 'grid', 'halo', 'backed', 'axes', 'grazed', 'stretched', 'named', 'rounded'])
+test('#952 a label on a data dot in a group named “key-events” is on the dot: only a whole key is furniture', () => {
+  expect(overMarks('keyGroup')[0], says('keyGroup')).toMatch(/“Launch” \(on a dot\)/);
+});
+
+test('#952 a chart too heavy to finish in the check’s time still gets an answer: the check stops looking at its budget', () => {
+  expect(
+    (check('heavy').problems ?? []).map((p) => p.code),
+    says('heavy'),
+  ).not.toContain('no-answer');
+});
+
+test('#952 a label on a dot over a panel’s background is on the dot, and four such charts give three findings', () => {
+  expect(overMarks('panel')[0], says('panel')).toMatch(/“Peak” \(on a dot\)/);
+  expect(overMarks('four'), says('four')).toHaveLength(3);
+});
+
+for (const id of [
+  'clear',
+  'counts',
+  'nodes',
+  'faint',
+  'clipped',
+  'grid',
+  'halo',
+  'haloCopy',
+  'gridPath',
+  'backed',
+  'axes',
+  'grazed',
+  'stretched',
+  'named',
+  'rounded',
+  'rotated',
+  'xAxis',
+])
   test(`#952 ${id}: text that doesn’t hide a mark passes`, () => {
     expect(overMarks(id), says(id)).toEqual([]);
   });

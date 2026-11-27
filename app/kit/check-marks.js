@@ -42,12 +42,15 @@
   const BUDGET = 2000;
   const OUT = 'defs, clipPath, mask, marker, pattern, symbol';
   // A chart’s furniture, not its data: what d3 and most hand-drawn charts call their axes, ticks, grids and legends.
-  const FURNITURE = /\b(axis|axes|tick|ticks|domain|grid|gridline|legend|key)\b/i;
+  // A whole class or id, perhaps with a prefix such as “x-axis”: “key-events” or “grid-cell” names data, not furniture.
+  const FURNITURE = /^(?:[a-z]+-)?(?:axis|axes|tick|ticks|domain|grid|gridline|gridlines|legend|key)$/i;
+  // A grid drawn as one path: each subpath a single level or upright stroke (“M40 50H400M40 100H400”).
+  const GRID = /^(?:\s*M[\d\s.,eE+-]+[HV][\d\s.,eE+-]+)+$/i;
 
   const furniture = (el, svg) => {
     for (let e = el; e && e !== svg; e = e.parentElement) {
-      const name = `${e.getAttribute('class') ?? ''} ${e.id ?? ''}`;
-      if (FURNITURE.test(name)) return true;
+      const names = `${e.getAttribute('class') ?? ''} ${e.id ?? ''}`.split(/\s+/);
+      if (names.some((n) => FURNITURE.test(n))) return true;
     }
     return false;
   };
@@ -97,6 +100,7 @@
     const straight = !round && !symbol && points(el) < SERIES;
     // A level or upright straight line is a gridline or an axis.
     if (straight && Math.min(r.width, r.height) < 2) return null;
+    if (el.tagName === 'path' && GRID.test(el.getAttribute('d') ?? '')) return null;
     const ctm = el.getScreenCTM();
     const scale = ctm ? Math.hypot(ctm.a, ctm.b) : 1;
     const opacity = opacityOf(el, svg);
@@ -148,21 +152,36 @@
     return Math.floor((d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi)?.length ?? 0) / 2);
   }
 
-  /** An SVG’s labels: its <text>, less a label with a halo and one on a backing. An axis’s labels count: on a data mark, they hide it too. */
+  /** An SVG’s labels: its <text>, less a label with a halo, each with the backings it sits on. An axis’s labels count: on a data mark, they hide it too. */
   function labels(svg, backings) {
     const out = [];
+    // A halo drawn as its own copy of the label, stroked, behind it, as d3’s examples do: the label it backs passes too.
+    const halos = [];
     for (const el of svg.querySelectorAll('text')) {
       if (el.parentElement.closest('text') || el.closest(OUT) || hidden(el)) continue;
-      const t = el.textContent.trim();
+      // Its lines, as tspans or text nodes, joined with a space, as the person reads them.
+      const t = [...el.querySelectorAll('tspan')].length
+        ? [...el.querySelectorAll('tspan')].map((n) => n.textContent.trim()).filter(Boolean).join(' ')
+        : el.textContent.trim();
       const r = el.getBoundingClientRect();
       if (!t || r.width < 2 * EDGE + 1 || r.height < 2 * EDGE + 1) continue;
       const cs = getComputedStyle(el);
-      if (painted(cs.stroke, +cs.strokeOpacity) && parseFloat(cs.strokeWidth) >= 2) continue;
-      if (backings.some((b) => within(r, b))) continue;
+      if (painted(cs.stroke, +cs.strokeOpacity) && parseFloat(cs.strokeWidth) >= 2) {
+        halos.push({ t, r });
+        continue;
+      }
+      if (halos.some((h) => h.t === t && Math.abs(h.r.left - r.left) < 1 && Math.abs(h.r.top - r.top) < 1)) continue;
       const ctm = el.getScreenCTM();
-      // The band runs across the text, so its height scales with the vertical axis.
-      const size = parseFloat(cs.fontSize) * (ctm ? Math.hypot(ctm.c, ctm.d) : 1);
-      out.push({ el, t, r, inset: Math.max(EDGE, size * CORE) });
+      if (!ctm) continue;
+      // Sampled in the label’s own box, in its own units, so a rotated label is tested on its letters, not on the
+      // corners of its box on screen. The band leaves out CORE of the font size above and below; EDGE is in screen px.
+      const box = el.getBBox();
+      const inset = parseFloat(cs.fontSize) * CORE;
+      const edge = EDGE / Math.max(Math.hypot(ctm.a, ctm.b), 1e-6);
+      const step = { x: STEP / Math.max(Math.hypot(ctm.a, ctm.b), 1e-6), y: STEP / Math.max(Math.hypot(ctm.c, ctm.d), 1e-6) };
+      // A backing hides only the marks drawn before it: a panel’s background, under its dots, hides none.
+      const backed = backings.filter((b) => within(r, b.r)).map((b) => b.el);
+      out.push({ el, t, r, ctm, box, inset, edge, step, backed });
     }
     return out;
   }
@@ -172,8 +191,8 @@
     const whole = svg.getBoundingClientRect();
     return [...svg.querySelectorAll('rect')]
       .filter((el) => !el.closest(OUT) && !hidden(el) && painted(getComputedStyle(el).fill, +getComputedStyle(el).fillOpacity))
-      .map((el) => el.getBoundingClientRect())
-      .filter((r) => r.width * r.height <= (whole.width * whole.height) / 3);
+      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .filter(({ r }) => r.width * r.height <= (whole.width * whole.height) / 3);
   }
 
   /** How many of a label’s points fall on a mark’s painted fill or stroke. */
@@ -182,9 +201,11 @@
     const ctm = mark.el.getScreenCTM();
     if (!ctm) return 0;
     const inv = ctm.inverse();
+    const { box, inset, edge, step } = label;
     let n = 0;
-    for (let y = label.r.top + label.inset; y <= label.r.bottom - label.inset; y += STEP)
-      for (let x = label.r.left + EDGE; x <= label.r.right - EDGE; x += STEP) {
+    for (let ly = box.y + inset; ly <= box.y + box.height - inset; ly += step.y)
+      for (let lx = box.x + edge; lx <= box.x + box.width - edge; lx += step.x) {
+        const { x, y } = new DOMPoint(lx, ly).matrixTransform(label.ctm);
         if (mark.clip && (x < mark.clip.left || x > mark.clip.right || y < mark.clip.top || y > mark.clip.bottom)) continue;
         const p = new DOMPoint(x, y).matrixTransform(inv);
         if ((mark.fill && mark.el.isPointInFill(p)) || (mark.stroke && mark.el.isPointInStroke(p))) n++;
@@ -200,6 +221,9 @@
     deadline = performance.now() + BUDGET;
     const out = [];
     for (const svg of document.querySelectorAll('svg')) {
+      // Three charts at most: the check’s report keeps 20 findings, and a hint must never push out one that holds the
+      // version back (server/apps.mjs, checked).
+      if (out.length === 3) break;
       if (svg.parentElement.closest('svg') || hidden(svg)) continue;
       const all = marks(svg);
       const on = [];
@@ -207,14 +231,16 @@
         // A label inside its own dot, ring or node, such as a count or a name, is that mark’s label, not one drawn over
         // it. A line’s box holds labels that aren’t its own.
         const own = (m) => within(l.r, m.r) && (m.round || (m.node && centered(l.r, m.r)));
-        const under = all.find((m) => meets(l.r, m.r, m.pad) && !own(m) && hits(l, m) >= HITS);
+        const covered = (m) => l.backed.some((b) => m.el.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+        const under = all.find((m) => meets(l.r, m.r, m.pad) && !own(m) && !covered(m) && hits(l, m) >= HITS);
         if (under) on.push({ ...l, kind: under.kind });
       }
       if (!on.length) continue;
       const such = on.slice(0, 3).map((l) => `“${clip(l.t)}” (on ${l.kind})`);
       out.push({
         code: 'text-over-marks',
-        message: `In ${where(svg)}, ${on.length} label${on.length === 1 ? '' : 's'} sit${on.length === 1 ? 's' : ''} on the chart’s marks, such as ${such.join(', ')}, hiding the marks and the values they carry. Place each label clear of the dots and lines: beside its mark, or in the margin with a short leader line.`,
+        // What to do comes before the labels, which the server’s 300-character cut can reach.
+        message: `In ${where(svg)}, ${on.length} label${on.length === 1 ? '' : 's'} sit${on.length === 1 ? 's' : ''} on the chart’s marks, hiding them and the values they carry. Place each beside its mark, or in the margin with a short leader line. On marks: ${such.join(', ')}.`,
       });
     }
     return out;
