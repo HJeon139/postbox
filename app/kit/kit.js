@@ -296,6 +296,7 @@
   // that still has no room, beside its neighbors or the chart’s edge, is cut, with its full name in a title.
   function xLabels(xs, x, w, y0) {
     const n = xs.length;
+    if (!n) return '';
     const full = fitLabels(xs, Infinity);
     const placed = (every) => {
       const at = [];
