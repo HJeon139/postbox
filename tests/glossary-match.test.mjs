@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { renderMarkdown } from '../shared/markdown.mjs';
+import { termKey } from '../shared/term-key.mjs';
 
 /** The words of some text that link to the one term given. */
 function linked(term, text) {
@@ -38,4 +39,26 @@ test('a longer term keeps its whole-word match in any case (#102)', () => {
   assert.deepEqual(linked('R:31', 'see r:31 now'), ['r:31']);
   assert.deepEqual(linked('R&D', 'the r&d budget'), ['r&amp;d']);
   assert.deepEqual(linked('Step 7', 'Step 70 is different'), []);
+});
+
+test('dash variants of a term link to it, both ways (#102)', () => {
+  assert.deepEqual(linked('U:45–52', 'see U:45-52 now'), ['U:45-52']);
+  assert.deepEqual(linked('U:45-52', 'see U:45–52 now'), ['U:45–52']);
+  assert.deepEqual(linked('U:45-52', 'see U:45—52 now'), ['U:45—52']);
+  assert.deepEqual(linked('pre–flight', 'a pre-flight check'), ['pre-flight']);
+  assert.deepEqual(linked('U:45-52', 'see U:45 52 now'), []);
+});
+
+test('straight and curly quote variants of a term link to it, both ways (#102)', () => {
+  assert.deepEqual(linked('Bob’s rule', "Bob's rule holds"), ['Bob&#39;s rule']);
+  assert.deepEqual(linked("Bob's rule", 'Bob’s rule holds'), ['Bob’s rule']);
+  assert.deepEqual(linked('the “fast” path', 'the "fast" path'), ['the &quot;fast&quot; path']);
+  assert.deepEqual(linked('the "fast" path', 'the “fast” path'), ['the “fast” path']);
+  // A short term folds the same way, and keeps its own case.
+  assert.deepEqual(linked('R’', "R' and r' differ"), ['R&#39;']);
+});
+
+test('a term’s key treats dash and quote variants alike (#102)', () => {
+  assert.equal(termKey('U:45–52'), termKey('U:45-52'));
+  assert.equal(termKey('Bob’s rule'), termKey("Bob's rule"));
 });
