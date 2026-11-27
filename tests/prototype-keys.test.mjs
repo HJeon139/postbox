@@ -132,6 +132,7 @@ test('#352: the state has only its own records, fresh, reloaded from JSON, and f
       'hosts',
       'hostStatus',
       'hostForgets',
+      'hostStops',
     ])
       for (const key of KEYS) assert.equal(s[c][key], undefined, `${c}[${key}]`);
   const reloaded = ownState(JSON.parse(JSON.stringify(saved)));
@@ -142,12 +143,15 @@ test('#352: the state has only its own records, fresh, reloaded from JSON, and f
   delete before.hosts;
   delete before.hostStatus;
   delete before.hostForgets;
+  delete before.hostStops;
   apply(before, 'host', { id: 'h1', name: 'devbox' });
   apply(before, 'host.status', { id: 'h1', status: { state: 'disconnected' } });
   apply(before, 'host.forget', { id: 'h1', add: ['pe_1'] });
+  apply(before, 'host.forget', { id: 'h1', stop: { turn: 'host-turn-1', personaId: 'pe_1', unconfirmed: false, at: 1 } });
   assert.equal(Object.getPrototypeOf(before.hosts), null);
   assert.equal(Object.getPrototypeOf(before.hostStatus), null);
   assert.equal(Object.getPrototypeOf(before.hostForgets), null);
+  assert.equal(Object.getPrototypeOf(before.hostStops), null);
   // A glossary term an agent names __proto__ is a term, not the map's prototype.
   const g = emptyState();
   apply(g, 'glossary', { threadId: 't', entry: { key: '__proto__', term: 'proto' } });

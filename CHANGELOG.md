@@ -2,6 +2,27 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.0 (2026-11-27)
+
+### Features
+
+- **deploy:** the server's image and a CDK stack for a test deployment on AWS
+- **hosted:** start a hosted Postbox from a settings file, at its public address
+
+### Fixes
+
+- **infra:** lower-case the domain name so a hosted zone's record resolves
+- **remote:** a host keeps only a stop that names its turn, and lets go one its session also asked
+- **remote:** a deleted agent's memory on a host waits for its stopping turn across a restart
+
+## 5.3.3 (2026-11-27)
+
+### Fixes
+
+- **view:** Home and End are the page's only where a conversation is
+- **view:** a click in a dialog's scroller keeps its Home and End
+- **view:** the page takes Home and End in every room, not only a long one
+
 ## 5.3.2 (2026-11-27)
 
 ### Fixes
