@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.1.1 (2026-11-27)
+
+### Fixes
+
+- **kiro:** sweep a long persona's agent file too, and write it new and private
+- **backends:** don't follow a link the agent put at a submodule's folder
+- **backends:** run the person's commands in the project's folder for an agent that starts beside it
+- **kiro:** the start's sweep hashes only a regular file, so a FIFO or a device can't hang it
+- **kiro:** the start's sweep follows a linked agents folder, as the turn's own files do
+- **kiro:** the start's sweep never follows a link at agents, and removes only its turn's file
+- **kiro:** the record's log line names it and what to check, and the test reads both
+- **kiro:** a record the start can't rewrite doesn't stop Postbox, and the log says why
+- **kiro:** an agent file a killed Postbox left in a Kiro home is removed at start
+- **backends:** give Antigravity agents worktrees with the project's submodules
+- **backends:** start each Antigravity agent in a folder of its own where it has no worktree
+
 ## 5.1.0 (2026-11-27)
 
 ### Features
