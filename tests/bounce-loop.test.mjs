@@ -153,9 +153,10 @@ test('#1712: a recorded status exchange that closes on a reaction alone ends the
   // Constructed from the assets-room run of the batch 9–10 UAT (tests/fixtures/uat/ack-loops-2026-11-23.json): the
   // person asks researcher (turn 44), researcher’s answer @-mentions critic, and critic acknowledges it with ✅ and a
   // line that goes back to researcher (turn 45). Only researcher’s turn 46, which reacted ✅ and then wrote “I reacted ✅
-  // to @critic’s message. The plan stays at v2.”, is changed: it reacts and writes nothing, as Claude Code lets a turn
-  // that ends on Postbox’s react do now (CLAUDE_CODE_TERMINAL_MCP_TOOLS). Every other turn plays as recorded, so a
-  // wake past the reaction would play the next recorded turn and show.
+  // to @critic’s message. The plan stays at v2.”, is changed: it reacts and writes nothing. Every other turn plays as
+  // recorded, so a wake past the reaction would play the next recorded turn and show. The player runs no CLI, so this
+  // pins Postbox’s side only: that such a turn ends the exchange. That Claude Code now lets an agent end that way is
+  // tests/terminal-tools.test.mjs’s, and passes on main too: Postbox already allowed it.
   const researcher = playsFrom('assets-room', 'researcher', 44);
   assert.equal(researcher[1].text, "I reacted ✅ to @critic's message. The plan stays at v2.", 'turn 46 is the one changed');
   researcher[1] = { text: '', react: true };
