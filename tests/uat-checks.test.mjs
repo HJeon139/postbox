@@ -547,11 +547,11 @@ test('Kiro credits are added up from each turn’s completion; Claude streams ad
   assert.equal(kiroCredits([{ handle: 'researcher', events: [{ type: 'result', total_cost_usd: 1 }] }]), 0);
 });
 
-test('a scenario with agents on a backend other than Claude’s is a compatibility run; Claude’s own backends aren’t', () => {
+test('a scenario with agents on a backend other than Claude’s is a compatibility run; Claude Code alone isn’t', () => {
   const mixed = parseScenario(readFileSync(new URL('uat/e2e/scenarios/mixedroom.md', import.meta.url), 'utf8'));
   assert.deepEqual(compatBackends(mixed), ['kiro-cli']);
   assert.deepEqual(compatBackends(parseScenario('# T\n- backends: a=codex, b=agy:m1, c=codex\n')), ['codex', 'agy']);
-  assert.deepEqual(compatBackends(parseScenario('# T\n- backends: a=claude-code:claude-opus-5-5, b=agent-sdk\n')), []);
+  assert.deepEqual(compatBackends(parseScenario('# T\n- backends: a=claude-code:claude-opus-5-5, b=claude-code\n')), []);
   assert.deepEqual(compatBackends(parseScenario('# T\n')), []);
   // The README lists each scenario where it belongs: compatibility runs under their own heading, regular ones above it.
   const readme = readFileSync(new URL('uat/e2e/README.md', import.meta.url), 'utf8');

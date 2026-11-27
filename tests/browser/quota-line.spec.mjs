@@ -32,7 +32,7 @@ test.beforeAll(async () => {
   });
   backend('codex', { status: 'ok', windows: [{ name: '7 d', used: 0.07, resetsAt }] });
   backend('kiro-cli', null);
-  backend('agent-sdk', null);
+  backend('antigravity-cli', null);
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -243,7 +243,7 @@ async function fitsThePhone(page) {
 test('#442 at 375 px three backends share the line, each with its backend and percent whole', async ({ page }) => {
   await phoneRoom(page, [
     { key: 'claude-code', used: 0.42 },
-    { key: 'agent-sdk', used: 0.42 },
+    { key: 'antigravity-cli', used: 0.42 },
     { key: 'codex', used: 0.07 },
   ]);
   await fitsThePhone(page);

@@ -221,13 +221,13 @@ test('needs-mismatch fires for a ring left on a choice already answered', () => 
 });
 
 /**
- * @researcher’s choice shown by the turn that’s still running, as the Agent SDK, Codex, Kiro and Antigravity runs of
+ * @researcher’s choice shown by the turn that’s still running, as the Codex, Kiro and Antigravity runs of
  * 23 November 2026 recorded it when the run handed the choice to the tester mid-turn (#289): the session thinks, its
  * turn hasn’t finished, and it needs nothing yet. That turn’s own end decides its need (server/card-needs.mjs, turnsOf).
  */
 function runningTurnRoom({ ended, question = false, remote = null }) {
   const r = room();
-  r.agent('researcher', { backend: 'agent-sdk' });
+  r.agent('researcher', { backend: 'codex' });
   r.add({
     id: 'it_choice',
     at: s(2),

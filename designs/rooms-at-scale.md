@@ -19,7 +19,7 @@ UAT rooms run Haiku agents, at most three of them, so these numbers are a floor.
 ## What the person decided
 
 On 10 November 2026, reviewing this analysis, the person set the direction:
-- **Core, and kept:** the five backends, remote hosts, visual-first (catalog blocks, apps, diagrams and the app check), UAT and telemetry, Postbox’s cards and automatic Markdown rendering, and mention, wake and queue as how agents work together.
+- **Core, and kept:** the four backends, remote hosts, visual-first (catalog blocks, apps, diagrams and the app check), UAT and telemetry, Postbox’s cards and automatic Markdown rendering, and mention, wake and queue as how agents work together.
 - **Transparency first.** Showing what each agent is doing while its turn runs is the problem to solve, and it gets worse with four or more agents.
 - **Mention, wake and queue are redesigned for the end state,** not patched.
 - **Threads organize the conversation automatically,** one per topic, instead of one large stream in the main chat.
@@ -66,7 +66,7 @@ flowchart LR
 - **Status questions needn’t be asked.** “Is the job still running” is answered by the agent’s state and its jobs, always in view. Postbox doesn’t try to tell a status question from work, so a question that mentions an agent still wakes it.
 
 **Built** (#1239, 12 November 2026):
-- **One harness-event contract.** Every adapter reports its harness’s stream as the same events ([`server/harness-events.mjs`](../server/harness-events.mjs)), and Postbox builds the reply, its steps, Work’s calls and the ring from them in one place, for all five backends ([`architecture/adapters.md`](architecture/adapters.md)).
+- **One harness-event contract.** Every adapter reports its harness’s stream as the same events ([`server/harness-events.mjs`](../server/harness-events.mjs)), and Postbox builds the reply, its steps, Work’s calls and the ring from them in one place, for all four backends ([`architecture/adapters.md`](architecture/adapters.md)).
 - **A running reply shows the turn as it happens.** Its words and thoughts sit between its steps in the order they came, and a thought shows as it’s written. The newest call shows in full, an edit as its diff and a command with the end of its output, and older calls are a line each. Detail fades into “N earlier steps” within the reply’s share of the screen, which counts each agent’s words, name line and working row. A post landing below a running reply doesn’t split its steps from its words.
 - **A crowded room fits the screen.** With eight agents or more, a running reply is its name line, a line of its newest words and its step, and “Show the whole reply” opens the rest. An agent’s working row shows only while its reply is off screen.
 - **A finished turn is one line.** When a turn ends, is stopped or is cut off by a restart, its steps fold into its work record at the top of its words. The record opens to the steps and to the turn in Work, and the list under the post keeps only what the calls made.

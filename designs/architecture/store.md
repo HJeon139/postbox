@@ -80,6 +80,6 @@ flowchart LR
   RT -->|"next message: { kind: 'event', event }"| AD
 ```
 
-- **Text and activity** stream through the adapter, which runs inside the Node process and turns its harness’s own stream into the harness-event contract ([adapters.md](adapters.md)). For the Agent SDK it’s a library call; for the CLIs it’s their streaming output (Claude Code’s and the Kiro and Antigravity CLIs’ stream-json, Codex’s app-server JSON-RPC). An agent on a remote host streams through its host’s daemon ([remote-hosts.md](remote-hosts.md)).
+- **Text and activity** stream through the adapter, which runs inside the Node process and turns its harness’s own stream into the harness-event contract ([adapters.md](adapters.md)). It’s each CLI’s streaming output (Claude Code’s and the Kiro and Antigravity CLIs’ stream-json, Codex’s app-server JSON-RPC). An agent on a remote host streams through its host’s daemon ([remote-hosts.md](remote-hosts.md)).
 - **UI tools** go over MCP, whether the agent is in-process or a separate process, here or on a host (through the host’s stdio shim). They’re validated and return at once.
 - **Your actions** come back as HTTP requests and reach the agent as its next message.

@@ -6,7 +6,7 @@
 // the same get the shortest start of their hosts’ names that tells them apart; a level where nothing can is passed over.
 
 /** Short backend names, for a narrow line. */
-const SHORT = { 'claude-code': 'Claude', 'agent-sdk': 'SDK', codex: 'Codex', 'kiro-cli': 'Kiro', 'antigravity-cli': 'agy', mock: 'Mock' };
+const SHORT = { 'claude-code': 'Claude', codex: 'Codex', 'kiro-cli': 'Kiro', 'antigravity-cli': 'agy', mock: 'Mock' };
 /** The gap between bars (workbench.css, .quota-line). */
 export const LINE_GAP = 12;
 /** Room for a canvas measure and the drawn text to differ by. */

@@ -1,5 +1,4 @@
 // What a real agent is told about Postbox, and how Postbox’s messages are written to it.
-// Shared by the Claude Code and Agent SDK adapters, so both backends behave the same way.
 // lint-allow-file quotes: this is read by models, and straight quotes mark literal values in it.
 
 import { factsText, runsWith } from '../../shared/agent-facts.mjs';
@@ -39,7 +38,7 @@ export function agentGuide({ persona, session, setup = true }) {
 /**
  * What changes during a room, for each turn’s message (#515, CX-3): who else is here, the project, the brief, what
  * Postbox knows of the session, and the tools turned off.
- * toolRules: the backend’s map of Tools ids to the tools it turns off (TOOL_RULES for Claude Code and the Agent SDK,
+ * toolRules: the backend’s map of Tools ids to the tools it turns off (TOOL_RULES for Claude Code,
  * the Kiro CLI’s own), or null for a backend that can’t turn a tool off for one agent.
  * room: the other agents in this conversation, with their roles (Runtime.roomOf); handles: every agent in Postbox.
  * @param {{ persona: any, handles: string[], room?: { handle: string, role: string }[], project?: any, brief?: string|null,
