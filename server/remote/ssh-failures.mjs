@@ -2,6 +2,8 @@
 // again on its own, what happened and what the person can do next, classified from ssh’s exit status and stderr or
 // from the daemon’s `error` to hello.
 
+import { cleanSaid } from '../../shared/text-parts.mjs';
+
 /**
  * Each way a connection fails, and whether Postbox tries again on its own. The rest need the person: a sign-in, a
  * host key to check, an install, a newer version, or taking over from another Postbox.
@@ -84,8 +86,9 @@ const lastLine = (text) =>
  * @returns {SshFailure}
  */
 export function failure(kind, d, detail = {}) {
-  // Postbox’s own reason, else the line of ssh’s stderr that says the most.
-  const said = detail.said || lastLine(detail.stderr ?? '');
+  // Postbox’s own reason, else the line of ssh’s stderr that says the most, cleaned as a program’s words are (#1938):
+  // it can carry a ProxyCommand’s, a bastion’s or a host banner’s words, not only ssh’s own.
+  const said = cleanSaid(detail.said || lastLine(detail.stderr ?? ''), 300);
   const quote = detail.why ? ` ${detail.why}` : said ? ` ssh said: “${said}”` : '';
   const tryAgain = 'Postbox tries again on its own while a turn runs or a prompt waits.';
   const text = {

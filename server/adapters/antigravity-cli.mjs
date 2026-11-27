@@ -85,6 +85,7 @@ import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned } from './prompt-sent.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
+import { stderrTail } from './stderr-tail.mjs';
 import { agyResult } from './work-calls.mjs';
 
 // Moved to agy-errors.mjs; kept here for those that import them from this module.
@@ -633,7 +634,6 @@ export class AntigravityCliAdapter {
         return;
       }
       recordOnceSpawned(ctx, child, { guide, text: prompt });
-      let stderr = '';
       const c = child;
       const exited = new Promise((r) => {
         c.once('exit', r);
@@ -643,9 +643,7 @@ export class AntigravityCliAdapter {
       // SIGINT to the group, then SIGKILL after the grace period (process-group.mjs), as for the other CLIs.
       const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list, unkilled: ctx.unkilled }));
       child.on('error', (e) => reject(agyStartError(e, prompt, this.bin)));
-      child.stderr.on('data', (d) => {
-        stderr = (stderr + d).slice(-4000);
-      });
+      const stderr = stderrTail(child);
       const record = recorderFor(ctx, this.env.POSTBOX_AGY_RECORD);
       createInterface({ input: child.stdout }).on('line', (line) => {
         if (!line.trim()) return;
@@ -675,7 +673,7 @@ export class AntigravityCliAdapter {
         if (mapper.model) ctx.saveState({ model: mapper.model });
         if (ctx.signal.aborted) return resolve({});
         if (mapper.error) return reject(withQuota(new Error(mapper.error), mapper.quota));
-        if (code !== 0 || !mapper.finished) return reject(new Error(exitError(code, stderr)));
+        if (code !== 0 || !mapper.finished) return reject(new Error(exitError(code, stderr())));
         resolve({ endedOnRefusal: mapper.endedOnRefusal, wrote: mapper.wrote });
       };
       // A stopped turn ends once agy's whole group has exited, so the next turn can’t resume beside it (#126).
