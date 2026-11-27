@@ -6,7 +6,7 @@
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { pageWidth } from './page-width.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 const APP = (label) => `<main style="padding:12px"><p>${label}</p><button class="btn" type="button">Try it</button></main>`;
 
@@ -70,7 +70,7 @@ async function narrow({ page, item }) {
   const fits = async () =>
     (await item('lab')
       .locator('.app-retired')
-      .evaluate((l) => l.scrollWidth <= l.clientWidth + 1)) && (await pageWidth(page)) <= 375;
+      .evaluate((l) => l.scrollWidth <= l.clientWidth + 1)) && (await pageWidth(page)) <= windowWidth(page);
   await expect.soft(() => expect(fits()).resolves.toBe(true), 'the line and the page fit 375 px').toPass({ timeout: 5_000 });
   await page.setViewportSize({ width: 1280, height: 900 });
 }

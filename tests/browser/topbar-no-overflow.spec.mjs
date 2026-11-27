@@ -26,7 +26,9 @@ test('#866 at 375 px on a phone, opening a side thread beside Work never lays th
   // The page’s laid-out width, as page-width.mjs measures it: its scrollWidth reads the window’s through its clip.
   await page.addInitScript({ content: `window.__pageWidth = ${widestRight.toString()};` });
   await page.addInitScript(() => {
-    const laidOut = /** @type {any} */ (window).__pageWidth;
+    const pageWidth = /** @type {any} */ (window).__pageWidth;
+    // Before <body> exists, nothing is laid out past the window.
+    const laidOut = () => (document.body ? pageWidth() : 0);
     const widest = /** @type {any} */ ((window.__widest = { page: 0, bar: 0, frames: 0 }));
     const tick = () => {
       const bar = document.querySelector('header.topbar');

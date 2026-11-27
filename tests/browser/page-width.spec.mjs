@@ -29,6 +29,15 @@ test('#966 a box past the window’s edge widens the page as laid out, though it
   await page.evaluate(() => document.body.lastElementChild?.remove());
   await add('<div style="position: fixed; left: 0; width: 900px; height: 1px"></div>');
   expect(await pageWidth(page), 'fixed to the window').toBe(375);
+  await page.evaluate(() => document.body.lastElementChild?.remove());
+  // Boxes that escape a clip: what clips a box is its containing block’s chain, not its parents.
+  await add(
+    '<div style="position: relative"><div style="overflow: hidden; width: 100px"><div style="position: absolute; width: 900px; height: 1px"></div></div></div>',
+  );
+  expect(await pageWidth(page), 'an absolute box past a clip that isn’t its containing block').toBe(900);
+  await page.evaluate(() => document.body.lastElementChild?.remove());
+  await add('<div style="transform: translateX(0)"><div style="position: fixed; left: 0; width: 900px; height: 1px"></div></div>');
+  expect(await pageWidth(page), 'a fixed box in a transformed one lays out as an absolute one').toBe(900);
 });
 
 test('#966 at 375 px a wide code block and a wide table each scroll inside themselves, and the page stays put', async ({ page }) => {
@@ -61,7 +70,8 @@ test('#966 at 375 px a wide code block and a wide table each scroll inside thems
     await page.mouse.move(b.x + b.width / 2, b.y + Math.min(b.height / 2, 20));
     await page.mouse.wheel(200, 0);
     await expect.poll(() => box.evaluate((el) => el.scrollLeft), `${what} scrolls sideways inside itself`).toBeGreaterThan(0);
-    expect(await page.evaluate(() => scrollX), 'the page stays put').toBe(0);
+    // Nothing around it took the wheel: the box is where it was.
+    expect((await box.boundingBox())?.x, `${what} stays put`).toBe(b.x);
   }
   expect(await pageWidth(page), 'nothing past the window').toBe(375);
 });
