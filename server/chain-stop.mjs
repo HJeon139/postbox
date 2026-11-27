@@ -9,7 +9,7 @@ import { HOP_LIMIT } from '../shared/limits.mjs';
 const cap = HOP_LIMIT.toLocaleString('en-US');
 
 /** What an agent whose wake the guard refused is told, as the call’s result or a note at its next turn. */
-export const CHAIN_STOPPED = `agents in this conversation woke each other ${cap} times in a row without the person, so Postbox stopped the chain. Finish your turn; the person’s next message starts it again.`;
+export const CHAIN_STOPPED = `agents in this conversation woke each other ${cap} times in a row without the person, so Postbox stopped the chain and this message didn’t go. The person’s next message starts the chain again: send it then if it’s still needed.`;
 
 /**
  * The count a stopped chain is left at: past any cap POSTBOX_CHAIN_LIMIT allows, so a chain stays stopped, and is told

@@ -25,6 +25,7 @@ test('#1623 at the cap a wake doesn’t go, and nothing waits on the person: no 
   const r = f.rt.agentWake(f.alpha.id, 'beta', 'One more look.');
   assert.deepEqual([r.ok, r.waiting], [false, undefined]);
   assert.match(r.message, /woke each other 1,000 times in a row without the person, so Postbox stopped the chain/);
+  assert.match(r.message, /this message didn’t go\. The person’s next message starts the chain again: send it then if it’s still needed\./);
   await settle(f.rt);
   assert.deepEqual(
     f.store.items(f.t.id).filter((x) => x.kind === 'hop'),
