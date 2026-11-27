@@ -137,7 +137,7 @@ html, body { margin: 0; }
    viewport’s, and the body’s is its own box. clip makes no scroll container, so sticky bars and inner scrolling stay.
    Postbox’s page only: an agent app’s sandboxed page (pb-sandbox) lays itself out as its author wrote it. So the page’s
    scrollWidth is the window’s even when something lays out past it: a check for sideways overflow reads the widest
-   element’s rect instead. */
+   element’s rect instead (tests/browser/page-width.mjs). */
 html:not(.pb-sandbox), html:not(.pb-sandbox) > body { overflow-x: clip; }
 body {
   background: var(--bg);
