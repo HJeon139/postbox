@@ -46,6 +46,8 @@ A second small Node script started the app-server with the same guards as the fi
 2. `thread/resume` on the compacted thread. Codex answered with the thread and its 3 turns: the first turn, the compaction and the turn after it.
 3. A turn, “What word did I ask you to remember? Reply with just the word.” Codex answered “heron”.
 
+The thread already held that answer: the first part’s turn after the compaction asked the same and got “heron”. So the first part shows the compacted thread keeps the word, and this part shows a new process resumes that thread and goes on; this part alone doesn’t show the compaction’s summary kept it.
+
 The driver sent `thread/resume` without `excludeTurns`, so the answer holds the thread’s history, and Codex sent a `deprecationNotice` about it. Postbox asks with `excludeTurns: true` (#1705), so its answer would have no history; the turn reads only the thread’s id and model from it.
 
 ### What was dropped and replaced
@@ -64,4 +66,4 @@ The file keeps 16 of the 21 lines the server sent.
 
 ## The rollout file’s name
 
-Codex names a thread’s rollout file for the local time it started, as in `rollout-<date>T<hh-mm-ss>-<thread id>.jsonl`, while every other time in a recording, such as `createdAt`, is in UTC. Side by side they give away the computer’s time zone. In every Codex fixture (this folder and `tests/fixtures/delivery-routes/codex-turn-steer.jsonl`), the time in that name is `00-00-00`, as in `/home/.codex/sessions/2026/11/27/rollout-2026-11-27T00-00-00-thr-1.jsonl`. The date stays: in the three `compact` recordings it’s also the UTC date of its `createdAt`. No other field in the three holds a local time: the rest are Unix times.
+Codex names a thread’s rollout file for the local time it started, as in `rollout-<date>T<hh-mm-ss>-<thread id>.jsonl`, while every other time in a recording, such as `createdAt`, is in UTC. In every Codex fixture (this folder and `tests/fixtures/delivery-routes/codex-turn-steer.jsonl`), the time in that name is `00-00-00`, as in `/home/.codex/sessions/2026/11/27/rollout-2026-11-27T00-00-00-thr-1.jsonl`, so no fixture carries a local clock time. The date is left as recorded: in the three `compact` recordings it’s also the UTC date of `createdAt`, and in some older ones it’s the local date, a day off. This keeps no secret a commit’s own date doesn’t already show (git records each with its time-zone offset), and older commits still hold the full names. No other field in the three `compact` recordings holds a local time: the rest are Unix times.

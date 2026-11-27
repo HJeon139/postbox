@@ -2,8 +2,9 @@
 // room shows the compaction. Replayed from a recorded Codex 0.167.0 session (tests/fixtures/codex-app-server/
 // compact.jsonl: one turn, then thread/compact/start on its thread; account, rate-limit and MCP lines left out, ids
 // and paths replaced). The thread going on after it is replayed from two more (compact-continue.jsonl: a turn and
-// thread/compact/start; compact-resume.jsonl: a new process that resumes that thread and asks for a word from the
-// first turn; tests/fixtures/codex-app-server/README.md).
+// thread/compact/start; compact-resume.jsonl: a new process that resumes that thread and asks again for a word from
+// its first turn, which the recording’s turn after the compaction had already answered; tests/fixtures/
+// codex-app-server/README.md).
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -25,7 +26,9 @@ const RECORDED = readFileSync(new URL('fixtures/codex-app-server/compact.jsonl',
 
 /**
  * An app-server that answers as the recording did: the thread it opened, and the compaction turn after its answer.
- * `compact`, when given, answers thread/compact/start instead, for a compaction that fails.
+ * The recording never resumed, so a thread/resume gets its thread/start answer, which carries the same thread id and
+ * model, the only fields the turn reads from it. `compact`, when given, answers thread/compact/start instead, for a
+ * compaction that fails.
  * @param {any[]} seen @param {{ compact?: (req: any, write: (m: any) => void) => void }} [opts]
  */
 function recordedServer(seen, { compact } = {}) {
