@@ -66,6 +66,7 @@ import { commitTurn } from './agent-worktree-commit.mjs';
 import { agyArgs, agyBypassWebOff } from './agy-args.mjs';
 import { HOOK_REFUSES, whoHolds } from './agy-bypass.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
+import { exitError, resetIn } from './agy-errors.mjs';
 import { HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, probeAgyHook } from './agy-hook-check.mjs';
 import { agyHookVars } from './agy-hook-env.mjs';
@@ -79,10 +80,14 @@ import { stepId, toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { FolderQueue } from './folder-queue.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
+import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned } from './prompt-sent.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
+
+// Moved to agy-errors.mjs; kept here for those that import them from this module.
+export { exitError, resetIn };
 
 /** The agy binary: POSTBOX_AGY_BIN, then the PATH. */
 export const findAgy = (env = process.env) => env.POSTBOX_AGY_BIN || 'agy';
@@ -464,29 +469,10 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
   };
 }
 
-/**
- * When a quota resets, from agy’s “Resets in 155h28m23s” (#396, as the “Agent research” room recorded it), or null.
- * @param {unknown} error @param {number} now
- */
-export function resetIn(error, now) {
-  const m = /Resets in (?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/.exec(String(error ?? ''));
-  if (!m || !(m[1] || m[2] || m[3])) return null;
-  return now + ((Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0)) * 60 + Number(m[3] ?? 0)) * 1000;
-}
-
-/** Why a turn failed, from its exit code, when the stream didn’t say. agy logs to a file, so stderr is short. */
-export function exitError(code, stderr = '') {
-  const why = String(stderr)
-    .split('\n')
-    .filter((l) => l.trim() && !/^warning:/i.test(l))
-    .slice(-3)
-    .join(' ')
-    .slice(0, 400);
-  return `Antigravity exited with code ${code}${why ? `: ${why}` : ''}.`;
-}
-
 export class AntigravityCliAdapter {
   name = 'antigravity-cli';
+  /** /compact has nothing to run here, so it’s refused before it’s posted (#1812). */
+  refuses = noCompaction('Antigravity');
 
   /**
    * @param {{ bin?: string, workRoot: string, models?: string[], version?: string|null, hookScript?: string, hookProbe?: typeof probeAgyHook, settingsFile?: string,

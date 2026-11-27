@@ -1,6 +1,8 @@
 // The UAT runner’s act against a real choice block (#1750): an option the tester names as its label and description
-// joined with “ — ” is picked by its label, as app/js/blocks.mjs draws it, and a name for no option still fails the
-// step. The runner’s own code, through a stand-in for its page.
+// joined with “ — ”, or by a newline, a colon or another dash (#1782), is picked by its label, as app/js/blocks.mjs
+// draws it, and a name for no option still fails the step. What it reads of the block lists each chip as
+// “label — description”, and each of those, sent back, picks its chip. The runner’s own code, through a stand-in for its
+// page.
 
 import { expect, test } from '@playwright/test';
 import { driver } from '../../tools/uat/driver.mjs';
@@ -15,6 +17,8 @@ const OPTIONS = [
   { id: 'daily', label: 'Daily', description: 'each evening' },
   { id: 'digest', label: 'Daily — with digest', description: 'each morning' },
   { id: 'text', label: 'Text only' },
+  // A label long enough that a cut at 60 characters would have left “… —” with nothing after it.
+  { id: 'long', label: 'Summarize each source the reviewer flagged in the last run', description: 'with links' },
 ];
 // What the tester sends, and the label of the option it means.
 const NAMES = [
@@ -24,6 +28,19 @@ const NAMES = [
   ['Daily — with digest', 'Daily — with digest'],
   ['Daily — with digest — each morning', 'Daily — with digest'],
   ['Weekly with alerts', 'Weekly with alerts'],
+  ['each evening', 'Daily'],
+  // Joined some other way (#1782), each after another option, so each pick shows.
+  ['Weekly: every Monday', 'Weekly'],
+  ['each evening', 'Daily'],
+  ['Weekly – every Monday', 'Weekly'],
+  ['each evening', 'Daily'],
+  ['Weekly - every Monday', 'Weekly'],
+  ['each evening', 'Daily'],
+  ['Weekly—every Monday', 'Weekly'],
+  ['each evening', 'Daily'],
+  ['Weekly\nevery Monday', 'Weekly'],
+  // A whole label alone picks that chip, though “Weekly with alerts” is drawn first and holds it.
+  ['Weekly', 'Weekly'],
   ['each evening', 'Daily'],
 ];
 
@@ -69,4 +86,24 @@ test('the runner picks a choice’s option by its label when the tester names it
     'Couldn’t find the option “Dailyish — each evening” on screen.',
   );
   expect(await picked(), 'and nothing else is picked').toEqual(['Daily']);
+  // What the tester reads: each chip as “label — description”, not the two run together (#1782), and each of those
+  // names, sent back, picks its chip.
+  const read = (await d.items()).find((i) => i.key === key);
+  expect(read?.buttons).toEqual(
+    expect.arrayContaining([
+      'Weekly with alerts — a summary and an alert on drops',
+      'Weekly — every Monday',
+      'Daily — each evening',
+      'Daily — with digest — each morning',
+      'Text only',
+      'Summarize each source the reviewer flagged in the last run — with links',
+    ]),
+  );
+  for (const named of read?.buttons.filter((b) => b.includes(' — ')) ?? []) {
+    await d.act(key, { choose: [named] });
+    expect((await picked())[0], `“${named}” sent back`).toBe(OPTIONS.find((o) => `${o.label} — ${o.description}` === named)?.label);
+  }
+  // A chip pressed as a button by the name the tester reads.
+  await d.act(key, { button: 'Weekly — every Monday' });
+  expect((await picked())[0], 'pressed as a button').toBe('Weekly');
 });
