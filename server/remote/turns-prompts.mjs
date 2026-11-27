@@ -6,6 +6,7 @@
 import { NOT_YOUR_PROMPT } from '../../shared/mcp-tools.mjs';
 import { HOST_LIMIT } from '../../shared/question-words.mjs';
 import { message as protocolMessage, REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
+import { cutText } from '../../shared/text-parts.mjs';
 import { describePermission } from '../adapters/claude-stream.mjs';
 import { offerNeed } from '../card-needs.mjs';
 import { closeCard, tellExpired } from '../permission-expiry.mjs';
@@ -176,7 +177,7 @@ function answered(rts, hostId, m, answer, input) {
         updatedInput: answer.updatedInput ?? input,
         ...(answer.updatedPermissions ? { updatedPermissions: answer.updatedPermissions } : {}),
       }
-    : { behavior: 'deny', message: String(answer?.message || 'The person didn’t allow this.').slice(0, REMOTE_LIMITS.messageChars) };
+    : { behavior: 'deny', message: cutText(String(answer?.message || 'The person didn’t allow this.'), REMOTE_LIMITS.messageChars) };
   try {
     protocolMessage('postbox-to-daemon', 'answer', { turn: m.turn, prompt: m.id, result });
   } catch {

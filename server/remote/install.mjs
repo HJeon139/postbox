@@ -43,6 +43,7 @@
 
 import { spawn as nodeSpawn } from 'node:child_process';
 import { REMOTE_DIR } from '../../shared/remote-protocol.mjs';
+import { cutText } from '../../shared/text-parts.mjs';
 import { bundle, checkVersion, hostFiles, ROOT } from './install-bundle.mjs';
 import { installArgs, installCommand, tokenCommand } from './install-script.mjs';
 import { storeToken, TOKEN_RE, tokenFile } from './install-token.mjs';
@@ -161,6 +162,17 @@ function errorLine(stdout) {
 }
 
 /**
+ * Why an install failed other than for code that differs: its known exit, else what the host said, quoted whole (#1686).
+ * @param {{ code: number | null, signal: string | null }} r @param {string | undefined} known @param {string} said @param {string} quote
+ */
+function failedWhy(r, known, said, quote) {
+  if (known) return `${known}${r.code === 66 && quote ? ` (${quote})` : ''}`;
+  if (r.code === 0) return `the host answered “${cutText(said, 200)}” instead of saying it installed`;
+  const ended = `the install ended with ${r.signal ?? `exit status ${r.code}`}`;
+  return quote ? `${ended}: “${cutText(quote, 300)}”` : ended;
+}
+
+/**
  * The install run’s outcome: whether it installed, or found the version there, else an SshFailure.
  * @param {string} d  the destination @param {string} version @param {{ code: number | null, signal: string | null, stdout: string, stderr: string }} r
  * @returns {boolean} installed
@@ -175,14 +187,7 @@ export function installOutcome(d, version, r) {
   const quote = lastLine(stderr.replace(/^postbox install: .*$/gm, '')) || lastLine(stderr);
   // 75 from starting(), not busy(): an attach holds the version’s start lock, so it’s worth trying again soon.
   const starting = r.code === 75 && /^postbox install: Postbox \S+ is starting on this host/m.test(stderr);
-  const why =
-    r.code === 75
-      ? `Postbox ${version} is ${starting ? 'starting' : 'running'} on ${d} with different code`
-      : known
-        ? `${known}${r.code === 66 && quote ? ` (${quote})` : ''}`
-        : r.code === 0
-          ? `the host answered “${said.slice(0, 200)}” instead of saying it installed`
-          : `the install ended with ${r.signal ?? `exit status ${r.code}`}${quote ? `: “${quote.slice(0, 300)}”` : ''}`;
+  const why = r.code === 75 ? `Postbox ${version} is ${starting ? 'starting' : 'running'} on ${d} with different code` : failedWhy(r, known, said, quote);
   const where = `~/${REMOTE_DIR}/${version}`;
   const next = starting
     ? `Install again in a moment. If Postbox then says it’s running on ${d}, stop its turns there first.`
@@ -223,7 +228,7 @@ export function tokenOutcome(d, r) {
   if (r.code === 0 && TOKEN_RE.test(token)) return token;
   throw new SshFailure(
     'failed',
-    `Postbox installed its files on ${d}, but didn’t get the daemon’s token back${r.code ? ` (exit status ${r.code})` : ''}.${lastLine(r.stderr) ? ` The host said: “${lastLine(r.stderr).slice(0, 300)}”` : ''}`,
+    `Postbox installed its files on ${d}, but didn’t get the daemon’s token back${r.code ? ` (exit status ${r.code})` : ''}.${lastLine(r.stderr) ? ` The host said: “${cutText(lastLine(r.stderr), 300)}”` : ''}`,
     `Install again. If it fails the same way, check ~/${REMOTE_DIR}/token on ${d}: it should be a file of yours, holding one line.`,
     detail,
   );
