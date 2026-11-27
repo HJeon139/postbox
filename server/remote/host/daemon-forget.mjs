@@ -1,9 +1,10 @@
-// Postbox’s `forget` (#491): a deleted persona’s memory folder on this host, ~/.postbox-remote/memory/<persona>, is
-// removed, and Postbox hears `forgotten`. Claude Code keeps a persona’s auto memory there on a host (setup.mjs’s
-// memoryFolder, remote-turn.mjs’s hostMemoryRoot). Nothing else is touched: the handler itself refuses any persona
-// that isn’t already a folder name (empty, or with anything memoryFolderName would replace), so the recursive removal
-// is always of one folder under memory/, never memory/ itself, whatever the wire check let through; and memory/
-// must be a real folder, not a link.
+// Postbox’s `forget` (#491): a deleted persona’s memory on this host is removed, and Postbox hears `forgotten`. Claude
+// Code keeps a persona’s auto memory in ~/.postbox-remote/memory/<persona> (setup.mjs’s memoryFolder,
+// remote-turn.mjs’s hostMemoryRoot), and an Isolated Kiro persona keeps its memory in its own Kiro home,
+// ~/.postbox-remote/kiro-home/<persona> (kiro-cli-remote.mjs’s kiroRemoteEnv, #1661). Nothing else is touched: the
+// handler itself refuses any persona that isn’t already a folder name (empty, or with anything memoryFolderName would
+// replace), so each recursive removal is always of one folder under memory/ or kiro-home/, never either folder itself,
+// whatever the wire check let through; and each of those must be a real folder, not a link.
 
 import { promises as fsp } from 'node:fs';
 import { memoryFolderName } from '../../../shared/memory-folders.mjs';
@@ -23,21 +24,33 @@ export async function forget(d, c, m) {
     d.log(`Couldn’t remove the memory of a deleted agent (${m.persona}): ${text}`);
     void send(c, 'error', { code, message: text.slice(0, REMOTE_LIMITS.messageChars), re: 'forget', persona: m.persona });
   };
-  const memory = `${d.p.root}/memory`;
-  let kind;
-  try {
-    kind = await fsp.lstat(memory);
-  } catch (e) {
-    // No memory folder at all: nothing of this persona’s is here.
-    if (/** @type {any} */ (e).code === 'ENOENT') return void send(c, 'forgotten', { persona: m.persona });
-    return refuse('internal', `The daemon couldn’t read ${memory}: ${/** @type {any} */ (e).message}.`);
-  }
-  if (!kind.isDirectory()) return refuse('internal', `${memory} isn’t a folder, so the daemon removed nothing from it. Remove it on the host.`);
-  try {
-    await fsp.rm(`${memory}/${m.persona}`, { recursive: true, force: true });
-  } catch (e) {
-    return refuse('internal', `The daemon couldn’t remove ${memory}/${m.persona}: ${/** @type {any} */ (e).message}.`);
+  for (const parent of ['memory', 'kiro-home']) {
+    const why = await removeFrom(`${d.p.root}/${parent}`, m.persona);
+    if (why) return refuse('internal', why);
   }
   d.log(`Removed the memory of a deleted agent (${m.persona}).`);
   await send(c, 'forgotten', { persona: m.persona });
+}
+
+/**
+ * Removes one persona’s folder from a parent under ~/.postbox-remote. A parent that isn’t there holds nothing of it;
+ * one that isn’t a real folder is left alone. Returns why it couldn’t, or null.
+ * @param {string} parent @param {string} persona  a folder name, as forget checked
+ * @returns {Promise<string | null>}
+ */
+async function removeFrom(parent, persona) {
+  let kind;
+  try {
+    kind = await fsp.lstat(parent);
+  } catch (e) {
+    if (/** @type {any} */ (e).code === 'ENOENT') return null;
+    return `The daemon couldn’t read ${parent}: ${/** @type {any} */ (e).message}.`;
+  }
+  if (!kind.isDirectory()) return `${parent} isn’t a folder, so the daemon removed nothing from it. Remove it on the host.`;
+  try {
+    await fsp.rm(`${parent}/${persona}`, { recursive: true, force: true });
+  } catch (e) {
+    return `The daemon couldn’t remove ${parent}/${persona}: ${/** @type {any} */ (e).message}.`;
+  }
+  return null;
 }
