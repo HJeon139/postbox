@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.6 (2026-11-27)
+
+### Fixes
+
+- **adapters:** give the installed index the time git gave it, and test the copy around the lock
+- **adapters:** stream the commit's index into the worktree's lock
+- **adapters:** hold the worktree's index lock while committing, and install the commit's index
+- **adapters:** set an agent's index to its turn-end commit with read-tree --reset
+- **adapters:** copy an agent's index only from a regular file, and keep what git knew of each file
+- **adapters:** build an agent's turn-end commit from Postbox's own copy of its index
+
 ## 5.4.5 (2026-11-27)
 
 ### Fixes
