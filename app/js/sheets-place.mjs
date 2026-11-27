@@ -53,17 +53,22 @@ export function placeField(st, paint, { idp, hosts, here, name }) {
         )
       : h('span', 'No host yet'),
     h('span.help', { id: `${idp}-where-help` }, help),
-    missing
-      ? h(
-          'span.err',
-          { id: `${idp}-where-missing` },
-          icon('warn'),
-          `${name} wasn’t found on ${host.name}${found?.looked?.length ? `: Postbox’s daemon looked in ${found.looked.join(', ')}` : ''}. Install it there, or set its path in the host’s settings.`,
-        )
-      : null,
+    missing ? missingNote(idp, name, host, found) : null,
     st.placeError ? h('span.err', { role: 'alert', id: `${idp}-where-err` }, icon('warn'), st.placeError) : null,
   );
 }
+
+/**
+ * The backend’s CLI wasn’t found on the host it picks, as the host’s daemon said, with where it looked.
+ * @param {string} idp @param {string} name @param {any} host @param {any} found
+ */
+const missingNote = (idp, name, host, found) =>
+  h(
+    'span.err',
+    { id: `${idp}-where-missing` },
+    icon('warn'),
+    `${name} wasn’t found on ${host.name}${found?.looked?.length ? `: Postbox’s daemon looked in ${found.looked.join(', ')}` : ''}. Install it there, or set its path in the host’s settings.`,
+  );
 
 /**
  * A persona sheet’s save that failed: when where it runs changed, the server’s refusal (a host without that CLI, a
