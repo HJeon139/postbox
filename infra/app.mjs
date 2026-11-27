@@ -44,7 +44,7 @@ function usernameClaim(provider) {
 
 /** The address: a name in a hosted zone of yours, or a certificate of yours. @param {Stack} stack */
 function address(stack) {
-  const domainName = context('domainName');
+  const domainName = context('domainName')?.toLowerCase();
   if (context('hostedZoneId'))
     return {
       domainName,
