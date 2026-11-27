@@ -105,7 +105,7 @@ test('view-moved doesn’t read a prev that measured some other item than the ea
   assert.deepEqual(findings(wrong), []);
 });
 
-test('view-moved keys each finding by its kind, transcript and steps, so a run keeps every one', () => {
+test('view-moved keys each finding by its kind, transcript, steps and samples, so a run keeps every one', () => {
   const twice = [
     sample(1, { actual: 120 }),
     sample(2, { actual: 120, prev: { anchorId: 'it_big0500', actual: 300 } }),
@@ -113,7 +113,19 @@ test('view-moved keys each finding by its kind, transcript and steps, so a run k
   ];
   const keys = findings(twice).map((x) => x.key);
   assert.equal(new Set(keys).size, keys.length);
-  assert.deepEqual(keys, ['view-moved:moved:main:t_big:1-2', 'view-moved:moved:main:t_big:2-3']);
+  const at = (step) => T0 + step * 1000;
+  assert.deepEqual(keys, [`view-moved:moved:main:t_big:1-2:${at(1)}-${at(2)}`, `view-moved:moved:main:t_big:2-3:${at(2)}-${at(3)}`]);
+});
+
+test('view-moved keeps two moves within one step apart, as an interrupt’s mid-turn samples are (#805)', () => {
+  const mid = [
+    sample(3, { at: T0 + 3000, actual: 120 }),
+    sample(3, { at: T0 + 3500, actual: 120, prev: { anchorId: 'it_big0500', actual: 300 } }),
+    sample(3, { at: T0 + 4000, actual: 120, prev: { anchorId: 'it_big0500', actual: 500 } }),
+  ];
+  const hits = findings(mid);
+  assert.equal(new Set(hits.map((x) => x.key)).size, 2, 'each pair is its own finding');
+  assert.match(hits[0].evidence, /^Within step 3, with no input between/);
 });
 
 test('view-moved fires on one sample whose published offset is stale by more than a pixel', () => {
