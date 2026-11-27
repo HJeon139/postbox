@@ -221,6 +221,27 @@
       : `<div class="pb-legend">${items.map(([n, c]) => `<span><i class="${key}" style="background:var(--${c})"></i>${esc(n)}</span>`).join('')}</div>`;
   const path = (pts) => 'M' + pts.map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('L');
   const svg = (w, h, inner, label) => `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">${inner}</svg>`;
+  // Room for a chart’s category labels, drawn right-aligned left of its marks: the longest label’s width, up to half of
+  // the chart’s width, so a long name (a note’s path) never runs off the page’s left edge, which an agent can’t fix in the
+  // kit. A label longer than that ends in “…” on a whole character, with its full name in a title; the table view
+  // names every one in full.
+  let measurer = null;
+  function labelRoom(labels, w) {
+    measurer ??= document.createElement('canvas').getContext('2d');
+    measurer.font = '12px system-ui,sans-serif';
+    const width = (t) => measurer.measureText(t).width;
+    const room = Math.floor(w / 2) - 10;
+    const chars = (t) => (window.Intl?.Segmenter ? [...new Intl.Segmenter().segment(t)].map((x) => x.segment) : Array.from(t));
+    const shown = labels.map((label) => {
+      const t = String(label);
+      if (width(t) <= room) return { text: esc(t), w: width(t) };
+      const cs = chars(t);
+      while (cs.length > 1 && width(cs.join('') + '…') > room) cs.pop();
+      const cut = cs.join('') + '…';
+      return { text: `${esc(cut)}<title>${esc(t)}</title>`, w: width(cut) };
+    });
+    return { left: Math.ceil(Math.max(0, ...shown.map((x) => x.w))) + 10, labels: shown.map((x) => x.text) };
+  }
   const gridY = (ticks, y, x0, x1, f) =>
     ticks
       .map(
@@ -370,7 +391,8 @@
       mount(
         el,
         (w) => {
-          const m = { l: 100, r: 48, t: 4, b: 22 },
+          const room = labelRoom(cats, w);
+          const m = { l: room.left, r: 48, t: 4, b: 22 },
             row = 34,
             bar = 20,
             h = m.t + cats.length * row + m.b;
@@ -381,9 +403,9 @@
                 `<line x1="${x(t)}" x2="${x(t)}" y1="${m.t}" y2="${h - m.b}" stroke="var(--line)"/><text x="${x(t)}" y="${h - 6}" fill="var(--dim)" text-anchor="middle">${fmt(t)}${spec.percent === false ? '' : '%'}</text>`,
             )
             .join('');
-          cats.forEach((c, i) => {
+          cats.forEach((_c, i) => {
             const y0 = m.t + i * row + (row - bar) / 2;
-            s += `<text x="${m.l - 8}" y="${y0 + bar / 2}" fill="var(--text)" text-anchor="end" dominant-baseline="middle">${esc(c)}</text>`;
+            s += `<text x="${m.l - 8}" y="${y0 + bar / 2}" fill="var(--text)" text-anchor="end" dominant-baseline="middle">${room.labels[i]}</text>`;
             let acc = 0;
             series.forEach((sr, k) => {
               const v = spec.percent === false ? sr.values[i] : (sr.values[i] / totals[i]) * 100;
@@ -419,7 +441,8 @@
       mount(
         el,
         (w) => {
-          const m = { l: 92, r: 4, t: 18, b: 4 },
+          const room = labelRoom(spec.rows, w);
+          const m = { l: room.left, r: 4, t: 18, b: 4 },
             cw = (w - m.l - m.r) / spec.cols.length,
             ch = 26,
             h = m.t + spec.rows.length * ch + m.b;
@@ -429,7 +452,7 @@
             .map((c, j) => (j % every ? '' : `<text x="${m.l + j * cw + cw / 2}" y="10" fill="var(--dim)" text-anchor="middle">${esc(c)}</text>`))
             .join('');
           spec.rows.forEach((r, i) => {
-            s += `<text x="${m.l - 8}" y="${m.t + i * ch + ch / 2}" fill="var(--text)" text-anchor="end" dominant-baseline="middle">${esc(r)}</text>`;
+            s += `<text x="${m.l - 8}" y="${m.t + i * ch + ch / 2}" fill="var(--text)" text-anchor="end" dominant-baseline="middle">${room.labels[i]}</text>`;
             spec.values[i].forEach((v, j) => {
               s += `<rect x="${m.l + j * cw + 1}" y="${m.t + i * ch + 1}" width="${cw - 2}" height="${ch - 2}" rx="3" fill="var(--seq-${step(v)})"><title>${esc(r)} · ${esc(spec.cols[j])}: ${v}</title></rect>`;
             });
