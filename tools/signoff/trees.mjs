@@ -67,7 +67,7 @@ export function baseRepo(pr, prUrl) {
  */
 export async function fetchBase(d, root, { pr, prUrl, base }) {
   const repo = baseRepo(pr, prUrl);
-  await must(d, ['git', 'fetch', '--quiet', '--no-tags', '--', repo, `refs/heads/${base}`], { cwd: root });
+  await must(d, ['git', 'fetch', '--quiet', '--no-tags', '--', repo, `refs/heads/${base}`], { cwd: root, env: { GIT_TERMINAL_PROMPT: '0' } });
   const baseSha = await must(d, ['git', 'rev-parse', '--verify', 'FETCH_HEAD^{commit}'], { cwd: root });
   const mergeBase = await must(d, ['git', 'merge-base', 'HEAD', baseSha], { cwd: root });
   return { baseSha, mergeBase };
