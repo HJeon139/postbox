@@ -4,7 +4,8 @@
 // work root, and as Postbox starts every file still noted is removed, but only Postbox’s own agent files.
 
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mock, test } from 'node:test';
 import { removeKiroAgent, sweepKiroAgents, writeKiroAgent } from '../server/adapters/kiro-agent-files.mjs';
@@ -20,7 +21,9 @@ function place() {
   writeFileSync(join(home, 'agents', 'mine.json'), '{"name":"mine"}\n');
   return { data, workRoot: join(data, 'work'), home, file: join(home, 'agents', 'postbox-kiro-1a2b3c4d.json') };
 }
-const record = (/** @type {string} */ data) => JSON.parse(readFileSync(join(data, 'kiro-agents.json'), 'utf8'));
+/** The files the record notes. @param {string} data */
+const record = (data) => JSON.parse(readFileSync(join(data, 'kiro-agents.json'), 'utf8')).map((/** @type {any} */ n) => n.file);
+const sha = (/** @type {string} */ text) => createHash('sha256').update(text).digest('hex');
 
 test('#1864 an agent file a killed turn left is removed as Postbox starts, and the person’s own agent stays', async () => {
   const p = place();
@@ -38,7 +41,11 @@ test('#1864 a record naming any other file removes nothing', async () => {
   writeFileSync(elsewhere, 'not in an agents folder\n');
   writeFileSync(
     join(p.data, 'kiro-agents.json'),
-    `${JSON.stringify([join(p.home, 'agents', 'mine.json'), elsewhere, join(p.home, 'agents', 'postbox-kiro-x.json')])}\n`,
+    // Each with the hash of the text it holds, so only the path’s own check stands in the way.
+    `${JSON.stringify([
+      { file: join(p.home, 'agents', 'mine.json'), sha256: sha('{"name":"mine"}\n') },
+      { file: elsewhere, sha256: sha('not in an agents folder\n') },
+    ])}\n`,
   );
   await sweepKiroAgents(p.workRoot);
   assert.ok(existsSync(join(p.home, 'agents', 'mine.json')), 'the person’s agent');
@@ -105,4 +112,52 @@ test('#1864 a record the sweep can’t rewrite doesn’t stop Postbox from start
   assert.equal(existsSync(p.file), false, 'the agent file is still removed');
   assert.deepEqual(record(p.data), [p.file], 'the record is as it was, for the next start');
   assert.match(String(said.mock.calls.at(-1)?.arguments[0]), /couldn’t update .*kiro-agents\.json .*Check that Postbox can write to its data folder/);
+});
+
+test('#1864 a link at the agents folder isn’t followed: what it leads to stays', async () => {
+  const p = place();
+  const elsewhere = tempDir('pb-kiro-elsewhere-');
+  const linked = join(p.data, 'linked-home');
+  mkdirSync(linked);
+  symlinkSync(elsewhere, join(linked, 'agents'));
+  const file = join(linked, 'agents', 'postbox-kiro-0a0b0c0d.json');
+  await writeKiroAgent(file, '{}', p.workRoot);
+  await sweepKiroAgents(p.workRoot);
+  assert.ok(existsSync(join(elsewhere, 'postbox-kiro-0a0b0c0d.json')), 'the file the link leads to stays');
+  assert.deepEqual(record(p.data), [], 'and its note is dropped');
+});
+
+test('#1864 a file at the noted path that isn’t the one the turn wrote is left as it is', async () => {
+  const p = place();
+  await writeKiroAgent(p.file, '{"mcpServers":{"postbox":{"url":"http://127.0.0.1:1/mcp?turn=mine"}}}', p.workRoot);
+  writeFileSync(p.file, '{"mcpServers":{"postbox":{"url":"http://127.0.0.1:2/mcp?turn=other"}}}');
+  await sweepKiroAgents(p.workRoot);
+  assert.ok(existsSync(p.file), 'not the file noted: it stays');
+  assert.deepEqual(record(p.data), []);
+});
+
+test('#1864 turns writing agent files at once each get noted', async () => {
+  const p = place();
+  const files = Array.from({ length: 8 }, (_, i) => join(p.home, 'agents', `postbox-kiro-0000000${i}.json`));
+  await Promise.all(files.map((f) => writeKiroAgent(f, '{}', p.workRoot)));
+  assert.equal(record(p.data).length, 8);
+});
+
+test('#1864 an agent file the sweep can’t remove stays noted, and one it removed doesn’t', {
+  skip: (process.platform === 'win32' || ROOT) && 'POSIX modes, not root',
+}, async () => {
+  const p = place();
+  await writeKiroAgent(p.file, '{}', p.workRoot);
+  chmodSync(join(p.home, 'agents'), 0o555);
+  const said = mock.method(console, 'error', () => {});
+  try {
+    await sweepKiroAgents(p.workRoot);
+  } finally {
+    said.mock.restore();
+    chmodSync(join(p.home, 'agents'), 0o755);
+  }
+  assert.ok(existsSync(p.file), 'still there');
+  assert.deepEqual(record(p.data), [p.file], 'and still noted');
+  await sweepKiroAgents(p.workRoot);
+  assert.deepEqual(record(p.data), [], 'gone, and no longer noted');
 });
