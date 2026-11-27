@@ -91,6 +91,8 @@ export const PENDING = {
   // the ledger reads back its own entries; the turn’s blocks and apps; and convOf, the conversation whose work list a
   // turn’s entry goes in, through a topic maybe opened behind a held commit (#623)
   'ledger.mjs': ['convOf', 'convOf', 'entries', 'recordPublishes', 'recordPublishes'],
+  // the folder a host turn works in, which its edits resolve against, from a turn started behind a held commit (#623)
+  'ledger-remote.mjs': ['hostFolder'],
   // the turn’s replies, maybe held behind a commit: their diagrams decide its lint turn and the session’s diagramsLinted
   // (#731); and the session’s diagramsLinted, maybe written behind one, which decides whether a diagram is told again (#623)
   'diagram-check.mjs': ['rememberDiagrams', 'diagramCheck', 'syntaxCheck'],

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { askStop, stopConfirmed } from '../server/remote/turns-stops.mjs';
 import { heldRig, remoteTurn } from './remote-turns-held-fixture.mjs';
-import { running, settled, until } from './remote-turns-helpers.mjs';
+import { running, settled, starts, until } from './remote-turns-helpers.mjs';
 
 /** The replies the link sent for one call. @param {any} r @param {string} id */
 const repliesTo = (r, id) => r.link.sent.filter((m) => m.type === 'reply' && m.id === id);
@@ -140,6 +140,25 @@ test('a prompt from a turn started behind a held commit shows the session waitin
   await until(() => [...r.rt.permissionWaits.values()].some((w) => w.sessionId === r.se().id), 'the card');
   await release();
   assert.equal(remoteTurn(r).state, 'waiting', 'its card waits on the person');
+  r.d.end(turn);
+  await settled(r);
+  await r.close();
+});
+
+test('a relative edit by a turn started behind a held commit is recorded in the turn’s folder on its host (#623, hostFolder)', async () => {
+  const r = await heldRig();
+  const release = await r.hold();
+  const turn = await running(r);
+  const { folder } = starts(r.d).at(-1);
+  // The agent edits a file by a path relative to its folder on the host, and the edit works.
+  const id = 'toolu_held_edit';
+  const input = { file_path: 'notes.txt', old_string: 'a', new_string: 'b' };
+  r.d.append(turn, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Edit', input }] } }));
+  r.d.append(turn, JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'Edited.' }] } }));
+  const edits = () => (r.store.pending.work(r.t.id) ?? []).filter((e) => e.kind === 'edit');
+  await until(() => edits().length === 1, 'the edit step');
+  await release();
+  assert.equal(edits()[0].path, `${folder}/notes.txt`, 'the file is the one in the turn’s folder on the host');
   r.d.end(turn);
   await settled(r);
   await r.close();
