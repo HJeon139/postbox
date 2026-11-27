@@ -34,9 +34,8 @@
 
   // Whether the text and the control both show where they meet: one under something opaque (a dialog over the page’s
   // buttons, a sticky bar over the controls scrolled under it) is hidden there. The other one’s own box hides it only
-  // when it covers it whole, or floats with the window, fixed or sticky, as Jump to latest floats over the transcript
-  // (#681): text on a badge over part of a button is a collision, a close button misplaced over a title is one, and a
-  // dialog’s text over a button it hides isn’t. Asking what’s at a point skips what ignores the pointer, which still
+  // when it covers it whole: text on a badge over part of a button is a collision, and a dialog’s text over a button it
+  // hides isn’t. Asking what’s at a point skips what ignores the pointer, which still
   // shows, so the question is asked with every element taking the pointer.
   function bothShow(textEl, control, x, y, y0) {
     jump(y < 0 || y > innerHeight ? y + y0 - innerHeight / 2 : y0);
@@ -51,7 +50,7 @@
     const hides = (e, el) => {
       if (e.contains(el) || !opaque(e)) return false;
       const other = el === control ? textEl : control;
-      return !(e === other || other.contains(e)) || covers(e, el) || floats(e, el);
+      return !(e === other || other.contains(e)) || covers(e, el);
     };
     const under = (el) => {
       const i = stack.indexOf(el);
@@ -60,9 +59,9 @@
     return !under(textEl) && !under(control);
   }
 
-  // Placed over what’s under it with the window, not where the page’s flow put it: it, or what holds it, is fixed or
-  // sticky, and what’s under it isn’t in that same box. A close button over its own dialog’s title doesn’t float over
-  // it: the dialog holds both.
+  // Placed over the other with the window, not where the page’s flow put it: it, or what holds it, is fixed or sticky,
+  // and the other isn’t in that same box. A close button over its own dialog’s title doesn’t float over it: the dialog
+  // holds both.
   const floats = (e, under) => {
     for (let a = e; a && a !== document.body; a = a.parentElement) {
       if (a.contains(under)) return false;
@@ -96,6 +95,9 @@
         const key = `${clip(t.n.textContent)}\u0000${where(c.el)}`;
         if (!cross || found.has(key) || belongs(t.n, c.el) || asks++ >= 200) continue;
         const at = [(Math.max(t.r.left, c.r.left) + Math.min(t.r.right, c.r.right)) / 2, (Math.max(t.r.top, c.r.top) + Math.min(t.r.bottom, c.r.bottom)) / 2];
+        // One floating over the other is the page scrolling under its chrome, not a collision (#681): Jump to latest
+        // over the transcript, the transcript under a translucent sticky bar.
+        if (floats(c.el, t.n.parentElement) || floats(t.n.parentElement, c.el)) continue;
         if (!bothShow(t.n.parentElement, c.el, at[0], at[1], y0)) continue;
         found.set(key, {
           code: 'text-on-control',
