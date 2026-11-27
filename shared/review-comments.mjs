@@ -104,15 +104,25 @@ export const REGION_ANCHOR = /^region [1-9]\d*$/;
  */
 export function regionError(c) {
   const r = c.region;
-  // A “region N” anchor names a marked region, so it carries one: a part can’t take that name (#856).
-  if ((r === undefined || r === null) && typeof c.anchor === 'string' && REGION_ANCHOR.test(c.anchor))
-    return `“${c.anchor}” names a marked region, so it needs its region: { x, y, w, h, version }.`;
   if (r === undefined || r === null || typeof r !== 'object') return null;
   // Within a rounding error: 0.7 + 0.3 is 1.0000000000000002 in floating point.
   if (r.x + r.w > 1 + 1e-9 || r.y + r.h > 1 + 1e-9) return 'a region stays inside the app: x + w and y + h are at most 1.';
   if (typeof c.anchor !== 'string' || !REGION_ANCHOR.test(c.anchor)) return 'a comment on a region names it as anchor, such as “region 1”.';
   return null;
 }
+
+/**
+ * Why a new comment names a region it doesn’t carry, or null: “region 1”, “region 2” and so on are the regions the
+ * person marks, so a part can’t take that name (#856). Checked on comments as they come in, not on a review’s stored
+ * threads: a part an app named that way before #856 keeps its thread. @param {Record<string, any>} c
+ */
+export function regionNameError(c) {
+  if (c.region != null || typeof c.anchor !== 'string' || !REGION_ANCHOR.test(c.anchor)) return null;
+  return `“${c.anchor}” names a marked region, so it needs its region: { x, y, w, h, version }.`;
+}
+
+/** Whether two regions are the same place on the same version. @param {any} a @param {any} b */
+export const sameRegion = (a, b) => ['x', 'y', 'w', 'h', 'version'].every((k) => a?.[k] === b?.[k]);
 
 /**
  * Why a review’s threads name one region twice, as sentences: each “region N” is one place, so two threads on it with
@@ -124,7 +134,7 @@ export function regionClashes(threads) {
   for (const [i, t] of threads.entries()) {
     if (!t?.region || typeof t.anchor !== 'string') continue;
     const first = seen.get(t.anchor);
-    if (first && JSON.stringify(first.region) !== JSON.stringify(t.region))
+    if (first && !sameRegion(first.region, t.region))
       errs.push(`threads[${i}]: “${t.anchor}” is already threads[${first.i}]’s region; give this one the next number.`);
     else if (!first) seen.set(t.anchor, { i, region: t.region });
   }
@@ -170,7 +180,7 @@ export function commentErrors(c, path) {
   const x = /** @type {Record<string, any>} */ (c);
   if (!x.text.trim()) return [`${path}.text is empty.`];
   if (x.line === undefined && x.anchor === undefined && x.threadId === undefined) return [`${path} needs a line, an anchor or a thread.`];
-  const why = anchorError(x) ?? regionError(x);
+  const why = anchorError(x) ?? regionError(x) ?? regionNameError(x);
   return why ? [`${path}: ${why}`] : [];
 }
 

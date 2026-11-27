@@ -212,13 +212,48 @@ test('#856 an Edit while a region’s comment is open keeps what was typed on th
 test('#856 an app can’t name a part “region 1”: the regions the person marks take those names', async ({ page }) => {
   const named = `<main style="height:320px;padding:12px;color:var(--text)"><h2 id="t">Corpus summary</h2><p id="r">Twelve books.</p></main>
 <script>postbox.anchors({ title: document.getElementById('t'), 'region 1': document.getElementById('r') });
-// And it asks, itself, for a comment on “region 1”, as a pin does.
-postbox.ready.then(() => parent.postMessage({ __pb: 1, type: 'pin', anchor: 'region 1' }, '*'));</script>`;
+// And it asks, itself, for a comment on its title, as a pin does, then on “region 1”, which would take its place.
+postbox.ready.then(() => {
+  parent.postMessage({ __pb: 1, type: 'pin', anchor: 'title' }, '*');
+  parent.postMessage({ __pb: 1, type: 'pin', anchor: 'region 1' }, '*');
+});</script>`;
   const { block } = await review(page, {}, named);
   const frame = block.frameLocator('iframe.app-iframe');
   await expect(frame.locator('.pb-anchor-tag'), 'only the part with another name is tagged').toHaveText(['title']);
+  const onTitle = page.getByRole('textbox', { name: 'Comment on title' });
+  await expect(onTitle, 'its pins are heard').toHaveCount(1);
   await expect(page.getByRole('textbox', { name: 'Comment on region 1' }), 'the app’s own pin on “region 1” opens nothing').toHaveCount(0);
+  await expect(onTitle, 'and leaves the comment on its title open').toHaveCount(1);
   await block.getByRole('button', { name: 'Mark a part of the app' }).click();
   await drag(page, block, [0.2, 0.3], [0.6, 0.7]);
   await expect(page.getByRole('textbox', { name: 'Comment on region 1' }), 'the first mark is region 1').toBeFocused();
+});
+
+test('#856 a room with two app reviews, opened afresh, draws a region marked on the first', async ({ page }) => {
+  const { rt, store } = app;
+  const thread = rt.createThread({
+    projectId: Object.values(store.state.projects)[0].id,
+    title: 'Two reviews',
+    personaIds: [arrange.persona(rt, 'researcher').id],
+  });
+  const tools = rt.toolsFor(arrange.agentIn(rt, thread.id).id);
+  for (const n of [1, 2]) {
+    tools.show_app({ id: `two-app-${n}`, title: `Summary ${n}`, code: BARE });
+    tools.show_block({ block: { id: `rv-two-${n}`, type: 'review', version: 1, fallback: 'Review the app', format: 'app', appId: `two-app-${n}` } });
+  }
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  for (const n of [1, 2])
+    await expect.poll(() => rt.store.state.apps[`two-app-${n}`].check.status, { message: `app ${n} passes its check`, timeout: 15_000 }).toBe('passed');
+  // Opened afresh, the page builds the room’s items off the page, both reviews with them, before it shows them.
+  await page.reload();
+  await synced(page, app);
+  const first = store.items(thread.id).find((i) => i.kind === 'block' && i.block.id === 'rv-two-1');
+  const block = page.locator(`#main [data-key="${first.id}"]`);
+  await expect(block.locator('.app-body > .rv-marks'), 'the first review’s layer is over its frame').toHaveCount(1);
+  await block.getByRole('button', { name: 'Mark a part of the app' }).click();
+  await drag(page, block, [0.1, 0.5], [0.4, 0.9]);
+  await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('The legend overlaps.');
+  await block.getByRole('button', { name: 'Add draft comment' }).click();
+  await expect(block.locator('.rv-marks .rv-region[data-region="1"]'), 'its region is drawn on its app').toHaveCount(1);
 });

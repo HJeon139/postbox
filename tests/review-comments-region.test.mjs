@@ -54,6 +54,10 @@ test('#856 a “region N” anchor carries its region: a part can’t take that 
   ]);
   // Other names are parts, as before.
   assert.deepEqual(commentErrors({ anchor: 'regional sales', text: 'Hm.' }, 'c'), []);
+  // A review stored before #856 with a part an app named “region 1” keeps its thread: the rule is on new comments.
+  const app = { id: 'r', type: 'review', version: 1, fallback: 'R', format: 'app', appId: 'a' };
+  const old = { id: 't1', status: 'open', anchor: 'region 1', comments: [{ author: '@critic', text: 'Hm.' }] };
+  assert.equal(validateBlock({ ...app, threads: [old] }).ok, true);
 });
 
 test('#856 a review’s threads can’t put two regions under one “region N”', () => {
@@ -138,4 +142,38 @@ test('#856 a correction of a comment on a region tells the agent the region it�
     replaces: 'This label overlaps.',
     text: 'The label is cut off.',
   });
+});
+
+test('#856 the person’s region that another comment numbered first while their draft was open gets the next number', async () => {
+  const s = setup();
+  const theirs = { id: 'c1', status: 'open', anchor: 'region 1', region: { ...box, x: 0.5 }, comments: [{ author: '@critic', text: 'Mine.' }] };
+  await turn(
+    s.rt,
+    s.adapter,
+    s.t,
+    (tools) => {
+      tools.show_app({ id: 'chart', title: 'Chart', code: '<main>Chart</main>' });
+      return tools.show_block({
+        block: { id: 'rv', type: 'review', version: 1, fallback: 'Review the chart', format: 'app', appId: 'chart', threads: [theirs] },
+      });
+    },
+    '@critic show it',
+  );
+  const item = () => s.store.items(s.t.id).find((i) => i.kind === 'block' && i.block.id === 'rv');
+  // The person’s draft numbered its box “region 1” too, and a second comment on the same box rides with it.
+  s.rt.act(s.t.id, item().id, 'submit', { verdict: 'comment', comments: [onBox, { ...onBox, text: 'And its color.' }] }, 1);
+  await settle(s.rt);
+  const threads = item().block.threads;
+  assert.deepEqual(
+    threads.map((t) => [t.anchor, t.region.x, t.comments[0].text]),
+    [
+      ['region 1', 0.5, 'Mine.'],
+      ['region 2', 0.12, 'This label overlaps.'],
+      ['region 2', 0.12, 'And its color.'],
+    ],
+  );
+  assert.deepEqual(
+    s.adapter.calls.at(-1).message.event.values.comments.map((c) => c.anchor),
+    ['region 2', 'region 2'],
+  );
 });
