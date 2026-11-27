@@ -147,3 +147,21 @@ test('#562’s review: a repository planted where Postbox makes its own is never
   assert.equal(await pushPlan(r.work, { branch: null }), null, 'a FIFO is no HEAD, and reading it doesn’t hang');
   assert.equal(await pushPlan(join(r.work, 'sub'), { branch: 'feat/now' }), null, 'no walking up out of the agent’s folder');
 });
+
+test('#1958 a push the remote refuses quotes its hook’s words cleaned', async () => {
+  const r = await repo();
+  const plan = await pushPlan(r.work, { branch: 'feat/now' });
+  // A remote hook writes a right-to-left override, a zero-width space and a bell into git’s “remote:” lines.
+  await writeFile(
+    join(r.remote, 'hooks', 'pre-receive'),
+    "#!/bin/sh\nprintf 'refused: \\342\\200\\256yeK\\342\\200\\254 \\342\\200\\213bad\\007 push\\n' >&2\nexit 1\n",
+    {
+      mode: 0o755,
+    },
+  );
+  const result = await runPush({ url: r.remote, ...plan });
+  assert.equal(result.ok, false);
+  const error = /** @type {{ error: string }} */ (result).error;
+  assert.match(error, /refused: yeK bad push/);
+  assert.doesNotMatch(error, /[\u202A-\u202E\u200B-\u200F]|\p{Cc}/u);
+});

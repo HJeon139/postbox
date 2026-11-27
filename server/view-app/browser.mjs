@@ -7,6 +7,8 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import { cleanSaid } from '../../shared/text-parts.mjs';
+import { stderrTail } from '../adapters/stderr-tail.mjs';
 
 const IDLE_MS = 5 * 60 * 1000;
 /** How long one capture may take, from a new context to the picture. */
@@ -112,10 +114,8 @@ export class AppBrowser {
         stdio: ['ignore', 'ignore', 'pipe'],
       });
       this.installer = child;
-      let err = '';
-      child.stderr?.on('data', (d) => {
-        err = (err + d).slice(-2000);
-      });
+      // Decoded as one stream and cut on a character, then its last line cleaned as a program’s words are (#1958).
+      const err = stderrTail(child, 2000);
       const timer = setTimeout(() => child.kill('SIGKILL'), INSTALL_MS);
       timer.unref();
       child.on('error', (e) => {
@@ -126,7 +126,10 @@ export class AppBrowser {
         clearTimeout(timer);
         if (code === 0 && this.status() === 'ready') resolve({ ok: true });
         else if (child.killed && signal === 'SIGKILL' && this.stopping) resolve({ ok: false, message: STOPPED });
-        else resolve({ ok: false, message: `The download stopped (${signal ?? `exit ${code}`}). ${err.trim().split('\n').pop() ?? ''}`.trim() });
+        else {
+          const said = cleanSaid(err().trim().split('\n').pop() ?? '', 300);
+          resolve({ ok: false, message: `The download stopped (${signal ?? `exit ${code}`}). ${said}`.trim() });
+        }
       });
     }).finally(() => {
       this.installing = null;

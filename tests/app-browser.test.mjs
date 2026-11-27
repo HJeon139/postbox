@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AppBrowser, STOPPED } from '../server/view-app/browser.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -68,7 +69,7 @@ test('stopping Postbox ends a download that’s running, and the download says P
   const spawnImpl = /** @type {any} */ (
     () => {
       child = new EventEmitter();
-      child.stderr = new EventEmitter();
+      child.stderr = new PassThrough();
       child.killed = false;
       child.kill = (signal) => {
         child.killed = true;
@@ -83,4 +84,28 @@ test('stopping Postbox ends a download that’s running, and the download says P
   assert.equal(child.killed, true, 'the installer was killed');
   assert.deepEqual(await install, { ok: false, message: STOPPED });
   assert.equal(b.installing, null);
+});
+
+test('#1958 a download that fails quotes the installer’s last line whole and cleaned, though it came a byte at a time', async () => {
+  const f = folders();
+  const said = 'Error: café 😀 ‮deliaf‬ ​download\u0007 failed';
+  const spawnImpl = /** @type {any} */ (
+    () => {
+      const child = /** @type {any} */ (new EventEmitter());
+      child.stderr = new PassThrough();
+      child.kill = () => {};
+      setImmediate(async () => {
+        for (const byte of Buffer.from(`Downloading\n${said}\n`)) {
+          child.stderr.write(Buffer.from([byte]));
+          await new Promise((r) => setImmediate(r));
+        }
+        child.stderr.end();
+        setImmediate(() => child.emit('close', 1, null));
+      });
+      return child;
+    }
+  );
+  const { ok, message } = await new AppBrowser({ dir: f.dir, pkg: f.pkg, spawnImpl }).install();
+  assert.equal(ok, false);
+  assert.equal(message, 'The download stopped (exit 1). Error: café 😀 deliaf download failed');
 });

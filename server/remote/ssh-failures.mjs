@@ -173,5 +173,6 @@ function lastMatch(text) {
 /** The daemon’s `error` to hello, as a failure. @param {string} destination @param {{ code: string, message: string }} m */
 export function classifyRefusal(destination, m) {
   const kind = m.code === 'version' || m.code === 'bad-token' || m.code === 'busy' || m.code === 'no-node' ? m.code : 'failed';
-  return failure(kind, destination, { why: `The host’s daemon said: “${m.message}”` });
+  // The daemon’s words, cleaned as a program’s words are, as tokenOutcome cleans the same kind of refusal (#1958).
+  return failure(kind, destination, { why: `The host’s daemon said: “${cleanSaid(m.message, 300)}”` });
 }
