@@ -16,8 +16,8 @@ import { listen, needHost, releaseHost } from './turns-need.mjs';
 import { continueAs, keepOrigin } from './turns-origin.mjs';
 import { claimShown, endOrphanCards } from './turns-prompts.mjs';
 import { replaying } from './turns-replay.mjs';
-import { signInCheck } from './turns-resume.mjs';
 import { abortError, OFFSET_SAVE_MS, remoteOf, updateRemote, whyLine } from './turns-shared.mjs';
+import { warnSignIn } from './turns-signin.mjs';
 import { sendSnapshot } from './turns-snapshot.mjs';
 import { askStop } from './turns-stops.mjs';
 
@@ -158,24 +158,6 @@ function startable(rts, se, persona, host) {
   const version = rts.rt.config.build?.version;
   if (typeof version !== 'string' || !version) throw new Error('Postbox doesn’t know its own version, so it can’t find its code on the host.');
   return { version, hosts: rts.hosts };
-}
-
-/**
- * A sign-in that’s run out shows before the turn, not at its first model request (the design, “Sign-in stays the
- * host’s”). It’s a warning: the check may be wrong, and the person decides.
- * @param {RemoteTurns} rts @param {any} turn @param {any} ctx @param {any} se @param {any} host
- */
-async function warnSignIn(rts, turn, ctx, se, host) {
-  const check = await signInCheck(rts, turn.remote.hostId);
-  if (ctx.signal.aborted) throw abortError();
-  if (check && !check.ok)
-    rts.rt.threads.notify(
-      'blocking',
-      se,
-      `Sign-in on ${host.name} may have run out`,
-      `The host’s sign-in check failed${check.code === null ? '' : ` (exit code ${check.code})`}, so @${se.handle}’s turn there may stop with “Sign-in needed”. Sign in on the host, then carry on.`,
-      turn.threadId,
-    );
 }
 
 /**

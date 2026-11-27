@@ -23,7 +23,7 @@ test('#120: each host’s status reaches the state, at each change the manager e
   arrange.watchHosts(rt);
   assert.deepEqual(
     { ...store.state.hostStatus },
-    { [h.id]: { state: 'disconnected', failure: null, welcome: null, lastHeard: 1, keepUpdated: false, update: null } },
+    { [h.id]: { state: 'disconnected', failure: null, welcome: null, lastHeard: 1, keepUpdated: false, update: null, signIns: null } },
   );
 
   const events = [];
@@ -127,4 +127,19 @@ test('#672: a host’s status passes on what the welcome says of its login PATH:
     hosts.emit('status', h.id, hosts.statuses.get(h.id));
     assert.deepEqual(store.state.hostStatus[h.id].welcome.loginPath, loginPath);
   }
+});
+
+test('#1608: a host’s sign-ins reach the page as each harness’s state, method and expiry, and nothing else', () => {
+  const { rt, store, hosts } = setup();
+  const h = rt.addHost({ name: 'host.example.com' });
+  arrange.watchHosts(rt);
+  const harnesses = [
+    { name: 'claude-code', state: 'signed-in', method: 'claude.ai', expiresAt: 1_764_987_734_007 },
+    { name: 'codex', state: 'signed-out' },
+  ];
+  // A field the manager never sets is still left out: only what the page needs crosses.
+  const signIns = { at: 5, harnesses: [{ ...harnesses[0], email: 'robin@example.com' }, harnesses[1]] };
+  hosts.statuses.set(h.id, { state: 'connected', failure: null, welcome: null, lastHeard: 5, signIns });
+  hosts.emit('status', h.id, hosts.statuses.get(h.id));
+  assert.deepEqual(store.state.hostStatus[h.id].signIns, { at: 5, harnesses });
 });

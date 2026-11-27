@@ -30,7 +30,11 @@ import {
   validateStartRecord,
 } from '../shared/remote-protocol.mjs';
 import { checkHostPath, defaultHostSettings } from '../shared/remote-settings.mjs';
-import { CASES, request, start, TOKEN } from './remote-protocol-cases.mjs';
+import { CASES as OTHER_CASES, request, start, TOKEN } from './remote-protocol-cases.mjs';
+import { SIGNIN_CASES } from './remote-protocol-cases-signin.mjs';
+
+/** Every type’s cases: the sign-in messages’ are beside the rest (#1608). */
+const CASES = Object.fromEntries(Object.entries(OTHER_CASES).map(([ch, types]) => [ch, { ...types, ...SIGNIN_CASES[ch] }]));
 
 // ── Validators ──────────────────────────────────────────────────────────────────────
 
