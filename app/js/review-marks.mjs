@@ -1,9 +1,11 @@
 // Marking a part of an app in its review (#856): a click marks a point and a drag a box, anywhere on the app, whether
 // or not it names parts, and the arrow keys move a box for a person who can’t drag. Postbox draws on a layer of its
 // own over the app’s frame, beside it in the frame’s box, never inside it: the app’s code isn’t trusted to draw what
-// the person marked, and its sandbox is unchanged. A region is kept as fractions of the frame, which a review sizes to
-// the app’s content (apps.mjs, sizeFrame), so of the app itself. Each region on the version shown is drawn with its
-// number; one on another version is listed only, with its version (designs/agent-apps.md, the review block).
+// the person marked, and its sandbox is unchanged. A region is kept in px of the app’s page, which a review’s frame
+// shows whole, as tall as the app (apps.mjs, sizeFrame), with the size of the frame it was marked in. Each region on
+// the version shown, in a frame as wide as it was marked in, is drawn with its number; one on another version, or
+// marked at another width, where the app may be laid out another way, is listed only (designs/agent-apps.md, the
+// review block).
 
 import { regionText } from '/shared/review-regions.mjs';
 import { shownVersion } from './apps.mjs';
@@ -12,11 +14,11 @@ import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
 import { nextAnchor, regionsOf } from './review-region-numbers.mjs';
 
-/** The box the keyboard starts from, centered, and how far one arrow key moves or resizes it, as fractions of the app. */
-const START = { x: 0.4, y: 0.4, w: 0.2, h: 0.2 };
-const STEP = 0.02;
-/** The smallest box the keyboard resizes to: a point is a click. */
-const SMALLEST = 0.02;
+/** How far one arrow key moves or resizes the box, in px, and the smallest box it resizes to: a point is a click. */
+const STEP = 8;
+const SMALLEST = 8;
+/** How far a frame’s width may be from the one a region was marked in, in px, for the region to be drawn in it. */
+const SAME_WIDTH = 4;
 /** A drag shorter than this, in pixels each way, is a click, so a point. */
 const SLOP = 4;
 /** What each arrow key does to a box: moves it, or with Shift, moves its right or bottom edge. */
@@ -29,7 +31,6 @@ const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], Arrow
  */
 const layers = new Map();
 
-const round = (/** @type {number} */ f) => Math.round(f * 10000) / 10000;
 const clamp = (/** @type {number} */ v, /** @type {number} */ lo, /** @type {number} */ hi) => Math.min(hi, Math.max(lo, v));
 
 /** The version of the app the review shows, as apps.mjs mounts it, or null when the app is gone. @param {any} b @param {boolean} done */
@@ -40,18 +41,33 @@ export function versionOf(b, done) {
 
 /**
  * Where a region is, after its anchor in the review’s list of comments: every drawn region is said in words too, and
- * one on another version says it isn’t drawn. @param {any} region @param {number | null} version  the one shown
+ * one on another version, or marked in a frame of another width, says it isn’t drawn. @param {any} region
+ * @param {number | null} version  the one shown @param {number | null} width  the frame’s now, null before it’s laid out
  */
-export function regionNote(region, version) {
+export function regionNote(region, version, width) {
   if (!region) return '';
-  return ` · ${regionText(region)}${region.version === version ? '' : ', so it isn’t drawn on this version'}`;
+  if (region.version !== version) return ` · ${regionText(region)}, so it isn’t drawn on this version`;
+  if (width !== null && !drawnAt(region, width)) return ` · ${regionText(region)}, marked ${region.width} px wide, so it isn’t drawn at this width`;
+  return ` · ${regionText(region)}`;
+}
+
+/** Whether a region is drawn in a frame this wide: one as wide as it was marked in. @param {any} r @param {number} width */
+const drawnAt = (r, width) => Math.abs(width - r.width) <= SAME_WIDTH;
+
+/** The frame a layer is over, once it’s placed. @param {any} l @returns {HTMLIFrameElement | null} */
+const frameOf = (l) => l.el.parentElement?.querySelector(':scope > iframe.app-iframe') ?? null;
+
+/** The size of a layer’s frame in CSS px, or null before it’s laid out. @param {any} l */
+function sizeOf(l) {
+  const f = frameOf(l);
+  return f?.clientWidth ? { width: f.clientWidth, height: Math.max(1, f.clientHeight) } : null;
 }
 
 /** The layer for a review, made once. @param {string} itemId */
 function layerOf(itemId) {
   let l = layers.get(itemId);
   if (!l) {
-    l = { el: h('div.rv-marks', { 'data-marks': itemId }), watch: null, env: null };
+    l = { el: h('div.rv-marks', { 'data-marks': itemId }), watch: null, env: null, width: null };
     layers.set(itemId, l);
     wire(l);
   }
@@ -92,8 +108,14 @@ export function paintMarks(itemId, env) {
     el.setAttribute('aria-label', 'Mark a part of the app');
     el.setAttribute('aria-describedby', helpId(itemId));
   } else for (const a of ['tabindex', 'role', 'aria-label', 'aria-describedby']) el.removeAttribute(a);
-  const drawn = [...regionsOf(b, d)].filter(([, r]) => r.version === version).map(([a, r]) => regionBox(r, a.slice('region '.length)));
-  el.replaceChildren(...drawn, ...(marking ? [regionBox(marking, '', 'marking')] : []));
+  const regions = regionsOf(b, d);
+  const width = sizeOf(l)?.width ?? null;
+  l.width = width;
+  const drawn = [...regions].filter(([, r]) => r.version === version && width !== null && drawnAt(r, width));
+  el.replaceChildren(...drawn.map(([a, r]) => regionBox(r, a.slice('region '.length))), ...(marking ? [regionBox(marking, '', 'marking')] : []));
+  // Whether each is drawn is said in the list of comments, which a resize changes without a render.
+  for (const note of env.pins?.querySelectorAll('[data-region-note]') ?? [])
+    note.textContent = regionNote(regions.get(/** @type {HTMLElement} */ (note).dataset.regionNote), version, width);
 }
 
 /**
@@ -102,15 +124,15 @@ export function paintMarks(itemId, env) {
  */
 function regionBox(r, n, cls = '') {
   const point = r.w === 0 && r.h === 0;
-  const pct = (/** @type {number} */ f) => `${f * 100}%`;
-  const size = point ? {} : { width: pct(r.w), height: pct(r.h) };
+  const px = (/** @type {number} */ n) => `${n}px`;
+  const size = point ? {} : { width: px(r.w), height: px(r.h) };
   return h(
     'div.rv-region',
     {
       class: [point ? 'point' : '', cls].filter(Boolean).join(' '),
       'aria-hidden': 'true',
       'data-region': n || null,
-      style: { left: pct(r.x), top: pct(r.y), ...size },
+      style: { left: px(r.x), top: px(r.y), ...size },
     },
     n ? h('span.rv-region-n', n) : null,
   );
@@ -119,6 +141,9 @@ function regionBox(r, n, cls = '') {
 const helpId = (/** @type {string} */ itemId) => `rv-mark-help-${itemId}`;
 /** The box being marked, in words. @param {any} m @param {number | null} version */
 const statusOf = (m, version) => (m ? `Marking ${regionText({ ...m, version: version ?? 1 })}.` : '');
+
+/** The box the keyboard starts from: a fifth of the frame each way, in its middle. @param {{ width: number, height: number }} f */
+const startBox = (f) => ({ x: Math.round(f.width * 0.4), y: Math.round(f.height * 0.4), w: Math.round(f.width * 0.2), h: Math.round(f.height * 0.2), ...f });
 
 /**
  * The button that starts marking, beside “Comment on the whole app”, and while marking, how to mark and where the box
@@ -130,7 +155,10 @@ export function markControls(itemId, env) {
   const on = !!d.marking;
   const toggle = () => {
     if (d.marking) return stopMarking(itemId, d, rerender);
-    d.marking = { ...START };
+    const l = layers.get(itemId);
+    const size = l && sizeOf(l);
+    if (!size) return;
+    d.marking = startBox(size);
     rerender();
     layers.get(itemId)?.el.focus();
   };
@@ -166,34 +194,30 @@ function finish(l, r) {
 }
 
 /**
- * The region from where a drag started to where the pointer is now, as fractions of the layer, within the app: a
- * point when it hardly moved. @param {{ x: number, y: number, rect: DOMRect }} from @param {PointerEvent} e
+ * The region from where a drag started to where the pointer is now, in px of the frame, within it: a point when it
+ * hardly moved. @param {{ x: number, y: number, rect: DOMRect, width: number, height: number }} from @param {PointerEvent} e
  */
 function dragged(from, e) {
-  const { rect } = from;
-  const fx = (/** @type {number} */ x) => clamp((x - rect.left) / rect.width, 0, 1);
-  const fy = (/** @type {number} */ y) => clamp((y - rect.top) / rect.height, 0, 1);
-  if (Math.abs(e.clientX - from.x) < SLOP && Math.abs(e.clientY - from.y) < SLOP) return { x: round(fx(from.x)), y: round(fy(from.y)), w: 0, h: 0 };
-  const x = round(Math.min(fx(from.x), fx(e.clientX)));
-  const y = round(Math.min(fy(from.y), fy(e.clientY)));
-  return {
-    x,
-    y,
-    w: Math.min(round(Math.abs(fx(e.clientX) - fx(from.x))), round(1 - x)),
-    h: Math.min(round(Math.abs(fy(e.clientY) - fy(from.y))), round(1 - y)),
-  };
+  const { rect, width, height } = from;
+  const px = (/** @type {number} */ x) => Math.round(clamp(x - rect.left, 0, width));
+  const py = (/** @type {number} */ y) => Math.round(clamp(y - rect.top, 0, height));
+  if (Math.abs(e.clientX - from.x) < SLOP && Math.abs(e.clientY - from.y) < SLOP) return { x: px(from.x), y: py(from.y), w: 0, h: 0, width, height };
+  const [x0, x1] = [px(from.x), px(e.clientX)];
+  const [y0, y1] = [py(from.y), py(e.clientY)];
+  return { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0), width, height };
 }
 
 /** The pointer and the keys on a review’s layer, which take them only while the person is marking. @param {any} l */
 function wire(l) {
   const el = l.el;
-  /** @type {{ x: number, y: number, rect: DOMRect } | null} */
+  /** @type {{ x: number, y: number, rect: DOMRect, width: number, height: number } | null} */
   let from = null;
   el.addEventListener('pointerdown', (/** @type {PointerEvent} */ e) => {
-    if (!l.env?.d.marking || e.button !== 0) return;
+    const size = sizeOf(l);
+    if (!l.env?.d.marking || e.button !== 0 || !size) return;
     e.preventDefault();
     el.setPointerCapture(e.pointerId);
-    from = { x: e.clientX, y: e.clientY, rect: el.getBoundingClientRect() };
+    from = { x: e.clientX, y: e.clientY, rect: el.getBoundingClientRect(), ...size };
   });
   el.addEventListener('pointermove', (/** @type {PointerEvent} */ e) => {
     if (!from) return;
@@ -211,6 +235,10 @@ function wire(l) {
     if (l.env) paintMarks(l.env.itemId, l.env);
   });
   el.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => onKey(l, e));
+  // A frame of another width draws other regions, and says so in the list (regionNote), with no render.
+  new ResizeObserver(() => {
+    if (l.env && sizeOf(l)?.width !== l.width) paintMarks(l.env.itemId, l.env);
+  }).observe(el);
 }
 
 /**
@@ -230,8 +258,8 @@ function onKey(l, e) {
   e.preventDefault();
   const [dx, dy] = ARROWS[/** @type {keyof typeof ARROWS} */ (e.key)];
   env.d.marking = e.shiftKey
-    ? { ...m, w: round(clamp(m.w + dx * STEP, SMALLEST, 1 - m.x)), h: round(clamp(m.h + dy * STEP, SMALLEST, 1 - m.y)) }
-    : { ...m, x: round(clamp(m.x + dx * STEP, 0, 1 - m.w)), y: round(clamp(m.y + dy * STEP, 0, 1 - m.h)) };
+    ? { ...m, w: clamp(m.w + dx * STEP, SMALLEST, m.width - m.x), h: clamp(m.h + dy * STEP, SMALLEST, m.height - m.y) }
+    : { ...m, x: clamp(m.x + dx * STEP, 0, m.width - m.w), y: clamp(m.y + dy * STEP, 0, m.height - m.h) };
   paintMarks(env.itemId, env);
   const status = document.querySelector(`[data-mark-status="${CSS.escape(env.itemId)}"]`);
   if (status) status.textContent = statusOf(env.d.marking, env.version);

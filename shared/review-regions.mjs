@@ -2,21 +2,28 @@
 // names it, “region 1”, and how it reads as text. A comment or a thread on one carries it (review-comments.mjs). Pure,
 // so the browser, the server and the tests share it.
 
-import { described, int, obj } from './schema.mjs';
+import { REGION_PX } from './limits.mjs';
+import { int, obj } from './schema.mjs';
 
-/** A fraction of the app’s width or height, from 0 to 1. @type {import('./schema.mjs').Rule} */
-const fraction = described(
-  (v, path, errs) => {
-    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) errs.push(`${path} must be a number from 0 to 1, a fraction of the app’s size.`);
-  },
-  { type: 'number', minimum: 0, maximum: 1 },
-);
 /**
- * A region of an app the person marked in its review (#856): its left edge x, top y, width w and height h as fractions
- * of the app’s width and height, so it holds at any window size, and the app version it was made on, since another
- * version may draw something else there. w and h of 0 is a point.
+ * A region of an app the person marked in its review (#856), in CSS px of the app’s page: its left edge x, top y,
+ * width w and height h, and the width and height of the frame it was marked in. A frame of another width may lay the
+ * app out another way, so a region is drawn only in a frame as wide as that; content above it doesn’t move when the
+ * app grows below it, so it stays over what was marked. With the app version it was made on, since another version may
+ * draw something else there. w and h of 0 is a point.
  */
-export const REGION = obj({ x: fraction, y: fraction, w: fraction, h: fraction, version: int({ min: 1, max: 1_000_000 }) }, ['x', 'y', 'w', 'h', 'version']);
+export const REGION = obj(
+  {
+    x: int({ min: 0, max: REGION_PX.width }),
+    y: int({ min: 0, max: REGION_PX.height }),
+    w: int({ min: 0, max: REGION_PX.width }),
+    h: int({ min: 0, max: REGION_PX.height }),
+    width: int({ min: 1, max: REGION_PX.width }),
+    height: int({ min: 1, max: REGION_PX.height }),
+    version: int({ min: 1, max: 1_000_000 }),
+  },
+  ['x', 'y', 'w', 'h', 'width', 'height', 'version'],
+);
 /** The anchor a region comment is grouped and threaded by, as a named part is: “region 1”, numbered in its review. */
 export const REGION_ANCHOR = /^region [1-9]\d*$/;
 
@@ -28,8 +35,7 @@ export const REGION_ANCHOR = /^region [1-9]\d*$/;
 export function regionError(c) {
   const r = c.region;
   if (r === undefined || r === null || typeof r !== 'object') return null;
-  // Within a rounding error: 0.7 + 0.3 is 1.0000000000000002 in floating point.
-  if (r.x + r.w > 1 + 1e-9 || r.y + r.h > 1 + 1e-9) return 'a region stays inside the app: x + w and y + h are at most 1.';
+  if (r.x + r.w > r.width || r.y + r.h > r.height) return 'a region stays inside the app: x + w is at most width, and y + h at most height.';
   if (typeof c.anchor !== 'string' || !REGION_ANCHOR.test(c.anchor)) return 'a comment on a region names it as anchor, such as “region 1”.';
   return null;
 }
@@ -41,11 +47,11 @@ export function regionError(c) {
  */
 export function regionNameError(c) {
   if (c.region != null || typeof c.anchor !== 'string' || !REGION_ANCHOR.test(c.anchor)) return null;
-  return `“${c.anchor}” names a marked region, so it needs its region: { x, y, w, h, version }.`;
+  return `“${c.anchor}” names a marked region, so it needs its region: { x, y, w, h, width, height, version }.`;
 }
 
-/** Whether two regions are the same place on the same version. @param {any} a @param {any} b */
-export const sameRegion = (a, b) => ['x', 'y', 'w', 'h', 'version'].every((k) => a?.[k] === b?.[k]);
+/** Whether two regions are the same place, marked in the same frame on the same version. @param {any} a @param {any} b */
+export const sameRegion = (a, b) => ['x', 'y', 'w', 'h', 'width', 'height', 'version'].every((k) => a?.[k] === b?.[k]);
 
 /**
  * The anchor a comment on a region takes beside what the review already holds: its own, unless another thread holds
@@ -80,13 +86,14 @@ export function regionClashes(threads) {
   return errs;
 }
 
-/** A percentage as people read it: 12%, or 12.5% where the tenth matters. @param {number} f  a fraction */
-const pct = (f) => `${Math.round(f * 1000) / 10}%`;
 /**
- * A region as text (#856): “x 12%, y 30%, 20% × 15%, on v3”, or “a point at x 12%, y 30%, on v3”. Every drawn region
- * is also said this way, to the agent and on the page. @param {{ x: number, y: number, w: number, h: number, version: number }} r
+ * A region as text (#856): “x 120, y 300, 240 × 150 px, on v3, in a 1180 × 640 px frame”, or “a point at x 120, y
+ * 300, on v3, in a 1180 × 640 px frame”. The frame’s size says which layout the person saw. Every drawn region is also
+ * said this way, to the agent and on the page.
+ * @param {{ x: number, y: number, w: number, h: number, width: number, height: number, version: number }} r
  */
 export function regionText(r) {
-  const at = `x ${pct(r.x)}, y ${pct(r.y)}`;
-  return r.w === 0 && r.h === 0 ? `a point at ${at}, on v${r.version}` : `${at}, ${pct(r.w)} × ${pct(r.h)}, on v${r.version}`;
+  const at = `x ${r.x}, y ${r.y}`;
+  const where = r.w === 0 && r.h === 0 ? `a point at ${at}` : `${at}, ${r.w} × ${r.h} px`;
+  return `${where}, on v${r.version}, in a ${r.width} × ${r.height} px frame`;
 }

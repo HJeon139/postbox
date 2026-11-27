@@ -5,7 +5,7 @@
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { synced } from './postbox.mjs';
-import { BARE, drag, drawnAt, regionRoom, within } from './review-app-region-fixture.mjs';
+import { BARE, drag, drawnAt, fractions, frameSize, PLACE, regionIn, regionRoom, within } from './review-app-region-fixture.mjs';
 
 const room = regionRoom('review-app-region-draft');
 const { review } = room;
@@ -63,14 +63,16 @@ test('#856 a region an agent numbers first while the person’s draft is open is
   await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('The legend overlaps.');
   // The agent, which saw no region yet, comments on a place of its own as “region 1”, while the person’s box is open.
   const theirs = { x: 0.6, y: 0.1, w: 0.2, h: 0.2, version: 1 };
-  update({ threads: [{ id: 'a1', status: 'open', anchor: 'region 1', region: theirs, comments: [{ author: '@researcher', text: 'Is this axis right?' }] }] });
+  const region = regionIn(await frameSize(block), theirs);
+  update({ threads: [{ id: 'a1', status: 'open', anchor: 'region 1', region, comments: [{ author: '@researcher', text: 'Is this axis right?' }] }] });
   const open = page.getByRole('textbox', { name: 'Comment on region 2' });
   await expect(open, 'the open box is on region 2 now').toHaveValue('The legend overlaps.');
   await expect(open, 'and keeps the focus').toBeFocused();
   await block.getByRole('button', { name: 'Add draft comment' }).click();
   const pins = block.locator('.rv-pins');
-  await expect(pins.getByText('On region 1 · x 60%, y 10%, 20% × 20%, on v1'), 'the agent’s is listed where it is').toBeVisible();
-  await expect(pins.getByText(/^On region 2 · x 10%, y 50%, 30% × 40%, on v1$/), 'the draft’s takes the next number').toBeVisible();
+  const place = `x ${region.x}, y ${region.y}, ${region.w} × ${region.h} px, on v1, in a ${region.width} × ${region.height} px frame`;
+  await expect(pins.getByText(`On region 1 · ${place}`, { exact: true }), 'the agent’s is listed where it is').toBeVisible();
+  await expect(pins.getByText(new RegExp(`^On region 2 · ${PLACE}$`)), 'the draft’s takes the next number').toBeVisible();
   expect(within(await drawnAt(block.locator('.rv-marks .rv-region[data-region="1"]')), theirs), 'region 1 is drawn where the agent put it').toBe(true);
   expect(
     within(await drawnAt(block.locator('.rv-marks .rv-region[data-region="2"]')), { x: 0.1, y: 0.5, w: 0.3, h: 0.4, version: 1 }),
@@ -105,12 +107,12 @@ test('#856 what was typed on a region stays as its draft comment when the person
   const drafted = block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
   await expect(drafted.filter({ hasText: 'The legend overlaps.' }), 'what was typed on region 1 is its draft').toHaveCount(1);
   await expect(block.locator('.rv-marks .rv-region[data-region="1"]'), 'and region 1 is still drawn').toHaveCount(1);
-  await expect(block.locator('.rv-pins').getByText(/^On region 1 · x 10%, y 50%, 30% × 40%, on v1$/), 'on the place it was typed on').toBeVisible();
+  await expect(block.locator('.rv-pins').getByText(new RegExp(`^On region 1 · ${PLACE}$`)), 'on the place it was typed on').toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Comment on region 2' }), 'the new box starts empty').toHaveValue('');
   await page.getByRole('textbox', { name: 'Comment on region 2' }).fill('This axis is cut off.');
   await block.getByRole('button', { name: /^Submit/ }).click();
   await expect
-    .poll(() => answer()?.map((c) => [c.anchor, Math.round(c.region.x * 10) / 10, c.text]), { message: 'each text on its own region' })
+    .poll(() => answer()?.map((c) => [c.anchor, Math.round(fractions(c.region).x * 10) / 10, c.text]), { message: 'each text on its own region' })
     .toEqual([
       ['region 1', 0.1, 'The legend overlaps.'],
       ['region 2', 0.6, 'This axis is cut off.'],

@@ -87,7 +87,26 @@ export async function drag(page, block, from, to, nudge = 0) {
   await page.mouse.up();
 }
 
-/** Whether a region is about where it should be: within 2% of the app each way, on its version. */
+/** The size of a review’s app frame, in CSS px, as a region records it. */
+export const frameSize = (block) => block.locator('iframe.app-iframe').evaluate((f) => ({ width: f.clientWidth, height: f.clientHeight }));
+
+/** A region, kept in px of the app (#856), as fractions of the frame it was marked in, to compare across sizes. */
+export const fractions = (r) => ({ x: r.x / r.width, y: r.y / r.height, w: r.w / r.width, h: r.h / r.height, version: r.version });
+
+/** A region in px of a frame this size, from fractions of it: what an agent writes for a place it means. */
+export const regionIn = (size, f) => ({
+  x: Math.round(f.x * size.width),
+  y: Math.round(f.y * size.height),
+  w: Math.round(f.w * size.width),
+  h: Math.round(f.h * size.height),
+  ...size,
+  version: f.version,
+});
+
+/** What a region’s place reads as, on the page and to the agent, in px of a frame. */
+export const PLACE = String.raw`x \d+, y \d+, \d+ × \d+ px, on v1, in a \d+ × \d+ px frame`;
+
+/** Whether a region, as fractions of its frame, is about where it should be: within 2% of the app each way, on its version. */
 export const within = (got, want) => Object.keys(want).every((k) => Math.abs(got?.[k] - want[k]) <= (k === 'version' ? 0 : 0.02));
 
 /** Where a drawn region is, as fractions of the app’s frame. */

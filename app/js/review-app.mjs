@@ -91,7 +91,11 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
   );
   const version = versionOf(b, done);
   const regions = regionsOf(b, d);
-  for (const a of anchors) pins.append(h('div', h('span.small.dim', 'On ', h('b', a), regionNote(regions.get(a), version)), threadBox(a)));
+  for (const a of anchors) {
+    // Whether the region is drawn at the frame’s width is said once the frame is laid out (paintMarks).
+    const note = regions.has(a) ? h('span', { 'data-region-note': a }, regionNote(regions.get(a), version, null)) : null;
+    pins.append(h('div', h('span.small.dim', 'On ', h('b', a), note), threadBox(a)));
+  }
   if (done && !anchors.size) pins.append(h('p.small.dim', 'No comments.'));
   // Open, the review always takes a comment on the whole app, the only way to comment on one that names no parts. The
   // button comes first, so the hint under it changes without moving it.
@@ -129,6 +133,6 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
     });
   // Over the app’s frame, a layer of Postbox’s own draws the regions marked on it, and takes the marking (#856).
   if (!kept) attachMarks(itemId, appEl);
-  paintMarks(itemId, marks);
+  paintMarks(itemId, { ...marks, pins });
   return h('div.app-review-wrap', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' } }, appEl, pins);
 }

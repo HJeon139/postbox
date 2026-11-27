@@ -199,6 +199,11 @@ export const REVIEW_IMAGES = Object.freeze({
 export const REVIEW_THREADS_OPEN = 200;
 export const REVIEW_THREADS_MAX = 1000;
 export const REVIEW_THREADS_BYTES = 2 * 1024 * 1024;
+/**
+ * A region the person marks on an app in its review (#856), in CSS px: the widest frame it’s marked in, and the tallest
+ * app page, since a review’s frame is as tall as its app.
+ */
+export const REGION_PX = Object.freeze({ width: 10_000, height: 200_000 });
 
 /** The most characters in the whole-sentence glimpse shown while an agent works (#478). */
 export const GLIMPSE_CHARS = 160;

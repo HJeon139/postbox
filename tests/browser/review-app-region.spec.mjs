@@ -1,11 +1,11 @@
 // #856: in an app review the person clicks a point or drags a box anywhere on the app, and comments on it, whether or
-// not the app names parts. The comment carries the region as fractions of the app’s width and height, with the app
-// version it was made on, and Postbox draws it over the app’s frame with its number, from a reload too. A person who
+// not the app names parts. The comment carries the region in px of the app’s page, with the size of the frame it was
+// marked in and the app version it was made on, and Postbox draws it over the app’s frame with its number, from a reload too. A person who
 // can’t drag marks a box with the arrow keys. At 375 and 1280 px, as the issue asks.
 
 import { expect, test } from '@playwright/test';
 import { PHONE, synced } from './postbox.mjs';
-import { drag, drawnAt, regionRoom, within } from './review-app-region-fixture.mjs';
+import { drag, drawnAt, fractions, frameSize, PLACE, regionIn, regionRoom, within } from './review-app-region-fixture.mjs';
 
 const room = regionRoom('review-app-region');
 const { review } = room;
@@ -36,7 +36,8 @@ async function dragsABox({ page }) {
   await expect.poll(answer, { message: 'the agent gets the comment on the region' }).toHaveLength(1);
   const [c] = answer();
   expect(c).toMatchObject({ anchor: 'region 1', text: 'This gap is too wide.' });
-  expect(within(c.region, { x: 0.2, y: 0.3, w: 0.4, h: 0.4, version: 1 }), `the region is the box dragged: ${JSON.stringify(c.region)}`).toBe(true);
+  expect(within(fractions(c.region), { x: 0.2, y: 0.3, w: 0.4, h: 0.4, version: 1 }), `the region is the box dragged: ${JSON.stringify(c.region)}`).toBe(true);
+  expect(c.region, 'in px of the frame it was marked in').toMatchObject(await frameSize(block));
 }
 
 async function drawnOverReloads({ page }) {
@@ -60,8 +61,8 @@ async function drawnOverReloads({ page }) {
   expect.soft(within(at, { x: 0.1, y: 0.5, w: 0.3, h: 0.4, version: 1 }), `drawn where it was marked: ${JSON.stringify(at)}`).toBe(true);
   await expect.soft(block.getByText('The legend overlaps.'), 'with its comment').toBeVisible();
   const pins = block.locator('.rv-pins');
-  await expect.soft(pins.getByText(/^On region 1 · x 10%, y 50%, 30% × 40%, on v1$/), 'and its place in words').toBeVisible();
-  await expect.soft(pins.getByText(/^On region 2 · a point at x 75%, y 20%, on v1$/), 'and the point’s').toBeVisible();
+  await expect.soft(pins.getByText(new RegExp(`^On region 1 · ${PLACE}$`)), 'and its place in words').toBeVisible();
+  await expect.soft(pins.getByText(/^On region 2 · a point at x \d+, y \d+, on v1, in a \d+ × \d+ px frame$/), 'and the point’s').toBeVisible();
 }
 
 async function marksByKeyboard({ page }) {
@@ -69,10 +70,13 @@ async function marksByKeyboard({ page }) {
   const mark = block.getByRole('button', { name: 'Mark a part of the app' });
   const layer = block.getByRole('application', { name: 'Mark a part of the app' });
   const status = block.locator('[data-mark-status]');
+  const size = await frameSize(block);
+  const [x, y, w, h] = [size.width * 0.4, size.height * 0.4, size.width * 0.2, size.height * 0.2].map(Math.round);
+  const said = (/** @type {number[]} */ [bx, by, bw, bh]) => `Marking x ${bx}, y ${by}, ${bw} × ${bh} px, on v1, in a ${size.width} × ${size.height} px frame.`;
   await mark.focus();
   await page.keyboard.press('Enter');
   await expect(layer, 'marking takes focus to the layer over the app').toBeFocused();
-  await expect(status, 'the box starts centered, said in words').toHaveText('Marking x 40%, y 40%, 20% × 20%, on v1.');
+  await expect(status, 'the box starts centered, a fifth of the frame each way, said in words').toHaveText(said([x, y, w, h]));
   await page.keyboard.press('Escape');
   await expect(mark, 'Escape gives focus back to the button').toBeFocused();
   await expect(block.locator('.rv-marks.marking'), 'and stops marking').toHaveCount(0);
@@ -82,7 +86,8 @@ async function marksByKeyboard({ page }) {
   for (const key of ['ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowUp', 'ArrowLeft'])
     await page.keyboard.press(key);
   for (const key of ['Shift+ArrowRight', 'Shift+ArrowRight', 'Shift+ArrowUp']) await page.keyboard.press(key);
-  await expect(status, 'moved and resized').toHaveText('Marking x 48%, y 44%, 24% × 18%, on v1.');
+  // 8 px a key: right 4, down 2, wider 2 and shorter 1.
+  await expect(status, 'moved and resized').toHaveText(said([x + 32, y + 16, w + 16, h - 8]));
   await page.keyboard.press('Enter');
   await expect(page.getByRole('textbox', { name: 'Comment on region 1' }), 'Enter opens a comment on it').toBeFocused();
   await page.keyboard.insertText('Move this up.');
@@ -90,7 +95,9 @@ async function marksByKeyboard({ page }) {
   await block.getByRole('button', { name: 'Submit review', exact: true }).click();
   await expect
     .poll(answer, { message: 'the agent gets the box the keys marked' })
-    .toEqual([{ anchor: 'region 1', region: { x: 0.48, y: 0.44, w: 0.24, h: 0.18, version: 1 }, text: 'Move this up.', threadId: expect.any(String) }]);
+    .toEqual([
+      { anchor: 'region 1', region: { x: x + 32, y: y + 16, w: w + 16, h: h - 8, ...size, version: 1 }, text: 'Move this up.', threadId: expect.any(String) },
+    ]);
 }
 
 for (const [label, use] of [
@@ -106,17 +113,21 @@ for (const [label, use] of [
 }
 
 test('#856 a region on another version of the app is listed, not drawn', async ({ page }) => {
+  const { block, update } = await review(page);
+  const size = await frameSize(block);
   const thread = (id, anchor, version) => ({
     id,
     status: 'open',
     anchor,
-    region: { x: 0.1, y: 0.1, w: 0.3, h: 0.3, version },
+    region: regionIn(size, { x: 0.1, y: 0.1, w: 0.3, h: 0.3, version }),
     comments: [{ author: '@researcher', text: `On v${version}.` }],
   });
-  const { block } = await review(page, { threads: [thread('a1', 'region 1', 1), thread('a2', 'region 2', 2)] });
+  update({ threads: [thread('a1', 'region 1', 1), thread('a2', 'region 2', 2)] });
   await expect(block.locator('.rv-marks .rv-region[data-region="1"]'), 'the region on the version shown is drawn').toHaveCount(1);
   await expect(block.locator('.rv-marks .rv-region[data-region="2"]'), 'the one on v2 isn’t').toHaveCount(0);
-  await expect(block.locator('.rv-pins').getByText('On region 2 · x 10%, y 10%, 30% × 30%, on v2, so it isn’t drawn on this version')).toBeVisible();
+  await expect(
+    block.locator('.rv-pins').getByText(/^On region 2 · x \d+, y \d+, \d+ × \d+ px, on v2, in a \d+ × \d+ px frame, so it isn’t drawn on this version$/),
+  ).toBeVisible();
   await expect(block.getByText('On v2.'), 'its thread is still listed').toBeVisible();
 });
 
