@@ -2,6 +2,7 @@
 // is kept on its session for the / menu (server/sessions.mjs, recordCommands). Moved out of server/runtime.mjs; Runtime
 // keeps a method of the same name that delegates here.
 
+import { cutText } from '../shared/text-parts.mjs';
 import { httpError, retiredError } from './helpers.mjs';
 
 /**
@@ -12,9 +13,7 @@ import { httpError, retiredError } from './helpers.mjs';
 export function runAgentCommand(rt, threadId, { sessionId, text }) {
   // As written: a conversation just started behind a held commit, and its agents, aren’t published yet (#1292).
   rt.threads.toWrite(threadId);
-  const line = String(text ?? '')
-    .trim()
-    .slice(0, 50000);
+  const line = cutText(String(text ?? '').trim(), 50000);
   if (!/^\/[\w:.@/-]+/.test(line)) throw httpError(422, 'A skill or command starts with / and its name, such as /review.');
   const se = rt.sessions.pendingIn(threadId).find((x) => x.id === sessionId);
   if (!se) throw httpError(404, 'That agent isn’t in this conversation.');

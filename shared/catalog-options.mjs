@@ -3,6 +3,7 @@
 
 import { LIMITS } from './limits.mjs';
 import { described, id, jsonOf, list, obj, str } from './schema.mjs';
+import { cutText } from './text-parts.mjs';
 
 // An option may say more under its label (#838): agents gave options a description, and the whole block was refused.
 export const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }), description: str({ min: 1, max: LIMITS.optionDescription }) }, ['id', 'label']);
@@ -18,7 +19,7 @@ const optionsRule = (max) => (v, path, errs) => {
   if (!allStrings(v)) return list(option(), { min: 1, max, unique: 'id' })(v, path, errs);
   // The example has to be a valid option itself: from the first label that gives an id, else the first that isn’t
   // empty, with “one” as its id (#951).
-  const labels = v.map((o) => o.slice(0, 40)).filter((o) => o.trim() !== '');
+  const labels = v.map((o) => cutText(o, 40)).filter((o) => o.trim() !== '');
   const named = labels.find((o) => idOf(o) !== '');
   const label = named ?? labels[0] ?? 'One';
   const id = named ? idOf(named) : 'one';

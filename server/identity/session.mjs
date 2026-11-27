@@ -5,6 +5,8 @@
 import { httpError } from '../helpers.mjs';
 import { People } from '../people.mjs';
 import { createIdentity } from './index.mjs';
+import { refusalLog } from './refusal-log.mjs';
+import { endAt } from './stream-end.mjs';
 
 /**
  * @param {{ store: import('../store.mjs').Store, account?: import('./index.mjs').Principal, signIn?: import('./index.mjs').SignIn }} deps
@@ -14,6 +16,7 @@ import { createIdentity } from './index.mjs';
 export function whoIs({ store, account, signIn }) {
   const identity = createIdentity({ account, signIn });
   const people = new People({ store });
+  const refused = signIn ? refusalLog() : null; // a local run refuses no one
   return {
     people,
     /**
@@ -23,9 +26,18 @@ export function whoIs({ store, account, signIn }) {
      * @param {import('node:http').IncomingMessage} req @param {string} path
      */
     of: async (req, path) => {
-      if (path !== '/mcp') return people.of(await identity.identify(req));
-      if (signIn) throw httpError(404, 'There’s nothing here.');
-      return null;
+      if (path === '/mcp') {
+        if (signIn) throw httpError(404, 'There’s nothing here.');
+        return null;
+      }
+      try {
+        const principal = await identity.identify(req);
+        if (path === '/api/stream' && principal.until) endAt(req, principal.until, { now: signIn?.now });
+        return people.of(principal);
+      } catch (e) {
+        refused?.(e);
+        throw e;
+      }
     },
     /**
      * Who a message is from, for the send (server/send-message.mjs): their id, which it is stamped with, and `keep`,

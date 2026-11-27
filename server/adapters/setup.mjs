@@ -19,6 +19,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { asksForWrites } from '../../shared/hook-modes.mjs';
 import { memoryFolderName } from '../../shared/memory-folders.mjs';
+import { cutText } from '../../shared/text-parts.mjs';
 import { agentPlugins } from './agent-plugin.mjs';
 import { readRules } from './attached-files.mjs';
 import { postboxSkillsOn, skillDenies, skillOverrides } from './skill-config.mjs';
@@ -63,6 +64,11 @@ export const effortOf = (persona) => (EFFORT_LEVELS.includes(persona?.effort) ? 
 
 /** Postbox’s own MCP server’s name. It always loads, and a persona can’t turn it off. */
 export const POSTBOX_SERVER = 'postbox';
+/**
+ * Postbox’s react, by the full name Claude Code gives it: the server is registered as POSTBOX_SERVER on this computer
+ * (postboxServer) and on a host (shimServer) alike. A turn whose last call is react may end with no text (#1712).
+ */
+export const POSTBOX_REACT_TOOL = `mcp__${POSTBOX_SERVER}__react`;
 /**
  * How long Claude Code waits on one call to Postbox’s server, in ms: 25 hours, a day’s wait plus a margin (#217).
  * permission_prompt answers only when the person answers the card, often minutes later. With no `timeout`, Claude
@@ -363,7 +369,7 @@ const SHAPE_WORDS = new Set(['type', 'subtype', 'name', 'stop_reason', 'status',
 
 /** A value’s shape: other strings become their length, so no reply, file or secret a tool printed is kept. */
 const shapeOf = (/** @type {unknown} */ v, depth = 0, key = '') => {
-  if (typeof v === 'string') return SHAPE_WORDS.has(key) ? v.slice(0, 60) : v.length;
+  if (typeof v === 'string') return SHAPE_WORDS.has(key) ? cutText(v, 60) : v.length;
   if (Array.isArray(v)) return depth > 3 ? `[${v.length}]` : v.slice(0, 8).map((x) => shapeOf(x, depth + 1));
   if (!v || typeof v !== 'object') return v;
   if (depth > 3) return '{…}';
@@ -388,11 +394,11 @@ export function keepShape(ctx, event) {
   // A JSON-RPC event’s `method`, Codex’s and Kiro’s, names it (#1543). Only the line’s own: deeper, a tool’s argument
   // can be named `method` and hold what the agent wrote.
   const method = /** @type {any} */ (e)?.method;
-  const shape = (depth = 0) => (typeof method === 'string' ? { ...shapeOf(e, depth), method: method.slice(0, 60) } : shapeOf(e, depth));
+  const shape = (depth = 0) => (typeof method === 'string' ? { ...shapeOf(e, depth), method: cutText(method, 60) } : shapeOf(e, depth));
   // Too long whole (a result’s usage, say), only its top-level fields, so the line still parses.
   let line = JSON.stringify(shape());
   if (line.length > RAW_LINE) line = JSON.stringify(shape(3));
-  if (tail.push(line.slice(0, RAW_LINE)) > RAW_TAIL) tail.shift();
+  if (tail.push(cutText(line, RAW_LINE)) > RAW_TAIL) tail.shift();
 }
 
 /**

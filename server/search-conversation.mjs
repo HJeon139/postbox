@@ -4,6 +4,7 @@
 // and it shows each hit as read_conversation shows an item, cut to the words around the match.
 
 import { SEARCHING } from '../shared/limits.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { clipText } from './helpers.mjs';
 import { searchOf } from './thread-search.mjs';
 
@@ -39,7 +40,7 @@ const when = (/** @type {any} */ item) => (Number.isFinite(item.at) ? `${new Dat
  */
 export function searchConversation(rt, se, args = {}) {
   if (typeof args?.query !== 'string' || !args.query.trim()) return { ok: false, message: 'search_conversation needs a query: the words to look for.' };
-  const query = args.query.trim().slice(0, SEARCHING.query);
+  const query = cutText(args.query.trim(), SEARCHING.query);
   const k = Math.max(1, Math.min(SEARCHING.most, Math.floor(Number(args.limit)) || SEARCHING.hits));
   const search = searchOf(rt.store);
   const hits = rt.threads

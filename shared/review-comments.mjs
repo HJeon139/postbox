@@ -6,6 +6,7 @@
 
 import { HANDLE, PERSON, REVIEW_THREADS_BYTES, REVIEW_THREADS_MAX, REVIEW_THREADS_OPEN } from './limits.mjs';
 import { described, id, int, obj, str } from './schema.mjs';
+import { cutText } from './text-parts.mjs';
 
 /** The longest quote a comment keeps; a longer selection is cut to it. */
 export const QUOTE_MAX = 2000;
@@ -140,7 +141,7 @@ export function anchorOf(lines, start, end) {
   let quote = quoteOf(lines, a);
   if (!quote.trim()) return null;
   if (quote.length > QUOTE_MAX) {
-    quote = quote.slice(0, QUOTE_MAX).replace(/\n+$/, '');
+    quote = cutText(quote, QUOTE_MAX).replace(/\n+$/, '');
     const cut = quote.split('\n');
     a.endLine = a.line + cut.length - 1;
     a.endCol = (cut.length === 1 ? s.c : 0) + (cut.at(-1) ?? '').length;

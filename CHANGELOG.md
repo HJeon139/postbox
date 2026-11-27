@@ -2,6 +2,56 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.3 (2026-11-27)
+
+### Fixes
+
+- **text:** cut a signed-in name, git's worktree refusal and a quota host at a whole character
+- **remote:** forget checks both of a persona's folders on a host before removing either
+- **text:** cut a job's output path and a hook's scanned text whole, and fix the sweep's notes
+- **remote:** forget removes a deleted Isolated Kiro agent's home on a host too
+- **adapters:** an Isolated Kiro agent's home on a host is its own, by persona id, not its handle
+- **text:** cut names a backend sends, search queries and diagnostics whole
+- **text:** cut what the page shortens to a length whole
+- **text:** cut what a remote host and its install say whole
+- **text:** cut tools' and harnesses' errors and output whole
+- **text:** cut a retired app's reason and the names and text people read whole
+- **claude-code:** let a turn that ends on postbox's react end with no text
+
+## 5.4.2 (2026-11-27)
+
+### Fixes
+
+- **keys:** Alt+Up/Down step over a hidden item instead of onto it
+
+## 5.4.1 (2026-11-27)
+
+### Fixes
+
+- **kiro:** the tool-load note's last sentence says which failure to report
+- **kiro:** name both of Kiro's tool loaders in the note on loading Postbox's tools
+
+## 5.4.0 (2026-11-27)
+
+### Features
+
+- **deploy:** the server's image and a CDK stack for a test deployment on AWS
+- **hosted:** start a hosted Postbox from a settings file, at its public address
+
+### Fixes
+
+- **infra:** lower-case the domain name so a hosted zone's record resolves
+- **remote:** a host keeps only a stop that names its turn, and lets go one its session also asked
+- **remote:** a deleted agent's memory on a host waits for its stopping turn across a restart
+
+## 5.3.3 (2026-11-27)
+
+### Fixes
+
+- **view:** Home and End are the page's only where a conversation is
+- **view:** a click in a dialog's scroller keeps its Home and End
+- **view:** the page takes Home and End in every room, not only a long one
+
 ## 5.3.2 (2026-11-27)
 
 ### Fixes

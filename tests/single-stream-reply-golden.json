@@ -1216,5 +1216,10 @@
     "43": ", approve it next",
     "44": " time and I’ll try again",
     "45": "."
+  },
+  "kiro-cli/tool-load-deepseek.jsonl": {
+    "14": "I'll load the Postbox show_block tool first, then show a choice block with \"Yes\" as an option.\n\n<｜DSML｜function_calls",
+    "19": "\n\nNow I'll create and show a choice block with one \"Yes\" option.\n\n<｜DSML｜function_calls",
+    "25": "\n\nI've shown a choice block with one option labeled \"Yes\". The block is now waiting for the person's answer."
   }
 }

@@ -15,6 +15,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { setupOf } from './adapters/setup.mjs';
 import { claudeHere, claudeOnce } from './claude-once.mjs';
 import { codeIn } from './confirm-code.mjs';
@@ -287,7 +288,7 @@ export async function settledCall(rt, sessionId, req) {
     tool: clipText(String(req.tool), 120),
     summary: clip(String(req.summary ?? req.tool), 200),
     // The whole call, which the line shows: that’s what keeps the person in charge here.
-    detail: (req.tool === 'Bash' ? String(req.input?.command ?? '') : JSON.stringify(req.input ?? {}, null, 2)).slice(0, MAX_CALL),
+    detail: cutText(req.tool === 'Bash' ? String(req.input?.command ?? '') : JSON.stringify(req.input ?? {}, null, 2), MAX_CALL),
     how: found.how,
     ...(found.how === 'confirmed' ? { approved: clip(found.label, 200) } : { quote: clipText(found.quote, 300) }),
     ...(found.push ? { push: { sha: found.push.sha, branch: found.push.branch, url: found.push.url, error: done?.ok ? null : done?.error } } : {}),

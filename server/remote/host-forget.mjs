@@ -1,5 +1,6 @@
 // A deleted persona’s memory on the hosts (#491). Claude Code keeps a persona’s auto memory on a host in
-// ~/.postbox-remote/memory/<persona id> (setup.mjs’s memoryFolder), which only that host’s daemon can remove. Postbox
+// ~/.postbox-remote/memory/<persona id> (setup.mjs’s memoryFolder), and an Isolated Kiro persona in its Kiro home there,
+// ~/.postbox-remote/kiro-home/<persona id> (#1661); only that host’s daemon can remove them, and `forget` removes both. Postbox
 // keeps no record of which hosts a persona ran on, so deleting one owes a removal to every host it knows
 // (`hostForgets`, shared/state-hosts.mjs), and each host is sent its removals (`forget`, answered by `forgotten`) when
 // it next connects, or at once if it’s connected. A removal stays owed until the host says it’s done, so a host
@@ -12,7 +13,8 @@
 // own time) isn’t sent there until the host confirms that turn is over: the turn could write its memory again after
 // the removal (#1680). The removal stays owed meanwhile, and goes when the stop is confirmed. A turn whose process
 // outlived its kill (#872) is confirmed too, though it may still run: nothing more can be waited on. The hold lives with
-// the stop, kept on the deleted persona’s session, so a Postbox restart loses it (#1796).
+// the stop, which deleting the persona’s session leaves in the host’s record (`hostStops`, keepStops in
+// turns-stops.mjs), so a Postbox restart asks the stop again and the removal stays held until it’s confirmed (#1796).
 //
 // A daemon older than `forget` refuses it as a message it doesn’t carry (tests/fixtures/remote/forget-before-491.json):
 // its removals stay owed until the host runs this version, and the server log says so, once per connection.
