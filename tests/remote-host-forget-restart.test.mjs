@@ -94,3 +94,35 @@ test('#1796 a host’s kept stops go with the host', () => {
   r.store.emit('host.forget', { id: r.host.id, stop: { turn: 'host-turn-2', personaId: 'pe_gone', unconfirmed: false, at: 2 } });
   assert.equal(r.store.state.hostStops?.[r.host.id], undefined);
 });
+
+test('#1796 a kept stop that names no turn, as a damaged log line could, isn’t kept', () => {
+  const r = rig();
+  r.store.emit('host.forget', { id: r.host.id, stop: { personaId: 'pe_gone', unconfirmed: false, at: 1 } });
+  assert.equal(r.store.state.hostStops?.[r.host.id], undefined, 'nothing a confirmation could ever drop');
+  r.store.emit('host.forget', { id: r.host.id, stop: { turn: 'host-turn-1', personaId: 'pe_gone', unconfirmed: false, at: 1 } });
+  r.store.emit('host.forget', { id: r.host.id, stop: { turn: 'host-turn-1', personaId: 'pe_gone', unconfirmed: true, at: 2 } });
+  assert.deepEqual(
+    r.store.state.hostStops[r.host.id].map((/** @type {any} */ x) => [x.turn, x.unconfirmed]),
+    [['host-turn-1', true]],
+    'one record per turn, the later one',
+  );
+});
+
+test('#1796 a stop asked for its session and kept by its host too lets the record go when the host confirms it', async () => {
+  const first = rig({ daemon: { stopExit: null } });
+  const turn = await running(first);
+  first.rt.stop(first.se().id);
+  await until(() => first.d.stops.includes(turn), 'the stop at the host');
+  // Both at once, as when the session’s removal was refused after its host had recorded the stop.
+  first.store.emit('host.forget', { id: first.host.id, stop: { turn, personaId: first.se().personaId, unconfirmed: false, at: 1 } });
+  first.rt.remote.close();
+  first.d.drop();
+  first.d.connect();
+  const r = rig({ store: first.store, d: first.d });
+  r.rt.restoreRemoteTurns();
+  await until(() => r.link.connected, 'the welcome of the new connection');
+  r.d.end(turn, { code: null, signal: 'SIGINT' });
+  r.link.reconnect();
+  await until(() => !r.rt.remote.stopping.has(turn), 'the stop confirmed');
+  await until(() => r.store.state.hostStops?.[r.host.id] === undefined, 'the host’s record let the stop go');
+});

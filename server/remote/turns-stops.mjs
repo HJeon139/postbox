@@ -34,6 +34,8 @@ export function askStop(rts, sessionId, hostId, turn, { send: now = true, state 
     rts.stopping.set(turn, s);
     needHost(rts, hostId);
   }
+  // Already asked for its session, and in its host’s record too: the host’s confirmation drops the record as well.
+  if (kept) s.kept = true;
   const entry = stopEntry({ turn, hostId, at: rts.now() }, s);
   // Added to the stops as written, so one asked behind a held commit isn’t dropped (#623). A kept stop’s session is
   // gone (#1796).

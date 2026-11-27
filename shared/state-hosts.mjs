@@ -49,6 +49,8 @@ export function putHostForget(s, d) {
  * @param {any} s @param {{ id: string, stop?: { turn: string }, stopEnded?: string }} d
  */
 function putHostStop(s, d) {
+  // A stop names its turn, which its confirmation drops it by: one that doesn’t, from a damaged log, is never kept.
+  if (d.stop && typeof d.stop.turn !== 'string') return;
   const gone = d.stop?.turn ?? d.stopEnded;
   const kept = (s.hostStops?.[d.id] ?? []).filter((/** @type {any} */ x) => x.turn !== gone);
   if (d.stop) kept.push(d.stop);
