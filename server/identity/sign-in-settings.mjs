@@ -3,8 +3,8 @@
 // and refused in words that say what is missing: a hosted Postbox doesn’t start without an allow list. Nothing here
 // says who anyone is; it says how to tell.
 
-/** An AWS region’s name, as server/identity/alb-keys.mjs takes one. */
-const REGION = /^[a-z]{2}(-[a-z]+)+-\d$/;
+import { REGION } from './alb-keys.mjs';
+
 const FIELDS = ['provider', 'region', 'signer', 'client', 'issuer', 'claims', 'allow'];
 
 /** A non-empty list of non-empty strings, or nothing. @param {unknown} list */
@@ -34,7 +34,8 @@ export function signInSettings(given) {
   for (const key of Object.keys(s)) if (!FIELDS.includes(key)) throw new Error(`Sign-in settings have no “${key}”. They have: ${FIELDS.join(', ')}.`);
   const missing = (/** @type {string} */ field, /** @type {string} */ what) => new Error(`Sign-in settings need “${field}”: ${what}.`);
   if (s.provider !== 'alb') throw missing('provider', 'the one Postbox has is “alb”, an AWS Application Load Balancer');
-  if (typeof s.region !== 'string' || !REGION.test(s.region)) throw missing('region', 'the load balancer’s AWS region, such as us-west-2');
+  if (typeof s.region !== 'string' || !REGION.test(s.region))
+    throw missing('region', 'the load balancer’s AWS region, such as us-west-2 (GovCloud and China aren’t supported yet)');
   for (const [field, what] of [
     ['signer', 'the load balancer’s ARN'],
     ['client', 'the client id the load balancer signs people in with'],

@@ -26,7 +26,7 @@
 import { p256Key } from './alb-token.mjs';
 
 /** A region of AWS’s main partition, such as us-west-2: all that may go into the endpoint’s host. */
-const REGION = /^(?!cn-)[a-z]{2}-[a-z]+-\d$/;
+export const REGION = /^(?!cn-)[a-z]{2}-[a-z]+-\d$/;
 /** How long a key id whose lookup failed isn’t looked up again, and the span lookups are counted over. */
 const MINUTE_MS = 60_000;
 /** How many lookups may be in flight at once, how many may start in a minute, and how many keys and failures are remembered. */

@@ -86,6 +86,7 @@ test('settings are refused whole, saying what is missing: a hosted Postbox doesn
     [{ allow: { groups: { claim: 'groups', any: [] } } }, /needs an allow list/],
     [{ allow: { groups: { claim: '', any: ['a'] } } }, /needs an allow list/],
     [{ region: 'nowhere' }, /“region”/],
+    [{ region: 'us-gov-west-1' }, /“region”.*GovCloud and China aren’t supported yet/],
     [{ signer: '' }, /“signer”/],
     [{ client: undefined }, /“client”/],
     [{ issuer: 42 }, /“issuer”/],
