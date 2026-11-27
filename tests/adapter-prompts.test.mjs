@@ -2,8 +2,8 @@
 // #1528) is what it gives its CLI: the system text as the backend gets it, and the prompt itself, byte for byte, once
 // the backend has it. Claude Code’s is in tests/turn-prompt.test.mjs. Each turn here plays a stream recorded on its
 // CLI through the fakes its own tests use: Kiro’s kiro-cli 2.33.1 (tests/kiro-cli-fakes.mjs), Antigravity’s
-// tests/fixtures/antigravity-cli/block.jsonl and Codex’s app-server answers (tests/codex-fixture.mjs). A fake child emits `spawn` on the next tick, as Node’s
-// does once a process has started. None waits on a timer.
+// tests/fixtures/antigravity-cli/block.jsonl and Codex’s app-server answers (tests/codex-fixture.mjs). A fake child
+// emits `spawn` on the next tick, as Node’s does once a process has started. None waits on a timer.
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';

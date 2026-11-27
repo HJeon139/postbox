@@ -9,8 +9,8 @@
 //   node tools/record-claude-once.mjs --out <file>
 //
 // What’s kept is an allowlist: each run’s init (its version, model, tools, MCP servers and which kinds of memory it
-// loaded, with every server and MCP tool renamed and no paths) and result (the answer, tokens and cost), with ids replaced. Your folders, commands, skills, plugins,
-// server names and quota are left out.
+// loaded, with every server and MCP tool renamed and no paths) and result (the answer, tokens and cost), with ids
+// replaced. Your folders, commands, skills, plugins, server names and quota are left out.
 
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';

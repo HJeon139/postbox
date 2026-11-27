@@ -27,7 +27,10 @@ export function parseFault(line) {
   return m && Number(m[2]) >= 1 ? { kind: 'fail-before-output', agent: m[1], n: Number(m[2]), line: m[0].trim() } : null;
 }
 
-/** Postbox’s runs of a CLI that aren’t turns: its version, its models, Codex’s app server with no turn’s config, and Postbox’s own Haiku call (server/claude-once.mjs). */
+/**
+ * Postbox’s runs of a CLI that aren’t turns: its version, its models, Codex’s app server with no turn’s config, and
+ * Postbox’s own Haiku calls (server/claude-once.mjs).
+ */
 export const isProbe = (argv) =>
   argv[0] === '--version' ||
   argv[0] === 'models' ||
