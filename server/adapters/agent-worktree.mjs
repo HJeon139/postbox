@@ -29,7 +29,7 @@ import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { storedFolder } from '../folder-path.mjs';
 import { runGit } from '../ledger-git.mjs';
-import { folderName, ownFolderFor } from './agent-own-folder.mjs';
+import { folderName, ownFolderFor, ownFoldersRootFor } from './agent-own-folder.mjs';
 import { addSubmodules } from './agent-submodules.mjs';
 import { gitPointer } from './agy-git-dir.mjs';
 import { agentFolder } from './folder.mjs';
@@ -113,11 +113,20 @@ export async function agentPlace(persona, project, workRoot, { git = defaultGit,
 }
 
 /**
- * The folder an Antigravity agent’s turn starts in (agentPlace), for whatever asks only where: the permissions panel,
- * the files it names, its `!` commands.
- * @param {Parameters<typeof agentPlace>} args @returns {Promise<string>}
+ * The folder an Antigravity agent works in, for whatever asks only where: the person’s `!` commands, the files it
+ * names, the permissions panel and the work ledger. Its worktree; or, for an agent that only starts in a folder of its
+ * own beside the project (agent-own-folder.mjs), the project’s folder, where it works and where these ran before
+ * (#1856): its own folder holds nothing between turns.
+ * @param {{ id?: string, handle: string, folder?: string|null }} persona
+ * @param {{ id?: string, folder?: string|null } | null | undefined} project
+ * @param {string} workRoot @param {{ git?: Git, log?: (line: string) => void }} [o]
+ * @returns {Promise<string>}
  */
-export const agentWorktree = async (...args) => (await agentPlace(...args)).folder;
+export async function agentWorktree(persona, project, workRoot, o) {
+  const { folder } = await agentPlace(persona, project, workRoot, o);
+  const beside = project?.folder && resolve(folder).startsWith(`${resolve(ownFoldersRootFor(workRoot))}${sep}`);
+  return beside ? /** @type {string} */ (project.folder) : folder;
+}
 
 /**
  * An agent’s worktree with the project’s submodules in it (agent-submodules.mjs), or git’s reason when it refuses the

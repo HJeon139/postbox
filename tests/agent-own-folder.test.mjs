@@ -61,6 +61,7 @@ for (const [kind, what] of /** @type {const} */ ([
     assert.deepEqual(r.logs, []);
     // They work in the project’s folder, which each turn is given beside its own.
     assert.deepEqual(turnFolders(a.folder, { project: r.project }, r.workRoot).addDirs, [r.project.folder]);
+    assert.equal(await agentWorktree(A, r.project, r.workRoot, r.o), r.project.folder, 'where the person’s `!` commands run');
     // So their turns don’t wait for each other: the queue is by the folder a turn starts in.
     const queue = new FolderQueue();
     let release = () => {};
@@ -80,7 +81,9 @@ test('#1856 a worktree git refuses puts the agent in its own folder, not behind 
   assert.equal(place.folder, ownFolderFor(r.workRoot, r.project, A));
   assert.notEqual(place.folder, r.project.folder, 'not the folder every other turn would wait in');
   assert.match(place.why ?? '', /already checked out/);
-  assert.equal(await agentWorktree(A, r.project, r.workRoot, r.o), place.folder, 'the same folder for the panel, files and commands');
+  // The person’s `!` commands, the files it names and the permissions panel are for the folder it works in, as on
+  // main: its own folder holds nothing between turns.
+  assert.equal(await agentWorktree(A, r.project, r.workRoot, r.o), r.project.folder, 'commands, files and the panel are in the project’s folder');
   assert.equal(r.logs.length, 1, 'the server log says it once');
 });
 
@@ -91,7 +94,7 @@ test('#1856 an agent in its own folder is told where the project is, and when gi
   assert.match(plain, /^## Where you work\n\n/);
   assert.ok(plain.includes(`The project’s folder is ${r.project.folder}`), plain);
   assert.match(plain, /other agents work there at the same time/i);
-  assert.doesNotMatch(plain, /worktree/);
+  assert.doesNotMatch(plain, /git worktree/);
   const refused = besideNote(own, r.project, r.workRoot, 'fatal: it is already checked out');
   assert.match(refused, /couldn’t make you a git worktree \(fatal: it is already checked out\)/);
   assert.match(refused, /say so in your reply/);

@@ -8,11 +8,14 @@ import { mkdir, readdir, realpath, rename, rm, writeFile } from 'node:fs/promise
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { ownFolderFor } from '../../server/adapters/agent-own-folder.mjs';
-import { agentWorktree, branchFor } from '../../server/adapters/agent-worktree.mjs';
+import { agentPlace, agentWorktree, branchFor } from '../../server/adapters/agent-worktree.mjs';
 import { commitTurn } from '../../server/adapters/agent-worktree-commit.mjs';
 import { decideAgyTool } from '../../server/adapters/agy-hook.mjs';
 import { excludePlugin, PLUGIN_DIR } from '../../server/adapters/agy-plugin.mjs';
 import { git, home, project } from './agent-worktree-fixture.mjs';
+
+/** Where an agent’s turn starts. @param {Parameters<typeof agentPlace>} args */
+const startOf = async (...args) => (await agentPlace(...args)).folder;
 
 test('#1709 two agents get two worktrees of the project, each on its own branch with the project’s files', async () => {
   const { project: p, workRoot } = await project('two');
@@ -50,7 +53,7 @@ test('#1856 a repository with no commit yet gives the agent a folder of its own,
   const workRoot = join(home, 'empty', 'data', 'work');
   // Git would make an empty worktree there, without the project’s files: it works in the project’s folder instead,
   // from a folder of its own, so its turns wait for no other agent’s.
-  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot), ownFolderFor(workRoot, p, { id: 'pe_a', handle: 'a' }));
+  assert.equal(await startOf({ id: 'pe_a', handle: 'a' }, p, workRoot), ownFolderFor(workRoot, p, { id: 'pe_a', handle: 'a' }));
   assert.equal(git(folder, ['worktree', 'list', '--porcelain']).match(/^worktree /gm)?.length, 1, 'no worktree made');
   assert.equal(git(folder, ['status', '--porcelain']), '', 'and nothing written in the project’s folder');
 });
@@ -61,11 +64,13 @@ test('#1856 a project folder that isn’t in a git repository gives each agent a
   await mkdir(folder, { recursive: true });
   const p = { id: 'pr_plain', folder };
   const workRoot = join(home, 'plain', 'data', 'work');
-  const a = await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot);
-  const b = await agentWorktree({ id: 'pe_b', handle: 'b' }, p, workRoot);
+  const a = await startOf({ id: 'pe_a', handle: 'a' }, p, workRoot);
+  const b = await startOf({ id: 'pe_b', handle: 'b' }, p, workRoot);
   assert.equal(a, ownFolderFor(workRoot, p, { id: 'pe_a', handle: 'a' }));
   assert.notEqual(a, b);
   assert.deepEqual(await readdir(folder), [], 'nothing written in the project’s folder');
+  // The person’s `!` commands, the files it names and the permissions panel are for the folder it works in.
+  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot), folder);
 });
 
 test('#1709 a worktree git didn’t finish making, as when Postbox stopped mid-add, is removed and made again', async () => {
@@ -104,7 +109,7 @@ test('#1709 a locked worktree whose folder someone moved keeps its lock, and git
   const moved = join(home, 'moved', 'elsewhere');
   await rename(dir, moved);
   // Git refuses to add over a locked worktree whose folder is gone, so the agent starts in a folder of its own (#1856).
-  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: () => {} }), ownFolderFor(workRoot, p, { id: 'pe_a', handle: 'a' }));
+  assert.equal(await startOf({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: () => {} }), ownFolderFor(workRoot, p, { id: 'pe_a', handle: 'a' }));
   assert.match(git(p.folder, ['worktree', 'list', '--porcelain']), /^locked on a removable drive$/m, 'the lock stays');
   assert.equal(git(moved, ['status', '--porcelain']), '?? draft.md\n', 'git still works in the moved folder');
 });
@@ -131,7 +136,7 @@ test('#1709 git’s record of a worktree still being made, its folder since dele
   await rm(dir, { recursive: true, force: true });
   const quiet = { log: () => {} };
   // Git refuses the add over its own record; the record goes, and the next turn makes the worktree.
-  assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, quiet), ownFolderFor(workRoot, p, { id: 'pe_a', handle: 'a' }));
+  assert.equal(await startOf({ id: 'pe_a', handle: 'a' }, p, workRoot, quiet), ownFolderFor(workRoot, p, { id: 'pe_a', handle: 'a' }));
   assert.equal(await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, quiet), dir);
   assert.equal(git(dir, ['show', 'HEAD:README.md']), 'hello\n');
 });
@@ -159,7 +164,7 @@ test('#1709 an add stopped before git wrote its record’s HEAD is still removed
   await writeFile(join(admin, 'locked'), 'initializing\n');
   await rm(join(admin, 'HEAD'));
   assert.equal(
-    await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: () => {} }),
+    await startOf({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: () => {} }),
     ownFolderFor(workRoot, p, { id: 'pe_a', handle: 'a' }),
     'this turn can’t use it',
   );
@@ -175,10 +180,7 @@ test('#1709 a worktree whose record in the repository is gone isn’t used: the 
   await rm(admin, { recursive: true, force: true });
   /** @type {string[]} */
   const logs = [];
-  assert.equal(
-    await agentWorktree({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: (l) => logs.push(l) }),
-    ownFolderFor(workRoot, p, { id: 'pe_a', handle: 'a' }),
-  );
+  assert.equal(await startOf({ id: 'pe_a', handle: 'a' }, p, workRoot, { log: (l) => logs.push(l) }), ownFolderFor(workRoot, p, { id: 'pe_a', handle: 'a' }));
   assert.equal(logs.length, 1);
   assert.match(logs[0], /couldn’t make a worktree for @a/);
 });

@@ -527,7 +527,7 @@ export class AntigravityCliAdapter {
     return hookPromptCard(call?.raw, args);
   }
 
-  /** The folder the agent’s turn starts in: its own worktree of the project’s repository, or a folder of its own (agent-worktree.mjs, #1709, #1856). */
+  /** The folder the agent works in: its own worktree of the project’s repository, else the project’s or its own (agent-worktree.mjs, #1709, #1856). */
   folderFor(persona, project) {
     return agentWorktree(persona, project, this.workRoot, { git: this.git });
   }
