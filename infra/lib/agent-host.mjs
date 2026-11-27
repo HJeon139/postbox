@@ -5,7 +5,7 @@
 //
 // What is the machine’s alone, and why:
 //   - its role may call Anthropic’s models on Amazon Bedrock, and nothing else. An agent can use that role, since
-//     it runs on the machine, so the role holds nothing an agent shouldn’t have, and writes nothing the server reads;
+//     it runs on the machine, so the role holds nothing an agent shouldn’t have;
 //   - its work disk is a volume of its own, kept when the machine is replaced, with the agents’ folders, the
 //     daemon’s records and the host’s SSH identity on it;
 //   - SSH is admitted from the server’s security group alone (lib/network.mjs), for one key, made here, whose
@@ -66,6 +66,9 @@ export class PostboxAgentHost extends Construct {
   /** @param {Construct} scope @param {string} id @param {PostboxAgentHostProps} props */
   constructor(scope, id, props) {
     super(scope, id);
+    // EC2 launch template names are unique per account and region, and requireImdsv2 makes one named
+    // `${id}LaunchTemplate` unless this flag is on, so a second deployment couldn’t make its machine.
+    this.node.setContext('@aws-cdk/aws-ec2:uniqueImdsv2TemplateName', true);
     const { vpc, hostGroup, parameters } = props;
     for (const version of [props.claudeCode, props.codex])
       if (version !== undefined && !VERSION.test(version)) throw new Error(`“${version}” isn’t a version of a CLI to install.`);
@@ -101,8 +104,12 @@ export class PostboxAgentHost extends Construct {
       });
     new CfnVolumeAttachment(this, 'WorkDiskAttached', { device: WORK_DEVICE, instanceId: this.machine.instanceId, volumeId: disk.volumeId });
     // The deployment waits here until the machine has set itself up and said its public key, which the deployment
-    // then keeps where the server reads it as it starts. The machine’s role can’t write there: what the server
-    // trusts a host by is said once, by the machine’s first start, and not again by anything that runs on it.
+    // then keeps where the server reads it as it starts. The machine’s role can’t write there. But the address it
+    // is said to is in the machine’s user data, which anything on the machine can read, and CloudFormation reads
+    // what was said again at each update of this stack: a signal sent later replaces the identity then (tried, 27
+    // November 2026). So the server reads it as untrusted (infra/image/hosted-start.sh). What a false identity
+    // gets an agent is a host the server refuses, which it can have by stopping the daemon: the address the
+    // server dials is the deployment’s, and only root on the machine answers there, with the true key.
     this.ready = new CfnWaitCondition(this, 'IsReady', { handle: done.ref, timeout: '900', count: 1 });
     this.ready.node.addDependency(this.machine);
     // The condition’s data is {"host":"<what was said>"}: the fourth piece between its quotes.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A CDK app that deploys one hosted Postbox (infra/README.md) as a stack a part, and an example of using its constructs
+// A CDK app that deploys one hosted Postbox (infra/README.md) as one stack for each part, and an example of using its constructs
 // in stacks of your own. What is yours comes in as context, from `-c name=value` or from `cdk.context.json` beside
 // this file, which git ignores: your domain, your hosted zone, your identity provider and who may sign in are never
 // in this file.
