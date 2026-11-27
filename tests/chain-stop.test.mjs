@@ -115,3 +115,20 @@ test('#1623 a wake-limit card from before, still open at startup, closes: its ne
   new Runtime({ store: g.store, adapters: g.rt.adapters, config: g.rt.config });
   assert.equal(g.store.items(g.t.id).find((x) => x.kind === 'hop').status, 'open', 'an add card is still the person’s');
 });
+
+test('#1623 a wake-limit card from before can’t be answered: Allow on one still open is refused, and adds no one', () => {
+  const f = setup();
+  const old = arrange.post(f.rt, f.t.id, {
+    kind: 'hop',
+    fromSessionId: f.alpha.id,
+    from: 'alpha',
+    to: 'gamma',
+    text: 'Check it.',
+    status: 'open',
+    n: 1001,
+    limit: 1000,
+  });
+  assert.throws(() => f.rt.resolveHop(f.t.id, old.id, true), { status: 409 });
+  assert.equal(f.store.item(f.t.id, old.id).status, 'open');
+  assert.equal(arrange.agentIn(f.rt, f.t.id, 'gamma'), undefined, 'gamma wasn’t added');
+});
