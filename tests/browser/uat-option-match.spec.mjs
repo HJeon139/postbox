@@ -103,4 +103,7 @@ test('the runner picks a choice’s option by its label when the tester names it
     await d.act(key, { choose: [named] });
     expect((await picked())[0], `“${named}” sent back`).toBe(OPTIONS.find((o) => `${o.label} — ${o.description}` === named)?.label);
   }
+  // A chip pressed as a button by the name the tester reads.
+  await d.act(key, { button: 'Weekly — every Monday' });
+  expect((await picked())[0], 'pressed as a button').toBe('Weekly');
 });
