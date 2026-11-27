@@ -30,7 +30,7 @@ failOnPageErrors(test);
 
 let rooms = 0;
 /** A room with an app and a review of it, open on the page once the app has passed its check. */
-async function review(page, extra = {}) {
+async function review(page, extra = {}, code = BARE) {
   const { rt, store } = app;
   const n = ++rooms;
   const thread = rt.createThread({
@@ -40,7 +40,7 @@ async function review(page, extra = {}) {
   });
   const tools = rt.toolsFor(arrange.agentIn(rt, thread.id).id);
   const id = `region-app-${n}`;
-  tools.show_app({ id, title: 'Corpus summary', code: BARE });
+  tools.show_app({ id, title: 'Corpus summary', code });
   const blockId = `rv-region-${n}`;
   const shown = tools.show_block({ block: { id: blockId, type: 'review', version: 1, fallback: 'Review the app', format: 'app', appId: id, ...extra } });
   if (!shown.ok) throw new Error(shown.message);
@@ -191,4 +191,34 @@ test('#856 a region on another version of the app is listed, not drawn', async (
   await expect(block.locator('.rv-marks .rv-region[data-region="2"]'), 'the one on v2 isn’t').toHaveCount(0);
   await expect(block.locator('.rv-pins').getByText('On region 2 · x 10%, y 10%, 30% × 30%, on v2, so it isn’t drawn on this version')).toBeVisible();
   await expect(block.getByText('On v2.'), 'its thread is still listed').toBeVisible();
+});
+
+test('#856 an Edit while a region’s comment is open keeps what was typed on the region as its draft comment', async ({ page }) => {
+  const { block } = await review(page);
+  await block.getByRole('button', { name: 'Comment on the whole app' }).click();
+  await page.keyboard.insertText('Too much text.');
+  await block.getByRole('button', { name: 'Add draft comment' }).click();
+  await block.getByRole('button', { name: 'Mark a part of the app' }).click();
+  await drag(page, block, [0.2, 0.3], [0.6, 0.7]);
+  await expect(page.getByRole('textbox', { name: 'Comment on region 1' })).toBeFocused();
+  await page.keyboard.insertText('This gap is too wide.');
+  // A region can’t be reopened to bring parked text back, so the Edit keeps it as a draft instead.
+  await block.getByRole('button', { name: /^Edit your comment on/ }).click();
+  const drafted = block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
+  await expect(drafted.filter({ hasText: 'This gap is too wide.' }), 'what was typed on the region is a draft').toHaveCount(1);
+  await expect(block.locator('.rv-marks .rv-region[data-region="1"]'), 'and its region is still drawn').toHaveCount(1);
+});
+
+test('#856 an app can’t name a part “region 1”: the regions the person marks take those names', async ({ page }) => {
+  const named = `<main style="height:320px;padding:12px;color:var(--text)"><h2 id="t">Corpus summary</h2><p id="r">Twelve books.</p></main>
+<script>postbox.anchors({ title: document.getElementById('t'), 'region 1': document.getElementById('r') });
+// And it asks, itself, for a comment on “region 1”, as a pin does.
+postbox.ready.then(() => parent.postMessage({ __pb: 1, type: 'pin', anchor: 'region 1' }, '*'));</script>`;
+  const { block } = await review(page, {}, named);
+  const frame = block.frameLocator('iframe.app-iframe');
+  await expect(frame.locator('.pb-anchor-tag'), 'only the part with another name is tagged').toHaveText(['title']);
+  await expect(page.getByRole('textbox', { name: 'Comment on region 1' }), 'the app’s own pin on “region 1” opens nothing').toHaveCount(0);
+  await block.getByRole('button', { name: 'Mark a part of the app' }).click();
+  await drag(page, block, [0.2, 0.3], [0.6, 0.7]);
+  await expect(page.getByRole('textbox', { name: 'Comment on region 1' }), 'the first mark is region 1').toBeFocused();
 });

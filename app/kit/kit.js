@@ -181,9 +181,10 @@
     },
     restoreState: () => ready.then((r) => r.state),
     anchors(map) {
-      // “the whole app” is a review’s comment on the app as a whole, so no part can take that name (#855).
-      const { 'the whole app': _whole, ...parts } = map || {};
-      anchorMap = parts;
+      // “the whole app” is a review’s comment on the app as a whole, so no part can take that name (#855), and “region 1”,
+      // “region 2” and so on are the regions the person marks on it, so no part can take those either (#856).
+      const { 'the whole app': _whole, ...named } = map || {};
+      anchorMap = Object.fromEntries(Object.entries(named).filter(([name]) => !/^region [1-9]\d*$/.test(name)));
       post({ type: 'anchors', names: namedParts() });
       if (reviewing) paintAnchors();
     },

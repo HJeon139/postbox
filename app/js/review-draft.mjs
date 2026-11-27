@@ -53,11 +53,13 @@ const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
  * Closes a new comment’s box for an edit (#858), setting aside what was typed in it: reopening the same line, part or
- * selection brings it back, whatever was opened in between. @param {any} draft
+ * selection brings it back, whatever was opened in between. A region marked on an app can’t be reopened, so what was
+ * typed on one becomes its draft comment instead (#856). @param {any} draft
  */
 export function parkComment(draft) {
   const key = draft.composing;
   const region = draft.composingRegion ?? null;
+  if (region && key !== null && draft.composingText.trim()) return addComposing(draft, true);
   const other = (/** @type {any} */ p) => !samePlace(p.key, key) || !samePlace(p.region ?? null, region);
   if (key !== null && draft.composingText.trim()) draft.parked = [...draft.parked.filter(other), { key, region, text: draft.composingText }];
   stopComment(draft);

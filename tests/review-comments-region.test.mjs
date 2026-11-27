@@ -48,6 +48,24 @@ test('#856 a comment on a region names it as anchor, “region 1”', () => {
   assert.deepEqual(commentErrors({ ...onBox, anchor: 'chart' }, 'c'), why);
 });
 
+test('#856 a “region N” anchor carries its region: a part can’t take that name', () => {
+  assert.deepEqual(commentErrors({ anchor: 'region 1', text: 'Hm.' }, 'c'), [
+    'c: “region 1” names a marked region, so it needs its region: { x, y, w, h, version }.',
+  ]);
+  // Other names are parts, as before.
+  assert.deepEqual(commentErrors({ anchor: 'regional sales', text: 'Hm.' }, 'c'), []);
+});
+
+test('#856 a review’s threads can’t put two regions under one “region N”', () => {
+  const thread = (id, region) => ({ id, status: 'open', anchor: 'region 1', region, comments: [{ author: '@researcher', text: 'Hm.' }] });
+  const app = { id: 'r', type: 'review', version: 1, fallback: 'R', format: 'app', appId: 'a' };
+  const clash = validateBlock({ ...app, threads: [thread('t1', box), thread('t2', { ...box, x: 0.5 })] });
+  assert.equal(clash.ok, false);
+  assert.match(clash.errors.join(' '), /threads\[1\]: “region 1” is already threads\[0\]’s region; give this one the next number\./);
+  // Two threads on the same region, such as a reply in a new thread, are fine.
+  assert.equal(validateBlock({ ...app, threads: [thread('t1', box), thread('t2', box)] }).ok, true);
+});
+
 test('#856 the agent reads a region with its place, its size and its version, and a point as a point', () => {
   assert.equal(commentAt(onBox), '“region 1” (x 12%, y 30%, 20% × 15%, on v3)');
   assert.equal(commentAt({ anchor: 'region 2', region: { x: 0.125, y: 0.3, w: 0, h: 0, version: 1 } }), '“region 2” (a point at x 12.5%, y 30%, on v1)');

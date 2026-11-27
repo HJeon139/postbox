@@ -2,6 +2,7 @@
 // anchor beside it (designs/agent-apps.md, the review block). An app that names no parts says so, and the person
 // comments on the whole app instead (#855), or marks a point or a box anywhere on it (#856, review-marks.mjs).
 
+import { REGION_ANCHOR } from '/shared/review-comments.mjs';
 import { mountApp } from './apps.mjs';
 import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
@@ -117,7 +118,8 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
         for (const el of document.querySelectorAll(`[data-app-hint="${CSS.escape(itemId)}"]`)) if (el.textContent !== text) el.textContent = text;
       },
       onPin: (anchor) => {
-        if (!done) {
+        // A region is marked on Postbox’s layer, never named by the app (#856).
+        if (!done && !REGION_ANCHOR.test(anchor)) {
           startComment(d, anchor);
           rerender();
         }

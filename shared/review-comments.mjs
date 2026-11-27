@@ -104,11 +104,31 @@ export const REGION_ANCHOR = /^region [1-9]\d*$/;
  */
 export function regionError(c) {
   const r = c.region;
+  // A “region N” anchor names a marked region, so it carries one: a part can’t take that name (#856).
+  if ((r === undefined || r === null) && typeof c.anchor === 'string' && REGION_ANCHOR.test(c.anchor))
+    return `“${c.anchor}” names a marked region, so it needs its region: { x, y, w, h, version }.`;
   if (r === undefined || r === null || typeof r !== 'object') return null;
   // Within a rounding error: 0.7 + 0.3 is 1.0000000000000002 in floating point.
   if (r.x + r.w > 1 + 1e-9 || r.y + r.h > 1 + 1e-9) return 'a region stays inside the app: x + w and y + h are at most 1.';
   if (typeof c.anchor !== 'string' || !REGION_ANCHOR.test(c.anchor)) return 'a comment on a region names it as anchor, such as “region 1”.';
   return null;
+}
+
+/**
+ * Why a review’s threads name one region twice, as sentences: each “region N” is one place, so two threads on it with
+ * different regions would draw one and list the other in the wrong place (#856). @param {any[]} threads
+ */
+export function regionClashes(threads) {
+  const seen = new Map();
+  const errs = [];
+  for (const [i, t] of threads.entries()) {
+    if (!t?.region || typeof t.anchor !== 'string') continue;
+    const first = seen.get(t.anchor);
+    if (first && JSON.stringify(first.region) !== JSON.stringify(t.region))
+      errs.push(`threads[${i}]: “${t.anchor}” is already threads[${first.i}]’s region; give this one the next number.`);
+    else if (!first) seen.set(t.anchor, { i, region: t.region });
+  }
+  return errs;
 }
 
 /** A percentage as people read it: 12%, or 12.5% where the tenth matters. @param {number} f  a fraction */

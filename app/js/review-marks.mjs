@@ -24,9 +24,18 @@ const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], Arrow
 /**
  * Each review’s layer over its app’s frame, by its item, with the latest render’s view of the review (env): kept
  * across renders, as the frame is (review-app.mjs, rerenderAround), so a repaint never takes focus from it.
- * @type {Map<string, { el: HTMLElement, watch: MutationObserver | null, env: any }>}
+ * @type {Map<string, { el: HTMLElement, watch: MutationObserver | null, env: any, appEl?: HTMLElement, placed?: boolean }>}
  */
 const layers = new Map();
+
+/** Lets go of the layers of reviews the page let go of: placed once, now off the page with their app’s box. */
+function forgetGone() {
+  for (const [id, l] of layers)
+    if (l.placed && !l.el.isConnected && !l.appEl?.isConnected) {
+      l.watch?.disconnect();
+      layers.delete(id);
+    }
+}
 
 const round = (/** @type {number} */ f) => Math.round(f * 10000) / 10000;
 const clamp = (/** @type {number} */ v, /** @type {number} */ lo, /** @type {number} */ hi) => Math.min(hi, Math.max(lo, v));
@@ -78,11 +87,16 @@ function layerOf(itemId) {
  * @param {HTMLElement} appEl  the review’s .rv-app, as mountApp fills it
  */
 export function attachMarks(itemId, appEl) {
+  forgetGone();
   const l = layerOf(itemId);
   l.watch?.disconnect();
+  l.appEl = appEl;
   const place = () => {
     const body = appEl.querySelector(':scope > .app-body');
-    if (body?.querySelector(':scope > iframe.app-iframe') && body.lastElementChild !== l.el) body.append(l.el);
+    if (body?.querySelector(':scope > iframe.app-iframe') && body.lastElementChild !== l.el) {
+      body.append(l.el);
+      l.placed = true;
+    }
   };
   l.watch = new MutationObserver(place);
   l.watch.observe(appEl, { childList: true, subtree: true });

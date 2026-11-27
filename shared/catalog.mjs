@@ -8,7 +8,7 @@
 import { appFontErrors } from './app-fonts.mjs';
 import { option, options } from './catalog-options.mjs';
 import { INTENT_CHARS, LIMITS, REVIEW_THREADS_MAX } from './limits.mjs';
-import { ANCHOR, anchorError, author, PERSON, REGION, regionError, threadsError } from './review-comments.mjs';
+import { ANCHOR, anchorError, author, PERSON, REGION, regionClashes, regionError, threadsError } from './review-comments.mjs';
 import { bool, described, id, int, jsonOf, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
 import { isSafeUrl, LOCAL_HTTP } from './urls.mjs';
 
@@ -254,6 +254,7 @@ export const SCHEMAS = {
         const marked = (t.comments ?? []).findIndex((c) => c.edited && c.author !== PERSON);
         if (marked >= 0) errs.push(`threads[${i}].comments[${marked}]: only the person’s correction is marked edited; leave edited out.`);
       }
+      errs.push(...regionClashes(b.threads ?? []));
       threadsError(b.threads, errs);
     },
   },
