@@ -38,8 +38,8 @@ export const cleanSaid = (text, n) =>
   cutText(
     text
       .replace(/[\u2028\u2029]/g, ' ')
+      .replace(LONE_HALF, '') // before INVISIBLE, so two halves an invisible character split don’t join
       .replace(INVISIBLE, '')
-      .replace(LONE_HALF, '')
       .replace(/[\p{Cc}\s]+/gu, ' ')
       .trim(),
     n,

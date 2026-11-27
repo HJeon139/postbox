@@ -110,6 +110,7 @@ test('#1938 Codex’s exit error says nothing in brackets when its stderr held o
   );
   assert.match(said, /exited with code 1/);
   assert.doesNotMatch(said, /\(\s*\)/, 'no empty brackets');
+  assert.doesNotMatch(said, HIDDEN);
 });
 
 test('#1938 Kiro’s and Antigravity’s exit errors clean their stderr too', () => {
