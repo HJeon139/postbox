@@ -226,7 +226,10 @@ function closeCard(rt, conv, card, why, askerWhy) {
   const asker = rt.s.sessions[card.fromSessionId];
   releaseNeed(rt, asker, card.id);
   if (asker)
-    rt.sessions.tell(asker.id, `${cardName(card).replace(`@${card.from}’s request`, 'Your request')} was closed: ${askerWhy}. Ask again if you still need it.`);
+    rt.sessions.tell(
+      asker.id,
+      `${cardName(card).replace(`@${card.from}’s request`, 'Your request')} was closed: ${askerWhy}. Send your message again if you still need it.`,
+    );
   for (const w of card.held ?? []) {
     // The agent that asked has its note above, which covers its own wakes held here.
     if (!rt.s.sessions[w.fromSessionId] || w.fromSessionId === card.fromSessionId) continue;
