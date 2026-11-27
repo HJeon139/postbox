@@ -2,7 +2,7 @@
 
 Part of [the architecture](../architecture.md). How Postbox knows who a request is from, what a person’s record holds, and what agents are told of them. The request gate it sits behind is in [security-boundaries.md](security-boundaries.md), “This computer alone” and “Writes need the page’s token”.
 
-**Status.** Built for [#558](https://github.com/HJeon139/postbox/issues/558): the seam, the local provider, a person’s record and profile. A second provider, for a Postbox hosted for one trusting team behind a sign-in allow list ([#1733](https://github.com/HJeon139/postbox/issues/1733)), is planned and not built. Direction set by the owner on 23–25 November 2026: preserve the run on your own computer while the hosted one is built, with no shortcut or back door for one over the other, in one system that handles both.
+**Status.** Built for [#558](https://github.com/HJeon139/postbox/issues/558): the seam, the local provider, a person’s record and profile. A second provider, for a Postbox hosted for one trusting team behind a sign-in allow list ([#1733](https://github.com/HJeon139/postbox/issues/1733)), is planned and not built; how a hosted Postbox runs is proposed in [hosted.md](hosted.md). Direction set by the owner on 23–25 November 2026: preserve the run on your own computer while the hosted one is built, with no shortcut or back door for one over the other, in one system that handles both.
 
 ## One seam, and nothing past it asks how Postbox is run
 

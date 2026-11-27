@@ -658,11 +658,13 @@ export class Runtime {
   deletePersona(id) {
     // Pending, the agent and its sessions: either may have been made behind a held commit.
     if (!this.store.pending.persona(id)) throw httpError(404, 'That agent doesn’t exist.');
-    for (const { id: sid } of Object.values(this.store.pending.sessions()).filter((se) => se.personaId === id)) {
+    const own = Object.values(this.store.pending.sessions()).filter((se) => se.personaId === id);
+    for (const { id: sid } of own) {
       // Read again each time: deleting one can erase others, as its conversation goes with it, side threads too.
       if (this.store.pending.session(sid)) this.deleteSession(sid);
     }
-    const removed = this.personas.remove(id);
+    // Its backends forget it once its stopped turns have exited (#1797).
+    const removed = this.personas.remove(id, Promise.all(own.map((se) => this.running.afterExit(se.id))));
     // Its memory on a host is that host’s to remove (#491).
     this.hostService.forgetPersona(id);
     return removed;
