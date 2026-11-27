@@ -243,6 +243,9 @@ function pointed(v) {
   const s = box(v);
   if (!s || v.dead || !v.bound) return;
   if (!v.stuck) {
+    // A scroll in this frame the transcript hasn’t heard of yet, made by a frame callback before this one, is yours, as
+    // in follow(): held without it, the view went back to the anchor (#1884).
+    heard(v, s);
     if (v.anchor) holdAnchor(v);
     takeHold(v);
     return;
