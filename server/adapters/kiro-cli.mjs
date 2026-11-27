@@ -60,6 +60,7 @@ import { kiroMemoryOff } from './kiro-memory.mjs';
 import { kiroResult, REFUSED } from './kiro-result.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
 import { KINDS, toolOf } from './kiro-tools.mjs';
+import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned, recordOnceWritten } from './prompt-sent.mjs';
 import { effortOf, modelOf, recorderFor, setupOf } from './setup.mjs';
@@ -230,6 +231,8 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
 
 export class KiroCliAdapter {
   name = 'kiro-cli';
+  /** /compact has nothing to run here, so it’s refused before it’s posted (#1811). */
+  refuses = noCompaction('Kiro CLI');
 
   /**
    * @param {{ bin?: string, workRoot: string, isolatedHome: string, models?: string[], spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv,

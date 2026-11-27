@@ -78,6 +78,7 @@ import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-
 import { stepId, toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
+import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned } from './prompt-sent.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
@@ -502,6 +503,8 @@ export class FolderQueue {
 
 export class AntigravityCliAdapter {
   name = 'antigravity-cli';
+  /** /compact has nothing to run here, so it’s refused before it’s posted (#1812). */
+  refuses = noCompaction('Antigravity');
 
   /**
    * @param {{ bin?: string, workRoot: string, models?: string[], version?: string|null, hookScript?: string, hookProbe?: typeof probeAgyHook, settingsFile?: string,
