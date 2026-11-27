@@ -46,11 +46,13 @@
     if (!el || el === document.documentElement) return false;
     if (hiddenMemo.has(el)) return hiddenMemo.get(el);
     const cs = getComputedStyle(el);
-    const out = cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0 || hidden(el.parentElement);
+    const out = cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0 || folded(el) || hidden(el.parentElement);
     hiddenMemo.set(el, out);
     return out;
   }
   hidden.reset = () => hiddenMemo.clear();
+  // The content of a closed <details>, all but its summary: the browser lays it out, but doesn’t draw it (#681).
+  const folded = (el) => el.parentElement?.localName === 'details' && !el.parentElement.open && el.localName !== 'summary';
 
   // What of a box its ancestors let show (and, for text, its own element): each one whose overflow isn’t visible cuts
   // it to its own box, so text cut short with an ellipsis, or hidden for screen readers, is only what shows.
