@@ -87,7 +87,7 @@ test('#508: the checks’ history ignores a session.patch for a session it hasn�
   assert.equal(keepEvent(7, 'session.patch', { id: 'se_new', patch: { state: 'think', updatedAt: 7 } }, sessions)?.data.state, 'think');
 });
 
-test('#189: a change of state that doesn’t say it waits on background work clears the wait, and nothing else does', () => {
+test('#189: the agent’s next state ends a wait on background work, and a need raised or released during it doesn’t', () => {
   const waiting = { id: 'se_1', state: 'tool', background: true, currentStep: 'Waiting for a background job' };
   // A call of its own starts: the same state, so only the flag changes.
   assert.deepEqual(sessionPatch(waiting, { state: 'tool', currentStep: 'Run the tests' }).patch, { background: false, currentStep: 'Run the tests' });
@@ -99,6 +99,13 @@ test('#189: a change of state that doesn’t say it waits on background work cle
   // It waits again, and a change of something other than its state leaves the wait.
   assert.deepEqual(sessionPatch(waiting, { state: 'tool', background: true }).patch, {});
   assert.deepEqual(sessionPatch(waiting, { ctx: 40 }).patch, { ctx: 40 });
+  // A need offered while it waits, such as its background subagent’s permission prompt, and its release back to the
+  // wait, leave the flag: the wait goes on through them.
+  const asks = { kind: 'permission', itemId: 'it_1' };
+  assert.deepEqual(sessionPatch(waiting, { needs: asks, state: 'needs' }).patch, { needs: asks, state: 'needs' });
+  assert.deepEqual(sessionPatch({ ...waiting, state: 'needs', needs: asks }, { needs: null, state: 'tool' }).patch, { needs: null, state: 'tool' });
+  // A need its turn’s end settles on ends it.
+  assert.deepEqual(sessionPatch(waiting, { needs: asks, state: 'idle' }).patch, { needs: asks, state: 'idle', background: false });
   // A session that never waited isn’t given the field.
   assert.deepEqual(sessionPatch({ id: 'se_2', state: 'think' }, { state: 'tool' }).patch, { state: 'tool' });
 });

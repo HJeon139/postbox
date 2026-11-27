@@ -36,5 +36,8 @@ export function sessionPatch(se, change) {
  */
 function withBackground(se, change) {
   if (!se.background || !Object.hasOwn(change, 'state') || Object.hasOwn(change, 'background')) return change;
+  // A need offered or released while the wait goes on, such as its background subagent’s permission prompt, isn’t the
+  // agent’s own work, so the wait holds through it (card-needs.mjs, offerNeed and releaseNeed).
+  if (Object.hasOwn(change, 'needs') && (change.state === 'needs' || change.state === 'tool')) return change;
   return { ...change, background: false };
 }

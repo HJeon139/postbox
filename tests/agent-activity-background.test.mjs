@@ -1,7 +1,8 @@
 // Whether an agent’s session says it waits on background work (#189), from streams recorded on claude 2.1.296 (the
 // fixtures tests/agent-activity.test.mjs describes):
 // - background-subagent.jsonl: one Agent call with run_in_background, whose subagent runs on after the agent’s reply;
-// - background-done.jsonl: a Bash call with run_in_background, whose job runs on after the turn’s result.
+// - background-done.jsonl: a Bash call with run_in_background, whose job runs on after the turn’s result;
+// - monitor.jsonl: a Monitor that runs on after the turn’s result, whose events each wake the agent.
 // The session’s state stays “tool” while only that work runs, so delivery waits as it did; `background` is what lets
 // the ring say “Waiting on background work” rather than “Calling tools”.
 
@@ -86,6 +87,19 @@ test('#189: the agent’s session says it waits on background work while its bac
   // Fixture lines 32 to 35, counted from 1: from the turn’s result until the agent thinks about what its job printed,
   // one line after the job’s notification (line 34).
   assert.deepEqual([waits[0], done, waits.at(-1)], [result, 33, 34]);
+  for (const i of waits) assert.equal(seen[i].background, true, `waiting on background work after line ${i + 1}`);
+  for (const [i, x] of seen.entries()) if (!waits.includes(i)) assert.notEqual(x.background, true, `not waiting after line ${i + 1}: ${x.state}`);
+  assert.notEqual(after.background, true, 'the turn’s end leaves no flag');
+});
+
+test('#189: the agent’s session says it waits on background work while its Monitor watches, and not once an event wakes it', async () => {
+  const { lines, seen, after } = await replayTurn('monitor');
+  const waits = waitingLines(seen);
+  const ended = lines.findIndex((e) => e.subtype === 'task_notification');
+  // Fixture lines 80, 96, 109 and 121, counted from 1: each result while the Monitor watches starts a wait, and the next
+  // line, the CLI’s init for the event the agent woke on, ends it. Once the Monitor has ended (line 133), its last
+  // result starts none.
+  assert.deepEqual([...waits, ended], [79, 95, 108, 120, 132]);
   for (const i of waits) assert.equal(seen[i].background, true, `waiting on background work after line ${i + 1}`);
   for (const [i, x] of seen.entries()) if (!waits.includes(i)) assert.notEqual(x.background, true, `not waiting after line ${i + 1}: ${x.state}`);
   assert.notEqual(after.background, true, 'the turn’s end leaves no flag');
