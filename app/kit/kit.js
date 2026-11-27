@@ -279,6 +279,17 @@
     const fitted = fitLabels(labels, Math.floor(w / 2) - 10);
     return { left: Math.ceil(Math.max(0, ...fitted.map((x) => x.w))) + 10, labels: fitted.map((x) => x.text) };
   }
+  // A line chart’s end labels, each series’ name and last value right of its line: the room the widest takes, up to
+  // 40% of the chart, where a longer name ends in “…” with its full name in a title.
+  function endLabels(series, f, w) {
+    const cap = Math.floor(w * 0.4);
+    const values = fitLabels(
+      series.map((sr) => f(sr.values[sr.values.length - 1])),
+      cap,
+    );
+    const names = series.map((sr, k) => fitLabels([sr.name], cap - 16 - values[k].w)[0]);
+    return { room: Math.ceil(Math.max(...names.map((n, k) => 16 + n.w + values[k].w))), names: names.map((n) => n.text) };
+  }
   const gridY = (ticks, y, x0, x1, f) =>
     ticks
       .map(
@@ -367,22 +378,31 @@
         el,
         (w) => {
           const narrow = w < 420;
-          const m = { l: 40, r: narrow || series.length > 4 ? 14 : 96, t: 8, b: 24 },
+          const ends = narrow || series.length > 4 ? null : endLabels(series, f, w);
+          const m = { l: 40, r: ends ? ends.room : 14, t: 8, b: 24 },
             h = spec.height || 220;
           const x = scale(0, xs.length - 1, m.l, w - m.r),
             y = scale(0, max, h - m.b, m.t);
           let s = gridY(niceTicks(max, 4), y, m.l, w - m.r, f);
-          xs.forEach((v, i) => {
-            if (i % Math.ceil(xs.length / 5) === 0 || i === xs.length - 1)
-              s += `<text x="${x(i)}" y="${h - 6}" fill="var(--dim)" text-anchor="middle">${esc(v)}</text>`;
+          // About five x labels, each fitted to the gap between them and kept inside the chart at its ends.
+          const every = Math.ceil(xs.length / 5);
+          const at = xs.map((_v, i) => i).filter((i) => i % every === 0 || i === xs.length - 1);
+          const gap = (w - m.l - m.r) / Math.max(1, at.length - 1);
+          const xl = fitLabels(
+            at.map((i) => xs[i]),
+            Math.max(48, gap - 8),
+          );
+          at.forEach((i, k) => {
+            const half = xl[k].w / 2;
+            s += `<text x="${Math.min(Math.max(x(i), half + 1), w - half - 1)}" y="${h - 6}" fill="var(--dim)" text-anchor="middle">${xl[k].text}</text>`;
           });
-          for (const sr of series) {
+          series.forEach((sr, k) => {
             s += `<path d="${path(sr.values.map((v, i) => [x(i), y(v)]))}" fill="none" stroke="var(--${sr.color})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
             const last = sr.values[sr.values.length - 1];
             s += ring(x(xs.length - 1), y(last), sr.color);
-            if (m.r > 20)
-              s += `<text x="${x(xs.length - 1) + 8}" y="${y(last)}" dominant-baseline="middle" fill="var(--text)">${esc(sr.name)} <tspan fill="var(--dim)">${f(last)}</tspan></text>`;
-          }
+            if (ends)
+              s += `<text x="${x(xs.length - 1) + 8}" y="${y(last)}" dominant-baseline="middle" fill="var(--text)">${ends.names[k]} <tspan fill="var(--dim)">${f(last)}</tspan></text>`;
+          });
           return (
             legend(
               series.map((sr) => [sr.name, sr.color]),

@@ -18,7 +18,9 @@ const LONG = `x${FAMILY.repeat(60)}`;
 const LABELS = [...NOTES, ...DATES, LONG];
 // No padding around the charts: a label past its chart’s edge must show as past the page’s.
 // A chart of dates alone, where the digits’ width sets the margin.
-const CHART = `<div id="bars"></div><div id="heat"></div><div id="dates"></div><script>
+// A line chart whose first x label and series name are long: its x labels sit centered on their points, and its end
+// labels had a fixed 96 px on the right.
+const CHART = `<div id="bars"></div><div id="heat"></div><div id="dates"></div><div id="line"></div><script>
 const cats = ${JSON.stringify(LABELS)};
 postbox.charts.stacked(document.getElementById('bars'), {
   label: 'Passages per asset',
@@ -35,6 +37,11 @@ postbox.charts.stacked(document.getElementById('dates'), {
   label: 'Passages by day',
   categories: ${JSON.stringify(DATES)},
   series: [{ name: 'Passages', values: [3, 9, 4, 6] }],
+});
+postbox.charts.line(document.getElementById('line'), {
+  label: 'Passages over time',
+  x: ['notes/letters-from-the-coast.md', 'b', 'c'],
+  series: [{ name: 'notes/letters-from-the-coast.md', values: [3, 5, 4] }],
 });
 </script>`;
 
@@ -72,14 +79,15 @@ test('long category labels on the kit’s bar chart and heatmap stay inside the 
     await expect
       .poll(
         () =>
-          frame
-            .locator('svg')
-            .evaluateAll((svgs) =>
-              svgs.flatMap((s) =>
-                [...s.querySelectorAll('text')].filter((t) => t.getBoundingClientRect().left < s.getBoundingClientRect().left).map((t) => t.textContent),
-              ),
-            ),
-        { message: `no label starts past its chart’s left edge at ${width} px` },
+          frame.locator('svg').evaluateAll((svgs) =>
+            svgs.flatMap((s) => {
+              const box = s.getBoundingClientRect();
+              return [...s.querySelectorAll('text')]
+                .filter((t) => t.getBoundingClientRect().left < box.left || t.getBoundingClientRect().right > box.right + 0.5)
+                .map((t) => t.textContent);
+            }),
+          ),
+        { message: `no label runs past its chart’s edges at ${width} px` },
       )
       .toEqual([]);
     for (const id of ['bars', 'heat']) await labelsNameEvery(frame, id, width);
