@@ -604,13 +604,13 @@ export class AntigravityCliAdapter {
         await excludePlugin(cwd).catch(() => false);
       }
       const hookCommand = useHook ? agyHookCommand(this.hookScript) : null;
-      await writeAgyPlugin(plugin, agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand, skills: await agySkillFiles(persona) }));
+      const written = await writeAgyPlugin(plugin, agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand, skills: await agySkillFiles(persona) }), this.workRoot);
       // The agent can change the plugin during a run, so the hook is checked again before each (PR #1515’s review).
       const confirmed = async () =>
         Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript, probe: this.hookProbe })));
       const hookConfirmed = await confirmed();
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
-      const unhooked = useHook && !hookConfirmed && !agyBypassWebOff(persona);
+      const unhooked = written && useHook && !hookConfirmed && !agyBypassWebOff(persona);
       if (unhooked) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
       const rulesRead = unhooked ? rulesWith(false) : rules; // the rules file as agy reads it, recorded with each run’s prompt
       // What every run of this turn shares: where agy runs, and the rules file it reads, recorded with each run’s prompt.
@@ -633,7 +633,7 @@ export class AntigravityCliAdapter {
           await this.run({ ...each, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed: await confirmed() });
         }
       } finally {
-        await removeAgyPlugin(plugin);
+        if (written) await removeAgyPlugin(plugin, this.workRoot);
         await commitTurn(cwd, persona, ctx.project, this.workRoot); // what the turn left, in its own worktree (#1709)
       }
     });

@@ -10,6 +10,10 @@ Browser checks are Playwright specs in `tests/browser/`: see `tests/AGENTS.md`, 
 
 `tools/lint-*.mjs` run in `npm run check`. A new rule comes with a case in `tests/lint.test.mjs` that it flags. An exception carries `lint-allow <rule>: <reason>` on its line (designs/architecture/code-quality.md, “Code quality”). `lint-ternary` takes only that line-level form, `lint-allow ternary: <reason>`, and no `lint-allow-file` (#753).
 
+## The sign-off
+
+`tools/signoff.mjs` (steps in `tools/signoff/`) and `tools/signoff-checks.mjs` are how a head is signed off (designs/developing.md, “Running the gate”, #845). Every effect of `tools/signoff.mjs` goes through the object `tools/signoff/deps.mjs` makes: commands, `gh`, the clock and timers, load, files, signals and the exit. That way, `tests/signoff.test.mjs` and the other `tests/signoff-*.test.mjs` drive every path with no real process. A new check comes with a test that fails without it. Every command runs through `exec` in `tools/signoff/wait.mjs`, which prints while it waits. It stays read-only towards GitHub.
+
 ## The UAT runner and the screenshot tools
 
 - `tools/uat-run.mjs` runs real agents and costs real usage. `tools/shoot-app.mjs` and `tools/shoot-uat.mjs` take the screenshots. The demo’s go to `screenshots/latest/app/` and aren’t committed (CI’s artifact on `main` has the current ones); only the UAT docs’ `tests/uat/screenshots/` are, and the reviewing session commits those (designs/developing.md, “Screenshots”). Run them only when the task asks for them, or when you’re the reviewing session (designs/developing.md, “Rules for every session”). axe on the demo’s scenes isn’t theirs: it’s a spec, `tests/browser/demo-a11y.spec.mjs`.
