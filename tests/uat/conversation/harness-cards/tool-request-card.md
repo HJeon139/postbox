@@ -16,7 +16,7 @@ An unticked tool in a persona’s Tools is removed from the agent’s tool list,
 - **Turn on for critic:** ticks the tool, says “Turned on.”, adds a line in your voice, and the agent’s next turn starts with the tool in its list.
 - **The same tool turned on anywhere else** (the persona editor, which the agent’s name in the sidebar opens) answers the card the same way, in every conversation it’s open in: it says “Turned on.”, the agent stops needing you, and it carries on with the tool ([#237](https://github.com/HJeon139/postbox/issues/237)). Once it’s on, the label beside the title says “Turned on · shell”.
 - **Keep it off:** leaves the persona as it was, says “Kept off.”, and the agent is told to go on without it.
-- The agent needs you until you answer. Every control works by keyboard; after an answer, focus goes back to the composer.
+- The agent needs you until you answer. A request raised while the agent’s turn runs on counts in the top bar at once, as a form shown mid-turn does; its ring pulses, and you get a notification, only when the turn ends ([#1868](https://github.com/HJeon139/postbox/issues/1868)). If you stop that turn, the request waits quietly and no longer counts, as a stopped turn’s form does. If the agent asks for the same tool in a later turn while the card is still open, the same card counts again. Every control works by keyboard; after an answer, focus goes back to the composer.
 
 ## Steps to reproduce
 
