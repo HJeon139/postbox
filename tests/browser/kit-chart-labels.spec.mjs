@@ -20,7 +20,10 @@ const LABELS = [...NOTES, ...DATES, LONG];
 // A chart of dates alone, where the digits’ width sets the margin.
 // A line chart whose first x label and series name are long: its x labels sit centered on their points, and its end
 // labels had a fixed 96 px on the right.
-const CHART = `<div id="bars"></div><div id="heat"></div><div id="dates"></div><div id="line"></div><script>
+// Line charts of ten dates and of six months, whose x labels must each be drawn whole, apart, even at 375 px.
+const TEN_DAYS = Array.from({ length: 10 }, (_v, i) => `2024-11-${String(i + 1).padStart(2, '0')}`);
+const MONTHS = ['January 2025', 'February 2025', 'March 2025', 'April 2025', 'May 2025', 'June 2025'];
+const CHART = `<div id="bars"></div><div id="heat"></div><div id="dates"></div><div id="line"></div><div id="days"></div><div id="months"></div><script>
 const cats = ${JSON.stringify(LABELS)};
 postbox.charts.stacked(document.getElementById('bars'), {
   label: 'Passages per asset',
@@ -43,6 +46,8 @@ postbox.charts.line(document.getElementById('line'), {
   x: ['notes/letters-from-the-coast.md', 'b', 'c'],
   series: [{ name: 'notes/letters-from-the-coast.md', values: [3, 5, 4] }],
 });
+for (const [id, x] of [['days', ${JSON.stringify(TEN_DAYS)}], ['months', ${JSON.stringify(MONTHS)}]])
+  postbox.charts.line(document.getElementById(id), { label: id, x, series: [{ name: 'Passages', values: x.map((_v, i) => 3 + (i % 4)) }] });
 </script>`;
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -91,6 +96,12 @@ test('long category labels on the kit’s bar chart and heatmap stay inside the 
       )
       .toEqual([]);
     for (const id of ['bars', 'heat']) await labelsNameEvery(frame, id, width);
+    // Each x label of the dates and the months is drawn whole, uncut, whatever the width.
+    for (const id of ['days', 'months'])
+      expect(
+        await frame.locator(`#${id} svg text`).evaluateAll((ts) => ts.filter((t) => t.querySelector('title')).map((t) => t.textContent)),
+        `no x label of #${id} is cut at ${width} px`,
+      ).toEqual([]);
   }
   await page.close();
 });

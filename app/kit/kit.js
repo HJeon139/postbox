@@ -291,6 +291,36 @@
     const names = series.map((sr, k) => fitLabels([sr.name], cap - 16 - values[k].w)[0]);
     return { room: Math.ceil(Math.max(...names.map((n, k) => 16 + n.w + values[k].w))), names: names.map((n) => n.text) };
   }
+  // A line chart’s x labels, each measured whole and centered on its point, kept inside the chart. They’re a step apart,
+  // about five at most, with the last always shown, and the step grows until no two are closer than 8 px. Only a label
+  // that still has no room, beside its neighbors or the chart’s edge, is cut, with its full name in a title.
+  function xLabels(xs, x, w, y0) {
+    const n = xs.length;
+    const full = fitLabels(xs, Infinity);
+    const placed = (every) => {
+      const at = [];
+      for (let i = 0; i < n; i += every) at.push(i);
+      if (at[at.length - 1] !== n - 1) at.push(n - 1);
+      const centers = at.map((i) => Math.min(Math.max(x(i), full[i].w / 2 + 1), w - full[i].w / 2 - 1));
+      // How far each label has to its neighbors, past their halves and 8 px apart.
+      const free = at.map((_i, k) => {
+        const left = k ? centers[k] - centers[k - 1] - full[at[k - 1]].w / 2 - 8 : Infinity;
+        const right = k < at.length - 1 ? centers[k + 1] - centers[k] - full[at[k + 1]].w / 2 - 8 : Infinity;
+        return Math.min(left, right, centers[k] - 1, w - 1 - centers[k]);
+      });
+      return { at, centers, free };
+    };
+    let every = Math.max(1, Math.ceil(n / 5));
+    let layout = placed(every);
+    while (every < n - 1 && layout.at.some((i, k) => layout.free[k] < full[i].w / 2)) layout = placed(++every);
+    return layout.at
+      .map((i, k) => {
+        const room = 2 * layout.free[k];
+        const label = full[i].w <= room ? full[i] : fitLabels([xs[i]], room)[0];
+        return `<text x="${layout.centers[k]}" y="${y0}" fill="var(--dim)" text-anchor="middle">${label.text}</text>`;
+      })
+      .join('');
+  }
   const gridY = (ticks, y, x0, x1, f) =>
     ticks
       .map(
@@ -385,18 +415,7 @@
           const x = scale(0, xs.length - 1, m.l, w - m.r),
             y = scale(0, max, h - m.b, m.t);
           let s = gridY(niceTicks(max, 4), y, m.l, w - m.r, f);
-          // About five x labels, each fitted to the gap between them and kept inside the chart at its ends.
-          const every = Math.ceil(xs.length / 5);
-          const at = xs.map((_v, i) => i).filter((i) => i % every === 0 || i === xs.length - 1);
-          const gap = (w - m.l - m.r) / Math.max(1, at.length - 1);
-          const xl = fitLabels(
-            at.map((i) => xs[i]),
-            Math.max(48, gap - 8),
-          );
-          at.forEach((i, k) => {
-            const half = xl[k].w / 2;
-            s += `<text x="${Math.min(Math.max(x(i), half + 1), w - half - 1)}" y="${h - 6}" fill="var(--dim)" text-anchor="middle">${xl[k].text}</text>`;
-          });
+          s += xLabels(xs, x, w, h - 6);
           series.forEach((sr, k) => {
             s += `<path d="${path(sr.values.map((v, i) => [x(i), y(v)]))}" fill="none" stroke="var(--${sr.color})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
             const last = sr.values[sr.values.length - 1];
