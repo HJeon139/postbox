@@ -66,7 +66,7 @@ export function codexRefusal(ctx, err) {
   toolsDown(ctx, `Codex couldn’t start Postbox’s tool server, which it needs, so it didn’t start the turn. Codex said: “${said}”`, { ran: false });
   return Object.assign(
     new Error('Postbox’s tools didn’t load: Codex couldn’t start Postbox’s tool server, so it didn’t start this turn. Retry to try again.'),
-    // It never reached the agent, though its step says so (store-outage.mjs, neverReached; #1904).
+    // It never reached the agent, though its step opened the turn’s reply (store-outage.mjs, neverReached; #1904).
     { cause: err, notReached: true },
   );
 }

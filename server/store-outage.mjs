@@ -158,14 +158,15 @@ export function saveBackendState(rt, sessionId, patch) {
  * Whether a turn that ended without finishing never reached its agent, as near as Postbox can tell, so it gives back
  * what it took (takenBack; #1171, #1904). One its backend marks so (notReached: Codex refusing a turn whose tools didn’t
  * start, after a step saying so) never did. Otherwise, one that left a reply part or step did, and so did a host turn
- * whose link gave up, which runs on there and is attached again (remote/turns-end.mjs, “lost”).
+ * whose link gave up, which runs on there and is attached again (remote/turns-end.mjs, “lost”), when it’s this turn’s.
  * @param {Runtime} rt @param {any} turn @param {any} [err]
  */
 export function neverReached(rt, turn, err) {
   if (err?.notReached === true) return true;
   if (turn.first) return false;
   const se = rt.store.pending.session(turn.sessionId) ?? rt.s.sessions[turn.sessionId];
-  return !(turn.remote && se?.remoteTurn?.state === 'lost');
+  // Its own host turn: a later turn (Send now, Retry) can start while an earlier one waits to be attached again.
+  return !(turn.remote && se?.remoteTurn?.state === 'lost' && se.remoteTurn.rtTurn === turn.id);
 }
 
 /**

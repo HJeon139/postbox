@@ -76,7 +76,8 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   // The adapter reads which jobs to keep from the reason; anything else only sees that the turn was aborted.
   turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
   turn.closed = true;
-  // Stopped before it left a reply part or step, it gives back what it took, as a failed one does (#1171, #1904).
+  // Stopped before it reached its agent (store-outage.mjs, neverReached), it gives back what it took, as a failed one
+  // does (#1171, #1904).
   if (neverReached(rt, turn)) takenBack(rt, sessionId, turn);
   rt.running.end(sessionId);
   recordStopped(rt, turn, ended, { by, why: by === 'clock' || by === 'pause' ? STOP_WHY[by] : STOP_WHY.you });
