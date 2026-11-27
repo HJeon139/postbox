@@ -98,11 +98,15 @@ test('#466 a restart during a scheduled turn whose tool started sends the recove
 test('#466 a scheduled wake still running on a host at a restart is left to that host turn, not started again', () => {
   const f = setup();
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the host.' });
+  // Fired: a running wake has no timer.
+  arrange.cancelScheduledTimer(f.rt, sc.id);
   f.store.emit('schedule', { ...f.store.state.schedules[sc.id], running: true, turnId: 'turn_wake' });
   arrange.setSession(f.rt, f.alpha.id, { remoteTurn: { state: 'running', turn: 'host-turn-1', rtTurn: 'turn_wake' } });
   rearmWakes(f.rt);
   assert.equal(f.rt.timers.has(sc.id), false, 'no second turn is armed');
-  assert.equal(f.store.state.schedules[sc.id], undefined);
+  // Kept running for the turn attached again, which settles it (tests/scheduled-wake-host-restart.test.mjs).
+  assert.equal(f.store.state.schedules[sc.id]?.running, true);
+  assert.notEqual(f.store.item(sc.threadId, sc.itemId).status, 'done');
 });
 
 test('#466 a Postbox tool a scheduled turn called through MCP counts as a tool that started, on every backend', async () => {

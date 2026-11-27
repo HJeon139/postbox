@@ -135,7 +135,7 @@ test('#466 a quota failure stays failed and does not retry', async () => {
   assert.equal(f.store.items(sc.threadId).findLast((item) => item.kind === 'agent')?.status, 'failed');
 });
 
-test('#466 a host turn marked lost is attached again, not also retried as a scheduled wake', async () => {
+test('#466 a host turn marked lost is left to its attach, not retried or settled as a scheduled wake', async () => {
   const f = setup();
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the host.' });
   f.adapter.next.push(async () => {
@@ -144,8 +144,10 @@ test('#466 a host turn marked lost is attached again, not also retried as a sche
   });
   await fire(f, sc);
 
-  assert.equal(f.store.state.schedules[sc.id], undefined, 'RemoteTurns owns reconnection, so no second recovery is armed');
+  // RemoteTurns owns reconnection, so no second recovery is armed: the wake stays running for the turn attached again.
+  assert.equal(f.store.state.schedules[sc.id]?.running, true);
   assert.equal(f.rt.timers.has(sc.id), false);
+  assert.notEqual(f.store.item(sc.threadId, sc.itemId).status, 'done');
   assert.equal(f.adapter.calls.length, 1);
 });
 
