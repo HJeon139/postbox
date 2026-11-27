@@ -149,32 +149,7 @@ export async function reattach(rts, sessionId) {
   const persona = rt.personas.forSession(now);
   const moved = hostOf(persona) !== r.hostId;
   const unregistered = !rt.placement.registeredAdapter(persona);
-  if (!listed || moved || unregistered) {
-    rts.restoring.delete(r.turn);
-    rts.noteAttach(sessionId);
-    rts.early.delete(r.turn);
-    // One the host lists as running, or interrupted with its process unkilled (#872), may still run there, moved or
-    // not: the host is asked to stop it, and stays needed until the daemon confirms it (askStop). Asked before the
-    // release, so the host’s link isn’t let go in between (#965).
-    const stillThere = listed?.state === 'running' || listed?.unkilled === true;
-    if (stillThere) askStop(rts, sessionId, r.hostId, r.turn);
-    // A run clock that listed it as still to stop hears it’s over, since it doesn’t run there (#1526).
-    else if (rt.runClock) clockStopConfirmed(rt, sessionId, r.turn, rts.now());
-    releaseHost(rts, r.hostId);
-    // Resumed on its own once the backend is back, a second turn could run beside it on the same session, so it waits
-    // for the person. One listed as ended, or interrupted and gone, can’t, and a moved one waits anyway (autoResume’s
-    // hostOf check).
-    const mayRun = stillThere && !moved;
-    // Marked only when the missing backend is all that holds it, since the hint then promises it resumes on its own
-    // (#965): one that may still run waits for the person, and so does a moved agent’s.
-    const onlyBackend = unregistered && !mayRun && !moved;
-    interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { unkilled: mayRun, noBackend: onlyBackend });
-    // Its cards, kept for the attach, can’t be answered now (#965).
-    endOrphanCards(rts, [r.turn]);
-    // What waited for the attach goes now, unless the turn may still run there and waits for the person (#1135).
-    if (!mayRun) rt.delivery.wake(sessionId);
-    return;
-  }
+  if (!listed || moved || unregistered) return giveUpAttach(rts, sessionId, { r, now, persona, listed, moved, unregistered });
   // Running, ended or interrupted, it’s replayed from the start, so the reply is whole: what came before is replaced.
   for (const threadId of rt.threads.conversationThreads(now.threadId))
     for (const it of rt.store.pending.items(threadId))
@@ -183,6 +158,39 @@ export async function reattach(rts, sessionId) {
   rt.sessions.update(sessionId, { state: 'think', currentStep: `Reconnecting to ${rt.s.hosts?.[r.hostId]?.name ?? 'the host'}` });
   const go = continuing(rt, now, { kind: 'notice', text: '', attach: r.turn });
   rt.turnService.resume(sessionId, go.message, go.opts);
+}
+
+/**
+ * reattach found the turn can’t be attached again: the host has no record of it, the agent moved, or its backend isn’t
+ * registered here. It waits for the person, and the host is asked to stop a turn still there.
+ * @param {RemoteTurns} rts @param {string} sessionId
+ * @param {{ r: any, now: any, persona: any, listed: any, moved: boolean, unregistered: boolean }} o
+ */
+function giveUpAttach(rts, sessionId, { r, now, persona, listed, moved, unregistered }) {
+  const rt = rts.rt;
+  rts.restoring.delete(r.turn);
+  rts.noteAttach(sessionId);
+  rts.early.delete(r.turn);
+  // One the host lists as running, or interrupted with its process unkilled (#872), may still run there, moved or
+  // not: the host is asked to stop it, and stays needed until the daemon confirms it (askStop). Asked before the
+  // release, so the host’s link isn’t let go in between (#965).
+  const stillThere = listed?.state === 'running' || listed?.unkilled === true;
+  if (stillThere) askStop(rts, sessionId, r.hostId, r.turn);
+  // A run clock that listed it as still to stop hears it’s over, since it doesn’t run there (#1526).
+  else if (rt.runClock) clockStopConfirmed(rt, sessionId, r.turn, rts.now());
+  releaseHost(rts, r.hostId);
+  // Resumed on its own once the backend is back, a second turn could run beside it on the same session, so it waits
+  // for the person. One listed as ended, or interrupted and gone, can’t, and a moved one waits anyway (autoResume’s
+  // hostOf check).
+  const mayRun = stillThere && !moved;
+  // Marked only when the missing backend is all that holds it, since the hint then promises it resumes on its own
+  // (#965): one that may still run waits for the person, and so does a moved agent’s.
+  const onlyBackend = unregistered && !mayRun && !moved;
+  interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { unkilled: mayRun, noBackend: onlyBackend });
+  // Its cards, kept for the attach, can’t be answered now (#965).
+  endOrphanCards(rts, [r.turn]);
+  // What waited for the attach goes now, unless the turn may still run there and waits for the person (#1135).
+  if (!mayRun) rt.delivery.wake(sessionId);
 }
 
 /**
