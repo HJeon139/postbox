@@ -18,6 +18,7 @@ function room() {
   const store = new Store(null);
   /** @type {any[]} */
   const sent = [];
+  const fail = { next: false, downAgain: /** @type {string | null} */ (null) };
   const adapter = {
     name: 'mock',
     async folderFor() {
@@ -25,6 +26,13 @@ function room() {
     },
     async deliver(/** @type {any} */ _se, /** @type {any} */ message, /** @type {any} */ ctx) {
       sent.push(message);
+      // A CLI that couldn’t start: the turn never reached the agent.
+      if (fail.next) {
+        fail.next = false;
+        // As a backend whose tools failed to load again before it failed: a newer note than the one this turn took.
+        if (fail.downAgain) ctx.saveState({ postboxToolsDown: fail.downAgain });
+        throw Object.assign(new Error('spawn kiro-cli ENOENT'), { code: 'ENOENT' });
+      }
       ctx.text('Done.');
     },
   };
@@ -44,7 +52,7 @@ function room() {
   };
   const down = (/** @type {string|null} */ how) =>
     arrange.setSession(rt, se.id, { backendState: { ...store.state.sessions[se.id].backendState, postboxToolsDown: how } });
-  return { rt, store, se, sent, turn, down, t };
+  return { rt, store, se, sent, turn, down, t, fail };
 }
 
 test('the next turn is told among its notices that Postbox’s tools didn’t load, and only once', async () => {
@@ -73,4 +81,26 @@ test('a slash command doesn’t carry the note, which waits for the next turn', 
   assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'ran', 'the note is still owed');
   await r.turn('Try again.');
   assert.match(noteIn(r.sent[1]), told);
+});
+
+// #1171: the note was taken as the turn’s message was built, so a turn that then failed to start lost it, and the agent
+// was told at most once, not exactly once.
+test('#1171 a turn that fails before it runs keeps the note for the next', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.next = true;
+  await r.turn('Try again.');
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'ran', 'still owed after the failed turn');
+  await r.turn('Once more.');
+  assert.match(noteIn(r.sent[1]), told, 'and the next turn is told');
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null, 'then taken');
+});
+
+test('#1171 a failed turn that set a newer note keeps that one, not the one it took', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.next = true;
+  r.fail.downAgain = 'refused';
+  await r.turn('Try again.');
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'refused');
 });

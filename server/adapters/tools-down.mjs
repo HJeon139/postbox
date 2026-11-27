@@ -36,3 +36,14 @@ export function toolsDownNote(se, message) {
   if (!down) return '';
   return (down === 'refused' ? NOTE.refused : NOTE.ran).trim();
 }
+
+/**
+ * Gives a note back to the session when the turn that took it failed, since the agent may never have got it: a CLI that
+ * couldn’t start, or a run that errored (#1171). Only when nothing has set a note since, so a newer one, from this turn
+ * failing to load the tools again, stands. Told at least once, then: a turn that failed after the agent read the note
+ * tells it again. @param {any} se  the session as stored now @param {string | null | undefined} took  what the turn took
+ * @param {(patch: object) => void} save  saves to the session’s backend state
+ */
+export function toolsDownLost(se, took, save) {
+  if (took && !se?.backendState?.postboxToolsDown) save({ postboxToolsDown: took });
+}

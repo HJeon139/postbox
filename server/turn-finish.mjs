@@ -3,9 +3,11 @@
 // server/turn-end-listeners.mjs, then server/inbox-listeners.mjs). Moved from server/runtime.mjs (#1236). Named for
 // finishing a turn: turn-end-work.mjs is only its work ledger's end.
 
+import { toolsDownLost } from './adapters/tools-down.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { failureClass } from './harness-failure.mjs';
 import { liveEnd } from './live-buffer.mjs';
+import { saveBackendState } from './store-outage.mjs';
 import { heldBy } from './turn-held.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { outOfQuota, quotaBack } from './turn-quota.mjs';
@@ -44,6 +46,7 @@ export function endTurn(rt, turn, err) {
   settleReplies(rt, turn, items, err);
   rt.bus.emit('turn.replied', { turn, se, items, err });
   if (err && err.name !== 'AbortError') {
+    toolsDownLost(se, turn.toolsDownTaken, (patch) => saveBackendState(rt, se.id, patch));
     endFailed(rt, se, turn, err);
     return;
   }

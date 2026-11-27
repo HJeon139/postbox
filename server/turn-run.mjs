@@ -59,11 +59,14 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   if (!slash && !summarizeTo) asked.message = message = withEntries(rt, sessionId, where, message);
   // Postbox’s own marks (the turn’s chosen id, and how it takes entries) stay with Postbox, not the agent’s message.
   const { turnId, fromEntries: _taken, entriesWait: _waits, ...asSent } = message;
-  message = turnMessage(rt, se, asSent, where, slash);
+  // What the agent is sent, and the tools-down note it took, which a failed turn gives back (tools-down.mjs, #1171).
+  const { toolsDownTaken, ...built } = turnMessage(rt, se, asSent, where, slash);
+  message = built;
   const persona = rt.persona(se.personaId);
   const adapter = rt.placement.registeredAdapter(persona);
   const turn = newTurn(se, { ...message, turnId }, persona, { where, slash, summarizeTo, asked });
   if (held) turn.clockStops = true;
+  turn.toolsDownTaken = toolsDownTaken ?? null;
   rt.running.begin(turn);
   // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
   const hostId = adapter ? rt.placement.hostOf(persona) : null;
@@ -143,6 +146,7 @@ function turnMessage(rt, se, message, where, slash) {
   const down = toolsDownNote(se, message);
   if (down) message = { ...message, context: [down, ...(message.context ?? [])] };
   if (down) saveBackendState(rt, sessionId, { postboxToolsDown: null });
+  if (down) message = { ...message, toolsDownTaken: se.backendState.postboxToolsDown };
   // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
   // message.lint: fixes it owes, placed with the request rather than in the background.
   if (message.kind !== 'lint' && !slash) message = rt.checks.foldLint(sessionId, message);
