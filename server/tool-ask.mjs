@@ -4,6 +4,7 @@
 // points at ask_for_tool, which shows a card the person answers. Turning the tool on changes the persona, in every
 // conversation, from its next turn (Personas.forSession reads Tools from the persona, not the session’s snapshot).
 
+import { cutText } from '../shared/text-parts.mjs';
 import { REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { askAgain } from './ask-again.mjs';
 import { releaseNeed } from './card-needs.mjs';
@@ -22,9 +23,7 @@ const LABELS = new Map([...KNOWN_TOOLS, ...REAL_BACKEND_TOOLS].map(([id, label])
 export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () => {}, threadId = rt.session(sessionId).threadId) {
   const se = rt.session(sessionId);
   const persona = rt.persona(se.personaId);
-  const id = String(tool ?? '')
-    .trim()
-    .slice(0, 40);
+  const id = cutText(String(tool ?? '').trim(), 40);
   if (!LABELS.has(id)) return { ok: false, message: `There’s no tool “${id}” to turn on. The ids are ${[...LABELS.keys()].join(', ')}.` };
   if ((persona?.tools ?? []).includes(id))
     return { ok: false, message: `${id} is already on for you. Its tools are in your list from your next turn after it was turned on.` };
@@ -42,7 +41,7 @@ export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () =>
     turnId: rt.turns.get(sessionId)?.id ?? null,
     tool: id,
     label: LABELS.get(id),
-    why: String(why ?? '').slice(0, 600),
+    why: cutText(String(why ?? ''), 600),
     status: 'open',
   });
   // It is the agent’s need from now, while the turn runs on, as an asking block just shown is (#1868, card-needs.mjs offerShown).

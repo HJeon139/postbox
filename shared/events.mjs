@@ -6,6 +6,7 @@
 import { LIMITS, limitText } from './limits.mjs';
 import { numberRange } from './number-range.mjs';
 import { commentErrors } from './review-comments.mjs';
+import { cutText } from './text-parts.mjs';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
 const fmtNum = (n) => Number(n).toLocaleString('en-US');
@@ -56,7 +57,7 @@ export function sentFacts(action, values) {
 
 const quote = (s, max = 60) => {
   const t = String(s).replace(/\s+/g, ' ').trim();
-  return `“${t.length > max ? t.slice(0, max - 1) + '…' : t}”`;
+  return `“${t.length > max ? cutText(t, max - 1) + '…' : t}”`;
 };
 
 const BUILDERS = {
@@ -162,7 +163,7 @@ const BUILDERS = {
       values,
       voice: `Sent from ${b.title ?? 'the app'}: ${sent}`,
       sent,
-      ...(said ? { quote: said.length > 160 ? `${said.slice(0, 159)}…` : said } : {}),
+      ...(said ? { quote: said.length > 160 ? `${cutText(said, 159)}…` : said } : {}),
     };
   },
 };

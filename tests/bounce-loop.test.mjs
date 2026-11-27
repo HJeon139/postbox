@@ -148,3 +148,37 @@ test('#1553: a reaction from a failed attempt doesn’t stop the Retry’s answe
   assert.match(retried, /If the exchange is done, react to the reply/);
   assert.doesNotMatch(retried, /end without writing anything/);
 });
+
+test('#1712: a recorded status exchange that closes on a reaction alone ends there: no line, no failed reply, no wake', async () => {
+  // Constructed from the assets-room run of the batch 9–10 UAT (tests/fixtures/uat/ack-loops-2026-11-23.json): the
+  // person asks researcher (turn 44), researcher’s answer @-mentions critic, and critic acknowledges it with ✅ and a
+  // line that goes back to researcher (turn 45). Only researcher’s turn 46, which reacted ✅ and then wrote “I reacted ✅
+  // to @critic’s message. The plan stays at v2.”, is changed: it reacts and writes nothing. Every other turn plays as
+  // recorded, so a wake past the reaction would play the next recorded turn and show. The player runs no CLI, so this
+  // pins Postbox’s side only, that such a turn ends the exchange, and passes on main too: Postbox already allowed it.
+  // That Claude Code now lets an agent end that way is pinned by tests/terminal-tools.test.mjs.
+  const researcher = playsFrom('assets-room', 'researcher', 44);
+  assert.equal(researcher[1].text, "I reacted ✅ to @critic's message. The plan stays at v2.", 'turn 46 is the one changed');
+  researcher[1] = { text: '', react: true };
+  const { store, rt, adapter, t } = room({ researcher, critic: playsFrom('assets-room', 'critic', 45) });
+  rt.sendMessage(t.id, { text: '@researcher quote Postbox’s refusal of your stale write word for word' });
+  await settle(rt);
+  assert.equal(adapter.calls.map((c) => c.handle).join(' '), 'researcher critic researcher', 'no wake after the reaction');
+  const lines = store.items(t.id).filter((i) => i.kind === 'agent' && i.text?.trim());
+  assert.deepEqual(
+    lines.map((i) => i.handle),
+    ['researcher', 'critic'],
+    'no line after the reaction',
+  );
+  assert.deepEqual(
+    lines[1].reactions?.map((r) => r.emoji),
+    ['✅'],
+    'researcher’s reaction is on critic’s acknowledgment',
+  );
+  assert.deepEqual(
+    store.items(t.id).filter((i) => i.status === 'failed'),
+    [],
+    'no failed reply',
+  );
+  assert.ok(!hitLimit(adapter), 'the player’s limit wasn’t reached');
+});

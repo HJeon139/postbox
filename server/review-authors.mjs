@@ -1,6 +1,7 @@
 // Who wrote a review thread’s comments, as the rule since #1143 reads them: the person, or an agent’s @handle.
 
 import { author, PERSON } from '../shared/review-comments.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 
 /** Whether a comment’s author fits the rule: the person, or an agent’s @handle. @param {any} c */
 const fits = (c) => {
@@ -57,7 +58,7 @@ export function otherAuthor(block, handle) {
     const other = comments.find((c) => c?.author !== `@${handle}`);
     if (!other) continue;
     if (typeof other?.author !== 'string') return '';
-    return other.author.length > QUOTED ? `${other.author.slice(0, QUOTED - 1)}…` : other.author;
+    return other.author.length > QUOTED ? `${cutText(other.author, QUOTED - 1)}…` : other.author;
   }
   return null;
 }

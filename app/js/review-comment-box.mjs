@@ -2,6 +2,7 @@
 // text and caret kept over a repaint, its keys, and when it takes focus; and how a comment’s place reads in its box
 // and buttons.
 
+import { cutText } from '/shared/text-parts.mjs';
 import { h } from './dom.mjs';
 
 /**
@@ -9,7 +10,7 @@ import { h } from './dom.mjs';
  * @param {any} at  a line, a part, or a selection with its quote @param {any} b
  */
 export function placeOf(at, b) {
-  if (typeof at === 'object') return `“${at.quote.length > 60 ? `${at.quote.slice(0, 59)}…` : at.quote}”`;
+  if (typeof at === 'object') return `“${at.quote.length > 60 ? `${cutText(at.quote, 59)}…` : at.quote}”`;
   return b.format === 'app' ? at : `line ${at}`;
 }
 /** A draft comment’s place, as placeOf takes it. @param {any} c @param {any} b */
@@ -18,7 +19,7 @@ export function placeKey(c, b) {
   return b.format === 'app' ? c.anchor : c.line;
 }
 /** The text a comment on a selection is about, as its meta line shows it. */
-export const quoted = (q) => (typeof q === 'string' ? h('q.rv-quote', q.length > 80 ? `${q.slice(0, 79)}…` : q) : null);
+export const quoted = (q) => (typeof q === 'string' ? h('q.rv-quote', q.length > 80 ? `${cutText(q, 79)}…` : q) : null);
 
 /** Each comment box’s review draft, so a repaint finds only its own box (refocus). */
 const ownerOf = new WeakMap();

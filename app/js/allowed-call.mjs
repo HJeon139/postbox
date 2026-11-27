@@ -3,6 +3,7 @@
 // itself, and the line says what landed where, or why it couldn’t. Stop ends that request: the agent’s next call asks
 // again.
 
+import { cutText } from '/shared/text-parts.mjs';
 import { api } from './client.mjs';
 import { h, icon } from './dom.mjs';
 import { toast } from './ui.mjs';
@@ -10,7 +11,7 @@ import { toast } from './ui.mjs';
 /** A command’s first line, short enough for one line of the conversation; another tool by its name. */
 const first = (it) => {
   const line = String(it.tool === 'Bash' ? it.detail : it.tool).split('\n')[0];
-  return line.length > 80 ? `${line.slice(0, 79)}…` : line;
+  return line.length > 80 ? `${cutText(line, 79)}…` : line;
 };
 
 /** A push Postbox made itself: what landed where, or why it couldn’t, so the card asks instead. */

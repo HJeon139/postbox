@@ -301,7 +301,7 @@ function reportCallbacks(rt, turn, live) {
       if (!live() || !r) return;
       /** @type {any} */
       const patch = {};
-      if (typeof r.model === 'string' && r.model.trim()) patch.lastModel = r.model.trim().slice(0, 100);
+      if (typeof r.model === 'string' && r.model.trim()) patch.lastModel = cutText(r.model.trim(), 100);
       if (EFFORT_LEVELS.includes(r.effort)) patch.lastEffort = r.effort;
       if (Object.keys(patch).length) rt.sessions.update(turn.sessionId, patch);
       if (Array.isArray(r.mcpServers))
@@ -312,9 +312,9 @@ function reportCallbacks(rt, turn, live) {
               .filter((x) => x && typeof x.name === 'string' && x.name)
               .slice(0, 100)
               .map((x) => ({
-                name: x.name.slice(0, 200),
-                status: String(x.status ?? '').slice(0, 20),
-                ...(typeof x.source === 'string' ? { source: x.source.slice(0, 20) } : {}),
+                name: cutText(x.name, 200),
+                status: cutText(String(x.status ?? ''), 20),
+                ...(typeof x.source === 'string' ? { source: cutText(x.source, 20) } : {}),
               })),
           },
         });

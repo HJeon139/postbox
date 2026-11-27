@@ -1,5 +1,6 @@
 // A deleted persona’s memory on the hosts (#491). Claude Code keeps a persona’s auto memory on a host in
-// ~/.postbox-remote/memory/<persona id> (setup.mjs’s memoryFolder), which only that host’s daemon can remove. Postbox
+// ~/.postbox-remote/memory/<persona id> (setup.mjs’s memoryFolder), and an Isolated Kiro persona in its Kiro home there,
+// ~/.postbox-remote/kiro-home/<persona id> (#1661); only that host’s daemon can remove them, and `forget` removes both. Postbox
 // keeps no record of which hosts a persona ran on, so deleting one owes a removal to every host it knows
 // (`hostForgets`, shared/state-hosts.mjs), and each host is sent its removals (`forget`, answered by `forgotten`) when
 // it next connects, or at once if it’s connected. A removal stays owed until the host says it’s done, so a host
