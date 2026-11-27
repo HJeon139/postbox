@@ -179,7 +179,8 @@ export const SCHEMA = {
           description: 'send, thread, act, review: act while the turn this starts is running.',
           properties: {
             after: { type: 'integer', description: 'Seconds to let the agent work first.' },
-            do: { enum: ['stop', 'send_now', 'answer', 'fault', 'conversation', 'look'] },
+            do: { enum: ['stop', 'send_now', 'answer', 'fault', 'conversation', 'look', 'scroll'] },
+            moves: { type: 'array', items: { enum: ['up', 'down', 'end', 'start'] }, description: 'scroll: 1 to 8 moves in order, each as scroll’s by.' },
             conversation: { enum: ['delete'], description: 'conversation: delete the conversation while its agent works.' },
             jobs: { enum: ['stop', 'keep'], description: 'stop: how to answer if Postbox asks whether to stop background jobs too.' },
             text: { type: 'string', description: 'send_now: the message to send.' },
@@ -239,7 +240,7 @@ Then choose one action:
 - pane {open: work|thread, item?}: open Work (its top-bar button) or a thread in the right pane. You get each view’s size.
 - fullscreen {pane: work|thread}: open that view full screen, read it, and close it with Escape.
 - fullscreen_draft {text}: open the thread full screen, type text into its reply box without sending, and leave full screen. You get whether the draft and the scroll survived.
-- scroll {by: up|down|end|start}: scroll the conversation with the keys, as you would: a page up (PageUp) or down (PageDown), to the newest message at the end (End), or to the start (Home). Use it to read back while agents work, and to come back.
+- scroll {by: up|down|end|start}: scroll the conversation with the keys, as you would: a page up (PageUp) or down (PageDown), to the newest message at the end (End), or to the start (Home). Use it to read back once agents have written, and to come back; to scroll while a reply streams, give an interrupt {after, do: scroll, moves}.
 - restore {target}: in Work full screen, restore (or remove) that file, and confirm.
 - app_click {item, target}: click something inside that app by its visible text.
 - attach_screenshot {item, text}: attach a screenshot of that item, and send it with your message.
@@ -253,7 +254,7 @@ Then choose one action:
 
 Each step also lists what’s waiting on you: blocks that ask you something, review drafts, wake requests, permission cards, failed turns to retry. Answer them before you move to the next phase or finish, as a person clearing “needs you” would: an agent that asked is stuck until you do. If one isn’t on screen, open the thread it’s in.
 
-The run waits for the agents to finish before each step, or until something needs you while one works, such as Stop’s question about background jobs: answer it, or wait, before you give an interrupt. To act while a turn is running, give send, thread, act or review an interrupt {after, do, jobs?, text?}: once an agent is working, the run lets it work for after seconds, then does it. do is stop, to press Stop (if Postbox asks whether to stop its background jobs too, jobs answers: stop or keep); send_now, to write text and press Send now on it; look, to see the running replies as they are then, a screenshot and their text, pressing nothing; or answer, to answer the block item while the agent works, as review (verdict, comments) or act (choose, button) would. Answer a draft that way while its agent is revising it, as a person reading along would.
+The run waits for the agents to finish before each step, or until something needs you while one works, such as Stop’s question about background jobs: answer it, or wait, before you give an interrupt. So a step of its own, scroll included, never runs while a reply streams: an interrupt is the only way to act during one. To act while a turn is running, give send, thread, act or review an interrupt {after, do, jobs?, text?, moves?}: once an agent is working, the run lets it work for after seconds, then does it. do is stop, to press Stop (if Postbox asks whether to stop its background jobs too, jobs answers: stop or keep); send_now, to write text and press Send now on it; look, to see the running replies as they are then, a screenshot and their text, pressing nothing; scroll, to make each of moves in order, about a second apart, as scroll’s by does (up, down, end, start), and hear where the view was after each, to page back and forth while a reply streams; or answer, to answer the block item while the agent works, as review (verdict, comments) or act (choose, button) would. Answer a draft that way while its agent is revising it, as a person reading along would.
 
 Scenario: ${scenario.title}
 ${scenario.summary}${judgePrompt(scenario)}`;

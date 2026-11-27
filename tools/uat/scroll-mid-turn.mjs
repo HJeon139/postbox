@@ -1,0 +1,71 @@
+// The tester’s scroll while an agent works (#805): an interrupt {after, do: scroll, moves} pages the conversation back
+// and forth while a reply streams, as a person reading along does. A step can’t, since the run waits for the agents
+// before each one. Each move is the scroll step’s own (tools/uat/scroll-step.mjs): the input recorded first, then the
+// key. Once the view has stopped moving, it takes one sample from the view probe (tools/uat/view-probe.mjs), so
+// view-moved sees the mode and anchor while the turn runs.
+
+import { sleep } from '../browser.mjs';
+import { KEYS, scrollStep } from './scroll-step.mjs';
+import { recordViews } from './view-probe.mjs';
+
+/** The most moves one interrupt makes: enough to page back a few times and come back. */
+export const MOVES_MAX = 8;
+/** Between moves, so the reply streams on between samples, in ms. */
+const BETWEEN_MS = 1000;
+/** The longest wait for a key’s scroll to stop before sampling, in ms: a view following a stream never stops. */
+const STILL_MAX_MS = 1500;
+
+/**
+ * The interrupt’s moves, checked before the agent works its seconds, so a bad one fails at once.
+ * @param {{ moves?: unknown }} interrupt  @returns {string[]}
+ */
+export function scrollMoves({ moves }) {
+  if (!Array.isArray(moves) || !moves.length || moves.length > MOVES_MAX)
+    throw new Error(`A scroll while an agent works needs moves: 1 to ${MOVES_MAX} of up, down, end or start.`);
+  const bad = moves.find((m) => !Object.hasOwn(KEYS, String(m)));
+  if (bad !== undefined) throw new Error(`A move is up, down, end or start, not “${bad}”.`);
+  return moves;
+}
+
+/**
+ * Resolves once the page’s scroll has held still for three frames, or after STILL_MAX_MS: a key’s scroll may be
+ * smooth, and a sample taken mid-scroll doesn’t count as settled.
+ */
+const STILL = `new Promise((done) => {
+  const s = document.scrollingElement;
+  const start = performance.now();
+  let last = s.scrollTop;
+  let same = 0;
+  const tick = () => {
+    same = s.scrollTop === last ? same + 1 : 0;
+    last = s.scrollTop;
+    if (same >= 3 || performance.now() - start > ${STILL_MAX_MS}) done(true);
+    else requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})`;
+
+/** What the conversation’s view was at the last sample, for the tester. @param {any[]} views */
+function viewSaid(views) {
+  const s = views.findLast((v) => v.where === 'main');
+  if (!s) return 'the view probe read nothing';
+  return s.mode === 'reading' ? `reading, at ${s.anchorId}` : String(s.mode);
+}
+
+/**
+ * Makes each move while the agent works, sampling the view after each.
+ * @param {{ d: any, facts: any, step: number, pause?: () => Promise<void> }} ctx  pause: the wait between moves
+ * @param {{ moves?: unknown }} interrupt
+ * @returns {Promise<string>}  what happened, for the tester
+ */
+export async function scrollMidTurn({ d, facts, step, pause = () => sleep(BETWEEN_MS) }, interrupt) {
+  const said = [];
+  for (const [i, by] of scrollMoves(interrupt).entries()) {
+    if (i) await pause();
+    await scrollStep({ page: d.kit.page, facts, step }, { by });
+    await d.kit.ev(STILL);
+    await recordViews(d.kit.ev, facts, step);
+    said.push(`${KEYS[/** @type {keyof typeof KEYS} */ (by)]} (${viewSaid(facts.probes.views ?? [])})`);
+  }
+  return `Scrolled while the agent worked: ${said.join(', ')}.`;
+}
