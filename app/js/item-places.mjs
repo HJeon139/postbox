@@ -1,26 +1,41 @@
 // Each transcript item’s place, for a screen reader (#1048). With items off screen skipped (view-skip.mjs), Chromium
 // keeps no accessibility tree for a skipped item’s contents until it draws. Its box is in the tree, skipped or not, and
-// focusing it (Alt+↑/↓, keys.mjs) draws it. Each main-pane item is an article named by its own words (asArticle), and
-// carries aria-posinset and aria-setsize, “4 of 496”, among the shown items (countItems). Only while every item is
-// mounted: the window (#866) mounts the items near the view, so their places among the mounted ones would be wrong.
-
-/** How many items asArticle has made, for ids no two drawings share. */
-let drawn = 0;
+// focusing it (Alt+↑/↓, keys.mjs) draws it. Each main-pane item is an article (asArticle), named by its own words while
+// it has focus (nameOnFocus), and carries aria-posinset and aria-setsize, “4 of 496”, among the shown items
+// (countItems), only while every item is mounted: the window (#866) mounts the items near the view, so their places
+// among the mounted ones would be wrong.
 
 /**
  * Makes a main-pane item an article before it’s on the page, as it’s built (thread.mjs, render): written once it’s
- * mounted, the role would restyle it. An article is named only by its author, so it’s labeled by itself: focused,
- * it draws, and a reader hears its words, as it did before it was an article. A skipped item’s name is empty until it
- * draws, as its contents are. A card that is already a group keeps its role and its own name.
- * @param {HTMLElement} node  the item  @param {string} key  its item id
+ * mounted, the role would restyle it. A card that is already a group keeps its role and its own name.
+ * @param {HTMLElement} node  the item
  */
-export function asArticle(node, key) {
-  if (node.hasAttribute('role')) return;
-  node.setAttribute('role', 'article');
-  // An id of this drawing only: one shared with the node it replaces would move focus onto the new one when an item is
-  // drawn again or moved (rerender-state.mjs, holdFocus), which items never did.
-  node.id = `item-${key}-${++drawn}`;
-  node.setAttribute('aria-labelledby', node.id);
+export function asArticle(node) {
+  if (!node.hasAttribute('role')) node.setAttribute('role', 'article');
+}
+
+/**
+ * An article is named only by its author, so an item that has focus is labeled by itself: focused, it draws, and a
+ * reader hears its words, as it did before it was an article. Only while it has focus: an article labeled by its own
+ * skipped contents makes Chromium lay them out, which doubled the layouts while a room of 1,000 items mounted (#1048).
+ * A node drawn again has no id until it’s focused, so holdFocus (rerender-state.mjs) never moves focus onto it, as
+ * it never did for items.
+ * @param {HTMLElement} el  the transcript
+ */
+export function nameOnFocus(el) {
+  const item = (/** @type {EventTarget | null} */ t) => (t instanceof HTMLElement && t.parentElement === el && t.getAttribute('role') === 'article' ? t : null);
+  el.addEventListener('focusin', (e) => {
+    const n = item(e.target);
+    if (!n) return;
+    n.id = `item-${n.dataset.key}`;
+    n.setAttribute('aria-labelledby', n.id);
+  });
+  el.addEventListener('focusout', (e) => {
+    const n = item(e.target);
+    if (!n?.id.startsWith('item-')) return;
+    n.removeAttribute('aria-labelledby');
+    n.removeAttribute('id');
+  });
 }
 
 /** Transcripts already counted: a view built again on the same one adds no second observer. */

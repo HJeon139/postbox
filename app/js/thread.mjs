@@ -25,7 +25,7 @@ import { appSig, drawnApp } from './drawn-app.mjs';
 import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
-import { asArticle, countItems } from './item-places.mjs';
+import { asArticle, countItems, nameOnFocus } from './item-places.mjs';
 import { beyondItem } from './item-ranges.mjs';
 import { messageActions } from './message-actions.mjs';
 import { closeThread, grow, loaded, more, openThread, refresh, toFirst, toLast } from './open-threads.mjs';
@@ -114,7 +114,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     noteDrawn(node, it, prev);
     node.classList.add('item');
     if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
-    if (!inPanel) asArticle(node, it.id);
+    if (!inPanel) asArticle(node);
     return node;
   };
   const rerender = (id) => {
@@ -188,6 +188,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   // The main pane skips items off screen, whose contents then leave the accessibility tree, so each says its place
   // (#1048, item-places.mjs).
   if (!inPanel) countItems(el);
+  if (!inPanel) nameOnFocus(el);
 
   const off = client.on((ch) => {
     // A resync that couldn’t load this conversation’s items loads them now, and with the window turned off, all of them.

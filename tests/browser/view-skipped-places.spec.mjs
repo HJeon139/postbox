@@ -139,7 +139,13 @@ test('in a room under the window’s ceiling, mounted whole, every item reaches 
   await page.locator('#composer-input').focus();
   await page.keyboard.press('Alt+ArrowUp');
   await expect(page.locator(':focus')).toHaveAttribute('aria-posinset', String(items.length));
-  for (let i = 1; i < items.length; i++) await page.keyboard.press('Alt+ArrowUp');
+  // Labeled only while it has focus: one left labeled by its skipped contents would be laid out (item-places.mjs).
+  const was = page.locator(':focus');
+  const wasKey = await was.getAttribute('data-key');
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(page.locator(`#main > .item[data-key="${wasKey}"]`)).not.toHaveAttribute('aria-labelledby', /./);
+  await expect(page.locator(':focus')).toHaveAttribute('aria-labelledby', /./);
+  for (let i = 2; i < items.length; i++) await page.keyboard.press('Alt+ArrowUp');
   await expect(page.locator(':focus')).toHaveAttribute('aria-posinset', '1');
   await expect.poll(() => focusedName(page)).toMatch(/\S/);
 });
