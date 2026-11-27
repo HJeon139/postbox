@@ -28,7 +28,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
   - **rail/**
     - [Rail (sidebar)](shell/rail/rail.md)
     - [Rail row](shell/rail/rail-row.md)
-    - [Agents section and quick panel](shell/rail/agents-section.md)
+    - [Agents section](shell/rail/agents-section.md)
 - **project/**
   - [Threads view](project/threads-view.md)
 - **conversation/**
@@ -48,6 +48,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Message actions](conversation/transcript/message-actions.md)
     - [Shared from a thread](conversation/transcript/shared-from-thread.md)
     - [Command item (!)](conversation/transcript/command-item.md)
+    - [Run clock lines](conversation/transcript/run-clock.md)
   - **blocks/**
     - [Choice block](conversation/blocks/choice.md)
     - [Form block](conversation/blocks/form.md)
@@ -81,6 +82,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
   - **panels/**
     - [Topic thread panel](conversation/panels/topic-thread-panel.md)
     - [Side thread panel](conversation/panels/side-thread-panel.md)
+  - [Work view](conversation/work-view.md)
 - **sheets/**
   - [New agent sheet](sheets/new-agent.md)
   - [New conversation and New room](sheets/new-conversation-and-room.md)
@@ -98,6 +100,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Settings: People](sheets/settings/people.md)
     - [Settings: Hosts](sheets/settings/hosts.md)
     - [Settings: Backends](sheets/settings/connect-an-agent.md)
+- [UAT plan: the Agents section, the Work view and the right pane](plan-agents-and-work.md)
 
 ## Runs
 

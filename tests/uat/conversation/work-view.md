@@ -41,7 +41,7 @@ The person directs agents that edit code, run commands, commit, push and file is
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Open “Citation fixes” once @researcher has answered “Fix the citation script” and “Try a faster parser”. Check each turn’s activity line above its reply and the rows under it, and choose each row, pressing Escape after each. (**N more** shows only after five rows, which no turn here has.)
+2. Open “Citation fixes” once @researcher has answered “Fix the citation script” and “Try a faster parser”. Check each turn’s activity line above its reply and the rows under it, and choose each row, pressing Escape after each. (**N more** shows only after five rows, which no turn here has; `npx playwright test work-list` (`tests/browser/work-list.spec.mjs`) checks it.)
 3. Choose **Work** in the top bar. Read the pane, open **More**, then choose `refs.bib` under **In this chat**, and **Diff** in its viewer. Rest the pointer on a row of In this chat while a reply arrives, then move it away. Full screen, open the background command and the failed one. Press Escape, then choose `cite.mjs` in the first reply.
 4. Open “Asset explorer”, choose **Work**, and choose each asset under **Assets**, pressing **Back to Work** after each.
 5. Back in “Citation fixes”, open `refs.bib` and its **Diff**, choose **Restore…**, then **Restore**. Press Escape.

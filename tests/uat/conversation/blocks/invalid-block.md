@@ -16,7 +16,7 @@ A bad block must never break the transcript or fail silently.
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Open “Index the shelf” after scene 8 (“Show it as a timeline”). @indexer’s timeline and progress blocks are invalid, so they’re refused: only its reply, “Here’s the timeline:”, is posted, with no card for the blocks.
+2. Open “Index the shelf” after scene 8 (“Show it as a timeline”). @indexer’s three blocks (a timeline, a progress block of a newer version, and a choice with an unlabeled option) are invalid, so they’re refused: only its reply is posted, with no card and no plain-text fallback for the blocks. As an agent does with a refusal, the reply then says in words what each block held (“Chapters by book wasn’t shown, so in words: …”).
 3. The fallback itself needs an agent on a host whose Postbox is newer, sending a block of a type this one doesn’t know; the demo has no such host. Run `npx playwright test activity-state block-refusal`: `tests/browser/activity-state.spec.mjs` posts an unknown-type block’s fallback and keeps its raw block open across an update (#488), and `tests/browser/block-refusal.spec.mjs` checks that a malformed block leaves no card.
 
 **Pass if:** In step 2 no broken card shows. Where the fallback does show, it has the agent’s plain-text version, “Can’t show this block”, and the raw JSON with the reason under Show the raw block. Both specs pass.
