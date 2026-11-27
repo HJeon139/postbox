@@ -2,11 +2,11 @@
 // for the person to merge (the person’s decision of 26 November 2026), in the project’s repository and in each of its
 // submodules’ (#1856).
 
-import { constants } from 'node:fs';
-import { access, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readdir, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { runGit } from '../ledger-git.mjs';
+import { copyIndex } from './agent-index-copy.mjs';
 import { gitlinksAt } from './agent-submodules.mjs';
 import { branchFor, gitTimeoutFor, sharedFolder, worktreesRootFor } from './agent-worktree.mjs';
 
@@ -118,26 +118,6 @@ async function commitIn(git, place, turn) {
     return done;
   } finally {
     await rm(dir, { recursive: true, force: true });
-  }
-}
-
-/**
- * Copies a worktree’s index to Postbox’s own file. Only a regular file is copied, opened without following a link and
- * without waiting, so an index replaced by anything else (a link, a pipe) leaves the turn uncommitted rather than
- * holding it (#1844). No index at all is read as an empty one, by the worktree and by the copy alike.
- * @param {string} from @param {string} to @returns {Promise<boolean>}
- */
-async function copyIndex(from, to) {
-  const fh = await open(from, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch((/** @type {any} */ e) => e);
-  if (!fh || typeof fh.close !== 'function') return fh?.code === 'ENOENT';
-  try {
-    if (!(await fh.stat()).isFile()) return false;
-    await writeFile(to, fh.createReadStream({ autoClose: false }));
-    return true;
-  } catch {
-    return false;
-  } finally {
-    await fh.close();
   }
 }
 
