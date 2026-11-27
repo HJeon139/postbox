@@ -22,6 +22,12 @@ import { newId } from './store.mjs';
  * warning. At 375 px it stays a warning: an SVG scaled to fit a narrow pane draws its labels small.
  */
 const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small-375', 'dashes-too-fine', 'only-error', 'text-over-marks']);
+/**
+ * Of the warnings, those only the agent hears: alone, they leave the version passed, with no note for the person. Labels
+ * on a chart’s marks (#952) are one: in a sample of real apps, half of what it flagged was a legible touch, which isn’t
+ * worth the person’s attention, and the person chose that the agent alone hears it.
+ */
+const APP_HINTS = new Set(['text-over-marks']);
 
 // ── Apps ───────────────────────────────────────────────────────────────────────────
 
@@ -35,6 +41,26 @@ export function appCheck(apps, appId, report) {
   return r;
 }
 
+/**
+ * A version that passed, or whose only findings are hints for the agent alone: those go to it through the lint pipeline
+ * of the turn that made the version, and stay on the check for it to read; the person sees the version as passed.
+ * @param {any} apps @param {any} app  the app as checked() read it @param {number} version @param {any[]} hints
+ */
+function passed(apps, app, version, hints) {
+  if (hints.length) {
+    const turnId = apps.running.turnOf(app.sessionId)?.id ?? apps.store.state.sessions[app.sessionId]?.lastTurnId;
+    const scope = { kind: 'app', id: app.id, title: app.title };
+    apps.checks.lint(
+      app.sessionId,
+      turnId,
+      hints.map((p) => ({ ...p, scope })),
+    );
+  }
+  const check = { status: 'passed', attempt: app.check.attempt, problems: [], ...(hints.length ? { hints } : {}) };
+  apps.store.emit('app', { ...app, lastShown: version, check });
+  return { status: 'passed' };
+}
+
 /** The check’s result, recorded. @param {any} apps @param {string} appId @param {{ version: number, problems?: any[] }} report */
 function checked(apps, appId, { version, problems = [] }) {
   const app = apps.store.state.apps[appId];
@@ -44,11 +70,9 @@ function checked(apps, appId, { version, problems = [] }) {
   const clean = (Array.isArray(problems) ? problems : [])
     .slice(0, 20)
     .map((p) => ({ code: String(p?.code).slice(0, 40), message: cutText(String(p?.message), 300) }));
-  // The last version the person was shown, which stands in while its agent fixes a later one (#948).
-  if (!clean.length) {
-    apps.store.emit('app', { ...app, lastShown: version, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
-    return { status: 'passed' };
-  }
+  // Passed, or with only hints for the agent: the version the person is shown, which stands in while its agent fixes a
+  // later one (#948).
+  if (clean.every((p) => APP_HINTS.has(p.code))) return passed(apps, app, version, clean);
   // A script error goes back to the agent once, like any blocking problem (#964); after that, or with no agent to
   // tell, the version shows as crashed.
   if (clean.some((p) => p.code === 'script-error') && (app.check.attempt > 0 || !apps.store.state.sessions[app.sessionId])) {

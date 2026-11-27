@@ -24,7 +24,7 @@ const ring = '<circle cx="330" cy="190" r="12" fill="none" stroke="var(--s2)" st
 // The fit line, a straight line of two points, as a fit almost always is.
 const fit = '<path d="M40 215 L380 55" fill="none" stroke="var(--s3)" stroke-width="2"/>';
 const scatter = (id, labels) =>
-  `<h2 style="color:var(--text);margin:8px">Runs got faster as sleep grew</h2><svg id="${id}" width="420" height="240" role="img" aria-label="Pace against sleep">${dots}${ring}${fit}${labels}</svg>`;
+  `<h2 style="color:var(--text);margin:8px">Runs got faster as sleep grew</h2><svg id="${id}" width="420" height="240" viewBox="0 0 420 240" style="max-width:100%;height:auto" role="img" aria-label="Pace against sleep">${dots}${ring}${fit}${labels}</svg>`;
 
 const APPS = {
   // The issue’s chart: “6:25” on a dot, “6:11” on the ring, “5:56” on the fit line; “Hill circuit” clear of them all.
@@ -115,8 +115,16 @@ test.afterAll(async () => {
 });
 
 const check = (id) => app.rt.store.state.apps[id].check;
-const says = (id) => (check(id).problems ?? []).map((p) => `${p.code}: ${p.message}`).join('\n') || 'no problems';
-const overMarks = (id) => (check(id).problems ?? []).filter((p) => p.code === 'text-over-marks').map((p) => p.message);
+// What the agent alone is told: the check’s hints, beside its problems (#952).
+const found = (id) => [...(check(id).problems ?? []), ...(check(id).hints ?? [])];
+const says = (id) =>
+  found(id)
+    .map((p) => `${p.code}: ${p.message}`)
+    .join('\n') || 'no problems';
+const overMarks = (id) =>
+  found(id)
+    .filter((p) => p.code === 'text-over-marks')
+    .map((p) => p.message);
 
 test('#952 labels drawn over a chart’s dot, ring and fit line are a warning that names them, and the chart still shows', () => {
   const [message] = overMarks('onmarks');
@@ -125,7 +133,25 @@ test('#952 labels drawn over a chart’s dot, ring and fit line are a warning th
   expect(message).toContain('“6:11” (on a ring)');
   expect(message).toContain('“5:56” (on a line)');
   expect(message).not.toContain('Hill circuit');
-  expect(check('onmarks').status, 'a warning: the version is shown, with a note').toBe('note');
+  expect(check('onmarks').status, 'the agent alone is told: the version passes').toBe('passed');
+  expect(check('onmarks').problems, 'nothing for the person').toEqual([]);
+});
+
+test('#952 the person sees the chart with no note: only its agent hears of the labels on its marks', async ({ page }) => {
+  const { rt } = app;
+  const t = rt.createThread({
+    projectId: Object.values(rt.store.state.projects)[0].id,
+    title: 'Chart',
+    personaIds: [rt.createPersona({ handle: 'charter' }).id],
+  });
+  rt.toolsFor(arrange.agentIn(rt, t.id).id).show_app({ id: 'quiet', title: 'quiet', code: APPS.onmarks });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect.poll(() => rt.store.state.apps.quiet.check.status, { message: 'the chart checked', timeout: 30_000 }).toBe('passed');
+  expect(overMarks('quiet'), 'its agent hears of the labels').toHaveLength(1);
+  const item = page.locator(`#main [data-key="${rt.store.state.apps.quiet.itemId}"]`);
+  await expect(item.locator('iframe.app-iframe'), 'the chart is shown').toBeVisible();
+  await expect(item.locator('.app-note'), 'with no note').toHaveCount(0);
 });
 
 test('#952 a label on the visible part of a clipped line, on a ring scatter’s fit line, and on a line clipped in its box’s units, is on the line', () => {
