@@ -1,8 +1,9 @@
 // Skipped items and a screen reader (#1048). With items off screen skipped (content-visibility: auto, #712a), Chromium
-// keeps no accessibility tree for a skipped item’s contents, so a reader reached only the items that had drawn: 23 of
-// a 500-item room’s messages. The item’s own box isn’t skipped, so each item is an article that carries its place among
-// the room’s items, “4 of 500”, whether it has drawn or not, and Alt+↑/↓ reaches each in turn. Chromium’s DevTools
-// protocol doesn’t list aria-posinset, so the place is read from the DOM, beside the articles in the tree.
+// keeps no accessibility tree for a skipped item’s contents until it draws: 23 of a 500-item room’s items have words in
+// the tree, before and after #1048. Every item’s box is in the tree, and focusing one draws it. Each is now an article,
+// named by its words once focused as it was before, carrying its place among the room’s shown items, “4 of 500”.
+// Chromium’s DevTools protocol doesn’t list aria-posinset, so the place is read from the DOM, beside the articles in
+// the tree; whether a reader announces it wasn’t run.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
@@ -20,20 +21,45 @@ test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
 
 /**
- * The articles in Chromium’s accessibility tree, and each shown item’s role and place from the DOM.
+ * The articles under the transcript in Chromium’s accessibility tree, and each shown item’s role and place from the DOM.
  * @param {import('@playwright/test').Page} page
  */
 async function places(page) {
   const cdp = await page.context().newCDPSession(page);
+  const { root } = await cdp.send('DOM.getDocument');
+  const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#main' });
+  const { node } = await cdp.send('DOM.describeNode', { nodeId });
   const { nodes } = await cdp.send('Accessibility.getFullAXTree');
   await cdp.detach();
-  const inTree = nodes.filter((n) => !n.ignored && n.role?.value === 'article').length;
+  const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+  // Every article below #main’s own node, walking the tree from it.
+  let inTree = 0;
+  const walk = [nodes.find((n) => n.backendDOMNodeId === node.backendNodeId)];
+  while (walk.length) {
+    const n = walk.pop();
+    if (!n) continue;
+    if (!n.ignored && n.role?.value === 'article') inTree++;
+    for (const c of n.childIds ?? []) walk.push(byId.get(c));
+  }
   const items = await page.evaluate(() =>
     [...document.querySelectorAll('#main > .item')]
       .filter((n) => !(/** @type {HTMLElement} */ (n).hidden))
       .map((n) => [n.getAttribute('role'), n.getAttribute('aria-posinset'), n.getAttribute('aria-setsize')]),
   );
   return { inTree, items };
+}
+
+/**
+ * The accessible name Chromium gives the focused node: what a reader says when focus lands on an item.
+ * @param {import('@playwright/test').Page} page
+ */
+async function focusedName(page) {
+  const cdp = await page.context().newCDPSession(page);
+  const { result } = await cdp.send('Runtime.evaluate', { expression: 'document.activeElement' });
+  const { node } = await cdp.send('DOM.describeNode', { objectId: result.objectId });
+  const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { backendNodeId: node.backendNodeId, fetchRelatives: false });
+  await cdp.detach();
+  return String(nodes[0]?.name?.value ?? '');
 }
 
 /** Every shown item an article, at its place of all of them. @param {string[][]} items */
@@ -82,6 +108,8 @@ test.describe('the window off', () => {
         }),
       )
       .toBe(true);
+    // A reader focusing it hears the message: the article is named by its own words, once it has drawn.
+    await expect.poll(() => focusedName(page)).toMatch(/\S/);
     // A command the person ran is a group (thread.mjs): it keeps that role and says no place, and still counts, so the
     // item after it is one place further on.
     app.rt.threads.addItem(conv, { kind: 'command', command: 'ls', cwd: '.', status: 'done', exitCode: 0, output: '' });
@@ -108,6 +136,13 @@ test('in a room under the window’s ceiling, mounted whole, every item reaches 
   const { inTree, items } = await places(page);
   expect(items).toEqual(counted(items));
   expect(inTree).toBe(items.length);
+  // Alt+↑ from the composer reaches the last item, and on up to the first, each named by its words and at its place.
+  await page.locator('#composer-input').focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(page.locator(':focus')).toHaveAttribute('aria-posinset', String(items.length));
+  for (let i = 1; i < items.length; i++) await page.keyboard.press('Alt+ArrowUp');
+  await expect(page.locator(':focus')).toHaveAttribute('aria-posinset', '1');
+  await expect.poll(() => focusedName(page)).toMatch(/\S/);
 });
 
 test('in a room the window holds, items are articles with no place, since only those near the view are mounted', async ({ page }) => {
@@ -120,4 +155,32 @@ test('in a room the window holds, items are articles with no place, since only t
   const { items } = await places(page);
   expect(items.length, 'the window mounts fewer than all').toBeLessThan(500);
   expect(items.every(([role, at, of]) => role === 'article' && at === null && of === null)).toBe(true);
+});
+
+test('a counted item the window keeps when it takes hold of the room loses its place, as the window mounts only some', async ({ page }) => {
+  // Plain notes, so 190 items stay under the window’s element budget and mount whole (window-default.spec.mjs).
+  const projectId = /** @type {any} */ (Object.values(app.store.state.projects)[0]).id;
+  const room = app.rt.createThread({ projectId, title: 'Places kept', personaIds: [] });
+  for (let i = 0; i < 190; i++) app.rt.threads.addItem(room.id, { kind: 'user', text: `Note: ${i}` });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${room.id}`);
+  await synced(page, app);
+  await expect(page.locator('#main > .item')).toHaveCount(190);
+  await expect(page.locator('#main.transcript')).not.toHaveAttribute('data-window', /./);
+  // Focused, the last item is kept as it is when the room is built again (window-keep.mjs).
+  await page.locator('#composer-input').focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  const kept = page.locator(':focus');
+  await expect(kept).toHaveAttribute('aria-posinset', /\d/);
+  const key = await kept.getAttribute('data-key');
+  // The room grows past the window’s ceiling, then a resync builds it again, now held by the window.
+  for (let k = 0; k < 60; k++) app.rt.threads.addItem(room.id, { kind: 'user', text: `Note: grown ${k}` });
+  await expect(page.locator('#main > .item').filter({ hasText: 'Note: grown 59' })).toHaveCount(1);
+  await page.evaluate(() => import('/app/js/client.mjs').then(({ load }) => load()));
+  await synced(page, app);
+  await expect(page.locator('#main.transcript')).toHaveAttribute('data-window', 'on');
+  const node = page.locator(`#main > .item[data-key="${key}"]`);
+  await expect(node).toBeAttached();
+  await expect(node).not.toHaveAttribute('aria-posinset', /./);
+  await expect(node).not.toHaveAttribute('aria-setsize', /./);
 });

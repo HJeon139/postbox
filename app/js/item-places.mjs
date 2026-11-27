@@ -1,8 +1,22 @@
 // Each transcript item’s place, for a screen reader (#1048). With items off screen skipped (view-skip.mjs), Chromium
-// keeps no accessibility tree for a skipped item’s contents, so a reader reached only the items that had drawn. The
-// item’s own box isn’t skipped: as an article with aria-posinset and aria-setsize, each item is reached and says where
-// it is among them, “4 of 496”, and Alt+↑/↓ (keys.mjs) reaches each in turn. Only while every item is mounted: the
-// window (#866) mounts the items near the view, so their places among the mounted ones would be wrong.
+// keeps no accessibility tree for a skipped item’s contents until it draws. Its box is in the tree, skipped or not, and
+// focusing it (Alt+↑/↓, keys.mjs) draws it. Each main-pane item is an article named by its own words (asArticle), and
+// carries aria-posinset and aria-setsize, “4 of 496”, among the shown items (countItems). Only while every item is
+// mounted: the window (#866) mounts the items near the view, so their places among the mounted ones would be wrong.
+
+/**
+ * Makes a main-pane item an article before it’s on the page, as it’s built (thread.mjs, render): written once it’s
+ * mounted, the role would restyle it. An article is named only by its author, so it’s labeled by itself: focused,
+ * it draws, and a reader hears its words, as it did before it was an article. A skipped item’s name is empty until it
+ * draws, as its contents are. A card that is already a group keeps its role and its own name.
+ * @param {HTMLElement} node  the item  @param {string} key  its item id
+ */
+export function asArticle(node, key) {
+  if (node.hasAttribute('role')) return;
+  node.setAttribute('role', 'article');
+  node.id ||= `item-${key}`;
+  node.setAttribute('aria-labelledby', node.id);
+}
 
 /** Transcripts already counted: a view built again on the same one adds no second observer. */
 const counting = new WeakSet();
@@ -22,9 +36,8 @@ export function countItems(el) {
     const of = String(shown.length);
     // Only what changed is written: an append changes every item’s count, and nothing else.
     shown.forEach((n, i) => {
-      // A card that is already a group (a permission, an ask to see an app) keeps its role, and its place in the count,
-      // which a group can’t carry: the articles around it still count it.
-      if (!n.hasAttribute('role')) n.setAttribute('role', 'article');
+      // A card that is already a group (a permission, an ask to see an app) is no article (asArticle): it keeps its place
+      // in the count, which a group can’t carry, and the articles around it still count it.
       const at = String(i + 1);
       if (held || n.getAttribute('role') !== 'article') {
         // Held by the window, a node it kept from the whole room (a running app, the focused item) loses its place.

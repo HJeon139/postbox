@@ -25,7 +25,7 @@ import { appSig, drawnApp } from './drawn-app.mjs';
 import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
-import { countItems } from './item-places.mjs';
+import { asArticle, countItems } from './item-places.mjs';
 import { beyondItem } from './item-ranges.mjs';
 import { messageActions } from './message-actions.mjs';
 import { closeThread, grow, loaded, more, openThread, refresh, toFirst, toLast } from './open-threads.mjs';
@@ -114,6 +114,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     noteDrawn(node, it, prev);
     node.classList.add('item');
     if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
+    if (!inPanel) asArticle(node, it.id);
     return node;
   };
   const rerender = (id) => {
