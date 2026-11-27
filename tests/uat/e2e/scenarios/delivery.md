@@ -65,7 +65,7 @@ Ask @developer to schedule a wake for itself in two minutes. The runner drops th
 - triggers: compaction
 - steps: 5
 
-Compact @critic’s session from its quick panel. Then ask @critic what you asked it in phase 5, and where it would look if it isn’t sure.
+Compact @critic’s session with `@critic /compact` in the composer. Then ask @critic what you asked it in phase 5, and where it would look if it isn’t sure.
 
 ## Phase 8: Changes while a delivery waits (A2)
 
