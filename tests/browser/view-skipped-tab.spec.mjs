@@ -178,8 +178,8 @@ test('#712a: with an app in view, Tab goes into it, out to the next control in d
 
 /**
  * Where focus is after a Tab from an app’s Full screen button that didn’t reach its first control (#906): the page’s
- * focused element and whether its document has focus, and the same for the app’s frame, with its readyState. Each read
- * is bounded, and one that fails says so, so the Tab’s own failure is never replaced.
+ * focused element and whether its document has focus, and the same for the app’s frame, with its readyState. The frame’s
+ * read is bounded at 2 s, and a read that fails says so, so the Tab’s own failure is what the test reports.
  * @param {any} page @param {any} frame the app’s iframe locator
  */
 async function focusAfterTab(page, frame) {
