@@ -129,7 +129,7 @@ test('a side-thread agent waiting on a permission prompt counts in the tab title
   await expect(page, 'the tab title’s count').toHaveTitle(/^\(1\) /);
   await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
   await page.keyboard.press('Control+j');
-  await expect(page).toHaveURL(new RegExp(`#/t/${r.room.id}/side/${side.id}$`));
+  await expect(page, 'at the card’s own address (#168), so Back returns to the room').toHaveURL(new RegExp(`#/t/${r.room.id}/side/${side.id}\\?m=${card}$`));
   await expect.poll(() => page.evaluate((k) => !!document.activeElement?.closest(`[data-key="${k}"]`), card), { message: 'focus on the card' }).toBe(true);
   rt.act(side.id, card, 'allow');
   await expect.poll(() => store.state.sessions[r.researcher.id].needs, { message: 'the answer' }).toBe(null);

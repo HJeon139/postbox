@@ -32,11 +32,10 @@ const ON_HOST =
 export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
 
 /**
- * input is the call’s input, which Edit changes; suggestions are Claude Code’s own (`permission_suggestions`, the
- * SDK’s `suggestions`), which Always allow returns; agentId names the subagent that asks, when one does.
+ * input is the call’s input, which Edit changes; agentId names the subagent that asks, when one does.
  * @param {string} sessionId
- * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
- * suggestions may instead be a harness’s own offer, `{ lines, updates, harness: true }`, which it saves itself (#324).
+ * suppressAlways: the rule Always allow would save grants more than this call.
+ * suggestions is a harness’s own offer, `{ lines, updates, harness: true }`, which it saves itself (#324).
  * draft is what a write outside Postbox carries (server/write-guard.mjs’s draftOf), found from input when not given.
  * hostPrompt: on a remote turn, the prompt on the host this card answers (#120), kept on the card as `remote`, with the
  * daemon’s entry for it (#353).
@@ -78,7 +77,7 @@ export function askPerson(
     input: json && json.length <= MAX_EDIT_INPUT ? JSON.parse(json) : null,
     // On a host too (#120): Postbox’s own rule (the host prompt’s suggestions aren’t read), kept for that host.
     always: rt.alwaysFor(se, { tool, input, suggestions, suppressAlways, hostId: hostPrompt?.hostId ?? null }),
-    // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
+    // A subagent’s prompt names it, as its refusals do: by its agent id, or by the call the stream saw it make.
     who: whoAsked(turn, agentId, toolUseId),
     ...(hostPrompt
       ? {
@@ -107,8 +106,7 @@ export function askPerson(
 
 /**
  * A card nobody answered for CARD_WAIT_MS (#220): Claude Code is about to give up on the call, so the card expires and
- * says how long it waited, in whole hours as the card shows it, and the call is refused (the SDK’s too, which has no
- * such limit).
+ * says how long it waited, in whole hours as the card shows it, and the call is refused.
  * @param {any} rt @param {string} itemId
  */
 export function expireWait(rt, itemId) {
@@ -118,7 +116,7 @@ export function expireWait(rt, itemId) {
 }
 
 /**
- * Whether a backend reads Claude Code’s permission rules from the agent’s folder: Claude Code and the Agent SDK do;
+ * Whether a backend reads Claude Code’s permission rules from the agent’s folder: Claude Code does;
  * the mock reads none, and the Kiro CLI has rules of its own (capabilities.permissions: 'none', #117).
  * @param {string|undefined} backend
  */
@@ -155,7 +153,7 @@ export function settlePermission(rt, itemId, status, message, answer = {}, patch
 /**
  * Your answer on a permission card (#66, #10):
  * - allow: this once, as asked;
- * - always: this once, and Claude Code’s own suggestions as updatedPermissions (the card shows them in words);
+ * - always: this once, and the rule the card shows in words, saved for next time;
  * - edit: with your change to the input (values.command for a command, else values.input, an object or JSON);
  * - deny: no, with values.reason, which goes to the agent;
  * - dismiss: on a card nobody can answer any more, so it stops counting toward “needs you” (#721).
@@ -203,8 +201,9 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
 }
 
 /**
- * Always allow on a permission card: Claude Code’s suggestions go back as updatedPermissions, and Claude Code saves
- * them; a rule Postbox made (the CLI suggests none) Postbox saves itself, in the agent folder’s local settings. On a host
+ * Always allow on a permission card: a harness’s own offer goes back as updatedPermissions, and the harness saves it
+ * (Codex’s, #324); a rule Postbox made (Claude Code’s CLI suggests none) Postbox saves itself, in the agent folder’s
+ * local settings. On a host
  * turn’s card (#120) that folder is never read, so the rule goes in Postbox’s store, for this persona on that host, and
  * its next turn there gets it in --settings (host-rules.mjs); this call is allowed now.
  * @param {string} threadId @param {any} it @param {string} asked
@@ -214,7 +213,7 @@ export async function allowAlways(rt, threadId, it, asked) {
     const se = rt.s.sessions[it.sessionId];
     const persona = se && rt.personas.forSession(se);
     const adapter = persona && rt.placement.requestAdapter(se.handle, persona);
-    if (!adapter?.folderFor || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
+    if (!adapter?.folderFor || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code agents read permission rules.');
     // A card that expired, or whose turn ended, saves nothing: check before the write, and take the rule out again
     // if it ended while the file was written (#281).
     const ended = 'The turn that asked has ended, so no rule was saved.';
@@ -293,7 +292,7 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   if (action === 'always') {
     const persona = se && rt.personas.forSession(se);
     const adapter = persona && rt.placement.requestAdapter(se.handle, persona);
-    if (!adapter?.folderFor || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
+    if (!adapter?.folderFor || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code agents read permission rules.');
     const folder = await adapter.folderFor(persona, rt.s.projects[rt.s.threads[threadId]?.projectId]);
     await addAllowRule(folder, it.rules.always);
     // Without the settings file’s path: the note is an inbox entry, which reaches the page, and the path is this computer’s.

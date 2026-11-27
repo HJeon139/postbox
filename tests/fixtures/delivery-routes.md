@@ -1,6 +1,6 @@
 # Mid-Turn Delivery Route Spike (#470, MD-2, MD-8)
 
-This document records the results of the five-backend delivery spike investigating whether and how a user or agent message can reach a working agent mid-turn without restarting the turn, aborting background tasks, or losing model reasoning.
+This document records the results of the delivery spike across the backends investigating whether and how a user or agent message can reach a working agent mid-turn without restarting the turn, aborting background tasks, or losing model reasoning.
 
 ---
 
@@ -9,7 +9,6 @@ This document records the results of the five-backend delivery spike investigati
 | File                                                                                  | SHA-256                                                            | Provenance / Run Type                                                                                                                                               |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests/fixtures/delivery-routes/timing-manifest.json`                                 | `7adbdc0319533fb46782e2c3f2faa33d7ebcd991b1dcf1f8521cd897ffd23382` | **Live timing manifest:** Exact process-relative and event-relative timestamps, send markers, and latencies for all 6 runs (including hook-refused counterexample). |
-| `tests/fixtures/delivery-routes/agent-sdk-stream-input.jsonl`                         | `30c6a9e5a080c89cdb78b79467a02b7561a9e5df16b11253df91db8fe3343d51` | **Live captured run** (`@anthropic-ai/claude-agent-sdk` v0.3.306): `streamInput()` mid-turn delivery.                                                               |
 | `tests/fixtures/delivery-routes/antigravity-pre-tool.jsonl`                           | `6b05619eae19ec7a15b6530262737052aec5272b29df53c22c21d164ab98d82d` | **Synthetic baseline reference** (`// SYNTHETIC PROTOCOL BASELINE ONLY — NOT FOR RECEIVER TESTS`).                                                                  |
 | `tests/fixtures/delivery-routes/claude-code-stream-input.jsonl`                       | `72d92e368ab299d968bc6f4371e0cf4623d73700ed4b3514401f88737ea12b09` | **Live captured run** (`claude` v2.1.296): `--input-format stream-json` mid-turn input during execution.                                                            |
 | `tests/fixtures/delivery-routes/codex-turn-steer.jsonl`                               | `19928f798e24108a9b4a024d91315b8f5de305e7ff93e32d7dfda1bcb7e81b47` | **Live captured run** (`codex-cli` v0.164.0): `turn/steer` dispatched into active running turn.                                                                     |
@@ -99,15 +98,7 @@ Each hash is of the file as committed. After the runs, each Claude Code init had
      - `--replay-user-messages`: Re-emits injected user messages on stdout for turn synchronization.
    - Status: Verified live mid-turn streaming.
 
-2. **Agent SDK (`@anthropic-ai/claude-agent-sdk` v0.3.306):**
-   - Code: `const q = query({ prompt: ... }); await q.streamInput(generator());`
-   - Methods:
-     - `Query.streamInput(stream: AsyncIterable<SDKUserMessage>): Promise<void>`
-     - `SDKUserMessage.priority: 'now' | 'next' | 'later'`
-     - `Query.backgroundTasks(toolUseId?: string): Promise<boolean>`
-   - Status: Verified live mid-turn streaming into active query during execution.
-
-3. **Codex app-server (`codex` v0.164.0):**
+2. **Codex app-server (`codex` v0.164.0):**
    - Command: `codex app-server`
    - RPC Methods:
      - `turn/steer`: In-turn steering with precondition `expectedTurnId`.
@@ -115,7 +106,7 @@ Each hash is of the file as committed. After the runs, each Claude Code init had
      - `turn/interrupt`: Interrupts active turn.
    - Status: Verified live mid-turn steering on active running turn.
 
-4. **Antigravity CLI (`agy` v1.4.12):**
+3. **Antigravity CLI (`agy` v1.4.12):**
    - Citation: `agy --help`, `server/adapters/agy-hook.mjs`.
    - Mechanism:
      - Headless mode spawns with `stdio: ['ignore', 'pipe', 'pipe']`. No streaming stdin channel.
@@ -123,7 +114,7 @@ Each hash is of the file as committed. After the runs, each Claude Code init had
      - In-turn delivery relies on universal floor (`next-tool-result` via Postbox MCP tool results).
    - Status: Universal floor only (no route demonstrated, unverified).
 
-5. **Kiro CLI (`kiro-cli` v2.34.1):**
+4. **Kiro CLI (`kiro-cli` v2.34.1):**
    - Citation: `kiro-cli chat --help`.
    - Mechanism:
      - `--output-format stream-json`: “The run's ACP events as JSON Lines on stdout... stream-json implies --no-interactive”.
@@ -131,7 +122,7 @@ Each hash is of the file as committed. After the runs, each Claude Code init had
      - Falls back to universal floor (`next-tool-result` on Postbox MCP tool return).
    - Status: Universal floor only (no route demonstrated, unverified). Live spend unverified (#591).
 
-6. **Remote execution (Host Daemon):**
+5. **Remote execution (Host Daemon):**
    - Citation: `server/remote/turns-tools.mjs`, `server/remote/turns.mjs`.
    - Status: Universal route (`next-tool-result` via `withUrgent`) is fully verified on remote hosts. Native input routes (`native-input`) are **unverified on remote hosts** because the host daemon protocol does not currently expose a mid-turn stream or steer endpoint.
 
@@ -149,8 +140,6 @@ Evaluation across 5 backends, 2 execution modes (Local vs Remote), and the 4 exe
 | -------------------- | ------ | ------------------------- | ---------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Claude Code CLI**  | Local  | Supported (Floor)         | N/A                          | Supported (`--input-format stream-json`)    | Universal floor covers Moment 2; Native input verified live for Scenario A′ (idle-but-alive) and Scenario B (tool boundary) (n=1 existence only, Claude Code CLI 2.1.296 on Haiku with stream-json held open; not today's Postbox adapter); general Moments 1–4 lifecycle coverage unverified | **Verified Live (n=1 existence only, transport & model-facing artifact; behavior acknowledged, not exact-line).** Scenario A′ idle-but-alive post-result injection verified (46ms send-to-init, 1.38s TTFT with background task pending, zero interleaving; manifest: `timing-manifest.json`). Scenario B verified at tool boundary (26.4s write-to-echo delay with 30s tool; tool preemption not observed for a `python3` foreground sleep on 2.1.296). Hook context injection refused by Haiku in one run; hook output not captured. |
 | **Claude Code CLI**  | Remote | Supported (Floor)         | N/A                          | Unverified (Host daemon extension needed)   | Moment 2 only (Universal floor)                                                                                                                                                                                                                                                               | **Unverified.** Host daemon lacks mid-turn stream channel.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **Agent SDK**        | Local  | Supported (Floor)         | N/A                          | Supported (`Query.streamInput`)             | Moment 2 verified live (1s tool step boundary); Moments 1, 3, 4 unverified                                                                                                                                                                                                                    | **Verified Live (Step boundary).** SDK `streamInput()` verified live during 1s tool execution; Moment 3 unverified.                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **Agent SDK**        | Remote | Supported (Floor)         | N/A                          | Unverified                                  | Moment 2 only (Universal floor)                                                                                                                                                                                                                                                               | **Unverified.** Remote runner uses CLI subprocess.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **Codex app-server** | Local  | Supported (Floor)         | N/A                          | Supported (`turn/steer`)                    | Moment 1 verified live (Turn start); Moments 2, 3, 4 unverified                                                                                                                                                                                                                               | **Verified Live (Turn start).** `turn/steer` verified live at turn start on active running turn; Moments 2, 3 unverified.                                                                                                                                                                                                                                                                                                                                                                                                              |
 | **Codex app-server** | Remote | Supported (Floor)         | N/A                          | Unverified (Host daemon extension needed)   | Moment 2 only (Universal floor)                                                                                                                                                                                                                                                               | **Unverified.** Remote daemon forwards `turn/start` and tool RPCs, not `turn/steer`.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **Antigravity CLI**  | Local  | Supported (Floor)         | PreToolUse (Permission only) | no route demonstrated, unverified           | Moment 2 only (Postbox tool calls)                                                                                                                                                                                                                                                            | **Universal Floor Only (no route demonstrated, unverified).** Headless mode uses `stdio: ['ignore', ...]`. Hook is permission-only.                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -175,8 +164,8 @@ Items required by design draft 3 and review conditions, tracked ahead of A1/A3 i
    - Status: **Unverified in spike (Design invariants from draft 3 / MCP spec, to be verified during A1 integration).**
 
 3. **Live candidate runs:**
-   - Live runs captured for Claude Code CLI (`--input-format stream-json`), Agent SDK (`Query.streamInput()`), and Codex app-server (`turn/steer`).
-   - Status: **Completed & Verified Live.** All three local native backends verified live under person spend confirmation.
+   - Live runs captured for Claude Code CLI (`--input-format stream-json`) and Codex app-server (`turn/steer`).
+   - Status: **Completed & Verified Live.** Both local native backends verified live under person spend confirmation.
 
 ---
 

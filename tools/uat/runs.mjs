@@ -103,7 +103,8 @@ function streamInits(folder) {
  */
 export function reportFacts(md) {
   const N = String.raw`(\d+(?:\.\d+)?)`;
-  // The usage line, as it is written now and as it was: Kiro’s credits come inside the note on harnesses that report no
+  // The usage line, as it is written now and as it was (an older report’s names the Agent SDK beside Claude Code,
+  // from when Postbox had that backend): Kiro’s credits come inside the note on harnesses that report no
   // cost, or after “and”, with Antigravity’s tokens after them.
   const kiro = String.raw`${N} Kiro credits`;
   const alone = String.raw`(?: on Claude Code(?: and the Agent SDK)? alone \((?:[^)]*?${kiro})?[^)]*\))?`;

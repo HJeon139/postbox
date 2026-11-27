@@ -1,5 +1,5 @@
-// What each backend does with an agent’s memory, as the persona sheet says it in one line (#480): Claude Code and the
-// Agent SDK keep one per agent (#208), here and on a host (#491); Codex’s is off everywhere (#479); Kiro’s is off for
+// What each backend does with an agent’s memory, as the persona sheet says it in one line (#480): Claude Code
+// keeps one per agent (#208), here and on a host (#491); Codex’s is off everywhere (#479); Kiro’s is off for
 // an isolated agent on this computer (#479), while on a host each isolated agent has a Kiro home of its own, keeping
 // whatever memory that Kiro is set to, and with your setup it’s that account’s; Antigravity’s, if it keeps any, is your
 // sign-in’s (inferred from its delete_knowledge tool, agy-bypass.mjs, not seen in a turn).
@@ -30,7 +30,7 @@ function kiroLine(isolated, onHost) {
 export function memoryLine(backend, { usesHostSetup, remote } = {}, { claudeCode } = {}) {
   if (backend === 'claude-code' && !remote && claudeCode && olderThan(claudeCode, MEMORY_CLAUDE_MIN))
     return `Memory: one for every agent in the project and your own sessions there, until Claude Code is ${MEMORY_CLAUDE_MIN} or later.`;
-  if (backend === 'claude-code' || backend === 'agent-sdk') return OWN;
+  if (backend === 'claude-code') return OWN;
   if (backend === 'codex') return 'Memory: off. Codex keeps one memory for everything it runs, so Postbox turns it off.';
   if (backend === 'kiro-cli') return kiroLine(usesHostSetup === false, Boolean(remote));
   if (backend === 'antigravity-cli') return 'Memory: if Antigravity keeps any, it’s your sign-in’s, shared with every Antigravity agent and your own sessions.';

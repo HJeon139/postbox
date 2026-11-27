@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { onceArgs } from '../server/claude-once.mjs';
 import { handleOf, isProbe, isSessionEvent, parseFault, shouldFail } from '../tools/uat/fault-launcher.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 
@@ -43,6 +44,7 @@ test('the agent comes from the guide in a turn’s arguments, and probes aren’
   assert.equal(isProbe(['--version']), true);
   assert.equal(isProbe(['chat', '--list-models', '--format', 'json']), true);
   assert.equal(isProbe(['app-server', '--listen', 'stdio://']), true);
+  assert.equal(isProbe(onceArgs('haiku')), true, 'a summary or the write check');
   assert.equal(isProbe(['app-server', '--listen', 'stdio://', '-c', 'mcp_servers.postbox.url="x"']), false);
 });
 

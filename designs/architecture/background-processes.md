@@ -20,7 +20,6 @@ Postbox ends a turn only when the harness’s process closes (the `child.on('clo
 | Backend | What holds the agent after its reply, on `main` | The longest a message waits |
 |---|---|---|
 | Claude Code, this computer | The CLI stays alive until its background tasks end, then reports them in a turn of its own | The job’s whole run. Postbox sets no bound |
-| Agent SDK | The same wait, inside the SDK | 2 h (`QUIET.backgroundMax` in `shared/limits.mjs`, passed by `server/adapters/sdk-background.mjs`, #1801). Then the SDK stops the work |
 | Claude Code, on a host | The same wait, on the host | 2 h. Then the turn is stopped as hung (#847, `server/remote/turns-background.mjs`) |
 | Kiro and Antigravity, this computer | An unredirected `cmd &` holds the CLI’s pipes, so `close` comes only when `cmd` ends | The job’s whole run. No bound |
 | Kiro, on a host | Not verified. The host’s runner ends the harness at `exit`, not `close` (`server/remote/host/runner-turn.mjs`), so the held-`close` wait probably doesn’t exist there | Not verified. A quiet turn on a host with no running step is stopped as hung after the host’s `stallTimeout`, 15 minutes by default (`shared/remote-settings.mjs`, `server/remote/turns-resume.mjs`) |
@@ -29,7 +28,6 @@ Postbox ends a turn only when the harness’s process closes (the `child.on('clo
 The evidence:
 - **Measured with the real CLI in #1614:** a Claude Code reply with no background command exited at 7.6 s. The same reply after `sleep 90` with `run_in_background` exited at 98.2 s.
 - **In the room on 21 and 22 November 2026:** agents’ messages waited 26 to 167 minutes behind their own background gates and CI watches (#1614). The record doesn’t say how many of those watches were shell jobs and how many were Monitors or background subagents, and that split isn’t known. Live input frees an agent behind all three. Ending the turn at the reply frees it only behind shell jobs.
-- **The Agent SDK’s limit** ([#1714](https://github.com/HJeon139/postbox/issues/1714)): after the last result the SDK waits for background work only up to `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`, 10 minutes by default, and then stops that work. Two review rounds run as background subagents were lost that way on 22 November 2026. #1801 raised the limit to 2 h, which saved the work and lengthened the wait.
 - **Kiro and Antigravity:** Node fires `close` only once the child’s stdio streams have closed. A probe of a fake harness that ran an unredirected `cmd &` measured `exit` at 456 ms and `close` at 3,004 ms (during #1615’s review). With `cmd > log 2>&1 &`, `close` follows `exit`, and `cmd` runs on with no wake.
 
 ## What `main` already has
@@ -37,7 +35,7 @@ The evidence:
 The steps are built from these.
 - **One passing run of live input.** `tests/fixtures/delivery-routes.md`, “Claim 3”: with `claude -p --input-format stream-json` and stdin held open, Claude Code 2.1.296 took a message written 1 s after its result as a new turn, while a background `sleep 10` ran on. One run, existence only.
 - **How the adapter sends its prompt.** It writes the prompt and ends stdin (`child.stdin.end` in `server/adapters/claude-code.mjs`), so nothing more can be sent to that process.
-- **Recognizing a task.** Claude Code’s `run_in_background` calls, timed-out calls moved to the background, Monitors and background subagents are recognized from the stream (`server/adapters/claude-stream.mjs`). Each command is recorded as a job with its task id, command and output file (`server/harness-events.mjs`). At the turn’s result, `on_turn_end` lists the jobs and the subagents still running. The Agent SDK streams the same messages.
+- **Recognizing a task.** Claude Code’s `run_in_background` calls, timed-out calls moved to the background, Monitors and background subagents are recognized from the stream (`server/adapters/claude-stream.mjs`). Each command is recorded as a job with its task id, command and output file (`server/harness-events.mjs`). At the turn’s result, `on_turn_end` lists the jobs and the subagents still running.
 - **Keeping a job.** Send now stops the CLI with `jobs: 'keep'` (`stopForSendNow` in `server/message-queue.mjs`). `stopTurn`’s `keep` (`server/adapters/process-group.mjs`) sends the CLI SIGKILL at once, since its SIGINT handler would stop the jobs. It finds each job’s tool shell by its command, and keeps that shell’s process group. It’s lenient: a job it can’t tell apart is kept with every unmatched shell, so it’s never killed (#164). Once every job is found, it sends SIGKILL to every other tool shell, since in the middle of a turn those are foreground calls.
 - **What Send now’s keep records.** It’s reachable only through `rt.stop(…, { jobs: 'keep' })`, which aborts the turn and records a stop (`server/turn-stop.mjs`, `server/stop-record.mjs`): the reply reads “Stopped”, its @-mentions wake no one (`server/mention-entries.mjs`), no `turn.ended` is raised, and the agent’s next turn is told the person stopped its last one (`server/job-records.mjs`). That’s right for a stop, and none of it is reused here.
 - **What a resumed CLI says.** Claude Code, resumed, marks a background command it has no end for as stopped, and says so to the agent (#249). Postbox’s note at the next turn corrects it (`job-records.mjs`).
@@ -156,7 +154,7 @@ A wait that costs the agent its messages needs a real risk, and says what it pro
 | The turn waits | What the wait protects | What removes it |
 |---|---|---|
 | Before the model’s reply | Nothing to protect: the model is at work, and that’s what busy means. A message for it waits in its queue | Not a wait this design removes |
-| A background subagent is still running | The subagent runs inside the CLI’s own process, with no process of its own to keep. Ending the CLI ends it, and its work is lost, as the two review rounds of #1714 were | Live input for that backend |
+| A background subagent is still running | The subagent runs inside the CLI’s own process, with no process of its own to keep. Ending the CLI ends it, and its work is lost, as the two review rounds of [#1714](https://github.com/HJeon139/postbox/issues/1714) were | Live input for that backend |
 | A Monitor is still running | A Monitor’s lines reach the model only through the CLI that started it. Its script would survive the CLI, but nothing would read it, so the watch the agent asked for would be silently gone | Live input for that backend |
 
 Both of the last two are bounded at 2 h (`QUIET.backgroundMax`), which a turn on a host has today (#847). A host is where this applies, and Claude Code on this computer only if its first step can’t be built, with Postbox’s own timer. Past it the turn is stopped as hung, naming the task, as `server/remote/turns-background.mjs` does today. The bound protects against an agent deaf for good behind work inside its CLI that hung. The person’s Send now still ends such a wait at any moment.
@@ -174,8 +172,6 @@ Each step is its own change, with its own checks, and lands in this order. The o
 | 3 | Kiro and Antigravity, here and on a host | Ending the turn at the CLI’s exit | Today’s wait for an unredirected `cmd &`. A redirected job already frees the agent, with no wake | None on this computer. Not verified on a host: see “The problem” | Free at the reply, with a wake |
 | 4 | Codex, here and on a host | Keeping background work at the turn’s end | No message waits behind a background job, since none survives the turn: the guide says to run the command in the foreground, and a message waits for that call | The command’s run | Background work is kept, with a wake |
 | 5 | Live input for a backend above that ends its turn at the reply, once it’s proven there | Live input | The two waits in “When a turn still waits” | 2 h | No wait after a reply |
-
-The Agent SDK gets no step: the owner decided on 26 November 2026 to remove that backend ([#1831](https://github.com/HJeon139/postbox/issues/1831)), so no work is planned for it here. While it’s on `main` it keeps today’s wait and its 2 h bound (#1801).
 
 Kiro and Codex run on hosts today, and Antigravity doesn’t yet (`server/adapters/adapter.mjs`, the `remote` capability). Each gets its step on a host in the same change as on this computer, and Antigravity’s host step comes with its host support.
 

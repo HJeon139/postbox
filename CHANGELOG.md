@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 4.52.9 (2026-11-27)
+
+### Fixes
+
+- **personas:** a persona deleted after a shutdown stopped waiting is forgotten at once
+- **personas:** a shutdown that stops waiting for a deleted agent's turn forgets it then
+- **personas:** a deleted persona is forgotten only once its stopped turns have exited
+- **adapters:** Kiro CLI and Antigravity refuse /compact, with the reason
+
 ## 4.52.8 (2026-11-27)
 
 ### Fixes

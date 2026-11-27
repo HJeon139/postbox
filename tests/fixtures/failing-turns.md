@@ -26,7 +26,6 @@ These recordings document the baseline behavior on `main`, not a contract: on ev
 - **Claude Code:** Recorded (`claude-haiku-5-5`).
 - **Antigravity CLI:** Recorded (`gemini-3.8-flash-low`).
 - **Codex app-server:** Recorded (`gpt-5.6-luna`), covering both pre-turn-start kill and post-turn-start kill.
-- **Agent SDK:** Covered by the Claude Code fixtures, because `AgentSdkAdapter` uses the same `createStreamMapper` stream parsing pipeline.
 - **Kiro CLI:** Unverified. Live runs were bounded under the person-set budget cap of $25 per UAT run, and Kiro CLI was not installed locally. Missing recordings are tracked in #591.
 - **Not covered:** Remote turns (turns running on remote hosts via the host daemon transport).
 

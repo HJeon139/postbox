@@ -16,7 +16,6 @@ export const runEnv = ({ gate, paths, scenario, dir, faults }) => ({
   POSTBOX_KIRO_RECORD: paths.kiroStreams,
   POSTBOX_AGY_RECORD: paths.agyStreams,
   POSTBOX_CODEX_RECORD: paths.codexStreams,
-  POSTBOX_SDK_RECORD: paths.sdkStreams,
   POSTBOX_UAT_RECORD: '1', // each turn’s prompt, in data/prompts.jsonl (server/turn-prompt.mjs, #1528)
   POSTBOX_RUN_CLOCK: '1', // run clocks, for a timed trial (#1526): off in every other Postbox
   ...skillsEnv(scenario),

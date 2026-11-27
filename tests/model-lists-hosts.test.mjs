@@ -117,8 +117,8 @@ test('a host Postbox doesn’t have is a 404; a hostId that isn’t one is a 400
 });
 
 test('a backend that can’t run on a host isn’t asked there', async () => {
-  const local = { name: 'agent-sdk', capabilities: {}, listModels: async () => ['x'] };
+  const local = { name: 'antigravity-cli', capabilities: {}, listModels: async () => ['x'] };
   const { calls, lists } = setup({ adapter: /** @type {any} */ (local) });
-  assert.deepEqual(await lists.list('agent-sdk', 'ho_1'), { models: [], fresh: false, why: 'not-listed' });
+  assert.deepEqual(await lists.list('antigravity-cli', 'ho_1'), { models: [], fresh: false, why: 'not-listed' });
   assert.equal(calls.length, 0);
 });
