@@ -9,9 +9,11 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { offerNeed } from '../server/card-needs.mjs';
 import { settleInterrupted } from '../server/restart-sweep.mjs';
 import { Runtime } from '../server/runtime.mjs';
+import { askToSee } from '../server/view-app/consent.mjs';
 import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { held, settle, sleep } from './side-threads-fixture.mjs';
+import { until } from './stop-reply-fixture.mjs';
 
 /** A second runtime on the same store, as a restart makes one: the sweep, then the laptop's cards expire. */
 function restart(r) {
@@ -243,4 +245,23 @@ test('#1868 a view request from the turn before stays the need across another ag
   r.rt.sendMessage(r.t.id, { text: '@alpha never mind, carry on' });
   await settle(r.rt);
   assert.equal(r.store.state.sessions[r.alpha.id].needs ?? null, null, 'moving on clears it');
+});
+
+test('#1868 a view request asked again during another agent’s wake stays its kept turn’s, so Stopping the wake leaves its need', async () => {
+  const r = room();
+  const card = arrange.post(r.rt, r.t.id, { kind: 'viewask', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', status: 'open' });
+  r.setNeed('viewask', card.id);
+  const work = held();
+  r.adapter.next.push(async (c) => {
+    askToSee(r.rt, r.alpha.id, r.t.id, () => {});
+    await work.step(c);
+  });
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Can you look at the app?' }); // not you moving on
+  await sleep(5);
+  assert.equal(r.store.pending.item(r.t.id, card.id).turnId, 'turn_last', 'the card stays its kept turn’s');
+  arrange.stopTurn(r.rt, r.alpha.id);
+  work.release();
+  await until(() => !arrange.exiting(r.rt, r.alpha.id), 'the stopped turn to exit');
+  await settle(r.rt);
+  assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, card.id, 'Stop leaves the kept turn’s need');
 });

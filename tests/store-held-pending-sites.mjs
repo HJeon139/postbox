@@ -37,6 +37,7 @@ export const PENDING = {
   'app-check-wait.mjs': ['waitForCheck'], // whether a version’s check already settled before the reply’s wait started (#337)
   'archive-runtime.mjs': ['running'], // a job kept behind a held commit, whose turn the archive pass must not move (#623)
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp'], // retire_app of an app the turn may have just shown
+  'ask-again.mjs': ['askAgain'], // the agent’s kept turns, set at its turn’s start maybe behind a held commit, which decide whether its card is re-tied (#1868)
   'ask-question.mjs': ['handOver'], // a host question’s blocks this turn answered, whose answers go on when the host ends its call (#1059)
   'apps.mjs': ['appCheck', 'endFixes', 'showApp', 'updateApp'], // the check just recorded, for the reply waiting on it (#337); an agent’s apps left fixing, a sweep that writes back (#1664); show_app and update_app of an app the turn may have just shown
   'app-entries.mjs': ['lostEvent'], // the voice line an app’s event posted, maybe behind a held commit, read when its turn starts (#1425)

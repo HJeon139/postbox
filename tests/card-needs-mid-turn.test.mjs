@@ -243,5 +243,6 @@ for (const [kind, raise] of Object.entries(raisers)) {
     assert.ok(r.rt.turns.has(r.alpha.id), 'while the turn runs on');
     again();
     await settle(r.rt);
+    assert.equal(r.rt.s.sessions[r.alpha.id].needs?.itemId, cards[0].id, 'and the second turn’s end keeps it, as its own card');
   });
 }
