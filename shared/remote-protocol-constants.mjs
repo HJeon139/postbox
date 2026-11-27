@@ -88,6 +88,16 @@ export const HOST_DEFAULTS = Object.freeze(Object.fromEntries(HOST_ENFORCED.map(
 export const HARNESSES = Object.freeze(/** @type {const} */ (['claude-code', 'kiro-cli', 'codex']));
 /** @typedef {typeof HARNESSES[number]} Harness */
 
+/**
+ * What a host’s harness says of its own sign-in (#1608): `signed-in` and `signed-out` only when its status command
+ * says so plainly, `unknown` for anything else (it couldn’t run, ran out of time, or answered in a way not read here).
+ */
+export const SIGN_IN_STATES = Object.freeze(/** @type {const} */ (['signed-in', 'signed-out', 'unknown']));
+/** @typedef {typeof SIGN_IN_STATES[number]} SignInState */
+
+/** What the person runs on the host to sign a harness in (#1608), as each harness’s own CLI names it. */
+export const LOGIN_COMMANDS = Object.freeze({ 'claude-code': 'claude auth login', codex: 'codex login', 'kiro-cli': 'kiro-cli login' });
+
 /** How a turn’s stdin is fed (the design’s “A turn doesn’t depend on anything staying connected”). */
 export const STDIN_KINDS = Object.freeze(/** @type {const} */ (['file', 'none', 'held']));
 

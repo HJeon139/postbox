@@ -5,6 +5,8 @@
 //
 // What it does, as Claude Code does in a print-mode turn:
 // - `--version` prints “2.1.308 (Claude Code)”, the version of the latest recording here (permission-timeout.json).
+// - `auth status`, which the daemon runs after each hello (#1608), prints and exits as the recorded signed-in run
+//   (tests/fixtures/remote/signin/claude-signed-in.json), and isn’t traced: it’s no turn.
 // - Otherwise it reads its message from stdin (the turn’s message file) and Postbox’s server from `--mcp-config`, and
 //   starts that server exactly as configured: its command and arguments (the host’s node and shim.mjs with the turn’s
 //   ID), with its environment. It speaks MCP to it over stdio, one JSON-RPC message per line: initialize, the
@@ -48,6 +50,11 @@ const argv = process.argv.slice(2);
 if (argv[0] === '--version') {
   process.stdout.write(`${VERSION} (Claude Code)\n`);
   process.exit(0);
+}
+if (argv[0] === 'auth' && argv[1] === 'status') {
+  const run = JSON.parse(readFileSync(new URL('signin/claude-signed-in.json', import.meta.url), 'utf8'));
+  process.stdout.write(run.stdout);
+  process.exit(run.exit);
 }
 
 const TRACE = process.env.POSTBOX_STANDIN_TRACE || null;

@@ -23,7 +23,7 @@ import {
   unique,
   VERSION_RE,
 } from './remote-protocol-checks.mjs';
-import { HARNESSES, MESSAGE_FILE, REMOTE_LIMITS, STDIN_KINDS, TOOL_ROUTES } from './remote-protocol-constants.mjs';
+import { HARNESSES, MESSAGE_FILE, REMOTE_LIMITS, SIGN_IN_STATES, STDIN_KINDS, TOOL_ROUTES } from './remote-protocol-constants.mjs';
 import {
   checkAgentFile,
   checkArgv,
@@ -123,6 +123,8 @@ export const POSTBOX_CHANNELS = {
     check: (m) => fields(m, 'check', []),
     /** { harness }: list the models the host’s own CLI for that harness offers, answered by `listed`. */
     models: (m) => fields(m, 'models', ['harness']) || oneOf(m.harness, 'models.harness', HARNESSES),
+    /** {}: say whether each harness the welcome found is signed in, answered by `signed` (#1608). */
+    signins: (m) => fields(m, 'signins', []),
     /** { persona }: remove a deleted persona’s memory folder, ~/.postbox-remote/memory/<persona>, answered by `forgotten` (#491). */
     forget: (m) => fields(m, 'forget', ['persona']) || id(m.persona, 'forget.persona'),
   },
@@ -246,6 +248,25 @@ export const POSTBOX_CHANNELS = {
       oneOf(m.harness, 'listed.harness', HARNESSES) ||
       list(m.models, 'listed.models', MAX_MODELS, (v, i) => (isModelId(v) ? '' : `listed.models[${i}] must be a model ID; got “${clip(v)}”.`)) ||
       unique(m.models, 'listed.models', 'model'),
+    /** { harnesses: [{ name, state, method?, expiresAt? }] }: each found harness’s sign-in, as its status command said (#1608). */
+    signed: (m) =>
+      fields(m, 'signed', ['harnesses']) ||
+      list(m.harnesses, 'signed.harnesses', HARNESSES.length, (h, i) => {
+        const at = `signed.harnesses[${i}]`;
+        return (
+          fields(h, at, ['name', 'state'], ['method', 'expiresAt']) ||
+          oneOf(h.name, `${at}.name`, HARNESSES) ||
+          oneOf(h.state, `${at}.state`, SIGN_IN_STATES) ||
+          // A method is a short name such as claude.ai or BuilderId: the ID shape keeps an email or a path out.
+          opt(h.method, (v) => id(v, `${at}.method`)) ||
+          opt(h.expiresAt, (v) => (v === null ? '' : int(v, `${at}.expiresAt`, 0, Number.MAX_SAFE_INTEGER)))
+        );
+      }) ||
+      unique(
+        m.harnesses.map((h) => h.name),
+        'signed.harnesses',
+        'harness',
+      ),
     error: (m) => checkError(m),
   },
 };

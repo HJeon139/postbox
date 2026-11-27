@@ -1,0 +1,277 @@
+// The host daemon’s `signins` (server/remote/host/daemon-signins.mjs, #1608), in-process with a fake spawn
+// (tests/remote-daemon-setup.mjs) whose children answer as the CLIs did in tests/fixtures/remote/signin/.
+
+import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { PassThrough } from 'node:stream';
+import { test } from 'node:test';
+import { SIGN_IN_KEEP_MS, SIGN_IN_STATUS_MS } from '../server/remote/host/daemon-signins.mjs';
+import { STATUS_OUTPUT_CHARS } from '../server/remote/host/harness-signin.mjs';
+import { fakeClock, hello, PROGRAMS_FOUND, setup, until } from './remote-daemon-setup.mjs';
+
+/** @param {string} name */
+const recorded = (name) => JSON.parse(readFileSync(new URL(`./fixtures/remote/signin/${name}.json`, import.meta.url), 'utf8'));
+const FIXTURE = { claude: 'claude', codex: 'codex', 'kiro-cli': 'kiro' };
+
+/** Programs found with each harness there. */
+const ALL_FOUND = async () => {
+  const p = structuredClone(PROGRAMS_FOUND);
+  p.harnesses = p.harnesses.map((h) => (h.name === 'kiro-cli' ? { ...h, path: '/home/user/.local/bin/kiro-cli', version: '3.6.2' } : h));
+  return p;
+};
+
+/**
+ * A spawn whose children are held until the test answers them: answer(i, how) plays recorded run `how` (such as
+ * signed-in) for the call’s program, as the CLI printed it and exited.
+ */
+function statusSpawn() {
+  const calls = [];
+  const spawn = (program, args, options) => {
+    const child = Object.assign(new EventEmitter(), { kills: [], kill: (sig) => child.kills.push(sig) && true });
+    if (options.stdio[1] === 'pipe') child.stdout = new PassThrough();
+    calls.push({ program, args, options, child });
+    return child;
+  };
+  /** Resolves once the child has closed. @param {any} call @param {string} how */
+  const play = async (call, how) => {
+    const run = recorded(`${FIXTURE[call.program.split('/').at(-1)]}-${how}`);
+    call.child.stdout?.end(run.stdout);
+    // As a child does: its close comes once its output has been read.
+    await new Promise((resolve) => setImmediate(resolve));
+    call.child.emit('close', run.exit, null);
+  };
+  return { spawn, calls, play };
+}
+
+/** Everything the connection carried, as text. @param {any} c */
+function carried(c) {
+  let text = '';
+  c.output.on('data', (b) => {
+    text += String(b);
+  });
+  return () => text;
+}
+
+test('signins: each found harness’s status command runs as an argument list with no shell or stdin, and signed carries only its state', async () => {
+  const sp = statusSpawn();
+  const s = setup({ spawn: sp.spawn, findPrograms: ALL_FOUND, probeLoginPath: async () => ({ ok: true, entries: ['/opt/tools/bin'], ms: 5 }) });
+  try {
+    const c = await hello(s);
+    const text = carried(c);
+    c.send('signins');
+    await until(() => sp.calls.length === 3, 'the three status commands');
+    for (const call of sp.calls) {
+      assert.equal(call.options.shell, false);
+      assert.equal(call.options.stdio[0], 'ignore', 'no stdin');
+      assert.equal(call.options.cwd, s.home);
+      assert.equal(call.options.env.PATH.split(':')[0], '/opt/tools/bin', 'a turn’s PATH');
+    }
+    const byProgram = Object.fromEntries(sp.calls.map((x) => [x.program, x]));
+    assert.deepEqual(byProgram['/home/user/.local/bin/claude'].args, ['auth', 'status']);
+    assert.deepEqual(byProgram['/home/user/.local/bin/codex'].args, ['login', 'status']);
+    assert.deepEqual(byProgram['/home/user/.local/bin/codex'].options.stdio, ['ignore', 'ignore', 'ignore'], 'Codex’s output is discarded');
+    assert.deepEqual(byProgram['/home/user/.local/bin/kiro-cli'].args, ['whoami', '--format', 'json']);
+    // Other messages go on while they run.
+    c.send('read', { turn: 'nope', from: 0 });
+    assert.equal((await c.msgs.next('error')).code, 'no-turn');
+    for (const call of sp.calls) void sp.play(call, 'signed-in');
+    const signed = await c.msgs.next('signed');
+    assert.deepEqual(signed.harnesses, [
+      { name: 'claude-code', state: 'signed-in', method: 'claude.ai', expiresAt: Date.parse('2026-12-06T02:42:14.007Z') },
+      { name: 'kiro-cli', state: 'signed-in', method: 'BuilderId' },
+      { name: 'codex', state: 'signed-in' },
+    ]);
+    for (const raw of ['robin', 'example.com', 'Organization', '00000000-0000', 'awsapps', 'max', 'firstParty'])
+      assert.ok(!text().includes(raw), `“${raw}” from a command’s output never crosses`);
+  } finally {
+    await s.done();
+  }
+});
+
+test('signins: with empty config folders each harness reads signed out', async () => {
+  const sp = statusSpawn();
+  const s = setup({ spawn: sp.spawn, findPrograms: ALL_FOUND });
+  try {
+    const c = await hello(s);
+    c.send('signins');
+    await until(() => sp.calls.length === 3, 'the three status commands');
+    for (const call of sp.calls) void sp.play(call, 'signed-out');
+    const signed = await c.msgs.next('signed');
+    assert.deepEqual(
+      signed.harnesses.map((h) => [h.name, h.state, Object.keys(h).length]),
+      [
+        ['claude-code', 'signed-out', 2],
+        ['kiro-cli', 'signed-out', 2],
+        ['codex', 'signed-out', 2],
+      ],
+    );
+  } finally {
+    await s.done();
+  }
+});
+
+test('signins: a harness the host doesn’t have isn’t asked, and none found answers with none', async () => {
+  const sp = statusSpawn();
+  const s = setup({ spawn: sp.spawn });
+  try {
+    const c = await hello(s);
+    c.send('signins');
+    await until(() => sp.calls.length === 2, 'claude’s and codex’s');
+    assert.ok(!sp.calls.some((x) => x.program.endsWith('kiro-cli')), 'kiro-cli wasn’t found');
+    for (const call of sp.calls) void sp.play(call, 'signed-in');
+    assert.deepEqual(
+      (await c.msgs.next('signed')).harnesses.map((h) => h.name),
+      ['claude-code', 'codex'],
+    );
+  } finally {
+    await s.done();
+  }
+  const none = setup({ spawn: sp.spawn, findPrograms: async () => ({ ...structuredClone(PROGRAMS_FOUND), harnesses: [] }) });
+  try {
+    const c = await hello(none);
+    c.send('signins');
+    assert.deepEqual(await c.msgs.next('signed'), { type: 'signed', harnesses: [] });
+  } finally {
+    await none.done();
+  }
+});
+
+test('signins: an answer is kept for SIGN_IN_KEEP_MS, then asked again', async () => {
+  const clock = fakeClock();
+  const sp = statusSpawn();
+  const s = setup({ spawn: sp.spawn, clock });
+  try {
+    const c = await hello(s);
+    c.send('signins');
+    await until(() => sp.calls.length === 2, 'the first asking');
+    for (const call of sp.calls) void sp.play(call, 'signed-in');
+    const first = await c.msgs.next('signed');
+    await clock.tick(SIGN_IN_KEEP_MS - 1);
+    c.send('signins');
+    assert.deepEqual(await c.msgs.next('signed'), first, 'the kept answer');
+    assert.equal(sp.calls.length, 2, 'nothing ran again');
+    await clock.tick(1);
+    c.send('signins');
+    await until(() => sp.calls.length === 4, 'the asking after the answer ran out');
+    for (const call of sp.calls.slice(2)) void sp.play(call, 'signed-out');
+    assert.deepEqual(
+      (await c.msgs.next('signed')).harnesses.map((h) => h.state),
+      ['signed-out', 'signed-out'],
+    );
+  } finally {
+    await s.done();
+  }
+});
+
+test('signins: a status command past SIGN_IN_STATUS_MS is killed and reads unknown', async () => {
+  const clock = fakeClock();
+  const sp = statusSpawn();
+  const s = setup({ spawn: sp.spawn, clock });
+  try {
+    const c = await hello(s);
+    c.send('signins');
+    await until(() => sp.calls.length === 2, 'the status commands');
+    await sp.play(sp.calls[1], 'signed-in');
+    await clock.tick(SIGN_IN_STATUS_MS - 1);
+    assert.deepEqual(sp.calls[0].child.kills, [], 'not before its time');
+    await clock.tick(1);
+    assert.deepEqual(sp.calls[0].child.kills, ['SIGKILL']);
+    assert.deepEqual(await c.msgs.next('signed'), {
+      type: 'signed',
+      harnesses: [
+        { name: 'claude-code', state: 'unknown' },
+        { name: 'codex', state: 'signed-in' },
+      ],
+    });
+  } finally {
+    await s.done();
+  }
+});
+
+test('signins: one that can’t start, ends on a signal, or exits otherwise is unknown, never signed out', async () => {
+  const sp = statusSpawn();
+  const failing = (program, args, options) => {
+    if (program.endsWith('claude')) throw Object.assign(new Error('spawn EACCES'), { code: 'EACCES' });
+    return sp.spawn(program, args, options);
+  };
+  const s = setup({ spawn: failing, findPrograms: ALL_FOUND });
+  try {
+    const c = await hello(s);
+    c.send('signins');
+    await until(() => sp.calls.length === 2, 'kiro’s and codex’s');
+    const [kiro, codex] = sp.calls;
+    kiro.child.emit('close', null, 'SIGTERM');
+    codex.child.emit('close', 2, null);
+    assert.deepEqual(
+      (await c.msgs.next('signed')).harnesses.map((h) => [h.name, h.state]),
+      [
+        ['claude-code', 'unknown'],
+        ['kiro-cli', 'unknown'],
+        ['codex', 'unknown'],
+      ],
+    );
+    // An answer that was unknown is kept like any other; a spawn error reads the same.
+    const t = setup({ spawn: sp.spawn });
+    try {
+      const d = await hello(t);
+      d.send('signins');
+      await until(() => sp.calls.length === 4, 'the next daemon’s');
+      for (const call of sp.calls.slice(2)) call.child.emit('error', Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }));
+      assert.deepEqual(
+        (await d.msgs.next('signed')).harnesses.map((h) => h.state),
+        ['unknown', 'unknown'],
+      );
+    } finally {
+      await t.done();
+    }
+  } finally {
+    await s.done();
+  }
+});
+
+test('signins: output past STATUS_OUTPUT_CHARS is cut, so it reads unknown, never as whatever it ends with', async () => {
+  const sp = statusSpawn();
+  const s = setup({ spawn: sp.spawn });
+  try {
+    const c = await hello(s);
+    c.send('signins');
+    await until(() => sp.calls.length === 2, 'the status commands');
+    const claude = sp.calls.find((x) => x.program.endsWith('claude'));
+    const codex = sp.calls.find((x) => x.program.endsWith('codex'));
+    // Valid JSON, signed in, but longer than the daemon reads.
+    const long = JSON.stringify({ ...JSON.parse(recorded('claude-signed-in').stdout), pad: 'x'.repeat(STATUS_OUTPUT_CHARS) });
+    claude.child.stdout.end(long);
+    await new Promise((resolve) => setImmediate(resolve));
+    claude.child.emit('close', 0, null);
+    await sp.play(codex, 'signed-in');
+    assert.deepEqual(
+      (await c.msgs.next('signed')).harnesses.map((h) => [h.name, h.state]),
+      [
+        ['claude-code', 'unknown'],
+        ['codex', 'signed-in'],
+      ],
+    );
+  } finally {
+    await s.done();
+  }
+});
+
+test('signins: a status command still running when the daemon closes is killed with it', async () => {
+  const sp = statusSpawn();
+  const s = setup({ spawn: sp.spawn });
+  let closed = false;
+  try {
+    const c = await hello(s);
+    c.send('signins');
+    await until(() => sp.calls.length === 2, 'the status commands');
+    await s.done();
+    closed = true;
+    assert.deepEqual(
+      sp.calls.map((x) => x.child.kills),
+      [['SIGKILL'], ['SIGKILL']],
+    );
+  } finally {
+    if (!closed) await s.done();
+  }
+});
