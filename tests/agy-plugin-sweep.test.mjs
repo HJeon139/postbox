@@ -4,14 +4,16 @@
 // now records where a turn wrote its plugin, beside its work root, and removes each one left there as it starts.
 
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import { agyPlugin, PLUGIN_DIR, removeAgyPlugin, writeAgyPlugin } from '../server/adapters/agy-plugin.mjs';
-import { sweepAgyPlugins } from '../server/adapters/agy-plugin-record.mjs';
+import { configHash, notePlugin, sweepAgyPlugins } from '../server/adapters/agy-plugin-record.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const files = () => agyPlugin({ mcpUrl: 'http://127.0.0.1:1/mcp/x', rules: 'Postbox’s guide' });
+/** The folders the record notes. @param {string} workRoot */
+const noted = (workRoot) => JSON.parse(readFileSync(join(workRoot, '..', 'agy-plugins.json'), 'utf8')).map((/** @type {any} */ n) => n.dir);
 
 test('#314 a plugin a crashed turn left is removed as Postbox starts, and the folder keeps its own files', async () => {
   const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
@@ -32,7 +34,7 @@ test('#314 a turn that ends as it should leaves nothing to sweep, and another pl
   const plugin = join(folder, PLUGIN_DIR);
   await writeAgyPlugin(plugin, files(), workRoot);
   await removeAgyPlugin(plugin, workRoot);
-  assert.deepEqual(JSON.parse(readFileSync(join(workRoot, '..', 'agy-plugins.json'), 'utf8')), [], 'its record is dropped');
+  assert.deepEqual(noted(workRoot), [], 'its record is dropped');
   // The person’s own plugin, written after: Postbox’s record no longer names this folder, so the sweep leaves it.
   await writeAgyPlugin(join(folder, '.agents', 'plugins', 'mine'), { 'plugin.json': '{"name":"mine"}\n' });
   await sweepAgyPlugins(workRoot);
@@ -58,7 +60,9 @@ test('#314 a record edited to name another folder removes nothing there', async 
   const kept = join(elsewhere, 'notes');
   mkdirSync(kept);
   writeFileSync(join(kept, 'todo.md'), 'mine\n');
-  writeFileSync(join(workRoot, '..', 'agy-plugins.json'), `${JSON.stringify([kept, elsewhere])}\n`);
+  // With the hash of the mcp_config.json it holds, so only the path’s own check stands in the way.
+  writeFileSync(join(kept, 'mcp_config.json'), '{}\n');
+  writeFileSync(join(workRoot, '..', 'agy-plugins.json'), `${JSON.stringify([{ dir: kept, sha256: configHash('{}\n') }])}\n`);
   await sweepAgyPlugins(workRoot);
   assert.equal(readFileSync(join(kept, 'todo.md'), 'utf8'), 'mine\n', 'only a plugin’s own folder is ever removed');
 });
@@ -81,4 +85,57 @@ test('#314 a plugin the turn couldn’t remove stays noted, for the next start t
     await sweepAgyPlugins(workRoot);
     assert.equal(existsSync(plugin), false, `removed at the next start (${mode.toString(8)})`);
   }
+});
+
+test('#314 a link where the plugin’s folders go isn’t followed: what it leads to stays', async () => {
+  const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+  const folder = tempDir('pb-agy-folder-');
+  const elsewhere = tempDir('pb-agy-elsewhere-');
+  // A repository that commits .agents/plugins as a link, or a person who links it to a folder shared across projects.
+  mkdirSync(join(folder, '.agents'));
+  symlinkSync(elsewhere, join(folder, '.agents', 'plugins'));
+  await writeAgyPlugin(join(folder, PLUGIN_DIR), files(), workRoot);
+  writeFileSync(join(elsewhere, 'postbox', 'mine.txt'), 'mine\n');
+  await sweepAgyPlugins(workRoot);
+  assert.equal(readFileSync(join(elsewhere, 'postbox', 'mine.txt'), 'utf8'), 'mine\n');
+});
+
+test('#314 a folder at the noted path that isn’t the plugin the turn wrote is left as it is', async () => {
+  const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+  const folder = tempDir('pb-agy-folder-');
+  const plugin = join(folder, PLUGIN_DIR);
+  await writeAgyPlugin(plugin, files(), workRoot);
+  // After the crash, another Postbox’s turn, or the person, put a plugin there with another MCP URL.
+  writeFileSync(join(plugin, 'mcp_config.json'), '{"mcpServers":{"postbox":{"serverUrl":"http://127.0.0.1:2/mcp?turn=other"}}}\n');
+  await sweepAgyPlugins(workRoot);
+  assert.ok(existsSync(join(plugin, 'mcp_config.json')), 'not the plugin noted: it stays');
+  assert.deepEqual(noted(workRoot), [], 'and its note is dropped');
+});
+
+test('#314 turns in many folders at once each get noted', async () => {
+  const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+  const dirs = Array.from({ length: 8 }, () => join(tempDir('pb-agy-folder-'), PLUGIN_DIR));
+  await Promise.all(dirs.map((d) => notePlugin(workRoot, d, 'sha')));
+  assert.equal(noted(workRoot).length, 8);
+});
+
+test('#314 a plugin the sweep can’t remove stays noted, and one it removed doesn’t', {
+  skip: (process.platform === 'win32' || ROOT) && 'POSIX modes, not root',
+}, async () => {
+  const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+  const folder = tempDir('pb-agy-folder-');
+  const plugin = join(folder, PLUGIN_DIR);
+  await writeAgyPlugin(plugin, files(), workRoot);
+  chmodSync(join(folder, '.agents', 'plugins'), 0o555);
+  const said = mock.method(console, 'error', () => {});
+  try {
+    await sweepAgyPlugins(workRoot);
+  } finally {
+    said.mock.restore();
+    chmodSync(join(folder, '.agents', 'plugins'), 0o755);
+  }
+  assert.ok(existsSync(plugin), 'still there');
+  assert.deepEqual(noted(workRoot), [plugin], 'and still noted');
+  await sweepAgyPlugins(workRoot);
+  assert.deepEqual(noted(workRoot), [], 'gone, and no longer noted');
 });

@@ -155,6 +155,6 @@ test('#314 a turn’s plugin is noted beside the work root while agy runs, and d
   );
   assert.equal(error, null);
   assert.equal(Array.isArray(during) && during.length, 1, 'noted while agy runs');
-  assert.ok(String(/** @type {string[]} */ (during)[0]).endsWith(PLUGIN_DIR), 'the plugin’s own folder');
+  assert.ok(String(/** @type {any[]} */ (during)[0].dir).endsWith(PLUGIN_DIR), 'the plugin’s own folder');
   assert.deepEqual(JSON.parse(readFileSync(join(root, 'agy-plugins.json'), 'utf8')), [], 'and dropped once the turn removed it');
 });
