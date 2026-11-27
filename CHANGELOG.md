@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.0.1 (2026-11-27)
+
+### Fixes
+
+- **needs:** Stop keeps the block a woken turn kept as the need
+- **needs:** an asking block counts from when its turn shows or asks it again (#1748)
+- **threads:** wake an agent an @-mention names, after a reaction to its reply too
+
 ## 5.0.0 (2026-11-27)
 
 ### Breaking changes
