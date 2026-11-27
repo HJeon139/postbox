@@ -37,9 +37,9 @@ async function turnAsking(r, kind) {
   return { card: r.needs(), release: work.release };
 }
 
-/** You stop @alpha’s turn, and its stand-in harness exits, as a stopped CLI does. */
-async function stopped(r, release) {
-  arrange.stopTurn(r.rt, r.alpha.id);
+/** You stop @alpha’s turn (or Postbox does, by `opts.by`), and its stand-in harness exits, as a stopped CLI does. */
+async function stopped(r, release, opts) {
+  arrange.stopTurn(r.rt, r.alpha.id, opts);
   release();
   await until(() => !arrange.exiting(r.rt, r.alpha.id), 'the stopped turn to exit');
   await settle(r.rt);
@@ -139,3 +139,18 @@ test('answering the stopped turn’s form itself works and leaves the other need
   await settle(r.rt);
   assert.equal(r.needs()?.itemId, wake.id, 'and after the turn the answer started');
 });
+
+// Only the person’s Stop marks the turn: a stop Postbox makes itself, as a run clock’s pause or budget does
+// (server/run-clock.mjs), drops the need the form made, as on main, and the form counts again at the next release.
+for (const by of ['pause', 'clock']) {
+  test(`a turn a run clock stopped (${by}) leaves its form counting once another card is answered, as on main`, async () => {
+    const r = room();
+    const wake = r.hop();
+    r.offerHop(wake);
+    const { card, release } = await turnAsking(r, 'block');
+    await stopped(r, release, { by, silent: true });
+    assert.equal(r.needs()?.itemId, wake.id, 'after the clock’s stop, the wake request is the need');
+    r.declineHop(wake);
+    assert.equal(r.needs()?.itemId, card.itemId, 'the form is the need again');
+  });
+}
