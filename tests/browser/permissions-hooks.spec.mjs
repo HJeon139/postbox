@@ -8,6 +8,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -182,8 +183,8 @@ for (const [width, phone] of [
       const over = await page
         .locator('.dialog')
         .filter({ has: page.locator('.perm-panel') })
-        .evaluate((d, w) => [d.scrollWidth - d.clientWidth, document.documentElement.scrollWidth - w], windowWidth(page));
-      expect.soft(over, 'nothing overflows sideways').toEqual([0, 0]);
+        .evaluate((d) => d.scrollWidth - d.clientWidth);
+      expect.soft([over, (await pageWidth(page)) - windowWidth(page)], 'nothing overflows sideways').toEqual([0, 0]);
     });
   });
 }

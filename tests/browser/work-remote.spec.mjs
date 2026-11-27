@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 import { SIZES } from './work-pane.mjs';
 
@@ -91,16 +92,18 @@ async function axe(page, where) {
 }
 /** Nothing scrolls sideways: not the page (against the window the test set), the pane or the full form. */
 async function noSideways(page, where) {
-  const over = await page.evaluate((width) => {
+  const width = windowWidth(page);
+  const over = await page.evaluate(() => {
     const out = [];
-    const d = document.documentElement;
-    if (d.scrollWidth > width + 1) out.push(`the page by ${d.scrollWidth - width} px`);
     for (const sel of ['.wp-body', '.rpane', '.pane-full']) {
       const el = document.querySelector(sel);
       if (el && el.scrollWidth > el.clientWidth + 1) out.push(`${sel} by ${el.scrollWidth - el.clientWidth} px`);
     }
     return out;
-  }, windowWidth(page));
+  });
+  // The page clips its sideways overflow, so its scrollWidth can’t show it; page-width.mjs measures what’s laid out.
+  const laidOut = await pageWidth(page);
+  if (laidOut > width + 1) over.unshift(`the page by ${laidOut - width} px`);
   expect(over, `scrolls sideways ${where}`).toEqual([]);
 }
 /** The diffs the page asks the server for from now on. @param {import('@playwright/test').Page} page */

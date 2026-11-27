@@ -2,6 +2,35 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.5.2 (2026-11-27)
+
+### Fixes
+
+- **remote:** clean the daemon's refusal, git's remote lines and the browser install's error
+- **remote:** clean what ssh or a host said before a host's error quotes it
+- **steps:** a running call's output on its step never starts with half a character
+- **text:** cleanSaid is cleanLines with line breaks as spaces, so both drop lone halves
+- **adapters:** Claude Code's, Kiro's and Antigravity's exit errors keep their stderr's end
+- **adapters:** decode a CLI's stderr as one stream, so a split character stays whole
+- **adapters:** CLI stderr in exit errors is cleaned, and never starts mid-character
+
+## 5.5.1 (2026-11-27)
+
+### Fixes
+
+- **thread:** wrap a long word, path or inline code in an agent's words
+- **app:** the page clips sideways overflow, so a widening only a layout sees can't rewrap the thread
+
+## 5.5.0 (2026-11-27)
+
+### Features
+
+- **deploy:** an agent host, a machine the hosted server reaches over ssh
+
+### Fixes
+
+- **deploy:** the agent host's start log names which value was refused, and the test holds the space
+
 ## 5.4.12 (2026-11-27)
 
 ### Fixes

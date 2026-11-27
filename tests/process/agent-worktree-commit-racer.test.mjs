@@ -49,6 +49,11 @@ test('#1844 a process left running that keeps staging a nested repository never 
   const count = join(home, 'racer', 'staged');
   const racer = spawn(process.execPath, ['-e', RACER, dir, git(sub, ['rev-parse', 'HEAD']).trim(), count], { stdio: 'ignore' });
   t.after(() => racer.kill('SIGKILL'));
+  // A process takes a while to start: begin the turns only once it has staged once, or a fast run commits all of them first.
+  for (const end = Date.now() + 10_000; !existsSync(count); ) {
+    if (Date.now() > end) assert.fail('the process never started staging');
+    await new Promise((r) => setTimeout(r, 10));
+  }
   let committed = 0;
   for (let i = 0; i < TURNS; i++) {
     await writeFile(join(dir, 'agent.txt'), `the agent’s work, turn ${i}\n`);
