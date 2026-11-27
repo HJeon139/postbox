@@ -29,9 +29,11 @@ export function scrollMoves({ moves }) {
 
 /**
  * Resolves once the page’s scroll has held still for three frames, or after STILL_MAX_MS: a key’s scroll may be
- * smooth, and a sample taken mid-scroll doesn’t count as settled.
+ * smooth, and a sample taken mid-scroll doesn’t count as settled. A timer backs the frames up, so a page that draws
+ * none can’t hold the run.
  */
 const STILL = `new Promise((done) => {
+  setTimeout(() => done(false), ${STILL_MAX_MS + 200});
   const s = document.scrollingElement;
   const start = performance.now();
   let last = s.scrollTop;
@@ -44,6 +46,13 @@ const STILL = `new Promise((done) => {
   };
   requestAnimationFrame(tick);
 })`;
+
+// Whether the conversation’s Stop shows: the agent was still working at that move, so its sample was mid-stream.
+const WORKING = `(() => {
+  const c = [...document.querySelectorAll('.composer')].find((x) => !x.closest('.sidepanel'));
+  const b = c?.querySelector('button.stop');
+  return !!b && b.offsetParent !== null;
+})()`;
 
 /** What the conversation’s view was at the last sample, for the tester. @param {any[]} views */
 function viewSaid(views) {
@@ -65,7 +74,8 @@ export async function scrollMidTurn({ d, facts, step, pause = () => sleep(BETWEE
     await scrollStep({ page: d.kit.page, facts, step }, { by });
     await d.kit.ev(STILL);
     await recordViews(d.kit.ev, facts, step);
-    said.push(`${KEYS[/** @type {keyof typeof KEYS} */ (by)]} (${viewSaid(facts.probes.views ?? [])})`);
+    const live = (await d.kit.ev(WORKING)) ? 'while the agent worked' : 'after the agent had finished';
+    said.push(`${KEYS[/** @type {keyof typeof KEYS} */ (by)]} (${viewSaid(facts.probes.views ?? [])}, ${live})`);
   }
-  return `Scrolled while the agent worked: ${said.join(', ')}.`;
+  return `Scrolled: ${said.join('; ')}.`;
 }

@@ -83,7 +83,7 @@ test('a scroll interrupt pages back and forth while a reply streams, sampling th
     expect(app.store.state.items[t.id].find((x) => x.id === turn.item.id)?.status, 'the reply is still streaming').toBe('streaming');
     await expect(page.getByRole('button', { name: 'Stop researcher’s reply' }), 'the turn is still running').toBeVisible();
     expect(said).toMatch(
-      /^Scrolled while the agent worked: PageUp \(reading, at it_\w+\), PageUp \(reading, at it_\w+\), PageDown \(reading, at it_\w+\), End \(following\)\./,
+      /^Scrolled: PageUp \(reading, at it_\w+, while the agent worked\); PageUp \(reading, at it_\w+, while the agent worked\); PageDown \(reading, at it_\w+, while the agent worked\); End \(following, while the agent worked\)\./,
     );
     const views = /** @type {any[]} */ (facts.probes.views ?? []).filter((v) => v.where === 'main');
     expect(

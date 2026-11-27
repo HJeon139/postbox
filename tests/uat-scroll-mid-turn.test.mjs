@@ -9,6 +9,13 @@ import { MOVES_MAX, scrollMoves } from '../tools/uat/scroll-mid-turn.mjs';
 import { interruptAct } from '../tools/uat/steps.mjs';
 import { SCHEMA, systemPrompt } from '../tools/uat/tester.mjs';
 
+/** What a read the scroll makes is: focusing the conversation, asking whether Stop shows, or waiting for it to hold still. */
+function kindOf(expr) {
+  if (expr.includes('focus(')) return 'focus';
+  if (expr.includes('button.stop')) return 'working';
+  return 'still';
+}
+
 /** A driver whose page notes each key and each read, with how many inputs and samples were recorded by then. */
 function notingDriver(facts) {
   const calls = [];
@@ -20,7 +27,7 @@ function notingDriver(facts) {
       note('sample');
       return sample(mode);
     }
-    note(expr.includes('focus(') ? 'focus' : 'still');
+    note(kindOf(expr));
     return true;
   };
   const page = {
@@ -50,11 +57,13 @@ test('a scroll mid-turn is the driver’s answer: each move records its input, p
       ['PageUp', 1, 0],
       ['still', 1, 0],
       ['sample', 1, 0],
+      ['working', 1, 1],
       ['pause', 1, 1],
       ['focus', 2, 1],
       ['End', 2, 1],
       ['still', 2, 1],
       ['sample', 2, 1],
+      ['working', 2, 2],
     ],
   );
   assert.deepEqual(
@@ -71,7 +80,7 @@ test('a scroll mid-turn is the driver’s answer: each move records its input, p
       [6, 'following'],
     ],
   );
-  assert.equal(said, 'Scrolled while the agent worked: PageUp (reading, at it_9), End (following).');
+  assert.equal(said, 'Scrolled: PageUp (reading, at it_9, while the agent worked); End (following, while the agent worked).');
 });
 
 test('a scroll mid-turn with no moves, too many, or one it doesn’t know fails before the agent works its seconds', () => {
