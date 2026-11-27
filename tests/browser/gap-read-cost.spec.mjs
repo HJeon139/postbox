@@ -103,6 +103,34 @@ for (const mode of ROOM_MODES)
     expect.soft(layouts, `layouts over ${BURST} replies`).toBeLessThanOrEqual(BURST + 25);
   });
 
+/**
+ * Waits for a posted reply to become a node, and on a miss records which side lost it (#1814): the store’s seq once the
+ * reply was posted, against the page’s last applied seq, its stream’s state, whether its state holds the item, and
+ * whether the conversation is open there. A page seq short of the store’s means the event never arrived; one past it,
+ * with the item in the state and no node, means it arrived and wasn’t drawn.
+ * @param {import('@playwright/test').Page} page @param {string} threadId @param {string} id
+ */
+async function reachesPage(page, threadId, id) {
+  const posted = app.store.state.seq;
+  try {
+    await expect(page.locator(`[data-key="${id}"]`), 'the reply to reach the page').toBeAttached({ timeout: 15_000 });
+  } catch (e) {
+    const seen = await page
+      .evaluate(
+        async ([tid, iid]) => {
+          const m = await import('/app/js/client.mjs');
+          return { seq: m.client.seq, connection: m.client.connection, open: m.client.open.has(tid), inState: Boolean(m.itemIn(tid, iid)) };
+        },
+        [threadId, id],
+      )
+      .catch((err) => ({ error: String(err) }));
+    const record = JSON.stringify({ posted, storeNow: app.store.state.seq, page: seen });
+    console.log(`#1814 the reply didn’t reach the page: ${record}`);
+    test.info().annotations.push({ type: '#1814', description: record });
+    throw e;
+  }
+}
+
 for (const mode of ROOM_MODES)
   test(`#1047 a reply streaming one delta a frame for ${BURST} frames, followed, forces at most one layout a delta, ${mode}`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
@@ -110,7 +138,7 @@ for (const mode of ROOM_MODES)
     const { t, se } = await bigRoom(page, `Following, ${mode}`);
     await expect(page.locator('#main')).toHaveAttribute('data-view-mode', 'following');
     const it = arrange.post(app.rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
-    await expect(page.locator(`[data-key="${it.id}"]`), 'the reply to reach the page').toBeAttached({ timeout: 15_000 });
+    await reachesPage(page, t.id, it.id);
     await settled(page);
     const { forced } = await forcedOver(page, async () => {
       for (let i = 0; i < BURST; i++) {
