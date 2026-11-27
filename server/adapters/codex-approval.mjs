@@ -1,9 +1,12 @@
 // Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses.
 
-import { cutText } from '../../shared/text-parts.mjs';
+import { cleanSaid, cutText } from '../../shared/text-parts.mjs';
 import { draftOf } from '../write-guard.mjs';
 import { codexAlwaysOffer } from './codex-always.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
+
+/** Of an MCP server’s request for input shown on its card: as a step’s detail is bounded (STEP_TEXT.detail). */
+const ASKED_MAX = 1200;
 
 /** Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses. */
 export async function codexApproval(ctx, msg) {
@@ -23,7 +26,8 @@ export async function codexApproval(ctx, msg) {
       const args = meta.tool_params ?? {};
       const detail = JSON.stringify(
         {
-          ...(meta.tool_description ? { description: meta.tool_description } : {}),
+          // The server’s description of its tool, its own words too (#1937); the arguments are the model’s, shown as sent.
+          ...(meta.tool_description ? { description: cleanSaid(String(meta.tool_description), ASKED_MAX) } : {}),
           arguments: args,
         },
         null,
@@ -44,7 +48,8 @@ export async function codexApproval(ctx, msg) {
     const answer = await ctx.askPermission({
       tool: `mcp__${server}__elicitation`,
       summary: `respond to ${server}`,
-      detail: String(p.message ?? 'The MCP server requests input.'),
+      // The server’s own words, on a card the person approves: cleaned and bounded, as Codex’s other words are (#1937).
+      detail: cleanSaid(String(p.message ?? 'The MCP server requests input.'), ASKED_MAX),
       toolUseId: msg.id,
       suppressAlways: true,
     });

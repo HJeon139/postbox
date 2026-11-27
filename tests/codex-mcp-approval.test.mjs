@@ -193,3 +193,41 @@ test('real Codex plugin streams show Ask me blocks before completion and Auto ru
   );
   assert.equal(auto.find((event) => event.method === 'item/completed').params.item.status, 'completed');
 });
+
+test('#1937 an MCP server’s request for input shows on its card cleaned and bounded, as Codex’s other words are', async () => {
+  /** @type {any[]} */
+  const asked = [];
+  const ctx = {
+    askPermission: async (/** @type {any} */ a) => {
+      asked.push(a);
+      return { allow: false };
+    },
+  };
+  // What a server’s own message could carry: a right-to-left override, a zero-width space, a line break and a line
+  // separator, and far more text than a card holds, with an emoji where the cut falls.
+  const said = 'Please confirm the deploy \u202Edeliated \u202C\u200B\nnext line\u2028more ';
+  const message = `${said}${'x'.repeat(1199 - (said.length - 3))}\u{1F600} and the rest`;
+  await codexApproval(ctx, { id: 7, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message } });
+  const detail = String(asked[0]?.detail ?? '');
+  assert.match(detail, /^Please confirm the deploy/);
+  assert.doesNotMatch(detail, /[\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2028\u2029\n\r]/u);
+  assert.doesNotMatch(detail, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/, 'no lone surrogate');
+  assert.ok(detail.length <= 1200, `bounded, not ${detail.length}`);
+  assert.match(detail, /next line more/, 'a line break becomes a space');
+});
+
+test('#1937 an MCP tool’s description on its card is cleaned too: it’s the server’s words', async () => {
+  /** @type {any[]} */
+  const asked = [];
+  const ctx = {
+    askPermission: async (/** @type {any} */ a) => {
+      asked.push(a);
+      return { allow: false };
+    },
+  };
+  const meta = { codex_approval_kind: 'mcp_tool_call', tool_name: 'ship', tool_description: 'Ships \u202Eliated the build.', tool_params: { to: 'prod' } };
+  await codexApproval(ctx, { id: 8, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message: '', _meta: meta } });
+  const detail = JSON.parse(String(asked[0]?.detail ?? '{}'));
+  assert.equal(detail.description, 'Ships liated the build.');
+  assert.deepEqual(detail.arguments, { to: 'prod' }, 'the arguments as sent');
+});
