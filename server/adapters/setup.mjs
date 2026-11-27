@@ -64,6 +64,11 @@ export const effortOf = (persona) => (EFFORT_LEVELS.includes(persona?.effort) ? 
 /** Postbox’s own MCP server’s name. It always loads, and a persona can’t turn it off. */
 export const POSTBOX_SERVER = 'postbox';
 /**
+ * Postbox’s react, by the full name Claude Code gives it: the server is registered as POSTBOX_SERVER on this computer
+ * (postboxServer) and on a host (shimServer) alike. A turn whose last call is react may end with no text (#1712).
+ */
+export const POSTBOX_REACT_TOOL = `mcp__${POSTBOX_SERVER}__react`;
+/**
  * How long Claude Code waits on one call to Postbox’s server, in ms: 25 hours, a day’s wait plus a margin (#217).
  * permission_prompt answers only when the person answers the card, often minutes later. With no `timeout`, Claude
  * Code gives an HTTP server’s request 60 s to its first byte, so a card left for a minute failed the call with “The

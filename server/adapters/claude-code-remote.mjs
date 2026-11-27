@@ -19,9 +19,8 @@ import { claudeMissing, claudeVersionProblem } from '../../shared/claude-version
 import { TERMINAL_TOOLS_VAR } from '../../shared/terminal-tools.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
-import { POSTBOX_REACT_TOOL } from './claude-code-args.mjs';
 import { hostShim, hostWaitMax, startAttachments } from './remote-turn.mjs';
-import { PERMISSION_WAIT_MARGIN_MS, shimServer } from './setup.mjs';
+import { PERMISSION_WAIT_MARGIN_MS, POSTBOX_REACT_TOOL, shimServer } from './setup.mjs';
 
 export { attachmentPaths } from './remote-turn.mjs';
 
