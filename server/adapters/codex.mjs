@@ -215,7 +215,7 @@ export class CodexAdapter {
       finish = (err) => (err ? reject(err) : resolve(undefined));
     });
     ended.catch(() => {});
-    const why = (text) => `${text}${reported ? `: ${reported}` : '.'}`;
+    const why = (text, said = reported) => `${text}${said ? `: ${said}` : '.'}`;
     /** @type {(Error & { code?: string }) | null} how a remote turn ended, when that’s why it can’t finish */
     let endError = null;
     const host = remote ? createCodexHost(child, remote, attach) : null;
@@ -256,7 +256,7 @@ export class CodexAdapter {
       if (msg.method === 'turn/started') activeTurnId = msg.params?.turn?.id ?? activeTurnId;
       const result = mapper.push(msg);
       if (result?.completed) {
-        const err = result.status === 'completed' ? undefined : new Error(why(`Codex turn ${result.status ?? 'did not complete'}`));
+        const err = result.status === 'completed' ? undefined : new Error(why(`Codex turn ${result.status ?? 'did not complete'}`, reported ?? result.reason));
         if (err) fail(err);
         finish(err);
       } else if (result?.error) {
