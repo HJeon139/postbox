@@ -46,10 +46,7 @@
     if (!el || el === document.documentElement) return false;
     if (hiddenMemo.has(el)) return hiddenMemo.get(el);
     const cs = getComputedStyle(el);
-    // Content the browser skips off screen (content-visibility: auto) isn’t drawn, and asking what’s drawn at a point
-    // there finds nothing of it, so it can’t be measured; nor is it in any screenshot (#681).
-    const skipped = el.checkVisibility?.({ contentVisibilityAuto: true }) === false;
-    const out = cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0 || skipped || hidden(el.parentElement);
+    const out = cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0 || hidden(el.parentElement);
     hiddenMemo.set(el, out);
     return out;
   }
