@@ -7,6 +7,7 @@ import { promises as fsp } from 'node:fs';
 import { dirname, posix } from 'node:path';
 import { claudeMissing, claudeVersionProblem } from '../../../shared/claude-version-check.mjs';
 import { ATTACHMENTS_DIR, DIR_MODE, FILE_MODE, lookedText, socketPathFits, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
+import { withHostTerminalTools } from '../../../shared/terminal-tools.mjs';
 import { RUNNER_START_POLL_MS } from './daemon-constants.mjs';
 import { exists, runnerAlive, writeAtomic } from './daemon-files.mjs';
 import { reprobe, turnEnv } from './daemon-login.mjs';
@@ -128,7 +129,9 @@ async function checkStart(d, m, failStart) {
   const agents = m.agentFile ? await kiroAgents(d, m.env) : null;
   if (agents && 'error' in agents) return failStart('start-failed', agents.error);
   if (!(await workFolder(d, m, failStart))) return;
-  const record = { turn: m.turn, harness: m.harness, program: harness.path, argv: m.argv, env: turnEnv(d, m.env), stdin: m.stdin, folder: m.folder };
+  // A list of tools Claude Code may end a turn on joins the host’s own, not replaces it (#1712).
+  const env = turnEnv(d, withHostTerminalTools(d.env, m.env));
+  const record = { turn: m.turn, harness: m.harness, program: harness.path, argv: m.argv, env, stdin: m.stdin, folder: m.folder };
   const checked = validateStartRecord(record);
   if (!checked.ok) return failStart('start-failed', checked.error);
   return { node, dir, agents, record };

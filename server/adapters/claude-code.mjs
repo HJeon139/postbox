@@ -37,7 +37,7 @@ import { cutText } from '../../shared/text-parts.mjs';
 import { withQuota, withTransient } from '../harness-failure.mjs';
 import { claudeModels } from '../remote/host/harness-models.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
-import { claudeArgs } from './claude-code-args.mjs';
+import { claudeArgs, claudeEnv } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
@@ -220,7 +220,7 @@ export class ClaudeCodeAdapter {
       try {
         // Its own process group, so Stop reaches everything under a launcher too (#126).
         // On a host, cwd and env are the remote spawn’s own (remoteTurn): these are ignored there.
-        child = (remote ? remote.spawnImpl : this.spawn)(this.bin, args, { cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+        child = (remote ? remote.spawnImpl : this.spawn)(this.bin, args, { cwd, env: claudeEnv(process.env), stdio: ['pipe', 'pipe', 'pipe'], detached: true });
       } catch (e) {
         reject(new Error(remote ? `Couldn’t start Claude Code on the host: ${e.message}` : `Couldn’t start Claude Code (${this.bin}): ${e.message}`));
         return;

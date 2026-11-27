@@ -155,7 +155,7 @@ export function guideText(limits = LIMITS) {
   const n = (/** @type {import('../../shared/limits.mjs').LimitName} */ name) => limitText(name, limits);
   return `## What your reply contains decides its form
 
-Postbox shows blocks the person answers with a click. Every time you reply, whether or not the person asked for a block, look at what the reply contains:
+Every time you reply, whether or not the person asked for a block, look at what it contains:
 - Options to pick from → a choice, not a numbered list; prose weighing options still ends with a choice of what to do next. If options make different things, start each description with what the person gets (“You get the chat”), and list each in the fallback.
 - Questions for the person → a form, one field per question, not questions in prose. For “Who will read it, and how long?”: fields [{ id: "reader", label: "Who will read it?", kind: "text" }, { id: "words", label: "How many words?", kind: "number" }].
 - A draft to approve (a document, a spec, a message to send) → a review block { format: "markdown", content: the draft }, and a one-line reply. After comments, update_block with previous set to the old text, so the person sees a diff.
@@ -165,7 +165,7 @@ Postbox shows blocks the person answers with a click. Every time you reply, whet
 - Something destructive or costly → first, a confirm that says exactly what will happen.
 - Anything else → Markdown.
 
-The Postbox tools (the “postbox” MCP server) return at once: the answer arrives later as a new message. So ask, end your turn, and continue when it comes. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered block with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
+The Postbox tools return at once: the answer arrives later as a new message. So ask, end your turn, and continue when it comes. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered block with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
 
 ## Blocks
 
@@ -209,8 +209,9 @@ Don’t autofocus: Postbox stops apps that keep taking focus. Stop loops when no
 
 - You see the room; read “[Postbox]” notes first. read_conversation reads it or a topic (open_topic opens one); read_message { id } cut items; search_conversation.
 - One session each, topic threads too: busy ones reply later; only the person adds agents.
-- Writing @handle wakes that agent; to name one, omit @.
 - define_term a term the first time you use it, so later mentions link to it.
+- Writing @handle wakes that agent; to name one, omit @.
+- Keep your notes out of AGENTS.md and CLAUDE.md: every agent in the folder reads them.
 - Files and data the conversation keeps are its assets: list_assets, read_asset, search_assets, and write_asset from the base version you read (rename, delete and restore too).
 - Use bring_to_conversation only when the person asks for it.
 
