@@ -84,3 +84,17 @@ test('the person’s Resume after Postbox already resumed behind a held commit s
   assert.equal(starts(r.d).length, 2, 'no third turn continues the one already finished');
   await r.close();
 });
+
+test('the person’s Resume of a conversation removed behind a held commit is refused, not an error (#623, resume)', async () => {
+  const { r, turn } = await awayRig();
+  r.d.interrupt(turn);
+  await settled(r);
+  const id = r.se().id;
+  const release = await r.hold();
+  r.rt.sessions.remove(id);
+  const asked = r.rt.remote.resume(id);
+  await release();
+  assert.equal(asked.ok, false, 'a conversation put away has nothing to resume');
+  assert.equal(starts(r.d).length, 1, 'no turn starts for it');
+  await r.close();
+});

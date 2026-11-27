@@ -13,19 +13,26 @@ export async function heldRig(o = {}) {
   const h = await heldStore();
   const r = rig({ ...o, store: h.store });
   await h.store.flush();
+  /** @type {(() => Promise<void>) | null} */
+  let open = null;
   const hold = async () => {
     h.hold();
     const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
     await h.atSync;
-    return async () => {
+    const release = async () => {
+      open = null;
       h.release();
       await commit;
       await h.store.flush();
     };
+    open = release;
+    return release;
   };
+  /** @type {Promise<unknown> | null} */
   let closed = null;
-  // Closed once, at the test’s end or the file’s, so a failed assertion doesn’t leave the store open.
-  const close = () => (closed ??= h.store.close());
+  // Closed once, at the test’s end or the file’s, so a failed assertion doesn’t leave the store open; a commit it
+  // left held is let through first, or the close would wait out its bound on that disk step.
+  const close = () => (closed ??= (async () => (open ? open() : undefined))().then(() => h.store.close()));
   after(close);
   return { ...r, hold, close };
 }

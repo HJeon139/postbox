@@ -107,11 +107,13 @@ function autoResume(rts, sessionId) {
 /** The person’s Resume, after Sign-in needed or Interrupted. @param {RemoteTurns} rts @param {string} sessionId */
 export function resume(rts, sessionId) {
   const rt = rts.rt;
-  // As written: a resume Postbox already started, or a stop asked, behind a held commit decides it, and the resume
-  // and the turn it continues are built from it (#623).
-  const se = remoteOf(rts, sessionId) ?? rt.session(sessionId);
-  const r = se.remoteTurn;
-  if (!r?.resume) return { ok: false, message: `@${se.handle} has no stopped turn on a host to resume.` };
+  const shown = rt.session(sessionId); // the conversation the person sees, or a 404
+  // As written: a resume Postbox already started, a stop asked, or the session removed, behind a held commit decides
+  // it, and the resume and the turn it continues are built from it (#623). The page’s Resume shows from the published
+  // session, so reading the pending one can only refuse a resume already made, never start one the page didn’t offer.
+  const se = remoteOf(rts, sessionId);
+  const r = se?.remoteTurn;
+  if (!se || !r?.resume) return { ok: false, message: `@${shown.handle} has no stopped turn on a host to resume.` };
   if (rt.turns.has(sessionId)) return { ok: false, message: `@${se.handle} is already at work.` };
   // A turn there that Postbox asked to stop may still run until the daemon confirms it: a new one would run beside it
   // on the same session (#872, #965). A stop on another host, one the agent moved off, doesn’t hold it.
