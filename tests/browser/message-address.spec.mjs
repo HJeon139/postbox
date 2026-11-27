@@ -5,7 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
-import { landed, longRoom } from './message-address.mjs';
+import { landed, longRoom, readOnPast, recordEnd } from './message-address.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -207,11 +207,11 @@ test('#168 in forced colors, the replies link’s icon takes the link color, and
 
 test('#168 Back to a message’s address from another conversation goes to the message again', async ({ page }) => {
   const { t, items } = longRoom(app, 'Address, back again');
+  await recordEnd(page);
   await page.goto(`${app.origin}/#/t/${t.id}?m=${items[3].id}`);
   await synced(page, app);
   await expect.poll(() => landed(page, items[3].id)).toBe('landed');
-  await page.keyboard.press('End');
-  await expect.poll(() => landed(page, items[3].id), { message: 'read on past it' }).toBe('not in view');
+  await readOnPast(page, items[3].id);
   // To another conversation within the page, as the rail goes there, and back.
   const away = longRoom(app, 'Address, elsewhere again').t;
   await synced(page, app);
@@ -250,4 +250,24 @@ test('#168 an address to a message far from both ends loads only the range aroun
   await expect.poll(() => landed(page, target.id), { message: 'in view and focused' }).toBe('landed');
   const held = await page.evaluate(async (id) => (await import('/app/js/client.mjs')).client.state.items[id]?.length ?? 0, t.id);
   expect(held, 'the range around it, not the whole room').toBeLessThan(560);
+});
+
+// #1884: a blur or a pointer move holds the anchor a frame later (pointed()). A scroll in that frame whose event hasn’t
+// told the transcript yet, here a write in an earlier frame callback, is yours, as follow() takes it: held without it,
+// the view went back to the message. The browser’s own scrolls are heard by then. This isn’t the End miss CI recorded,
+// which had no write of ours after End.
+test('#1884 reading at a message, a scroll in the frame the window loses focus stands', async ({ page }) => {
+  const { t, items } = longRoom(app, 'Address, blur while scrolling');
+  await page.goto(`${app.origin}/#/t/${t.id}?m=${items[3].id}`);
+  await synced(page, app);
+  await expect.poll(() => landed(page, items[3].id)).toBe('landed');
+  await page.evaluate(() => {
+    const s = /** @type {Element} */ (document.scrollingElement);
+    const top = s.scrollTop;
+    requestAnimationFrame(() => {
+      s.scrollTop = top + 1000;
+    });
+    dispatchEvent(new Event('blur'));
+  });
+  await expect.poll(() => landed(page, items[3].id), { message: 'scrolled past the message' }).toBe('not in view');
 });

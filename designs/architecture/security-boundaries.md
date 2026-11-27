@@ -6,6 +6,8 @@ Part of [the architecture](../architecture.md). Who Postbox answers, what the pa
 
 **Decision.** Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1:<port>` or `localhost:<port>`: any other `Host` gets 421, which keeps out DNS rebinding. A write whose `Origin` is another origin’s gets 403, another port on this computer included, though the browser counts that as the same site. Both checks run before any route, in `server/index.mjs`, and before the page’s token is checked.
 
+**Hosted, the address is the deployment’s.** A Postbox started with `--hosted <settings file>` listens on every address of its container and answers only the one public origin the file names: every other `Host` gets 421, loopback included, and a write from any other `Origin` gets 403 (`server/request-gate.mjs`). Because it no longer listens on this computer alone, `!` commands and an app’s links are refused for every request by the check that was already there. One path, `/health`, answers GET and HEAD for any `Host` with a fixed body, for the load balancer’s check. Every other request needs a person the load balancer signed in ([hosted.md](hosted.md), “The address it answers” and “Who is asking”). Without the flag nothing here changes.
+
 ## Writes need the page’s token
 
 **Decision** ([#74](https://github.com/HJeon139/postbox/issues/74)). Every write to Postbox’s API (any method but GET and HEAD) needs a secret that the page you opened holds. Writes without it get 403, with a message saying why.
@@ -44,7 +46,7 @@ sequenceDiagram
 - **`/media/` stays open.** A sandboxed frame’s image request comes from an opaque origin, so it never carries the `SameSite=Strict` cookie, and requiring the token would break every app image. It serves only the media bundled with Postbox and the images agents copy into the data folder for apps to show, so a fetch of another Postbox’s `/media/` reads only image files. That is accepted: those images can be screenshots an agent copied in from another conversation, and an app that knows a file’s name can read it.
 - **`net.fetch` can’t get the token.** It never sends `Sec-Fetch-*` headers, so `/` hands it no cookie, and it never returns `Set-Cookie` to an app. Both hold today: it sends fixed headers (`server/net-fetch.mjs:68`) and returns only the status, type, location and text (`:86-90`); #1610 adds a test that keeps them.
 
-**Revisit when** Postbox listens beyond localhost, or serves more than one person. Then it needs real sign-in, not a page token, and `!` and an app’s links stay off. [hosted.md](hosted.md) proposes that change, and nothing of it is built.
+**Revisit when** Postbox listens beyond localhost, or serves more than one person. Then it needs real sign-in, not a page token, and `!` and an app’s links stay off. [hosted.md](hosted.md) proposes that change. Its sign-in is built, and only `start()`’s `signIn` option turns it on, which no Postbox a person can start passes (hosted.md, “Status”).
 
 ## What leaves through net.fetch
 

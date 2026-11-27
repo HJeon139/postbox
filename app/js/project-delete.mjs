@@ -67,9 +67,7 @@ export function confirmDeleteProject(p, paint) {
         'Delete project',
       ),
     ],
-    initialFocus: () => null,
   });
-  dlg.dialog.querySelector('.d-foot .btn')?.focus();
 }
 
 /** What deleting a project erases and what it keeps, as deleting a conversation lists them. @param {any} p */

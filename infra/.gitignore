@@ -1,0 +1,4 @@
+cdk.out/
+cdk.context.json
+# A test certificate’s key, if the recipe’s openssl line is run here.
+*.pem

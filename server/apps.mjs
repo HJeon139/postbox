@@ -5,11 +5,11 @@
 
 import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
-import { INTENT_CHARS, LIMITS } from '../shared/limits.mjs';
-import { wordCount } from '../shared/text.mjs';
 import { cutText } from '../shared/text-parts.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { awaited, settleUnchecked, settleWaits } from './app-check-wait.mjs';
+import { APP_HINTS, hintsLast, keepForAgent, passed } from './app-hints.mjs';
+import { intentOf, withIntentNote } from './app-intent.mjs';
 import { notYours } from './app-retire.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
 import { HELD_BY_EVERY_AGENT, hostTool } from './host-tool.mjs';
@@ -18,39 +18,12 @@ import { newId } from './store.mjs';
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
 /**
- * App check problems that are warnings: the app is shown, with notes, and the agent is told. Text under 12 px holds a
- * version back at 1000 × 680, as the critique’s floor does (#997): agents shipped the labels this flagged when it was a
- * warning. At 375 px it stays a warning: an SVG scaled to fit a narrow pane draws its labels small.
+ * App check problems that are warnings: the app is shown, with notes, and the agent is told, except the hints
+ * (app-hints.mjs), which alone leave no note. Text under 12 px holds a version back at 1000 × 680, as the critique’s
+ * floor does (#997): agents shipped the labels this flagged when it was a warning. At 375 px it stays a warning: an SVG
+ * scaled to fit a narrow pane draws its labels small.
  */
-const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small-375', 'dashes-too-fine', 'only-error']);
-
-/**
- * What a version should leave the reader with, as the agent said it (#995), or '' when it said nothing: a missing or
- * malformed intent never refuses an app, and a very long one is cut for storage.
- */
-const intentOf = (v) => (typeof v === 'string' ? cutText(v.trim(), INTENT_CHARS) : '');
-
-/**
- * The receipt’s note on an intent past its word limit, or ''. It’s flagged, not refused: the app is the work, and the
- * agent can say it shorter with update_app. @param {unknown} v
- */
-function intentNote(v) {
-  const n = typeof v === 'string' ? wordCount(v) : 0; // before the storage cut, so a very long one reports its length
-  return n > LIMITS.appIntentWords ? ` Its intent has ${n} words: say it in at most ${LIMITS.appIntentWords} with update_app.` : '';
-}
-
-/**
- * An app block as show_block takes it, with its intent trimmed and cut as show_app’s is, or dropped when it isn’t
- * text, so the catalog never refuses an app for its intent. @param {any} block
- */
-export function withAppIntent(block) {
-  if (block?.type !== 'app' || !Object.hasOwn(block, 'intent')) return block;
-  const { intent, ...rest } = block;
-  return intentOf(intent) ? { ...rest, intent: intentOf(intent) } : rest;
-}
-
-/** A receipt with the intent’s note, when there is one. @param {any} r @param {unknown} intent */
-export const withIntentNote = (r, intent) => (r.ok && intentNote(intent) ? { ...r, message: r.message + intentNote(intent) } : r);
+const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small-375', 'dashes-too-fine', 'only-error', 'text-over-marks']);
 
 // ── Apps ───────────────────────────────────────────────────────────────────────────
 
@@ -70,14 +43,13 @@ function checked(apps, appId, { version, problems = [] }) {
   if (!app) throw httpError(404, 'That app doesn’t exist.');
   // A retired app shows no frame, so a check still running when it was retired has nothing to fix (#193).
   if (version !== app.current || app.retired || app.check.status !== 'pending') return { ignored: true };
-  const clean = (Array.isArray(problems) ? problems : [])
+  const found = hintsLast(Array.isArray(problems) ? problems : [])
     .slice(0, 20)
     .map((p) => ({ code: String(p?.code).slice(0, 40), message: cutText(String(p?.message), 300) }));
-  // The last version the person was shown, which stands in while its agent fixes a later one (#948).
-  if (!clean.length) {
-    apps.store.emit('app', { ...app, lastShown: version, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
-    return { status: 'passed' };
-  }
+  // Passed, or with only hints for the agent: the version the person is shown, which stands in while its agent fixes a
+  // later one (#948).
+  if (found.every((p) => APP_HINTS.has(p.code))) return passed(apps, app, version, found);
+  const { clean, kept } = keepForAgent(apps, app, version, found);
   // A script error goes back to the agent once, like any blocking problem (#964); after that, or with no agent to
   // tell, the version shows as crashed.
   if (clean.some((p) => p.code === 'script-error') && (app.check.attempt > 0 || !apps.store.state.sessions[app.sessionId])) {
@@ -113,7 +85,7 @@ function checked(apps, appId, { version, problems = [] }) {
         turnId,
         fixable.map((p) => ({ ...p, scope })),
       ));
-  const check = { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}), ...(told ? { told } : {}) };
+  const check = { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}), ...(told ? { told } : {}), ...kept };
   // Only a version Postbox checked to the end can stand in later: one its check couldn’t finish is shown with its note,
   // and the last checked version stays the fallback (#948).
   const checked = fixable.length === clean.length;

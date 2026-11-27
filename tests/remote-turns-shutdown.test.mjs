@@ -26,11 +26,15 @@ test('#120: a prompt answered while the host manager closes doesn’t crash, and
       throw Object.assign(new Error('Postbox has closed its host connections.'), { code: 'closed' });
     };
     first.rt.resolvePermission(first.t.id, card.id, 'allow');
+    const result = { behavior: 'allow', updatedInput: FIXTURE_PROMPT.input };
+    const kept = () => first.store.items(first.t.id).find((i) => i.id === card.id).remote.answer;
+    // Kept once the answer’s try to send has failed: wait for that, not a fixed time (#1657).
+    await until(() => kept() !== undefined, 'the answer kept on the card');
+    assert.deepEqual(kept(), result, 'kept on the card');
+    // Then a while for a late rejection or send, which the checks below rule out.
     await sleep(20);
     assert.deepEqual(rejections, [], 'nothing thrown out of the answer');
     assert.equal(first.d.answers.length, 0, 'no link to send it on');
-    const result = { behavior: 'allow', updatedInput: FIXTURE_PROMPT.input };
-    assert.deepEqual(first.store.items(first.t.id).find((i) => i.id === card.id).remote.answer, result, 'kept on the card');
 
     // The next start: the host still has the prompt, sends it again after hello, and gets the card’s answer.
     first.d.drop();

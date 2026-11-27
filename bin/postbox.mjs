@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { buildInfo } from '../server/build-info.mjs';
 import { dataFolder, lockData, moveData, postboxHome } from '../server/home.mjs';
+import { readHosted } from '../server/hosted-settings.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -22,6 +23,9 @@ Options:
   --fresh          Start from an empty store (keeps attachments and workspaces).
   --demo           Seed the demo’s agents and conversations, with scripted agents only.
   --move-data      Move a clone’s data/ folder to ~/.postbox, then exit.
+  --hosted <file>  Run for a team behind a load balancer that signs people in, with the settings
+                   in this file. It then listens on every address and answers only the public
+                   origin the file names (designs/architecture/hosted.md).
   -v, --version    Print the version.
   -h, --help       Print this help.`;
 
@@ -42,6 +46,7 @@ export async function main(argv, start) {
         fresh: { type: 'boolean' },
         demo: { type: 'boolean' },
         'move-data': { type: 'boolean' },
+        hosted: { type: 'string' },
         version: { type: 'boolean', short: 'v' },
         help: { type: 'boolean', short: 'h' },
       },
@@ -70,6 +75,13 @@ export async function main(argv, start) {
     console.error(`--port takes a port number from 1 to 65535, not “${values.port}”.`);
     process.exit(2);
   }
+  let hosted = {};
+  try {
+    if (values.hosted !== undefined) hosted = readHosted(values.hosted);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(2);
+  }
   const { dataDir, from } = dataFolder({ data: values.data, root: ROOT });
   let release;
   try {
@@ -85,7 +97,7 @@ export async function main(argv, start) {
   process.on('unhandledRejection', (e) =>
     console.error(`Postbox kept running after an error nothing handled. Please report it, with this:\n${e instanceof Error ? e.stack : String(e)}`),
   );
-  const app = await start({ port, dataDir, fresh: values.fresh, demo: values.demo }).catch((e) => {
+  const app = await start({ port, dataDir, fresh: values.fresh, demo: values.demo, ...hosted }).catch((e) => {
     // A folder a newer Postbox wrote (#683): what to run is the whole message, with no stack.
     if (e?.code !== 'NEWER_FORMAT') throw e;
     console.error(e.message);

@@ -1,5 +1,5 @@
 // The delivery scenario’s triggers (#508, tests/uat/e2e/scenarios/delivery.md, designs/508/testing-strategy.md):
-// wakes held behind a card and released by its answer, a mention past the catch-up cap, an edit while a delivery
+// wakes held behind a card and released by its answer, a chain stopped at its cap, a mention past the catch-up cap, an edit while a delivery
 // waited, a turn that failed before any output, and a labeled resend. tools/uat/triggers.mjs adds them to TRIGGERS.
 // Each reads only what `main` records (tools/uat/room-delivery.mjs), and names the requirements it serves.
 
@@ -13,20 +13,18 @@ const reached = (f, to, text, itemId, since) => (inputsOf(f, to) ?? []).some((x)
 const prompts = (f, to) => (inputsOf(f, to) ?? []).filter((x) => x.kind === 'prompt');
 
 /**
- * Two pairs’ wakes waiting behind one open card at once: its own, and one held on it from another pair (#439). The card
- * records which wake of the chain raised it (n, server/wake-cards.mjs), one past the chain limit the run’s Postbox enforces
- * (`- chain-limit:`, tools/uat/scenario.mjs), so the evidence says at which wake it came.
+ * Two pairs’ wakes waiting behind one open card at once: its own, and one held on it from another pair (#439). Since
+ * #1623 that card is an add card: past the chain’s cap the chain stops (chainStopped), with no card to hold anything.
  */
 function heldBehindCard(f) {
   const out = [];
   for (const [id, c] of cardHistory(f.events)) {
     const own = pair(c.card.from, c.card.to);
     const other = [...c.held.values()].find((h) => pair(h.w.from, h.w.to) !== own);
-    const raised = Number.isFinite(c.card.n) ? `, raised by wake ${c.card.n} of the chain,` : '';
     if (other)
       out.push({
         at: other.w.at ?? null,
-        evidence: `Card ${id} (@${c.card.from} → @${c.card.to})${raised} held @${other.w.from}’s wake of @${other.w.to} too, while it waited.`,
+        evidence: `Card ${id} (@${c.card.from} → @${c.card.to}) held @${other.w.from}’s wake of @${other.w.to} too, while it waited.`,
       });
   }
   return out;
@@ -43,6 +41,18 @@ function heldReleased(f) {
       out.push({ at: since, evidence: `Allowing card ${id} delivered its wake and the ${c.held.size} held on it, each to its agent.` });
   }
   return out;
+}
+
+/**
+ * The chain stopped at the cap the run’s Postbox enforces (`- chain-limit:`, tools/uat/scenario.mjs), as #1623 has it:
+ * the room said so in one line, and no wake card asked the person to allow the next wake.
+ */
+function chainStopped(f) {
+  const items = itemsOf(f);
+  if (items.some((it) => it.kind === 'hop' && !it.join)) return [];
+  return items
+    .filter((it) => it.kind === 'system' && it.variant === 'chain-stopped')
+    .map((it) => ({ at: it.at ?? null, evidence: `The room said once that agents stopped waking each other after ${it.wakes} wakes, with no card.` }));
 }
 
 /** A mention with CATCH_UP_ITEMS or more items after it before its agent’s next turn, which still reached it. */
@@ -136,6 +146,13 @@ export const DELIVERY_TRIGGERS = {
     says: 'answering a card delivered every delivery it held',
     recorded: reads,
     run: heldReleased,
+  },
+  'chain-stopped': {
+    issue: 1623,
+    requirements: ['AT-5'],
+    says: 'a chain at its cap stopped with one line, and no card',
+    recorded: reads,
+    run: chainStopped,
   },
   'mention-past-cap': {
     issue: 484,

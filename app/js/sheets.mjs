@@ -18,7 +18,6 @@ import {
 import { memoryLine } from '/shared/agent-memory.mjs';
 
 import { boilerplateRow } from './boilerplate-row.mjs';
-import { chainLimitDesc, openChainLimit } from './chain-limit.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, headerOf, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
@@ -749,9 +748,7 @@ export function confirmDelete(se, { keepConversation = false, removed } = {}) {
         'Delete session',
       ),
     ],
-    initialFocus: () => null,
   });
-  dlg.dialog.querySelector('.d-foot .btn')?.focus();
 }
 
 // ── Settings ────────────────────────────────────────────────────────────────────────────
@@ -812,8 +809,6 @@ export function openSettings(tab = 'appearance', personaId = null) {
             confirmDelete,
             openNewAgent,
             openPermissions,
-            openChainLimit,
-            chainLimitDesc,
             editPersona: (/** @type {string} */ id) => {
               personaId = id;
               go('personas');

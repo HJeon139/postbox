@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { askToWake } from '../server/wake-cards.mjs';
+import { askToAdd } from '../server/wake-cards.mjs';
 import * as arrange from './arrange.mjs';
 import { room } from './card-needs-fixture.mjs';
 import { held, oldSide, settle, sleep } from './side-threads-fixture.mjs';
@@ -81,7 +81,7 @@ test('a wake request offered while a permission is the need waits behind it, and
   const r = room();
   const p = r.permission();
   r.setNeed('permission', p.id);
-  askToWake(r.rt, r.rt.s.sessions[r.alpha.id], r.rt.s.threads[r.t.id], r.b, { text: 'please look' });
+  askToAdd(r.rt, r.rt.s.sessions[r.alpha.id], r.rt.s.threads[r.t.id], r.c, { text: 'please look' });
   const h = r.rt.store.items(r.t.id).find((x) => x.kind === 'hop');
   assert.equal(r.needs()?.itemId, p.id, 'the permission stays the need');
   r.rt.settlePermission(p.id, 'allowed');

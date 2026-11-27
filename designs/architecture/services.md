@@ -62,7 +62,7 @@ designs/rooms-at-scale.md decides the end state of the most tangled code: the pe
 
 So this work doesn’t build interfaces around that machinery. Three concerns **wait**, in their current shape, behind the facade, until those decisions land:
 - **Asks and permissions:** `permission-*.mjs`, `permissions-panel`, `ask-question`, `tool-ask`, `prompt-claim`, `read-folders`, `write-guard`, `write-intent`, `host-rules`, `card-needs`, `blocks` (its `act()` dispatches the cards), `view-app/consent` and `view-app/view-app` (the download card). The app-send cards split from `apps.mjs` in step 9 were removed in #1488.
-- **Delivery:** `message-queue`, `send-message`, `turn-batch`, `mention-wakes`, `newer-waiting`, `side-threads`, `wake-cards`, `scheduled-wakes`, `room-chain-limit`, `topic-open`, `share-back`, `bring` and `agent-commands`.
+- **Delivery:** `message-queue`, `send-message`, `turn-batch`, `mention-wakes`, `newer-waiting`, `side-threads`, `wake-cards`, `scheduled-wakes`, `chain-stop`, `topic-open`, `share-back`, `bring` and `agent-commands`.
 - **Turns:** `deliver`, `turn-context`, `turn-stop`, `turn-finish`, the turn’s steps and marks, jobs and kept jobs, `claude-mirror`, `store-outage`, `restart-sweep`, and `remote/turns*.mjs`. Starting and ending a turn interleave delivery and needs at every step (see “The end of a turn”, below), so Turns is redone with the inbox, not before it.
 
 That is 55 modules. Waiting code keeps taking `rt`, and may call any service. The rule for everything redone before then: **a service never calls waiting code.** Where it does today, it raises a signal or calls a port, below, and the waiting code listens or answers.
@@ -88,7 +88,7 @@ The list refines the starting point from the data:
 
 - **Owns:** the listeners for in-process signals. It calls them synchronously, in the order the root registered them, and a listener’s throw reaches the emitter, as a direct call’s does today. Nothing is persisted.
 - **Interface:** `emit(signal, data)`, `on(signal, fn)`.
-- **Signals:** `persona.updated` (Personas, after a write), `session.joined` (Sessions: a declined add lifts), `item.added` (Threads: a side thread’s line counts the message), `item.final` (Threads, once per item, when it is first final: Delivery will turn its mentions into entries; nothing listens yet but the tests), `item.moved` (Threads, from `bringForward`: Memory moves its read markers to the stub), `app.retired` (Apps: nothing listens since the app-send cards were removed in #1488), `block.withdrawn` (Apps, from `update_block`’s withdraw: the block’s need releases).
+- **Signals:** `persona.updated` (Personas, after a write), `session.joined` (Sessions: a declined add lifts), `session.removing` (Sessions, before a session’s remove: host turns keep its stops still waiting on a host in that host’s record, `hostStops`, #1796; `RemoteTurns` registers this one itself, since `server/runtime.mjs` is at its ceiling), `item.added` (Threads: a side thread’s line counts the message), `item.final` (Threads, once per item, when it is first final: Delivery will turn its mentions into entries; nothing listens yet but the tests), `item.moved` (Threads, from `bringForward`: Memory moves its read markers to the stub), `app.retired` (Apps: nothing listens since the app-send cards were removed in #1488), `block.withdrawn` (Apps, from `update_block`’s withdraw: the block’s need releases).
 - **`persona.updated`’s listeners, in this order:** host turns set Running’s awaiting-attach entries for that persona’s sessions from where it runs now (`RemoteTurns.noteAttach`): one moved off its host is cleared, and one moved back before the attach waits again; sessions drop what their last turn reported, after a change of backend or model (`Sessions.forgetReported`, #1315); tool asks settle (`settleToolAsks`); the queue of an agent moved off a host drains (`drainMovedOff`); an agent moved to another backend or computer leaves its old quota’s mark and takes the new one’s, if it’s out (`quotaMoved`, #442). Today `busyFor` computes awaiting attach from the persona as it is after the write, so a drain right after it already sees the agent free; clearing first keeps that. If the queue drained first, a moved agent’s messages would stay held.
 - **Depends on:** nothing.
 
@@ -120,7 +120,7 @@ The list refines the starting point from the data:
 ### Sessions
 
 - **Owns:** sessions: one per agent per conversation (#228), their unread counts, notices for the next turn (`tellAgent`), and the commands each agent offers (`recordCommands`, from `agent-commands.mjs`). Needs stay with asks.
-- **Interface:** `get(id)`, `in(threadId)`, `pendingIn(threadId)`, `ensure(threadId, personaId, opts)`, `update(id, patch)`, `tell(id, text)`, `roomOf(threadId, se)`, `awayFrom(se, threadId)`, `recordCommands(id, list)`, `markRead(threadId)`, `remove(id)`, `forgetReported(was, next)`; as the store loads, `stampNeeds()` and `unarchive()`. Signal: `session.joined`, with the thread, the session and the persona, once the session is a member.
+- **Interface:** `get(id)`, `in(threadId)`, `pendingIn(threadId)`, `ensure(threadId, personaId, opts)`, `update(id, patch)`, `tell(id, text)`, `roomOf(threadId, se)`, `awayFrom(se, threadId)`, `recordCommands(id, list)`, `markRead(threadId)`, `remove(id)`, `forgetReported(was, next)`; as the store loads, `stampNeeds()` and `unarchive()`. Signals: `session.joined`, with the thread, the session and the persona, once the session is a member; `session.removing`, with its id, before `remove(id)` removes it (#1796).
 - **Depends on:** Store, Bus, Threads, Personas.
 
 ### Assets
@@ -214,14 +214,12 @@ flowchart LR
     - A due wake is an entry with the source “scheduled”, so `noteScheduledTurn` becomes its take, `prepareScheduledRetry` becomes the failed-start rule, and the tools a wake recorded (`recordScheduledTool`, `recordedTools`) are its note.
   - **The person’s own actions:**
     - `edit(entryId)`, `cancel(entryId)` and `stopped(sessionId)`;
-    - `continueChain(threadId)`: Continue at the chain cap;
     - `retry(sessionId)`: the facade’s Retry on a failed turn. The entries that turn took go back to waiting, marked as a resend, and the session is no longer failed, so `entry.waiting` starts the turn. As built (#1429) it takes the failed turn’s id and whom its failed reply already woke (`woken`, #485), which rides on each reopened entry, so whichever turn takes them, Send now’s included, is the retry and no other turn is. What an app event’s entry carries in memory stays while a Retry can reopen it. A failed turn that took no entries, such as a host turn’s replay, sends its request again instead.
 
     The person’s message is an entry when it’s sent (#1404), so `edit` and `cancel` act on it. A queue a store holds from before that is turned into entries once, on start (step 3).
   - **Signals:** `entry.waiting`. It is raised for an agent that has a waiting entry that isn’t a notice, and that:
     - isn’t `busy()` in Running (no live turn, none exiting, no host turn awaiting attach);
-    - has a session that hasn’t failed;
-    - isn’t held at the chain cap.
+    - has a session that hasn’t failed.
 
     It is raised when such an entry arrives, and from the listeners below.
 - **Listens to:**
@@ -668,7 +666,7 @@ Each step is its own pull request, and is done when:
   - **What the switch found:**
     - A reply’s part that settles during the end of its turn is final before that turn has written its error. Its entries are stored with `wake: false`, and `turn.ended` or `turn.failed` wakes their agents, so a failed reply’s entry reads its error.
     - Delivery needs the turn an item came from after Running has let it go: Running keeps each session’s last turn to leave (`turnFor`).
-    - The chain cap’s card and the add-agent card stand in front of Delivery until Asks replaces them, so `chainHeld` stays unbound.
+    - The add-agent card stands in front of Delivery until Asks replaces it, so `chainHeld` stays unbound. Nothing is held at the chain cap since #1623: the wake past it is refused.
     - A host turn’s replay keys its mentions by the host turn and their order, as the retry id (#1138’s class).
     - Entries carry an arrival number, so they sort with the queue’s messages in the same millisecond (#733).
     - Stop closes a turn without `endTurn`, so it raises `turn.stopping`, and Delivery marks what the turn took as delivered. A shutdown’s stop doesn’t: the restart reopens those entries once, as a resend. A reply the person stopped hands its mentions to no one, as before.
@@ -799,7 +797,6 @@ Each module under `server/` that reaches `Runtime`, with the `rt.x` names it use
 | `remote/turns-stops.mjs`* | 3 | `patchItem`, `personaFor`, `s` |
 | `remote/turns.mjs` | 3 | `personaFor`, `s`, `store` |
 | `review-files.mjs` | 3 | `agentFile`, `blobs`, `store` |
-| `room-chain-limit.mjs` | 3 | `lineage`, `renameThread`, `store` |
 | `session-write.mjs` | 3 | `s`, `store`, `updateSession` |
 | `turn-marks.mjs` | 3 | `blobs`, `s`, `store` |
 | `unarchive.mjs` | 3 | `s`, `store`, `updateSession` |

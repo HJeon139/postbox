@@ -1,0 +1,22 @@
+{
+  "name": "postbox-infra",
+  "private": true,
+  "description": "The AWS test deployment of a hosted Postbox (designs/architecture/hosted.md). Not part of the postbox package.",
+  "type": "module",
+  "scripts": {
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "deploy": "cdk deploy",
+    "destroy": "cdk destroy"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.278.0",
+    "constructs": "^10.4.2"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.1149.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

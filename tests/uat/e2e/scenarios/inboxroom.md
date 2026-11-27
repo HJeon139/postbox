@@ -1,6 +1,6 @@
 # Inbox room: what the inbox changes, measured against main
 
-- persona: A lead with four agents on a small release. Sends exactly the messages the phases give, word for word, and adds nothing to them. Answers Allow on any card that asks to allow another wake. Declines any other card as soon as it appears, so no agent is left waiting on one: in a run of 16 November 2026 an agent asked to run a command, the card went unanswered, and that agent took no further part.
+- persona: A lead with four agents on a small release. Sends exactly the messages the phases give, word for word, and adds nothing to them. Declines any card as soon as it appears, so no agent is left waiting on one: in a run of 16 November 2026 an agent asked to run a command, the card went unanswered, and that agent took no further part.
 - agents: researcher, critic, developer, alpha
 - backends: critic=codex:gpt-6-luna, developer=antigravity-cli:gemini-3.8-flash-high, alpha=kiro-cli:qwen3-coder-next
 - steps: 30

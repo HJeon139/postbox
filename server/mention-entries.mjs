@@ -1,9 +1,9 @@
 // A final reply’s @-mentions become entries in the inbox of each agent they name (designs/architecture/services.md,
 // “Delivery and Turns, built as the inbox”; designs/rooms-at-scale.md, “Which mention wakes”). The root listens to
 // item.final with it, so a mention is handed over once its message is whole, never mid-stream (#834), and in place of
-// the wakes the end of a turn made. Each mention still goes through agentWake (server/side-threads.mjs), whose cards
-// stand in for the chain cap’s Continue and an absent agent’s add until Asks replaces them. Functions take the Runtime
-// first, as waiting code does until Turns is a service.
+// the wakes the end of a turn made. Each mention still goes through agentWake (server/side-threads.mjs), which stops
+// the chain at its cap (#1623) and asks the person, on a card, to add an absent agent until Asks replaces it.
+// Functions take the Runtime first, as waiting code does until Turns is a service.
 
 import { parseMentions } from '../shared/text.mjs';
 import { copiedLine } from './copied-line.mjs';

@@ -1,14 +1,14 @@
 // After a Postbox restart, and when Postbox gives up on a turn on a host (#120, server/remote/turns.mjs, the header):
 // a turn that was running is attached again once the host’s welcome lists it, its cards stay open, and the stops
-// asked before the restart are asked again; delete and removing the host give up on what waits to attach
-// or to resume.
+// asked before the restart are asked again, a removed session’s from its host’s record (#1796); delete and removing
+// the host give up on what waits to attach or to resume.
 
 import { clockStopConfirmed } from '../run-clock.mjs';
 import { needHost, releaseHost } from './turns-need.mjs';
 import { openCards } from './turns-prompt-cards.mjs';
 import { endCard } from './turns-prompts.mjs';
 import { interrupted, reattach, whenBack } from './turns-resume.mjs';
-import { key, ON_HOST, sessionOfTurn, updateRemote } from './turns-shared.mjs';
+import { key, ON_HOST, remoteOf, sessionOfTurn, updateRemote } from './turns-shared.mjs';
 import { askStop, dropStop } from './turns-stops.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
@@ -50,6 +50,20 @@ export function restore(rts) {
       whenBack(rts, r.hostId);
     }
   }
+  restoreKept(rts);
+}
+
+/**
+ * Stops of sessions removed before the restart, kept by their hosts (#1796): asked again, with no session, so a
+ * deleted persona’s removal there waits for them, as before the restart (#1680). A host removed since took its
+ * record with it (putHost), unless an older Postbox removed it, which kept none.
+ * @param {RemoteTurns} rts
+ */
+function restoreKept(rts) {
+  for (const [hostId, kept] of Object.entries(rts.rt.s.hostStops ?? {})) {
+    if (!rts.rt.s.hosts?.[hostId]) continue;
+    for (const x of kept) askStop(rts, null, hostId, x.turn, { unconfirmed: x.unconfirmed === true, kept: { personaId: x.personaId } });
+  }
 }
 
 /** Cards of a turn still on a host aren’t stale after a restart: the daemon sends their prompts again. @param {RemoteTurns} rts @param {any} it */
@@ -68,7 +82,7 @@ export function keepsCard(rts, it) {
  * @param {RemoteTurns} rts @param {string} sessionId
  */
 export function cancel(rts, sessionId) {
-  const se = rts.rt.s.sessions[sessionId];
+  const se = remoteOf(rts, sessionId); // as written, a held remoteTurn included (#623)
   const r = se?.remoteTurn;
   if (!r || rts.live.has(sessionId)) return false;
   const pending = rts.restoring.get(r.turn) === sessionId;

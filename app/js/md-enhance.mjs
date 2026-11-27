@@ -142,6 +142,9 @@ function drawMath(root) {
     loadKatex()
       .then((katex) => {
         for (const el of math) {
+          // A reply is drawn more than once after it ends, and each draw asks for the same formulas while KaTeX loads:
+          // one another ask has drawn is left as it is, since its text is now the drawing, not its source (“ttt” for $t$).
+          if (el.classList.contains('rendered')) continue;
           const tex = el.textContent;
           try {
             katex.render(tex, el, { displayMode: el.dataset.display === 'true', throwOnError: false, trust: false, strict: 'ignore' });

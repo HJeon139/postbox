@@ -11,7 +11,7 @@ import { backgroundStopText, waitingOnBackground } from './turns-background.mjs'
 import { releaseHost } from './turns-need.mjs';
 import { continuing } from './turns-origin.mjs';
 import { endOrphanCards } from './turns-prompts.mjs';
-import { AUTO_RESUMES, clock, isBack, ON_HOST, SIGN_IN_RECHECK_MS, updateRemote } from './turns-shared.mjs';
+import { AUTO_RESUMES, clock, isBack, ON_HOST, remoteOf, remotes, SIGN_IN_RECHECK_MS, updateRemote } from './turns-shared.mjs';
 import { askStop } from './turns-stops.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
@@ -19,7 +19,8 @@ import { askStop } from './turns-stops.mjs';
 /** The periodic look: stalls, and sign-in waits whose check is due. @param {RemoteTurns} rts */
 export function tick(rts) {
   checkStalls(rts);
-  for (const se of Object.values(rts.rt.s.sessions))
+  // Each session as written: a Sign-in needed held behind a commit waits for its check too (#623).
+  for (const se of remotes(rts))
     if (se.remoteTurn?.state === 'signin' && se.remoteTurn.resume && rts.now() - (rts.checkedAt.get(se.id) ?? 0) >= SIGN_IN_RECHECK_MS)
       void trySignInResume(rts, se.id);
 }
@@ -55,7 +56,8 @@ export async function signInCheck(rts, hostId) {
 /** A host’s connection changed: one back attaches, resumes or checks the turns that wait for it. @param {RemoteTurns} rts @param {string} hostId @param {any} status */
 export function onHostStatus(rts, hostId, status) {
   if (!isBack(status)) return;
-  for (const se of Object.values(rts.rt.s.sessions)) {
+  // Each session as written: a turn interrupted behind a held commit resumes too (#623).
+  for (const se of remotes(rts)) {
     const r = se.remoteTurn;
     if (r?.hostId !== hostId || rts.live.has(se.id)) continue;
     if (ON_HOST.has(r.state) && rts.restoring.has(r.turn)) void reattach(rts, se.id);
@@ -72,7 +74,7 @@ export function whenBack(rts, hostId) {
 
 /** After Sign-in needed: resume only once the host’s check passes; with no check, the person resumes. @param {RemoteTurns} rts @param {string} sessionId */
 async function trySignInResume(rts, sessionId) {
-  const se = rts.rt.s.sessions[sessionId];
+  const se = remoteOf(rts, sessionId); // as written (#623)
   if (se?.remoteTurn?.state !== 'signin' || !se.remoteTurn.resume) return;
   rts.checkedAt.set(sessionId, rts.now());
   const check = await signInCheck(rts, se.remoteTurn.hostId);
@@ -82,7 +84,8 @@ async function trySignInResume(rts, sessionId) {
 /** @param {RemoteTurns} rts @param {string} sessionId */
 function autoResume(rts, sessionId) {
   const rt = rts.rt;
-  const se = rt.s.sessions[sessionId];
+  // As written: a resume counted, or a stop asked, behind a held commit counts here (#623).
+  const se = remoteOf(rts, sessionId);
   const r = se?.remoteTurn;
   if (!r?.resume || se.retiredFork || rt.turns.has(sessionId) || rt.exiting.has(sessionId) || rt.closing) return;
   // Only on the host it stopped on: an agent moved since waits for the person.
@@ -97,16 +100,20 @@ function autoResume(rts, sessionId) {
   if (r.resume.why === 'interrupted' && (r.resume.unkilled || (r.autoResumes ?? 0) >= AUTO_RESUMES)) return;
   updateRemote(rts, sessionId, { resume: { ...r.resume, auto: true }, autoResumes: (r.autoResumes ?? 0) + 1 });
   // It goes on as the turn it continues: where it spoke, who it answers, what it was asked (turns-origin.mjs).
-  const go = continuing(rt, rt.s.sessions[sessionId], { kind: 'notice', text: 'Postbox resumed your turn on its own. Carry on where you left off.' });
+  const go = continuing(rt, remoteOf(rts, sessionId), { kind: 'notice', text: 'Postbox resumed your turn on its own. Carry on where you left off.' });
   rt.turnService.resume(sessionId, go.message, go.opts);
 }
 
 /** The person’s Resume, after Sign-in needed or Interrupted. @param {RemoteTurns} rts @param {string} sessionId */
 export function resume(rts, sessionId) {
   const rt = rts.rt;
-  const se = rt.session(sessionId);
-  const r = se.remoteTurn;
-  if (!r?.resume) return { ok: false, message: `@${se.handle} has no stopped turn on a host to resume.` };
+  const shown = rt.session(sessionId); // the conversation the person sees, or a 404
+  // As written: a resume Postbox already started, a stop asked, or the session removed, behind a held commit decides
+  // it, and the resume and the turn it continues are built from it (#623). The page’s Resume shows from the published
+  // session, so reading the pending one can only refuse a resume already made, never start one the page didn’t offer.
+  const se = remoteOf(rts, sessionId);
+  const r = se?.remoteTurn;
+  if (!r?.resume) return { ok: false, message: `@${shown.handle} has no stopped turn on a host to resume.` };
   if (rt.turns.has(sessionId)) return { ok: false, message: `@${se.handle} is already at work.` };
   // A turn there that Postbox asked to stop may still run until the daemon confirms it: a new one would run beside it
   // on the same session (#872, #965). A stop on another host, one the agent moved off, doesn’t hold it.
@@ -116,7 +123,7 @@ export function resume(rts, sessionId) {
     return { ok: false, message: `@${se.handle}’s last turn on ${name} hasn’t confirmed it stopped. Resume once it has.` };
   }
   updateRemote(rts, sessionId, { resume: { ...r.resume, auto: false }, autoResumes: 0 });
-  const go = continuing(rt, rt.s.sessions[sessionId], { kind: 'notice', text: 'The person asked you to resume. Carry on where you left off.' });
+  const go = continuing(rt, remoteOf(rts, sessionId), { kind: 'notice', text: 'The person asked you to resume. Carry on where you left off.' });
   rt.turnService.resume(sessionId, go.message, go.opts);
   return { ok: true };
 }
@@ -124,7 +131,8 @@ export function resume(rts, sessionId) {
 /** @param {RemoteTurns} rts @param {string} sessionId */
 export async function reattach(rts, sessionId) {
   const rt = rts.rt;
-  const se = rt.s.sessions[sessionId];
+  // The session as written, here and after the welcome: a turn ended or moved behind a held commit isn’t attached (#623).
+  const se = remoteOf(rts, sessionId);
   const r = se?.remoteTurn;
   if (!r || !rts.restoring.has(r.turn) || rts.live.has(sessionId) || rt.turns.has(sessionId)) return;
   let welcome;
@@ -133,7 +141,7 @@ export async function reattach(rts, sessionId) {
   } catch {
     return; // not now: onHostStatus tries again when the host is back
   }
-  const now = rt.s.sessions[sessionId];
+  const now = remoteOf(rts, sessionId);
   if (!now || now.remoteTurn?.turn !== r.turn || !rts.restoring.has(r.turn) || rt.turns.has(sessionId)) return;
   const listed = (welcome?.turns ?? []).find((/** @type {any} */ t) => t.turn === r.turn);
   // An agent moved off the host since can’t be attached there, nor one whose backend isn’t registered here (#874,
@@ -195,7 +203,7 @@ function whyNotAttached(handle, persona, { listed, moved }) {
  */
 export function interrupted(rts, sessionId, why, { unkilled = false, noBackend = false } = {}) {
   const rt = rts.rt;
-  const se = rt.s.sessions[sessionId];
+  const se = remoteOf(rts, sessionId); // as written: allocate’s remoteTurn may still be held behind a commit (#623)
   if (!se?.remoteTurn) return;
   const name = rt.s.hosts?.[se.remoteTurn.hostId]?.name ?? 'its host';
   const message = `Interrupted on ${name}: ${why}.`;

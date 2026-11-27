@@ -1,7 +1,7 @@
 // Postbox server: serves the app, the API, live updates over server-sent events, the MCP endpoint and
 // the sandbox frames for agent-written apps. Node only, no dependencies.
 //
-//   node server/index.mjs [--port 4173] [--data <folder>] [--fresh] [--demo]
+//   node server/index.mjs [--port 4173] [--data <folder>] [--fresh] [--demo] [--hosted <settings file>]
 //
 // The same as the postbox command (bin/postbox.mjs), which reads the flags and finds the data folder (server/home.mjs).
 
@@ -21,6 +21,7 @@ import { buildInfo } from './build-info.mjs';
 import { dismissFailed } from './card-needs.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { dataFolder } from './home.mjs';
+import { checkHosted } from './hosted-settings.mjs';
 import { hostsRoute } from './hosts-routes.mjs';
 import { closeServer, httpServer } from './http-server.mjs';
 import { whoIs } from './identity/session.mjs';
@@ -38,7 +39,6 @@ import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { requestGate } from './request-gate.mjs';
 import { settleInterrupted, stopStreaming } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY } from './review-files.mjs';
-import { patchThread } from './room-chain-limit.mjs';
 import { roomFileRoute } from './room-files.mjs';
 import { installRunClock, runClockOn } from './run-clock-install.mjs';
 import { httpError, Runtime } from './runtime.mjs';
@@ -82,10 +82,12 @@ const OUTPUT_HEADERS = { 'content-type': 'text/plain; charset=utf-8', 'x-content
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
  *           host?: string, spawnShell?: typeof import('node:child_process').spawn, openUrl?: (cmd: [string, string[]]) => Promise<unknown>, hosts?: import('./remote/hosts.mjs').HostManager|null,
  *           wake?: Parameters<typeof import('./remote/wake.mjs').watchWake>[1], probes?: Partial<typeof PROBES>, archiveTurns?: boolean,
- *           account?: import('./identity/index.mjs').Principal }} [opts]
+ *           account?: import('./identity/index.mjs').Principal, signIn?: import('./identity/index.mjs').SignIn, publicOrigin?: string }} [opts]
  *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
  *   checks pass a temp folder, so they never read the real one)
  *   account: who the computer’s account is (server/identity/index.mjs, #558); tests and screenshot runs pass a fixture person’s
+ *   signIn: a hosted Postbox’s sign-in (designs/architecture/hosted.md); given, every request is whoever signed in, or refused
+ *   publicOrigin: a hosted Postbox’s one public address, which it answers in place of 127.0.0.1 (server/request-gate.mjs)
  *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
  *   host: the address it listens on, 127.0.0.1; `!` commands refuse to run on any other (tests check that)
  *   spawnShell: how `!` commands start (tests pass a fake)
@@ -112,8 +114,12 @@ export async function start({
   probes = undefined,
   archiveTurns = false,
   account = undefined,
+  signIn = undefined,
+  publicOrigin = undefined,
 } = {}) {
-  const origin = `http://127.0.0.1:${port}`;
+  // Before anything is opened: sign-in settings that leave something out stop the start, with nothing held (#1733).
+  checkHosted({ signIn, publicOrigin });
+  const origin = publicOrigin ?? `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
   const { store, blobs, mediaDir } = await openDataFolder(dataDir, { fresh });
   const adapters = new AdapterRegistry().register(new MockAdapter());
@@ -166,6 +172,8 @@ export async function start({
   // port, and two Postboxes on one computer don’t overwrite each other’s.
   const token = Buffer.from(randomBytes(32).toString('base64url'));
   const cookieName = `pb_token_${port}`;
+  // Hosted, it is sent only over TLS, as the public origin is reached (designs/architecture/hosted.md, “The address it answers”).
+  const setCookie = `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/${publicOrigin ? '; Secure' : ''}`;
   const cookieRe = new RegExp(`(?:^|;\\s*)${cookieName}=([^;]*)`); // lint-allow regex: pb_token_ and the port number
   const hasToken = (req) => {
     const sent = Buffer.from(String(req.headers.cookie ?? '').match(cookieRe)?.[1] ?? '');
@@ -178,9 +186,9 @@ export async function start({
     req.headers['sec-fetch-mode'] === 'navigate' || req.headers['sec-fetch-site'] === 'same-origin' || req.headers['sec-fetch-site'] === 'none';
 
   // Who it answers before any route, and what runs only on this computer alone (server/request-gate.mjs).
-  const gate = requestGate({ port, host: () => host });
+  const gate = requestGate({ port, host: () => host, publicOrigin });
   // Who each request is from (#558): the provider’s answer, and the person that is.
-  const who = whoIs({ store, account });
+  const who = whoIs({ store, account, signIn });
 
   // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
   const { streams, stop: stopStreams, stream, headers } = liveStreams(store, undefined, { running: rt.running });
@@ -207,12 +215,12 @@ export async function start({
       else res.end();
     }
   };
-  const server = httpServer(handle);
+  const server = httpServer(gate.overTls(handle));
 
   async function route(req, res) {
     const url = new URL(req.url, origin);
     const path = url.pathname;
-    const host = (req.headers.host ?? '').toLowerCase();
+    if (gate.health(req, res, path)) return;
     gate.admit(req);
     // Every write needs the page’s token (#74), except /mcp, where agents call Postbox’s tools with their session.
     if (req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && !hasToken(req))
@@ -243,7 +251,7 @@ export async function start({
       return file(
         res,
         await servedFile(STATIC['/app/'], 'index.html'),
-        { ...appHeaders(config), ...(fromBrowser(req) ? { 'set-cookie': `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/` } : {}) },
+        { ...appHeaders(config), ...(fromBrowser(req) ? { 'set-cookie': setCookie } : {}) },
         req,
       );
     if (path === '/favicon.svg') return file(res, await servedFile(BUNDLED_MEDIA, 'favicon.svg'), {}, req);
@@ -258,7 +266,7 @@ export async function start({
     }
 
     // Sandbox frames: agent apps and Mermaid diagrams (server/sandbox-routes.mjs).
-    const sandbox = sandboxRoute(store, origin, `http://${host}`, path, url);
+    const sandbox = sandboxRoute(store, origin, gate.framedBy(req), path, url);
     if (sandbox) return raw(res, 200, sandbox.html, sandbox.headers);
     let m;
 
@@ -317,7 +325,7 @@ export async function start({
 
     if (path === '/api/threads' && req.method === 'POST') return send(res, 201, rt.createThread(body, person.id));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, patchThread(rt, m[1], body));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.threads.rename(m[1], body?.title));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body, who.sender(person)));
     // A backend’s models, asked of its harness when a model field opens, here or on body.hostId’s host
     // (server/model-lists.mjs). A POST, so the page’s token gates the process it starts.

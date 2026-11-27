@@ -32,8 +32,6 @@ test('#1695 a turn whose reply @-mentions another agent gets no reply-form lint;
   const { rt, store, t, adapter } = setup();
   const lead = rt.createPersona({ handle: 'lead' });
   rt.ensureSession(t.id, lead.id);
-  // Each scripted reply names no one, so it would go back and forth to the chain limit: two hops keep the run short.
-  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
   const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
   const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
   adapter.next.push(async (c) => c.text(HANDOFF));
@@ -59,7 +57,6 @@ test('#1695 a Retry whose reply @-mentions the agent the failed reply already wo
   const { rt, store, t, adapter } = setup();
   const lead = rt.createPersona({ handle: 'lead' });
   rt.ensureSession(t.id, lead.id);
-  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
   const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
   const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
   // The reply that fails has already woken @critic, so the retry’s mention of it wakes no one again.
@@ -92,8 +89,6 @@ test('#1695 a reply that goes back to the agent that woke it, naming no one, get
   const { rt, store, t, adapter } = setup();
   const lead = rt.createPersona({ handle: 'lead' });
   rt.ensureSession(t.id, lead.id);
-  // Each scripted reply names no one, so it would go back and forth to the chain limit: two hops keep the run short.
-  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
   const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
   const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
   // @critic asks @lead; @lead's answer names no one, so it goes back to @critic (reply-back.mjs, #1518).
@@ -116,7 +111,6 @@ test('#1695 Send now on an agent’s waiting mention: the answer goes back to it
   const { rt, store, t, adapter } = setup();
   const lead = rt.createPersona({ handle: 'lead' });
   rt.ensureSession(t.id, lead.id);
-  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
   const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
   const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
   // @lead is busy, so @critic’s mention of it waits.
@@ -153,7 +147,6 @@ test('#1695 a turn that carries whom its reply goes back to gets no reply-form l
   const { rt, store, t, adapter } = setup();
   const lead = rt.createPersona({ handle: 'lead' });
   rt.ensureSession(t.id, lead.id);
-  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
   const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
   const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
   adapter.next.push(async (c) => c.text(HANDOFF.replace('@critic, please', 'Please')));
@@ -175,7 +168,6 @@ test('#1695 a turn that opens a topic for another agent, then offers the person 
   const { rt, store, t, adapter } = setup();
   const lead = rt.createPersona({ handle: 'lead' });
   rt.ensureSession(t.id, lead.id);
-  rt.threads.patch(t.id, () => ({ chainLimit: 2 }));
   const leadSession = Object.values(store.state.sessions).find((se) => se.handle === 'lead' && se.threadId === t.id);
   const lints = () => adapter.calls.filter((c) => c.sessionId === leadSession.id && c.message.kind === 'lint');
   adapter.next.push(async (c) => {
