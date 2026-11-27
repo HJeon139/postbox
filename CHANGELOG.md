@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.10 (2026-11-27)
+
+### Fixes
+
+- **permissions:** clean a card's and a refusal's tool and summary as well as cutting them
+- **codex:** only Postbox's server by its exact name skips the card, not a look-alike cleaned to it
+- **codex:** keep a request for input's lines on its card, and clean the tool's name
+- **codex:** an MCP server's words on an approval card are cleaned and bounded
+
 ## 5.4.9 (2026-11-27)
 
 ### Fixes
