@@ -45,8 +45,13 @@
   // A chart’s furniture, not its data: what d3 and most hand-drawn charts call their axes, ticks, grids and legends.
   // A whole class or id, perhaps with a prefix such as “x-axis”: “key-events” or “grid-cell” names data, not furniture.
   const FURNITURE = /^(?:[a-z]+-)?(?:axis|axes|tick|ticks|domain|grid|gridline|gridlines|legend|key)$/i;
-  // A grid drawn as one path: each subpath a single level or upright stroke (“M40 50H400M40 100H400”).
-  const GRID = /^(?:\s*M[\d\s.,eE+-]+[HV][\d\s.,eE+-]+)+$/i;
+  // A grid drawn as one path: each subpath a single level or upright stroke (“M40 50H400M40 100H400”). Each subpath
+  // is tested alone, with no repetition nested in another, so a long path can’t make the test backtrack.
+  const STROKE = /^M[\d\s.,eE+-]+[HV][\d\s.,eE+-]+$/i;
+  const gridPath = (d) => {
+    const parts = d.trim().split(/(?=[Mm])/);
+    return parts.length > 0 && parts.every((part) => STROKE.test(part.trim()));
+  };
 
   const furniture = (el, svg) => {
     for (let e = el; e && e !== svg; e = e.parentElement) {
@@ -101,7 +106,7 @@
     const straight = !round && !symbol && points(el) < SERIES;
     // A level or upright straight line is a gridline or an axis.
     if (straight && Math.min(r.width, r.height) < 2) return null;
-    if (el.tagName === 'path' && GRID.test(el.getAttribute('d') ?? '')) return null;
+    if (el.tagName === 'path' && gridPath(el.getAttribute('d') ?? '')) return null;
     const ctm = el.getScreenCTM();
     const scale = ctm ? Math.hypot(ctm.a, ctm.b) : 1;
     const opacity = opacityOf(el, svg);
