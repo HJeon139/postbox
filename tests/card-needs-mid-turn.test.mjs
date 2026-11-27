@@ -206,3 +206,22 @@ for (const [kind, raise] of Object.entries(raisers)) {
     );
   });
 }
+
+for (const [kind, raise] of Object.entries(raisers)) {
+  test(`stopping the turn drops the need its ${kind} made: the card waits quietly, as a stopped turn’s form does`, async () => {
+    const r = room();
+    const release = holdTurn(r, (tools) => raise(r, tools));
+    await until(() => r.rt.s.sessions[r.alpha.id].needs?.kind === kind, `the ${kind} as the need`);
+    arrange.stopTurn(r.rt, r.alpha.id);
+    release();
+    await until(() => !arrange.exiting(r.rt, r.alpha.id), 'the stopped turn to exit');
+    await settle(r.rt);
+    const se = r.rt.s.sessions[r.alpha.id];
+    assert.equal(se.needs ?? null, null, 'no need after Stop');
+    assert.ok(!needsYouNow(se), 'the top bar doesn’t count it');
+    assert.ok(
+      r.rt.s.items[r.t.id].some((it) => it.kind === kind),
+      'the card is still there to answer',
+    );
+  });
+}

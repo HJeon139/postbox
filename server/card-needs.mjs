@@ -68,6 +68,8 @@ export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, toolask:
 
 /** The needs tied to a turn: the person moving on clears them (runtime.mjs, the turn's start). The rest wait until answered. */
 export const TURN_TIED = new Set(['failed', 'block', 'toolask']);
+/** The needs a turn's own card offers while it runs (offerShown), which a stopped turn takes with it (stoppedNeed). */
+const OFFERED_MID_TURN = new Set(['block', 'toolask', 'viewask']);
 
 /**
  * Which turns' asking blocks, refusals and tool requests count, answered here only. A turn that doesn't move on (another
@@ -178,16 +180,17 @@ function offerShown(rt, caller, it, threadId) {
 }
 
 /**
- * A turn you stopped (turn-stop.mjs): a need its own asking block made mid-turn goes with it, so its form waits quietly
- * in the sidebar, as a stopped turn's form did before #1748, and the count agrees with the idle agent. Stop closes the
- * turn without its end (endTurn), which is what otherwise decides the turn's cards. @param {any} rt @param {any} turn
+ * A turn you stopped (turn-stop.mjs): a need its own asking block, tool request or view request made mid-turn goes with
+ * it (#1748, #1868), so the card waits quietly, as a stopped turn's form did before #1748, and the count agrees with the
+ * idle agent. Stop closes the turn without its end (endTurn), which otherwise decides the turn's cards.
+ * @param {any} rt @param {any} turn
  */
 function stoppedNeed(rt, turn) {
   // The session as written, as the stop's own write may be held behind a commit (#623).
   const se = rt.store.pending.session(turn.sessionId);
   const need = se?.needs;
   // A need names its thread only when it's away from the agent's own (awayFrom).
-  if (need?.kind !== 'block' || rt.store.pending.item(need.threadId ?? se.threadId, need.itemId)?.turnId !== turn.id) return;
+  if (!OFFERED_MID_TURN.has(need?.kind) || rt.store.pending.item(need.threadId ?? se.threadId, need.itemId)?.turnId !== turn.id) return;
   // What's left is what waited before it: the kept turns' cards and the block the turn kept. Not turnsOf's, whose last
   // turn is this one by now, nor runningKeep's, as the turn has left rt.turns.
   rt.sessions.update(se.id, { needs: nextNeed(rt, se, { turnIds: se.keptTurnIds ?? [], keep: se.keptId ?? null }) });
