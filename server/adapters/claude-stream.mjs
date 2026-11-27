@@ -268,7 +268,9 @@ function assistantEvent(/** @type {any} */ ctx, /** @type {Function} */ emit, /*
     st.answered = m.model;
     ctx.reported?.({ model: m.model });
   }
-  const blocks = contentBlocks(m.content);
+  // Claude Code’s own API-error line, before its result, isn’t the agent’s reply: the result says the same as the turn’s
+  // error (resultError), and as a reply part it read as the turn reaching its agent (#1904, takenBack).
+  const blocks = e.is_api_error_message === true ? [] : contentBlocks(m.content);
   blocks.forEach((b, i) => {
     if (isToolBlock(b)) emit({ kind: 'tool_call', id: b.id, name: b.name, input: b.input, final: true });
     else if (b.type === 'thinking' && b.thinking && !st.thoughtMessages.has(m.id)) emit({ kind: 'thinking', text: b.thinking, whole: true });
