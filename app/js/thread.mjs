@@ -36,6 +36,7 @@ import { stoppedSaid, stoppedTag } from './reply-stop.mjs';
 import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
 import { adopt, clearBut, keepable, noteDrawn, standIn } from './resync-keep.mjs';
 import { ringFor, stateWordOf } from './ring.mjs';
+import { scrollStop } from './scroll-stop.mjs';
 import { boilerplateDesc, confirmDelete, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { drawsNothing, namesSpeaker } from './speaker-line.mjs';
@@ -524,7 +525,8 @@ function commandBlock(it, ctx) {
           : [icon('warn', 'i-sm'), `Exit ${it.exitCode ?? it.signal ?? '?'} · ${secs}`];
   const titleId = `cmd-${it.id}`;
   const { where, text } = ranHere(it, running);
-  const out = text ? h('pre.md-code.cmd-out', { tabindex: '0', 'aria-label': `Output of ${it.command}` }, h('code', text)) : null;
+  // A tab stop only while it scrolls (#1964).
+  const out = text ? scrollStop(h('pre.md-code.cmd-out', { 'aria-label': `Output of ${it.command}` }, h('code', text))) : null;
   // While it runs, the newest output is in view: the item is drawn again as output arrives.
   if (out && running) requestAnimationFrame(() => out.scrollTo({ top: out.scrollHeight }));
   return h(
