@@ -173,6 +173,8 @@ test('a counted item the window keeps when it takes hold of the room loses its p
   const kept = page.locator(':focus');
   await expect(kept).toHaveAttribute('aria-posinset', /\d/);
   const key = await kept.getAttribute('data-key');
+  // A mark on the node itself, so what's checked after the rebuild is the node kept, not one drawn anew.
+  await kept.evaluate((n) => Object.assign(n, { keptMark: true }));
   // The room grows past the window’s ceiling, then a resync builds it again, now held by the window.
   for (let k = 0; k < 60; k++) app.rt.threads.addItem(room.id, { kind: 'user', text: `Note: grown ${k}` });
   await expect(page.locator('#main > .item').filter({ hasText: 'Note: grown 59' })).toHaveCount(1);
@@ -181,6 +183,24 @@ test('a counted item the window keeps when it takes hold of the room loses its p
   await expect(page.locator('#main.transcript')).toHaveAttribute('data-window', 'on');
   const node = page.locator(`#main > .item[data-key="${key}"]`);
   await expect(node).toBeAttached();
+  expect(await node.evaluate((n) => /** @type {any} */ (n).keptMark)).toBe(true);
   await expect(node).not.toHaveAttribute('aria-posinset', /./);
   await expect(node).not.toHaveAttribute('aria-setsize', /./);
+});
+
+test('an item drawn again while focused doesn’t pull focus onto the new node, as before items were articles', async ({ page }) => {
+  const projectId = /** @type {any} */ (Object.values(app.store.state.projects)[0]).id;
+  const room = app.rt.createThread({ projectId, title: 'Places redrawn', personaIds: [] });
+  for (let i = 0; i < 5; i++) app.rt.threads.addItem(room.id, { kind: 'user', text: `Note: ${i}` });
+  await page.goto(`${app.origin}/#/t/${room.id}`);
+  await synced(page, app);
+  await page.locator('#composer-input').focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  const last = app.store.items(room.id).at(-1);
+  await expect(page.locator(`#main > .item[data-key="${last.id}"]`)).toBeFocused();
+  // Drawn again: a new node, whose id isn’t the old one’s (rerender-state.mjs, holdFocus).
+  app.rt.threads.patchItem(room.id, last.id, { text: 'Note: 4, edited' });
+  const redrawn = page.locator(`#main > .item[data-key="${last.id}"]`);
+  await expect(redrawn).toContainText('edited');
+  await expect(redrawn).not.toBeFocused();
 });

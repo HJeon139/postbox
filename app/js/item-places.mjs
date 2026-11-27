@@ -4,6 +4,9 @@
 // carries aria-posinset and aria-setsize, “4 of 496”, among the shown items (countItems). Only while every item is
 // mounted: the window (#866) mounts the items near the view, so their places among the mounted ones would be wrong.
 
+/** How many items asArticle has made, for ids no two drawings share. */
+let drawn = 0;
+
 /**
  * Makes a main-pane item an article before it’s on the page, as it’s built (thread.mjs, render): written once it’s
  * mounted, the role would restyle it. An article is named only by its author, so it’s labeled by itself: focused,
@@ -14,7 +17,9 @@
 export function asArticle(node, key) {
   if (node.hasAttribute('role')) return;
   node.setAttribute('role', 'article');
-  node.id ||= `item-${key}`;
+  // An id of this drawing only: one shared with the node it replaces would move focus onto the new one when an item is
+  // drawn again or moved (rerender-state.mjs, holdFocus), which items never did.
+  node.id = `item-${key}-${++drawn}`;
   node.setAttribute('aria-labelledby', node.id);
 }
 
@@ -22,7 +27,8 @@ export function asArticle(node, key) {
 const counting = new WeakSet();
 
 /**
- * Keeps each shown item of the transcript an article at its place among them, as items come, go, or are hidden.
+ * Keeps each shown item of the transcript at its place among them, as items come and go. An item that comes to draw
+ * nothing is a new, hidden node (thread.mjs, render), so watching the children is enough: nothing hides one in place.
  * @param {HTMLElement} el  the transcript
  */
 export function countItems(el) {
