@@ -1,12 +1,12 @@
 // Text run into a control, and words broken mid-word (#681), for the layout check of Postbox’s own screens, which
 // tools/text-layout.mjs runs beside check-layout.js’s text-overlap and text-overflow and check-text.js’s text-cut-off,
-// so Postbox’s screens and agents’ apps are held to one rule. It runs after check-layout.js, whose helpers it takes
+// so Postbox’s screens and agents’ apps are held to one rule. It runs after check-layout.js and check-text.js, whose helpers it takes
 // from window.__pbCheck, and adds its own there. Its names stay in the block, as strict mode keeps a function declared
 // in one there, so they can’t clash with the page’s.
 // biome-ignore lint/suspicious/noRedundantUseStrict: the page runs this as a classic script, which isn’t strict without it.
 'use strict';
 {
-  const { clip, px, where, jump, hidden, shownPart, lineBoxes, opaque, guard } = window.__pbCheck;
+  const { clip, px, where, jump, hidden, shown, shownPart, lineBoxes, opaque, guard } = window.__pbCheck;
   const CONTROLS = 'button, [role=button], [role=checkbox], [role=radio], [role=tab], a[href], input:not([type=hidden]), select, textarea, summary';
   const range = document.createRange();
 
@@ -33,9 +33,11 @@
   }
 
   // Whether the text and the control both show where they meet: one under something opaque (a dialog over the page’s
-  // buttons) is hidden there. The other one’s own box hides it only when it covers it whole: text on a badge over part
-  // of a button is a collision, and a dialog’s text over a button it hides isn’t. Asking what’s at a point skips what
-  // ignores the pointer, which still shows, so the question is asked with every element taking the pointer.
+  // buttons, a sticky bar over the controls scrolled under it) is hidden there. A control on top hides the text under
+  // its opaque box, as Jump to latest floats over the transcript (#681), and so does a control the text belongs to. The
+  // text’s own box otherwise hides the control only when it covers it whole: text on a badge over part of a button is
+  // a collision, and a dialog’s text over a button it hides isn’t. Asking what’s at a point skips what ignores the
+  // pointer, which still shows, so the question is asked with every element taking the pointer.
   function bothShow(textEl, control, x, y, y0) {
     jump(y < 0 || y > innerHeight ? y + y0 - innerHeight / 2 : y0);
     const hit = document.head.appendChild(document.createElement('style'));
@@ -46,12 +48,16 @@
       const [a, b] = [e.getBoundingClientRect(), el.getBoundingClientRect()];
       return a.left <= b.left && a.top <= b.top && a.right >= b.right && a.bottom >= b.bottom;
     };
-    const hides = (e, el, other) => !e.contains(el) && opaque(e) && (!(e === other || other.contains(e)) || covers(e, el));
-    const under = (el, other) => {
-      const i = stack.indexOf(el);
-      return i > 0 && stack.slice(0, i).some((e) => hides(e, el, other));
+    const hides = (e, el) => {
+      if (e.contains(el) || !opaque(e)) return false;
+      const textsOwn = el === control && (e === textEl || textEl.contains(e));
+      return !textsOwn || e.closest(CONTROLS) !== null || covers(e, el);
     };
-    return !under(textEl, control) && !under(control, textEl);
+    const under = (el) => {
+      const i = stack.indexOf(el);
+      return i > 0 && stack.slice(0, i).some((e) => hides(e, el));
+    };
+    return !under(textEl) && !under(control);
   }
 
   // Text that belongs to the control: its own, and its labels’.
@@ -95,6 +101,8 @@
   const WORD = /[\p{L}\p{N}]+/gu;
   // The fewest characters of a word a line may hold by itself: fewer is a word read a few letters at a time (#680).
   const MIN_PART = 4;
+  // Text whose element asks the browser to hyphenate it breaks where the browser chose to (#681).
+  const asked = (el) => getComputedStyle(el).hyphens === 'auto';
 
   // How many characters of a word each line holds, in order. A character starts a new line when it starts below the
   // middle of the one before.
@@ -161,7 +169,7 @@
     const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n = walk.nextNode(); n && out.length < 3; n = walk.nextNode()) {
       const el = n.parentElement;
-      if (!el || !n.textContent.trim() || el.closest('script, style, svg, .katex') || hidden(el)) continue;
+      if (!el || !n.textContent.trim() || el.closest('script, style, svg, .katex') || !shown(el) || asked(el)) continue;
       const found = shortPart(n);
       if (found)
         out.push({
