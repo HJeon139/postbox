@@ -106,7 +106,8 @@ test('#353 after the shim reconnects, its prompt’s answer reaches its new conn
     const back = connectShim(k.b, 't1', turnToken('t1'), KEY);
     await back.next('welcome');
     back.send('permission', { id: 'p1', request: REQUEST });
-    await sleep(20);
+    // The resend taken first, so the answer goes to the new connection, not to a resend after it.
+    await until(() => k.b.pending.prompts[0]?.asked.size === 2, 'the resend taken on the new connection');
     assert.deepEqual((await k.post('answer', { turn: 't1', prompt: 'p1', result: ALLOW })).errors, []);
     assert.deepEqual(await back.next('permission-answer'), { type: 'permission-answer', id: 'p1', result: ALLOW });
     // The record names the shim by its key’s hash, never the key.
@@ -150,7 +151,7 @@ test('#353 a prompt an older daemon wrote down, with no owner, is taken by the f
     const s = connectShim(again.b, 't1', turnToken('t1'), KEY);
     await s.next('welcome');
     s.send('permission', { id: 'p1', request: REQUEST });
-    await sleep(20);
+    await until(() => again.b.pending.prompts[0]?.owner !== undefined, 'the first resend to take the ownerless prompt');
     const copy = connectShim(again.b, 't1', turnToken('t1'), OTHER);
     await copy.next('welcome');
     copy.send('permission', { id: 'p1', request: REQUEST });
