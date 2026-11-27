@@ -163,7 +163,10 @@ test('a refused sign-in is written to the server’s log by its reason’s name'
 test('a public address is never answered without sign-in settings: such a start is refused before anything opens', async () => {
   const dir = tempDir('pb-hosted-no-sign-in-');
   await assert.rejects(
-    start({ port: PORT + 3, dataDir: dir, fresh: true, quiet: true, claudeHome: dir, listen: false, publicOrigin: 'https://postbox.example.com' }),
+    // A start that went ahead is closed again, so a missing refusal fails here and leaves nothing running.
+    start({ port: PORT + 3, dataDir: dir, fresh: true, quiet: true, claudeHome: dir, listen: false, publicOrigin: 'https://postbox.example.com' }).then((app) =>
+      app.close(),
+    ),
     /A hosted Postbox needs its sign-in settings\./,
   );
   assert.deepEqual(readdirSync(dir), [], 'nothing was opened');

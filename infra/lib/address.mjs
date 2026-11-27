@@ -28,5 +28,8 @@ export function addressOf(scope, address, balancer) {
     return { origin: `https://${domainName.toLowerCase()}`, certificate };
   }
   if (!address?.certificate) throw new Error('Give a hosted Postbox its address: a domainName in a hostedZone, or a certificate (infra/README.md).');
-  return { origin: `https://${(address.domainName ?? balancer.loadBalancerDnsName).toLowerCase()}`, certificate: address.certificate };
+  // The load balancer’s own name is a token until it is deployed, so it is used as it is: edge.mjs names the balancer
+  // in lower case, which makes its DNS name lower case too. A name given here is lower-cased, as Postbox’s origin must be.
+  const origin = address.domainName ? `https://${address.domainName.toLowerCase()}` : `https://${balancer.loadBalancerDnsName}`;
+  return { origin, certificate: address.certificate };
 }

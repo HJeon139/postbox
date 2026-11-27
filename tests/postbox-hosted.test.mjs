@@ -10,6 +10,9 @@ import { fetchKeyText } from '../server/identity/alb-key-fetch.mjs';
 import { SETTINGS } from './alb-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
+/** The events main() adds a listener for. */
+const LISTENED = ['unhandledRejection', 'SIGINT', 'SIGTERM', 'exit'];
+
 /** Runs the command with a start() that records what it was given and starts nothing. */
 async function run(/** @type {string[]} */ argv) {
   /** @type {any[]} */
@@ -18,6 +21,8 @@ async function run(/** @type {string[]} */ argv) {
   const exit = mock.method(process, 'exit', (/** @type {number} */ code) => {
     throw new Error(`exit ${code}`);
   });
+  // What main() listens for is taken off again after, and nothing the test runner listens for.
+  const before = new Map(LISTENED.map((event) => [event, process.listeners(/** @type {any} */ (event))]));
   try {
     const outcome = await main(argv, /** @type {any} */ (async (/** @type {any} */ opts) => started.push(opts) && { close: async () => {} })).then(
       () => 'started',
@@ -27,7 +32,9 @@ async function run(/** @type {string[]} */ argv) {
   } finally {
     exit.mock.restore();
     said.mock.restore();
-    for (const event of ['unhandledRejection', 'SIGINT', 'SIGTERM']) process.removeAllListeners(event);
+    for (const event of LISTENED)
+      for (const added of process.listeners(/** @type {any} */ (event)))
+        if (!before.get(event)?.includes(added)) process.off(event, /** @type {any} */ (added));
   }
 }
 
