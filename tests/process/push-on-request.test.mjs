@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { pushConsequence, pushOf, pushPlan, runPush } from '../../server/push-on-request.mjs';
@@ -152,6 +152,7 @@ test('#1958 a push the remote refuses quotes its hook’s words cleaned', async 
   const r = await repo();
   const plan = await pushPlan(r.work, { branch: 'feat/now' });
   // A remote hook writes a right-to-left override, a zero-width space and a bell into git’s “remote:” lines.
+  await mkdir(join(r.remote, 'hooks'), { recursive: true });
   await writeFile(
     join(r.remote, 'hooks', 'pre-receive'),
     "#!/bin/sh\nprintf 'refused: \\342\\200\\256yeK\\342\\200\\254 \\342\\200\\213bad\\007 push\\n' >&2\nexit 1\n",
@@ -163,5 +164,5 @@ test('#1958 a push the remote refuses quotes its hook’s words cleaned', async 
   assert.equal(result.ok, false);
   const error = /** @type {{ error: string }} */ (result).error;
   assert.match(error, /refused: yeK bad push/);
-  assert.doesNotMatch(error, /[\u202A-\u202E\u200B-\u200F]|\p{Cc}/u);
+  assert.doesNotMatch(error, /[\u202A-\u202E\u200B-\u200F]|\p{Cc}|\p{Cs}/u);
 });
