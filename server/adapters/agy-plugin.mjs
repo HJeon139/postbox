@@ -1,6 +1,7 @@
 // The plugin Postbox puts in an Antigravity agent’s folder for a turn: its files, where it goes, and keeping it out of
 // git status.
 
+import { existsSync } from 'node:fs';
 import { chmod, mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { agentSkillFiles } from './agent-plugin.mjs';
@@ -27,7 +28,7 @@ export const agyPlugin = ({ mcpUrl, rules, hookCommand = null, hookTimeout = HOO
 /**
  * Writes the plugin’s files (agyPlugin) into its folder, `dir`. hooks.json is removed first, since a turn before left it
  * read-only, and set read-only again once it’s written. With Postbox’s work root, the folder is noted beside it first, so
- * a Postbox killed before the turn removes it removes it as it starts again (#314).
+ * if Postbox is killed mid-turn, its next start removes the plugin (#314).
  * @param {string} dir @param {Record<string, string>} files @param {string | null} [root]
  */
 export async function writeAgyPlugin(dir, files, root = null) {
@@ -50,7 +51,8 @@ export async function writeAgyPlugin(dir, files, root = null) {
 export async function removeAgyPlugin(plugin, root = null) {
   await rm(plugin, { recursive: true, force: true }).catch(() => {});
   for (const dir of [dirname(plugin), dirname(dirname(plugin))]) await rmdir(dir).catch(() => {});
-  if (root) await dropPlugin(root, plugin).catch(() => {});
+  // Dropped only once it’s gone: one the turn couldn’t remove stays noted, for the next start to try again.
+  if (root && !existsSync(plugin)) await dropPlugin(root, plugin).catch(() => {});
 }
 
 /** The files of Postbox’s skills a persona keeps on (#207), for the plugin’s skills/ folder. */

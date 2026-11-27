@@ -4,7 +4,7 @@
 // now records where a turn wrote its plugin, beside its work root, and removes each one left there as it starts.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { agyPlugin, PLUGIN_DIR, removeAgyPlugin, writeAgyPlugin } from '../server/adapters/agy-plugin.mjs';
@@ -61,4 +61,18 @@ test('#314 a record edited to name another folder removes nothing there', async 
   writeFileSync(join(workRoot, '..', 'agy-plugins.json'), `${JSON.stringify([kept, elsewhere])}\n`);
   await sweepAgyPlugins(workRoot);
   assert.equal(readFileSync(join(kept, 'todo.md'), 'utf8'), 'mine\n', 'only a plugin’s own folder is ever removed');
+});
+
+test('#314 a plugin the turn couldn’t remove stays noted, for the next start to remove', async () => {
+  const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+  const folder = tempDir('pb-agy-folder-');
+  const plugin = join(folder, PLUGIN_DIR);
+  await writeAgyPlugin(plugin, files(), workRoot);
+  // Its folder made read-only, as an agent could: the turn’s removal fails.
+  chmodSync(join(folder, '.agents', 'plugins'), 0o555);
+  await removeAgyPlugin(plugin, workRoot);
+  chmodSync(join(folder, '.agents', 'plugins'), 0o755);
+  assert.ok(existsSync(plugin), 'still there');
+  await sweepAgyPlugins(workRoot);
+  assert.equal(existsSync(plugin), false, 'removed at the next start');
 });
