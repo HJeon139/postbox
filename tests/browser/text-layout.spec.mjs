@@ -133,12 +133,15 @@ for (const width of [375, 1280]) {
     await expectTidyText(page, 'the clean page');
   });
 
-  // A fresh page opens the project’s most recently active conversation (app/js/last-place.mjs): at 375 px one this
-  // file’s setup made, and at 1280 px the last the 375 px cases left, in file order.
+  // A fresh page opens the project’s most recently active conversation (app/js/last-place.mjs): one this case makes and
+  // writes in last, so it opens the same room run alone or after the others.
   test(`#681 at ${width} px Postbox’s first screen passes the check`, async ({ page }) => {
+    const t = scripted.room(`First screen at ${width}`, [`first${width}`]);
+    arrange.post(scripted.app.rt, t.id, { kind: 'user', text: 'Where did we leave the reading notes?' });
     await page.setViewportSize({ width, height: 800 });
     await page.goto(`${scripted.app.origin}/`);
     await synced(page, scripted.app);
+    await expect(page.locator('#main'), 'the room this case made opens').toContainText('Where did we leave the reading notes?');
     await expectTidyText(page, 'Postbox’s first screen');
   });
 
