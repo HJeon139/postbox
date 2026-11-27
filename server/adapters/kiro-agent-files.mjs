@@ -5,8 +5,9 @@
 // in kiro-agents.json in Postbox’s data folder, beside its work root (which holds only the agents’ folders), and
 // dropped once it’s gone, and as Postbox starts, before any turn, every one still noted is removed, if it’s still the
 // file the turn wrote: a note keeps a hash of its text, whose MCP URL carries the turn’s own token. Only a file named as
-// Postbox names one, in an agents folder that isn’t a link, is ever removed, so the person’s other agents, and whatever a
-// link at agents leads to, are never touched.
+// Postbox names one, in an agents folder, holding that exact text, is ever removed, so the person’s other agents are
+// never touched. A link at agents is followed, as the turn’s own write and removal follow it: a dotfile manager often
+// links ~/.kiro/agents, and the removal is of that one file, not of a folder (unlike Antigravity’s plugin, #1858).
 
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
@@ -88,8 +89,8 @@ export async function removeKiroAgent(file, root) {
 
 /**
  * Removes every agent file still noted, as Postbox starts, that is still the file its turn wrote. A path that isn’t a
- * turn’s agent file, one whose text isn’t the noted one, or one in an agents folder that’s a link, is dropped from the
- * record and left; a failure is logged, and stays noted for the next start. @param {string} root  the work root
+ * turn’s agent file, or one whose text isn’t the noted one, is dropped from the record and left; a failure is logged,
+ * and stays noted for the next start. @param {string} root  the work root
  */
 export async function sweepKiroAgents(root) {
   const notes = await noted(root);
@@ -98,11 +99,6 @@ export async function sweepKiroAgents(root) {
   const left = [];
   for (const note of notes) {
     if (!isOurs(note.file) || (await gone(note.file)) || !(await stillOurs(note))) continue;
-    // A link at agents would lead the removal into another folder: it’s never followed.
-    if ((await lstat(dirname(note.file)).catch(() => null))?.isSymbolicLink()) {
-      console.error(`Postbox left ${note.file} as it is: its agents folder is a link.`);
-      continue;
-    }
     /** @type {unknown} */
     let why = null;
     await rm(note.file, { force: true }).catch((e) => {

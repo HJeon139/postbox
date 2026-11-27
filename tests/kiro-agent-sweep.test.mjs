@@ -114,17 +114,17 @@ test('#1864 a record the sweep can’t rewrite doesn’t stop Postbox from start
   assert.match(String(said.mock.calls.at(-1)?.arguments[0]), /couldn’t update .*kiro-agents\.json .*Check that Postbox can write to its data folder/);
 });
 
-test('#1864 a link at the agents folder isn’t followed: what it leads to stays', async () => {
+test('#1864 a linked agents folder, as a dotfile manager makes, has the turn’s file removed and the person’s kept', async () => {
   const p = place();
   const elsewhere = tempDir('pb-kiro-elsewhere-');
+  writeFileSync(join(elsewhere, 'mine.json'), '{"name":"mine"}\n');
   const linked = join(p.data, 'linked-home');
   mkdirSync(linked);
   symlinkSync(elsewhere, join(linked, 'agents'));
   const file = join(linked, 'agents', 'postbox-kiro-0a0b0c0d.json');
   await writeKiroAgent(file, '{}', p.workRoot);
   await sweepKiroAgents(p.workRoot);
-  assert.ok(existsSync(join(elsewhere, 'postbox-kiro-0a0b0c0d.json')), 'the file the link leads to stays');
-  assert.deepEqual(record(p.data), [], 'and its note is dropped');
+  assert.deepEqual(readdirSync(elsewhere), ['mine.json'], 'only the turn’s own file went');
 });
 
 test('#1864 a file at the noted path that isn’t the one the turn wrote is left as it is', async () => {
