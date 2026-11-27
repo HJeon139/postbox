@@ -150,3 +150,26 @@ postbox.ready.then(() => {
   await drag(page, block, [0.2, 0.3], [0.6, 0.7]);
   await expect(page.getByRole('textbox', { name: 'Comment on region 1' }), 'the first mark is region 1').toBeFocused();
 });
+
+test('#856 a region carries what the app has under it, as the kit says: the parts it overlaps and the element at its center', async ({ page }) => {
+  const named = `<main style="padding:12px;color:var(--text)"><h2 id="t">Corpus summary</h2>
+<div id="legend" class="key" style="padding:24px"><p id="total" class="big" style="margin:0;padding:16px">Twelve books, in three languages.</p></div></main>
+<script>postbox.anchors({ title: document.getElementById('t'), legend: document.getElementById('legend') });</script>`;
+  const { block, answer } = await review(page, {}, named);
+  await block.getByRole('button', { name: 'Mark a part of the app' }).click();
+  await block.locator('.rv-marks.marking').evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const total = await block.frameLocator('iframe.app-iframe').locator('#total').boundingBox();
+  if (!total) throw new Error('The app draws no #total.');
+  await page.mouse.move(total.x + 8, total.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(total.x + total.width - 8, total.y + total.height - 4, { steps: 6 });
+  await page.mouse.up();
+  await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('Say which languages.');
+  await block.getByRole('button', { name: 'Add draft comment' }).click();
+  await block.getByRole('button', { name: 'Submit review', exact: true }).click();
+  await expect.poll(answer, { message: 'the agent gets the comment' }).toHaveLength(1);
+  expect(answer()[0].region.under, 'with the part it overlaps, and the element at its center').toEqual({
+    parts: ['legend'],
+    element: { tag: 'p', id: 'total', class: 'big', text: 'Twelve books, in three languages.' },
+  });
+});

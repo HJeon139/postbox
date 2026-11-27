@@ -2,15 +2,25 @@
 // names it, “region 1”, and how it reads as text. A comment or a thread on one carries it (review-comments.mjs). Pure,
 // so the browser, the server and the tests share it.
 
-import { REGION_PX } from './limits.mjs';
-import { int, obj } from './schema.mjs';
+import { REGION_UNDER as CAP, REGION_PX } from './limits.mjs';
+import { int, list, obj, str } from './schema.mjs';
+import { cutText } from './text-parts.mjs';
+
+/**
+ * What the app had under a region when the person marked it (#856), as the kit in its frame told the page: the named
+ * parts the region overlaps, and the innermost element at its center. The app’s own data, cut to REGION_UNDER.
+ */
+const UNDER = obj({
+  parts: list(str({ min: 1, max: CAP.part }), { max: CAP.parts }),
+  element: obj({ tag: str({ min: 1, max: CAP.tag }), id: str({ max: CAP.id }), class: str({ max: CAP.class }), text: str({ max: CAP.text }) }, ['tag']),
+});
 
 /**
  * A region of an app the person marked in its review (#856), in CSS px of the app’s page: its left edge x, top y,
  * width w and height h, and the width and height of the frame it was marked in. A frame of another width may lay the
  * app out another way, so a region is drawn only in a frame as wide as that; content above it doesn’t move when the
  * app grows below it, so it stays over what was marked. With the app version it was made on, since another version may
- * draw something else there. w and h of 0 is a point.
+ * draw something else there. w and h of 0 is a point. under, when the app answered in time, is what it had there.
  */
 export const REGION = obj(
   {
@@ -21,6 +31,7 @@ export const REGION = obj(
     width: int({ min: 1, max: REGION_PX.width }),
     height: int({ min: 1, max: REGION_PX.height }),
     version: int({ min: 1, max: 1_000_000 }),
+    under: UNDER,
   },
   ['x', 'y', 'w', 'h', 'width', 'height', 'version'],
 );
@@ -96,4 +107,43 @@ export function regionText(r) {
   const at = `x ${r.x}, y ${r.y}`;
   const where = r.w === 0 && r.h === 0 ? `a point at ${at}` : `${at}, ${r.w} × ${r.h} px`;
   return `${where}, on v${r.version}, in a ${r.width} × ${r.height} px frame`;
+}
+
+/** One of the app’s strings, on one line and cut to n characters, or '' for anything else. @param {unknown} v @param {number} n */
+const oneLine = (v, n) => (typeof v === 'string' ? cutText(v.replace(/\s+/g, ' ').trim(), n) : '');
+
+/**
+ * What the kit said is under a region, as the region keeps it: strings on one line and cut to REGION_UNDER, empty
+ * ones dropped, and null when nothing is left or it isn’t one. What an app sends is its own, so it’s checked here.
+ * @param {any} raw  the kit’s answer: { parts, element: { tag, id, class, text } }
+ */
+export function underOf(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const parts = Array.isArray(raw.parts)
+    ? raw.parts
+        .map((p) => oneLine(p, CAP.part))
+        .filter(Boolean)
+        .slice(0, CAP.parts)
+    : [];
+  const e = raw.element && typeof raw.element === 'object' ? raw.element : {};
+  const fields = { tag: oneLine(e.tag, CAP.tag).toLowerCase(), id: oneLine(e.id, CAP.id), class: oneLine(e.class, CAP.class), text: oneLine(e.text, CAP.text) };
+  const element = fields.tag ? Object.fromEntries(Object.entries(fields).filter(([, v]) => v)) : null;
+  const under = { ...(parts.length ? { parts } : {}), ...(element ? { element } : {}) };
+  /** @type {string[]} */
+  const errs = [];
+  UNDER(under, 'under', errs);
+  return Object.keys(under).length && !errs.length ? under : null;
+}
+
+/**
+ * What the app had under a region, as the agent reads it after the place: “; over the app’s parts “legend”; at its
+ * center, <p id="total" class="big"> “Twelve books.””, or '' when the app didn’t say. @param {any} u  a region’s under
+ */
+export function underText(u) {
+  if (!u) return '';
+  const parts = u.parts?.length ? `; over the app’s parts ${u.parts.map((/** @type {string} */ p) => `“${p}”`).join(', ')}` : '';
+  const e = u.element;
+  if (!e) return parts;
+  const attrs = `${e.id ? ` id="${e.id}"` : ''}${e.class ? ` class="${e.class}"` : ''}`;
+  return `${parts}; at its center, <${e.tag}${attrs}>${e.text ? ` “${e.text}”` : ''}`;
 }

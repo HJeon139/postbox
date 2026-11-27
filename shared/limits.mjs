@@ -204,6 +204,12 @@ export const REVIEW_THREADS_BYTES = 2 * 1024 * 1024;
  * app page, since a review’s frame is as tall as its app.
  */
 export const REGION_PX = Object.freeze({ width: 10_000, height: 200_000 });
+/**
+ * What the app had under a region the person marked (#856), as the kit tells it and the agent reads it: at most `parts`
+ * named parts, each cut to `part` characters, and the innermost element at its center, with its tag, id and class cut
+ * to these lengths, and its first `text` characters of text.
+ */
+export const REGION_UNDER = Object.freeze({ parts: 8, part: 80, tag: 32, id: 80, class: 120, text: 80 });
 
 /** The most characters in the whole-sentence glimpse shown while an agent works (#478). */
 export const GLIMPSE_CHARS = 160;

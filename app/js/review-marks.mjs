@@ -12,6 +12,7 @@ import { shownVersion } from './apps.mjs';
 import { client } from './client.mjs';
 import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
+import { probeRegion } from './review-probe.mjs';
 import { nextAnchor, regionsOf } from './review-region-numbers.mjs';
 
 /** How far one arrow key moves or resizes the box, in px, and the smallest box it resizes to: a point is a click. */
@@ -184,12 +185,20 @@ function stopMarking(itemId, d, rerender) {
   /** @type {HTMLElement | null} */ (n.querySelector(`[data-mark-button="${CSS.escape(itemId)}"]`))?.focus();
 }
 
-/** Opens a comment on the region marked, and leaves marking. @param {any} l @param {{ x: number, y: number, w: number, h: number }} r */
+/**
+ * Opens a comment on the region marked, and leaves marking. What the app has there joins the region when the kit
+ * answers, on the region the comment holds, so the box opens at once. @param {any} l
+ * @param {{ x: number, y: number, w: number, h: number, width: number, height: number }} r
+ */
 function finish(l, r) {
   const { b, d, version, rerender } = l.env;
   if (version === null) return;
   d.marking = null;
-  startComment(d, nextAnchor(b, d), { ...r, version });
+  const region = { ...r, version };
+  void probeRegion(frameOf(l), r).then((under) => {
+    if (under) Object.assign(region, { under });
+  });
+  startComment(d, nextAnchor(b, d), region);
   rerender();
 }
 

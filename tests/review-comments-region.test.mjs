@@ -5,8 +5,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
+import { REGION_UNDER } from '../shared/limits.mjs';
 import { commentAt, commentErrors } from '../shared/review-comments.mjs';
-import { regionAnchor } from '../shared/review-regions.mjs';
+import { regionAnchor, underOf } from '../shared/review-regions.mjs';
 import { settle, setup, turn } from './blocks-fixture.mjs';
 
 const box = { x: 120, y: 90, w: 200, h: 45, width: 1000, height: 300, version: 3 };
@@ -215,4 +216,72 @@ test('#856 a region’s number past what the review holds: past every “region 
   assert.equal(regionAnchor({ anchor: 'region 1', region: at(100) }, held), 'region 3');
   // A comment on a part is no region’s.
   assert.equal(regionAnchor({ anchor: 'region 1' }, held), 'region 1');
+});
+
+const under = { parts: ['legend'], element: { tag: 'p', id: 'total', class: 'big', text: 'Twelve books.' } };
+
+test('#856 what the kit says is under a region is kept on one line, cut to REGION_UNDER, and dropped when it isn’t one', () => {
+  const long = 'x'.repeat(500);
+  const got = underOf({
+    parts: ['legend', '', 7, ...Array.from({ length: 20 }, (_, i) => `part ${i}`)],
+    element: { tag: 'P', id: long, class: 'big\n  bold', text: `  Twelve\n\nbooks. ${long}`, onclick: 'x' },
+    extra: 1,
+  });
+  assert.equal(got.parts.length, REGION_UNDER.parts, 'at most REGION_UNDER.parts parts, strings only');
+  assert.equal(got.parts[0], 'legend');
+  assert.equal(got.element.tag, 'p');
+  assert.equal(got.element.id.length, REGION_UNDER.id);
+  assert.equal(got.element.class, 'big bold');
+  assert.equal(got.element.text.length, REGION_UNDER.text);
+  assert.ok(got.element.text.startsWith('Twelve books. x'), got.element.text);
+  assert.deepEqual(Object.keys(got.element).sort(), ['class', 'id', 'tag', 'text'], 'only the fields a region keeps');
+  assert.deepEqual(underOf({ parts: [], element: { tag: 'div' } }), { element: { tag: 'div' } }, 'empty fields dropped');
+  for (const junk of [null, 'p', [], {}, { parts: 'legend' }, { element: { id: 'no-tag' } }]) assert.equal(underOf(junk), null, JSON.stringify(junk));
+});
+
+test('#856 a region carries what the app had under it, checked as it enters: its fields and their lengths', () => {
+  assert.deepEqual(commentErrors({ ...onBox, region: { ...box, under } }, 'c'), []);
+  assert.deepEqual(commentErrors({ ...onBox, region: { ...box, under: { ...under, script: 'x' } } }, 'c'), ['c.region.under has an unknown field “script”.']);
+  const tooLong = { ...under, element: { ...under.element, text: 'x'.repeat(REGION_UNDER.text + 1) } };
+  assert.deepEqual(commentErrors({ ...onBox, region: { ...box, under: tooLong } }, 'c'), [
+    `c.region.under.element.text is longer than ${REGION_UNDER.text} characters.`,
+  ]);
+  assert.deepEqual(commentErrors({ ...onBox, region: { ...box, under: { element: { id: 'x' } } } }, 'c'), ['c.region.under.element.tag is required.']);
+  // A review’s threads, as update_block echoes them, take it too, and refuse the same.
+  const app = { id: 'r', type: 'review', version: 1, fallback: 'R', format: 'app', appId: 'a' };
+  const thread = (region) => ({ id: 't1', status: 'open', anchor: 'region 1', region, comments: [{ author: '@critic', text: 'Hm.' }] });
+  assert.equal(validateBlock({ ...app, threads: [thread({ ...box, under })] }).ok, true);
+  assert.equal(validateBlock({ ...app, threads: [thread({ ...box, under: tooLong })] }).ok, false);
+});
+
+test('#856 the agent reads what the app had under a region beside its place', () => {
+  assert.equal(
+    commentAt({ anchor: 'region 1', region: { ...box, under } }),
+    '“region 1” (x 120, y 90, 200 × 45 px, on v3, in a 1000 × 300 px frame; over the app’s parts “legend”; at its center, <p id="total" class="big"> “Twelve books.”)',
+  );
+  assert.equal(
+    commentAt({ anchor: 'region 1', region: { ...box, under: { element: { tag: 'main' } } } }),
+    '“region 1” (x 120, y 90, 200 × 45 px, on v3, in a 1000 × 300 px frame; at its center, <main>)',
+  );
+});
+
+test('#856 an answer’s region keeps what the app had under it on the thread, and the agent reads it', async () => {
+  const s = setup();
+  await turn(
+    s.rt,
+    s.adapter,
+    s.t,
+    (tools) => {
+      tools.show_app({ id: 'chart', title: 'Chart', code: '<main>Chart</main>' });
+      return tools.show_block({ block: { id: 'rv', type: 'review', version: 1, fallback: 'Review the chart', format: 'app', appId: 'chart' } });
+    },
+    '@critic show it',
+  );
+  const item = () => s.store.items(s.t.id).find((i) => i.kind === 'block' && i.block.id === 'rv');
+  const region = { ...box, under };
+  s.rt.act(s.t.id, item().id, 'submit', { verdict: 'comment', comments: [{ ...onBox, region }] }, 1);
+  await settle(s.rt);
+  assert.deepEqual(item().block.threads[0].region, region);
+  const read = s.rt.toolsFor(item().sessionId).read_message({ id: 'rv' });
+  assert.match(read.message, /in a 1000 × 300 px frame; over the app’s parts “legend”; at its center, <p id="total" class="big"> “Twelve books\.”\)/);
 });

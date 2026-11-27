@@ -66,6 +66,8 @@
     } else if (m.type === 'review') {
       reviewing = !!m.on;
       paintAnchors();
+    } else if (m.type === 'probe') {
+      probe(m);
     } else if (m.type === 'measure') {
       // Back from full screen. The last size sent was the window’s, so measure again, once the frame is back to
       // its column height (it resizes a moment after this message).
@@ -131,6 +133,20 @@
         el.appendChild(tag);
       }
     }
+  }
+
+  // What’s under a region the person marked in a review, in px of the page (#856): the named parts it overlaps, and the
+  // innermost element at its center. The page cuts and checks the answer (shared/review-regions.mjs, underOf).
+  function probe(m) {
+    const [x, y] = [m.x - scrollX, m.y - scrollY];
+    const over = (r) => r.left <= x + m.w && x <= r.right && r.top <= y + m.h && y <= r.bottom;
+    const parts = namedParts().filter((k) => anchorMap[k].isConnected && over(anchorMap[k].getBoundingClientRect()));
+    const hit = document.elementFromPoint(x + m.w / 2, y + m.h / 2);
+    const el = hit?.closest('.pb-anchor-tag')?.parentElement ?? hit;
+    // Without the class the kit itself gives a part in review mode.
+    const cls = el ? [...el.classList].filter((c) => c !== 'anchor').join(' ') : '';
+    const element = el && { tag: el.tagName, id: el.id, class: cls, text: (el.textContent || '').slice(0, 400) };
+    post({ type: 'probed', id: m.id, parts, element });
   }
 
   // In review mode a click anywhere in a highlighted part pins a comment on it, as the review’s hint says, not only a
