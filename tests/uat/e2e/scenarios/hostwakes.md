@@ -21,7 +21,7 @@ In one message that @-mentions only @researcher, ask it to send developer this s
 
 Then, in one message that @-mentions only @researcher, ask it to stop messaging developer: it answers you in one line without @-mentioning anyone, and doesn’t message developer again in this conversation. Requests from you or from critic later still get an answer. Wait until it has answered and no agent is working. Your message clears the counts and leaves the card open, which is what phase 2 needs.
 
-From here to phase 3’s Allow, don’t write to developer, and no step wakes it: developer is the card’s target, and on a build with #439’s fix, writing to a card’s target, or another agent waking it, retires the card (it got a turn another way), so there would be nothing left to allow.
+From here to phase 3’s Allow, don’t write to developer, and no step wakes it: developer is the card’s target, and writing to it would add it to the room yourself. Then the hand-offs in phase 2 would go straight to it instead of waiting on the card, and phase 3’s Allow would have nothing held to deliver.
 
 ## Phase 2: Hand-offs while the card waits
 
