@@ -213,7 +213,7 @@ test('#1608: a turn stopped during signInCheck asks the host nothing of its sign
   assert.deepEqual(signInNotes(r), []);
 });
 
-test('#1608: a notice that throws as it’s raised is caught, not left as an unhandled rejection', async () => {
+test('#1608: a notice that throws as it’s raised is caught, not left as an unhandled rejection, and told again', async () => {
   /** @type {unknown[]} */
   const unhandled = [];
   const onUnhandled = (/** @type {unknown} */ e) => unhandled.push(e);
@@ -221,13 +221,16 @@ test('#1608: a notice that throws as it’s raised is caught, not left as an unh
   const errors = [];
   const { error } = console;
   console.error = (/** @type {unknown[]} */ ...a) => errors.push(a.join(' '));
+  let told = 0;
+  const answer = signIns([{ name: 'codex', state: 'signed-out' }]);
   try {
     const rts = /** @type {any} */ ({
-      hosts: { signInCheck: async () => null, signInsNow: async () => signIns([{ name: 'codex', state: 'signed-out' }]) },
+      hosts: { signInCheck: async () => null, signInsNow: async () => answer },
       rt: {
         threads: {
           notify: () => {
-            throw new Error('the store refused it');
+            told += 1;
+            if (told === 1) throw new Error('the store refused it');
           },
         },
       },
@@ -239,6 +242,8 @@ test('#1608: a notice that throws as it’s raised is caught, not left as an unh
     await sleep(10);
     assert.match(errors[0], /the store refused it/);
     assert.deepEqual(unhandled, []);
+    await warnSignIn(rts, { remote: { hostId: 'ho-throws' }, threadId: 'th' }, ctx, { handle: 'coder' }, { name: HOST });
+    await until(() => told === 2, 'the same answer told again, since the first telling failed');
   } finally {
     console.error = error;
     process.off('unhandledRejection', onUnhandled);
