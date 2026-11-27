@@ -12,7 +12,7 @@
 // in the project’s folder, and the server log says why. Submodules inside a submodule stay empty too. What an agent
 // changes in one is committed at the turn’s end (agent-worktree-commit.mjs).
 
-import { mkdir, realpath } from 'node:fs/promises';
+import { lstat, mkdir, realpath } from 'node:fs/promises';
 import { dirname, join, sep } from 'node:path';
 import { gitsReason, removeWorktree, stateOf } from './worktree-state.mjs';
 
@@ -56,6 +56,8 @@ async function submodulesOf(git, top) {
  *   person’s checkout of it; mine: its folder in the agent’s worktree, whose real path is root
  */
 async function addOne(git, { theirs, mine, root, branch, sha }) {
+  // A link at the submodule’s own folder would have git check it out wherever the link points.
+  if ((await lstat(mine).catch(() => null))?.isSymbolicLink()) return 'its folder in the worktree leads outside it';
   const state = await stateOf(mine);
   if (state === 'finished') return null;
   // The agent can write its worktree: a link on the way to the submodule’s folder would have git work outside it.
