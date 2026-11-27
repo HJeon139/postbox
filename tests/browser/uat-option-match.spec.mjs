@@ -36,6 +36,8 @@ const NAMES = [
   ['Weekly—every Monday', 'Weekly'],
   ['each evening', 'Daily'],
   ['Weekly\nevery Monday', 'Weekly'],
+  // A whole label alone picks that chip, though “Weekly with alerts” is drawn first and holds it.
+  ['Weekly', 'Weekly'],
   ['each evening', 'Daily'],
 ];
 
@@ -81,8 +83,20 @@ test('the runner picks a choice’s option by its label when the tester names it
     'Couldn’t find the option “Dailyish — each evening” on screen.',
   );
   expect(await picked(), 'and nothing else is picked').toEqual(['Daily']);
-  // What the tester reads: each chip by its label, not its label and description run together (#1782).
+  // What the tester reads: each chip as “label — description”, not the two run together (#1782), and each of those
+  // names, sent back, picks its chip.
   const read = (await d.items()).find((i) => i.key === key);
-  expect(read?.buttons).toEqual(expect.arrayContaining(['Weekly with alerts', 'Weekly', 'Daily', 'Daily — with digest', 'Text only']));
-  expect(read?.buttons, 'no label run into its description').not.toContain('Weeklyevery Monday');
+  expect(read?.buttons).toEqual(
+    expect.arrayContaining([
+      'Weekly with alerts — a summary and an alert on drops',
+      'Weekly — every Monday',
+      'Daily — each evening',
+      'Daily — with digest — each morning',
+      'Text only',
+    ]),
+  );
+  for (const named of read?.buttons.filter((b) => b.includes(' — ')) ?? []) {
+    await d.act(key, { choose: [named] });
+    expect((await picked())[0], `“${named}” sent back`).toBe(OPTIONS.find((o) => `${o.label} — ${o.description}` === named)?.label);
+  }
 });
