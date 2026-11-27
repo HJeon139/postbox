@@ -14,7 +14,7 @@ import { CODEX_MEMORY_OFF } from './codex-memory.mjs';
 import { codexModels, findCodex } from './codex-models.mjs';
 import { CODEX_TOOL_RULES, codexWebSearchArgs, networkOn } from './codex-network.mjs';
 import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
-import { codexRefusal, failOnCutAnswer, openCodexThread } from './codex-thread.mjs';
+import { codexRefusal, codexSaid, failOnCutAnswer, openCodexThread, SAID_MAX } from './codex-thread.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { COMPACT } from './no-compaction.mjs';
@@ -27,8 +27,6 @@ export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
 export { CODEX_CAPABILITIES, codexRemoteConfigArgs, createCodexRebuild } from './codex-remote.mjs';
 export { codexApproval, createCodexMapper };
 
-/** Of what Codex says when a turn fails, shown to the person, as for its tool server’s refusal. */
-const SAID_MAX = 400;
 /** A local folder’s real path, or the folder as given if it can’t be resolved: Codex refuses a writable root with a symlink in its path. */
 const realFolder = (dir) => realpath(dir).catch(() => dir);
 
@@ -140,6 +138,15 @@ async function answerRequest(ctx, host, send, msg) {
  * @param {string} cwd @param {any} session @param {any} message
  */
 async function startTurn(ctx, request, send, cwd, session, message) {
+  try {
+    return await openAndStart(ctx, request, send, cwd, session, message);
+  } catch (e) {
+    throw codexSaid(e); // a request Codex refused, as the person reads it
+  }
+}
+
+/** The turn’s requests, from initialize to turn/start or thread/compact/start. Same params as startTurn. */
+async function openAndStart(ctx, request, send, cwd, session, message) {
   await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
   send({ method: 'initialized', params: {} });
   const permissions = codexPermissions(ctx.persona, cwd);

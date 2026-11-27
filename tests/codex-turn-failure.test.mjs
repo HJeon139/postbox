@@ -62,7 +62,7 @@ test('#425 a failed Codex turn keeps the reason its error notification gave, as 
 });
 
 test('#425 what Codex says of a failed turn reaches the person cleaned and cut, from turn/completed or an error notification', async () => {
-  const said = `Bad‮gnp.exe\nsecond line ${'x'.repeat(600)}`;
+  const said = `Bad\u202Egnp.exe\nsecond line ${'x'.repeat(600)}`;
   const notice = { method: 'error', params: { error: { message: said }, willRetry: false } };
   /** The error notification before turn/start’s answer, so it rejects that request itself. */
   const notifiedBeforeAnswer = (/** @type {any} */ child) => child.stdout.write(`${JSON.stringify(notice)}\n`);
@@ -73,7 +73,21 @@ test('#425 what Codex says of a failed turn reaches the person cleaned and cut, 
       (/** @type {any} */ e) => e,
     );
     assert.match(err.message, /^(Codex turn failed: )?Bad/);
-    assert.doesNotMatch(err.message, /[‮\n]/, 'no bidi override or line break');
+    assert.doesNotMatch(err.message, /[\u202E\n]/, 'no bidi override or line break');
     assert.ok(err.message.length <= 'Codex turn failed: '.length + 400, `cut to 400 characters, not ${err.message.length}`);
   }
+});
+
+test('#425 a request Codex refuses reaches the person cleaned and cut, with its code kept', async () => {
+  const message = `Bad\u202Egnp.exe\nsecond line ${'x'.repeat(600)}`;
+  const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => fakeAppServer([], { threadError: () => ({ code: -32603, message }) }) });
+  const err = await adapter.deliver({}, { kind: 'user', text: 'Hi' }, context()).then(
+    () => assert.fail('the turn should fail'),
+    (/** @type {any} */ e) => e,
+  );
+  assert.match(err.message, /^Bad/);
+  assert.doesNotMatch(err.message, /[\u202E\n]/, 'no bidi override or line break');
+  assert.ok(err.message.length <= 400, `cut to 400 characters, not ${err.message.length}`);
+  assert.equal(err.code, -32603, 'its JSON-RPC code, for how the failure is classed');
+  assert.equal(err.cause?.message, message, 'Codex’s own words kept as the cause');
 });
