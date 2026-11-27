@@ -1,7 +1,8 @@
 // The UAT runner’s act against a real choice block (#1750): an option the tester names as its label and description
 // joined with “ — ”, or by a newline, a colon or another dash (#1782), is picked by its label, as app/js/blocks.mjs
-// draws it, and a name for no option still fails the step. What it reads of the block lists each chip by its label. The
-// runner’s own code, through a stand-in for its page.
+// draws it, and a name for no option still fails the step. What it reads of the block lists each chip as
+// “label — description”, and each of those, sent back, picks its chip. The runner’s own code, through a stand-in for its
+// page.
 
 import { expect, test } from '@playwright/test';
 import { driver } from '../../tools/uat/driver.mjs';
@@ -16,6 +17,8 @@ const OPTIONS = [
   { id: 'daily', label: 'Daily', description: 'each evening' },
   { id: 'digest', label: 'Daily — with digest', description: 'each morning' },
   { id: 'text', label: 'Text only' },
+  // A label long enough that a cut at 60 characters would have left “… —” with nothing after it.
+  { id: 'long', label: 'Summarize each source the reviewer flagged in the last run', description: 'with links' },
 ];
 // What the tester sends, and the label of the option it means.
 const NAMES = [
@@ -93,6 +96,7 @@ test('the runner picks a choice’s option by its label when the tester names it
       'Daily — each evening',
       'Daily — with digest — each morning',
       'Text only',
+      'Summarize each source the reviewer flagged in the last run — with links',
     ]),
   );
   for (const named of read?.buttons.filter((b) => b.includes(' — ')) ?? []) {
