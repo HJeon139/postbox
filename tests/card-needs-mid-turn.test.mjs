@@ -199,5 +199,10 @@ for (const [kind, raise] of Object.entries(raisers)) {
     await settle(r.rt);
     assert.equal(r.rt.s.sessions[r.alpha.id].needs?.kind, kind, 'and the turn’s end keeps it');
     assert.equal(r.rt.s.sessions[r.alpha.id].state, 'needs', 'the pulse comes at the turn’s end');
+    assert.deepEqual(
+      heard.map((n) => [n.level, n.title]),
+      [['blocking', '@alpha needs you']],
+      'and the notice, as for a form',
+    );
   });
 }
