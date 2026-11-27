@@ -18,7 +18,7 @@ test('#120: a remote Isolated turn starts on the host with its agent file in Pos
   const start = await startOf(d);
   play(d, start, 'first');
   await turn;
-  const kiroHome = `${HOME}/.postbox-remote/kiro-home/kiro`;
+  const kiroHome = `${HOME}/.postbox-remote/kiro-home/pe_kiro`;
   assert.equal(start.harness, 'kiro-cli');
   assert.equal(start.folder, FOLDER);
   assert.equal(start.stdin, 'file');
@@ -80,10 +80,25 @@ test('#120: a remote turn with your setup puts its agent file in your Kiro home 
   assert.equal(JSON.parse(start.agentFile.text).includeMcpJson, true);
 });
 
-test('#120: the Kiro home on a host: yours (no variable: the daemon finds it), or one per handle under ~/.postbox-remote', () => {
+test('#120: the Kiro home on a host: yours (no variable: the daemon finds it), or one per persona under ~/.postbox-remote', () => {
   assert.deepEqual(kiroRemoteEnv({ usesHostSetup: true }, '/'), {});
-  assert.deepEqual(kiroRemoteEnv({ handle: 'a.b/c', usesHostSetup: false }, HOME), { KIRO_HOME: `${HOME}/.postbox-remote/kiro-home/abc` });
-  assert.deepEqual(kiroRemoteEnv({ handle: 'x', usesHostSetup: false }, '/'), { KIRO_HOME: '/.postbox-remote/kiro-home/x' });
+  assert.deepEqual(kiroRemoteEnv({ id: 'pe_a.b/c', handle: 'abc', usesHostSetup: false }, HOME), { KIRO_HOME: `${HOME}/.postbox-remote/kiro-home/pe_a_b_c` });
+  assert.deepEqual(kiroRemoteEnv({ id: 'pe_x', handle: 'x', usesHostSetup: false }, '/'), { KIRO_HOME: '/.postbox-remote/kiro-home/pe_x' });
+});
+
+test('#1661: a new persona given a deleted one’s handle starts on a host in a Kiro home of its own, without the old one’s memory', async () => {
+  const homeOf = async (/** @type {any} */ persona) => {
+    const { d, adapter, ctx } = await setup({ persona });
+    const turn = adapter.deliver({}, { kind: 'user', text: 'What do you remember?' }, ctx);
+    const start = await startOf(d);
+    play(d, start, 'first');
+    await turn;
+    return start.env.KIRO_HOME;
+  };
+  const old = await homeOf({ id: 'pe_old', handle: 'kiro' });
+  const reused = await homeOf({ id: 'pe_new', handle: 'kiro' });
+  assert.equal(old, `${HOME}/.postbox-remote/kiro-home/pe_old`);
+  assert.equal(reused, `${HOME}/.postbox-remote/kiro-home/pe_new`, 'the same handle, but not the same home, so not the same memory');
 });
 
 test('#436: a remote Kiro turn and its fresh retry send each prompt through stdin', async () => {
