@@ -25,8 +25,8 @@ const crashes = new Map(); // `${appId}:${v}` → message (a script error after 
 const reloaded = new Set(); // `${appId}:${v}` you chose Reload for after its check crashed: run it, don’t show the crash again
 const viewing = new Map(); // appId → an older version you’re looking at, read-only
 // App bodies unloaded while off screen, by the body, not its app: an app’s own item and a review of it share the app’s
-// id, and only the item is watched for nearness, so the review must come back from a check while the item stays
-// unloaded (#1726).
+// id, and an open review isn’t watched for nearness, so it must come back from a check while the item stays unloaded
+// (#1726).
 const unloaded = new WeakSet();
 const cap = () => Math.min(innerHeight * 0.8, 760);
 
