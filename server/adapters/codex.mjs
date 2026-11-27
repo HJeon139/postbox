@@ -14,6 +14,7 @@ import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached,
 import { codexRefusal, failOnCutAnswer, openCodexThread } from './codex-thread.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
+import { COMPACT } from './no-compaction.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { AUTO_MODEL, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 
@@ -77,7 +78,7 @@ const threadOf = (state) => (state.fork ?? state.forkFrom)?.threadId ?? state.co
  * Whether a turn’s message is the /compact command, run as Codex’s compaction (#425). Codex’s takes no instructions,
  * so any after it are left out rather than sent to the model as a prompt. @param {any} message
  */
-const compacts = (message) => Boolean(message?.slash) && /^\/compact(?:\s|$)/.test(String(message.text ?? ''));
+const compacts = (message) => Boolean(message?.slash) && COMPACT.test(String(message.text ?? ''));
 
 /**
  * Answers an app-server approval or elicitation request, unless the host already has (remote turns: `host` is
