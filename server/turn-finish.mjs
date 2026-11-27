@@ -6,7 +6,7 @@
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { failureClass } from './harness-failure.mjs';
 import { liveEnd } from './live-buffer.mjs';
-import { toolsDownBack } from './store-outage.mjs';
+import { takenBack } from './store-outage.mjs';
 import { heldBy } from './turn-held.mjs';
 import { askedOf, replyMarks } from './turn-marks.mjs';
 import { outOfQuota, quotaBack } from './turn-quota.mjs';
@@ -48,8 +48,8 @@ export function endTurn(rt, turn, err) {
   settleReplies(rt, turn, items, err);
   rt.bus.emit('turn.replied', { turn, se, items, err });
   if (err && err.name !== 'AbortError') {
-    // Only a turn that never reached the agent, as near as Postbox can tell, gives the note back (#1171).
-    if (neverRan) toolsDownBack(rt, se.id, turn);
+    // Only a turn that never reached the agent, as near as Postbox can tell, gives back what it took (#1171, #1904).
+    if (neverRan) takenBack(rt, se.id, turn);
     endFailed(rt, se, turn, err);
     return;
   }

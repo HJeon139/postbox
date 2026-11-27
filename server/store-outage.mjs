@@ -155,15 +155,19 @@ export function saveBackendState(rt, sessionId, patch) {
 }
 
 /**
- * Gives back the tools-down note a turn took and never passed on (#1171). A newer note stands, one still waiting for
- * writes to reopen too.
+ * Gives back what a turn that never reached its agent took from the session (#1171, #1904): the tools-down note, unless a
+ * newer one was set (one still waiting for writes to reopen too); the waiting notices, ahead of any that came since;
+ * and the folded lint, which the next turn folds in again.
  * @param {Runtime} rt @param {string} sessionId @param {any} turn
  */
-export function toolsDownBack(rt, sessionId, turn) {
+export function takenBack(rt, sessionId, turn) {
   const waiting = rt.backendWait.get(sessionId);
   const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
   const now = waiting && 'postboxToolsDown' in waiting ? { backendState: waiting } : se;
   toolsDownLost(now, turn.toolsDownTaken, (patch) => saveBackendState(rt, sessionId, patch));
+  const told = turn.contextTaken ?? [];
+  if (told.length) gated(rt, () => rt.sessions.update(sessionId, (s) => ({ context: [...told, ...(s.context ?? [])] })));
+  for (const e of turn.lintTaken ?? []) e.sent = false;
 }
 
 /** @param {Runtime} rt @param {string} sessionId @param {Record<string, any>} patch */
@@ -205,7 +209,7 @@ function stopForStore(rt, sessionId) {
   rt.running.exit(sessionId, { turn, held: turn.pending.splice(0), silent: false });
   turn.abort.abort(Object.assign(new Error(WHY), { name: 'AbortError' }));
   turn.closed = true;
-  if (!turn.first) toolsDownBack(rt, sessionId, turn); // as any Stop does (turn-stop.mjs)
+  if (!turn.first) takenBack(rt, sessionId, turn); // as any Stop does (turn-stop.mjs)
   rt.running.end(sessionId);
   console.error(`@${rt.s.sessions[sessionId]?.handle ?? sessionId}’s turn stopped: Postbox can’t save changes right now.`);
   rt.storeWait.push(Object.assign(() => recordStop(rt, turn), { stopOf: sessionId })); // settleOrphanTurns reads stopOf
