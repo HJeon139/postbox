@@ -81,7 +81,7 @@ const AFTER = [
   ['shared-summary', 'ReAct, step by step', `document.querySelector('.shared-card')?.closest('.item')`],
   ['topic-thread-panel', 'topic', q('aside.sidepanel')],
   ['compaction-divider', 'Index planning', `[...document.querySelectorAll('.transcript > .item')].find((n) => n.textContent.includes('Context compacted'))`],
-  ['system-wake-line', 'Index planning', item('woke itself')],
+  ['system-wake-line', 'Index planning', `[...document.querySelectorAll('.transcript > .item')].find((n) => /(wake|woke) itself/.test(n.textContent))`],
   ['progress-block', 'Index planning', block('Index the shelf')],
   [
     'choice-block',
