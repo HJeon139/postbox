@@ -8,7 +8,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { cutText } from '../shared/text-parts.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { awaited, settleUnchecked, settleWaits } from './app-check-wait.mjs';
-import { APP_HINTS, passed } from './app-hints.mjs';
+import { APP_HINTS, hintsLast, keepForAgent, passed } from './app-hints.mjs';
 import { intentOf, withIntentNote } from './app-intent.mjs';
 import { notYours } from './app-retire.mjs';
 import { httpError, refuseRetired } from './helpers.mjs';
@@ -43,12 +43,13 @@ function checked(apps, appId, { version, problems = [] }) {
   if (!app) throw httpError(404, 'That app doesn’t exist.');
   // A retired app shows no frame, so a check still running when it was retired has nothing to fix (#193).
   if (version !== app.current || app.retired || app.check.status !== 'pending') return { ignored: true };
-  const clean = (Array.isArray(problems) ? problems : [])
+  const found = hintsLast(Array.isArray(problems) ? problems : [])
     .slice(0, 20)
     .map((p) => ({ code: String(p?.code).slice(0, 40), message: cutText(String(p?.message), 300) }));
   // Passed, or with only hints for the agent: the version the person is shown, which stands in while its agent fixes a
   // later one (#948).
-  if (clean.every((p) => APP_HINTS.has(p.code))) return passed(apps, app, version, clean);
+  if (found.every((p) => APP_HINTS.has(p.code))) return passed(apps, app, version, found);
+  const { clean, kept } = keepForAgent(apps, app, version, found);
   // A script error goes back to the agent once, like any blocking problem (#964); after that, or with no agent to
   // tell, the version shows as crashed.
   if (clean.some((p) => p.code === 'script-error') && (app.check.attempt > 0 || !apps.store.state.sessions[app.sessionId])) {
@@ -84,7 +85,7 @@ function checked(apps, appId, { version, problems = [] }) {
         turnId,
         fixable.map((p) => ({ ...p, scope })),
       ));
-  const check = { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}), ...(told ? { told } : {}) };
+  const check = { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}), ...(told ? { told } : {}), ...kept };
   // Only a version Postbox checked to the end can stand in later: one its check couldn’t finish is shown with its note,
   // and the last checked version stays the fallback (#948).
   const checked = fixable.length === clean.length;
