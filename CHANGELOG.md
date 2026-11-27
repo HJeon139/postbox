@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.8 (2026-11-27)
+
+### Fixes
+
+- **remote:** a wake left to its host turn's resume retries when its agent moves here
+- **wakes:** keep a wake with its own second host turn, and with a resume that couldn't start
+- **wakes:** settle a wake at every exit from waiting on its host turn, and run it once
+- **wakes:** a wake whose agent moved retries, and one still placed on a lost host stops
+- **adapters:** a Claude Code turn that couldn't reach the API fails as a network failure
+- **wakes:** a wake's host turn attached again keeps the wake, and one Postbox gives up on retries
+
 ## 5.4.7 (2026-11-27)
 
 ### Fixes
