@@ -18,7 +18,7 @@ A room’s controls are in one place, its form in the main menu (#1735). This bu
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Open “Asset explorer” and press the gear after its title. Pick each agent in Members, press Edit, and go back.
+2. Open “Asset explorer” and press the gear after its title. Pick each agent in Members and press Edit: the main menu shows its persona’s form on the Personas tab. Choose the Rooms tab to come back to the room (the form’s “All personas” goes to the Personas list instead).
 3. Narrow the window to 375 px and do the same.
 
 **Pass if:** The room’s form opens at once, each agent’s row says what it runs with, with full model ids, and its state, Edit shows that agent’s persona, and closing returns focus to the gear.

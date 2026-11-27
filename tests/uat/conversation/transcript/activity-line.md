@@ -12,7 +12,7 @@ Shows every step of the work without flooding the transcript, including what sub
 
 ## Expected functionality
 
-- **Collapsed:** “Used N tools”, with a count of thoughts and refused steps when there are any, and the time its tool steps took, said as such (“3.6 s in tools”). The turn’s elapsed time is on the line of its list, under its last reply (“23 s in all”, #214).
+- **Collapsed:** once the turn ends and Work has a line for it, the turn’s line, with its elapsed time said as such (“4 files +15 −3 · 4 commands (1 failed) · 1 app · 1 outside Postbox · 2 s in all”, #214), and, opened, its steps with **Open this turn in Work**. Until then, or for a turn Work has nothing for, “Used N tools”, with a count of thoughts and refused steps when there are any, and the time its tool steps took, said as such (“3.6 s in tools”) (`app/js/activity-paint.mjs`, `app/js/work-record.mjs`).
 - **Expanded:** each step with its state (running, done, failed, refused) and duration.
 - **Subagent steps:** listed under the subagent’s name (“tidier · Ran ls -la exports/”), and nested under the step that started the subagent, at any depth (#73). A subagent’s step says what it returned once it has, and reads running while a subagent started in the background works on. One still working when its turn is stopped reads “Stopped: its turn ended before it finished”, with its own calls.
 - **Subagent narration:** what a subagent says about its work (“general-purpose: I’ll count the words…”) is a step of its own, by its first sentence, opening to the whole text. It’s attributed to the subagent, and never part of the agent’s reply.
