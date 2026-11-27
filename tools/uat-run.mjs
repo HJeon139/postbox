@@ -218,7 +218,7 @@ async function main() {
     const goals = phaseGoals(scenario, { cap: phaseCap, start: phase, log });
     const noteStale = staleNoter({ d, facts, timeline, log }); // the page’s refused stale answers (#123)
     const answerMidTurn = midTurnAnswerer({ d, api, keys, facts, noteStale }); // an answer while the agent works (#123)
-    const holdFor = stepHolds({ goals, log });
+    const holdFor = stepHolds({ goals, log, timeline });
     // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
     const hostFault = (spec) => (hr ? fault(hr, spec, page, d.input) : localRestart({ postbox, page, log, input: d.input }, spec));
     let lastAction = null;
