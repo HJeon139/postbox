@@ -59,7 +59,7 @@ import { kiroHomeFor } from './kiro-home.mjs';
 import { kiroMemoryOff } from './kiro-memory.mjs';
 import { kiroResult, REFUSED } from './kiro-result.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
-import { KINDS, toolOf } from './kiro-tools.mjs';
+import { toolCall } from './kiro-tools.mjs';
 import { withoutToolMarkup } from './model-markup.mjs';
 import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
@@ -133,14 +133,7 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
     if (st.thinking) emit({ kind: 'thinking_end', block: `thought-${st.thoughts}` });
     st.thinking = false;
   };
-  const call = (/** @type {any} */ u) => {
-    // Only a call’s first update names its kind.
-    if (u.kind) st.kinds.set(u.toolCallId, u.kind);
-    const { name, input } = toolOf({ ...u, kind: st.kinds.get(u.toolCallId) });
-    // v3 loads tool definitions on demand (“Tool Load”), as Claude Code’s ToolSearch does.
-    const native = u.title === 'Tool Load' ? 'ToolSearch' : clip(u.title || KINDS[/** @type {keyof typeof KINDS} */ (u.kind)] || 'Using a tool', 80);
-    emit({ kind: 'tool_call', id: u.toolCallId, name: name ?? native, input, final: true, ...(native === 'ToolSearch' ? { work: false } : {}) });
-  };
+  const call = (/** @type {any} */ u) => toolCall(emit, st.kinds, u);
   const update = (/** @type {any} */ u) => {
     const kind = u?.sessionUpdate;
     if (kind !== 'agent_thought_chunk') endThought();
