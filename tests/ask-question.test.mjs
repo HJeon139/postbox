@@ -286,11 +286,15 @@ test('#521 a question nobody answers within CARD_WAIT_MS stays open, and the age
     mock.timers.reset();
   }
   assert.ok(s.rt.turns.size, 'the turn still runs');
-  assert.notEqual(s.se().needs?.itemId, s.questions()[0].id, 'no call waits on it now, so it isn’t what the running turn needs');
+  // #1748: no call waits on it now, but the block still asks, as it does once the turn ends (main counted it only then),
+  // so it stays the need while the turn runs on, and the agent keeps working.
+  assert.equal(s.se().needs?.itemId, s.questions()[0].id, 'the open question is still the need');
+  assert.notEqual(s.se().state, 'needs', 'and the agent is still working');
   goOn();
   await until(() => !s.rt.turns.size, 'the turn to end');
   assert.equal(answer.behavior, 'deny');
   assert.ok(answer.message.includes(STILL_OPEN), answer.message);
   assert.ok(!/ask again if/i.test(answer.message), `no “ask again” beside “don’t ask it again”: ${answer.message}`);
   assert.equal(s.store.item(s.t.id, s.questions()[0].id).answered, false, 'the block stays asking');
+  assert.equal(s.se().needs?.itemId, s.questions()[0].id, 'and the need at the turn’s end, as on main');
 });
