@@ -139,3 +139,16 @@ test('#314 a plugin the sweep can’t remove stays noted, and one it removed doe
   await sweepAgyPlugins(workRoot);
   assert.deepEqual(noted(workRoot), [], 'gone, and no longer noted');
 });
+
+test('#314 a turn removes the plugin it wrote through a linked plugins folder', async () => {
+  const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+  const folder = tempDir('pb-agy-folder-');
+  const shared = tempDir('pb-agy-shared-');
+  mkdirSync(join(folder, '.agents'));
+  symlinkSync(shared, join(folder, '.agents', 'plugins'));
+  const plugin = join(folder, PLUGIN_DIR);
+  await writeAgyPlugin(plugin, files(), workRoot);
+  await removeAgyPlugin(plugin, workRoot);
+  assert.equal(existsSync(join(shared, 'postbox')), false, 'removed where its write went');
+  assert.deepEqual(noted(workRoot), [], 'and unnoted');
+});
