@@ -216,3 +216,9 @@ test('#1416: an item is found and read once for a message, however many lines of
   assert.deepEqual(parseMentions(missing, ['alpha', 'beta', 'gamma'], copiedLine(rt, alpha)), ['beta']);
   assert.equal(reads, 0);
 });
+
+test('#1840: a copied line whose mention carries an invisible character is still a copy', () => {
+  const { said, wakes } = room();
+  assert.deepEqual(wakes(`${said.id}: @‌beta: ${RERAN}`), []);
+  assert.deepEqual(wakes(`${said.id}: @‌beta: fix the null check`), ['beta']);
+});

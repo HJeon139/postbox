@@ -284,3 +284,8 @@ test('#218: a link’s text holds no link, since an <a> can’t hold another', (
     '<p><a href="https://b.example" target="_blank" rel="noopener noreferrer">see [the docs](https://a.example) here</a></p>',
   );
 });
+
+test('#1840 a mention with an invisible format character shows as a mention, as it wakes', () => {
+  assert.match(md('@‌critic look', { mentions: ['critic'] }), /<span class="mention">@‌critic<\/span> look/);
+  assert.match(md('@cri​tic look', { mentions: ['critic'] }), /<span class="mention">@cri​tic<\/span>/);
+});
