@@ -45,9 +45,10 @@ export function keepAnswer(dir, answer) {
 export function askToSee(rt, sessionId, threadId, endSegment) {
   const se = rt.session(sessionId);
   const open = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && x.status === 'open');
-  // One card per conversation, offered again only to the agent that asked: another agent’s call finds it and gets no
-  // need of its own, and the answer goes to the agent that asked.
+  // One card per conversation, offered again only to the agent that asked. Another agent’s call finds it and gets no
+  // need of its own, but it’s told to wait for the answer too, so the card notes it, and it hears the answer (#1927).
   if (open?.sessionId === sessionId) askAgain(rt, se, open, threadId);
+  else if (open && !(open.waiting ?? []).includes(sessionId)) rt.threads.patchItem(threadId, open.id, { waiting: [...(open.waiting ?? []), sessionId] });
   if (!open) {
     endSegment();
     const it = rt.threads.addItem(threadId, { kind: 'viewask', sessionId, handle: se.handle, turnId: rt.turns.get(sessionId)?.id ?? null, status: 'open' });
@@ -60,6 +61,21 @@ export function askToSee(rt, sessionId, threadId, endSegment) {
     message:
       'Postbox asked the person whether to download the browser that renders your app. End your turn: their answer arrives as a message, and if they allow it, call view_app again then.',
   };
+}
+
+/**
+ * An agent that calls view_app while the download the person allowed runs (#1927): it’s told to end its turn and hear
+ * when the browser is ready, so the downloading card in its thread notes it, as an open card notes an agent that finds
+ * it. Without such a card in its thread (the download was allowed in another thread), it’s told to call again instead.
+ * Returns what view_app tells the agent.
+ * @param {any} rt @param {string} sessionId @param {string} threadId
+ */
+export function waitForDownload(rt, sessionId, threadId) {
+  const card = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && x.status === 'downloading');
+  if (!card) return { ok: true, waiting: false, message: 'The browser is still downloading. Carry on, and call view_app again in a minute or two.' };
+  if (card.sessionId !== sessionId && !(card.waiting ?? []).includes(sessionId))
+    rt.threads.patchItem(threadId, card.id, { waiting: [...(card.waiting ?? []), sessionId] });
+  return { ok: true, waiting: true, message: 'The browser is still downloading. End your turn; you’ll hear when it’s ready.' };
 }
 
 /**
@@ -81,12 +97,15 @@ export function resolveViewAsk(rt, threadId, itemId, action) {
   // The person has answered, so the agent no longer needs them while the download runs (#954); it hears how it ends.
   const se = rt.s.sessions[it.sessionId];
   if (se) releaseNeed(rt, se, it.id);
-  view.browser.install().then((r) => {
-    if (r.ok) settle(rt, threadId, it, 'ready', 'The person allowed the download, and it finished. Call view_app now to see your app.');
-    // Postbox is stopping: the card says so, and no agent is woken on the way out.
-    else if (r.message === STOPPED) settle(rt, threadId, it, 'failed', null, r.message);
-    else settle(rt, threadId, it, 'failed', `The person allowed the download, but it failed: ${r.message} Carry on without view_app.`, r.message);
-  });
+  view.browser
+    .install()
+    .then((r) => {
+      if (r.ok) settle(rt, threadId, it, 'ready', 'The person allowed the download, and it finished. Call view_app now to see your app.');
+      // Postbox is stopping: the card says so, and no agent is woken on the way out.
+      else if (r.message === STOPPED) settle(rt, threadId, it, 'failed', null, r.message);
+      else settle(rt, threadId, it, 'failed', `The person allowed the download, but it failed: ${r.message} Carry on without view_app.`, r.message);
+    })
+    .catch((e) => console.error(`Postbox couldn’t tell the agents waiting on the browser download how it ended: ${e.message}`));
   return { ok: true };
 }
 
@@ -107,18 +126,24 @@ export function settleDownloads(rt) {
 }
 
 /**
- * The card’s last state, and the agent that asked hears it.
+ * The card’s last state, and each agent told to wait for it hears it: the agent that asked, and any other whose call
+ * found the card open (#1927). Only the agent that asked had a need to release.
  * @param {any} rt @param {string} threadId @param {any} it @param {string} status @param {string|null} notice  null tells no one
  * @param {string|null} [reason]
  */
 function settle(rt, threadId, it, status, notice, reason = null) {
   rt.threads.patchItem(threadId, it.id, { status, ...(reason ? { reason: cutText(String(reason), 400) } : {}), settledAt: Date.now() });
-  const se = rt.s.sessions[it.sessionId];
-  if (!se) return { ok: true };
-  releaseNeed(rt, se, it.id);
-  // The person’s answer, or how the download it allowed ended, is an entry pointing at the card (designs/rooms-at-scale.md,
-  // “What an entry is”), with the words its turn is given until Turns builds input from entries.
-  if (notice && !se.retiredFork)
-    rt.delivery.send({ sessionId: se.id, threadId: se.threadId, source: 'answer', itemId: it.id, from: 'you', message: { kind: 'notice', text: notice } });
+  const asker = rt.s.sessions[it.sessionId];
+  if (asker) releaseNeed(rt, asker, it.id);
+  // Read now, not as the person answered: an agent can join while the download runs (waitForDownload).
+  const waiting = rt.store.pending.item(threadId, it.id)?.waiting ?? [];
+  for (const id of new Set([it.sessionId, ...waiting])) {
+    // As delivery reads it, so a session deleted or retired behind a held commit is skipped, not thrown on.
+    const se = rt.store.pending.session(id);
+    // The person’s answer, or how the download it allowed ended, is an entry pointing at the card (designs/rooms-at-scale.md,
+    // “What an entry is”), with the words its turn is given until Turns builds input from entries.
+    if (se && notice && !se.retiredFork)
+      rt.delivery.send({ sessionId: se.id, threadId: se.threadId, source: 'answer', itemId: it.id, from: 'you', message: { kind: 'notice', text: notice } });
+  }
   return { ok: true };
 }

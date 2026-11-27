@@ -246,7 +246,9 @@ export const PENDING = {
   'store-outage.mjs': ['neverReached', 'takenBack'],
   'stop-record.mjs': ['recordStopped'], // the stopped turn’s segments still streaming, maybe held behind a commit (#602)
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
-  'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
+  // An open download card, which decides whether to add another (#95); the downloading card an agent waits on, and who
+  // waits on a card as it settles, and each one’s session as delivery reads it, which decide who is told (#1927).
+  'view-app/consent.mjs': ['askToSee', 'waitForDownload', 'settle', 'settle'],
   // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637); and who answers in
   // a new topic, read as the conversation was written (#1292); conversationOf’s topics, maybe opened behind a held commit (#623)
   'topic-open.mjs': ['startTopic', 'startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'],
