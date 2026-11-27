@@ -50,10 +50,17 @@ export function albProvider(settings, { get, now = Date.now }) {
         ),
         { code: 'claims' },
       );
+    // An email address a person typed and nobody checked is anyone’s to claim, so one that names them here must be
+    // one the provider verified (the claim is `true`, or the text “true” as Amazon Cognito sends it).
+    if (Object.values(settings.claims).includes('email') && String(checked.claims.email_verified) !== 'true')
+      throw Object.assign(
+        httpError(403, 'You’re signed in, but your email address isn’t verified with the sign-in provider. Verify it there, then sign in again.'),
+        { code: 'unverified' },
+      );
     if (!allowed(settings.allow, checked.subject, checked.claims))
       throw Object.assign(httpError(403, `You’re signed in as ${name}, and this Postbox isn’t open to you. Ask whoever runs it to add you.`), {
         code: 'not-allowed',
       });
-    return { provider: 'alb', issuer: checked.issuer, subject: checked.subject, username, name };
+    return { provider: 'alb', issuer: checked.issuer, subject: checked.subject, username, name, until: checked.until };
   };
 }

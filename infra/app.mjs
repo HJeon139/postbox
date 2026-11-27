@@ -70,4 +70,5 @@ new HostedPostbox(stack, 'Postbox', {
   claims: { username: context('claimUsername') ?? 'email', name: context('claimName') ?? 'name' },
   allow: { subjects: list(context('allowSubjects')), groups: groups.length ? { claim: context('allowGroupsClaim'), any: groups } : undefined },
   openTo: context('openTo'),
+  deletionProtection: context('deletionProtection') !== 'false' && context('deletionProtection') !== false,
 });

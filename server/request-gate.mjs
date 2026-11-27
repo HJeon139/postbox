@@ -18,7 +18,7 @@ export function requestGate({ port, host, publicOrigin }) {
   const origins = publicOrigin ? [publicOrigin] : [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
   const hosts = origins.map((o) => new URL(o).host);
   const addressed = publicOrigin
-    ? `This Postbox only answers requests addressed to ${hosts[0]}.`
+    ? 'This Postbox only answers requests addressed to its own public address.' // which it doesn’t say, to a request that didn’t know it
     : 'Postbox only answers requests addressed to 127.0.0.1 or localhost.';
   return {
     /**
@@ -42,6 +42,18 @@ export function requestGate({ port, host, publicOrigin }) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
       res.end('ok\n');
       return true;
+    },
+    /**
+     * Hosted, every answer tells the browser to come back over TLS only, for a year: the public origin is HTTPS, and a
+     * first plain request is the one moment someone on the network could answer in its place. Locally the handler is
+     * returned as it is. @param {import('node:http').RequestListener} handle @returns {import('node:http').RequestListener}
+     */
+    overTls(handle) {
+      if (!publicOrigin) return handle;
+      return (req, res) => {
+        res.setHeader('strict-transport-security', 'max-age=31536000');
+        return handle(req, res);
+      };
     },
     /**
      * The one page that may frame an app’s sandbox (#992): the origin the request came to. Locally that is its checked

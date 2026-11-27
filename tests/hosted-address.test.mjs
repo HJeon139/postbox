@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { start } from '../server/index.mjs';
+import { requestGate } from '../server/request-gate.mjs';
 import { NOW, publicPem, SETTINGS, tokenFor } from './alb-fixture.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -54,7 +55,7 @@ test('it answers its public origin, and the page is built from it', async () => 
 test('a request addressed to anything else is refused, loopback and the container’s own address included', async () => {
   for (const host of [LOOPBACK, `localhost:${PORT}`, `10.0.1.23:${PORT}`, 'postbox.example.com.evil.example', `${PUBLIC}:${PORT}`, '']) {
     const answer = await ask({ path: '/api/state', host });
-    assert.deepEqual([host, answer.status, answer.json.error], [host, 421, 'This Postbox only answers requests addressed to postbox.example.com.']);
+    assert.deepEqual([host, answer.status, answer.json.error], [host, 421, 'This Postbox only answers requests addressed to its own public address.']);
   }
 });
 
@@ -122,4 +123,15 @@ test('! commands are refused on a hosted Postbox, from every address, loopback i
     });
     assert.deepEqual([answer.status, /listening on 0\.0\.0\.0/.test(answer.json.error)], [403, true]);
   }
+});
+
+test('hosted, every answer tells the browser to come back over TLS only, and locally the handler is as it was', () => {
+  /** @type {Record<string, string>} */
+  const set = {};
+  const res = /** @type {any} */ ({ setHeader: (/** @type {string} */ name, /** @type {string} */ value) => Object.assign(set, { [name]: value }) });
+  let handled = 0;
+  const handle = () => handled++;
+  requestGate({ port: PORT, host: () => '0.0.0.0', publicOrigin: ORIGIN }).overTls(handle)(/** @type {any} */ ({}), res);
+  assert.deepEqual([set, handled], [{ 'strict-transport-security': 'max-age=31536000' }, 1]);
+  assert.equal(requestGate({ port: PORT, host: () => '127.0.0.1' }).overTls(handle), handle);
 });

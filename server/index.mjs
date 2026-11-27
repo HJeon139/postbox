@@ -216,7 +216,7 @@ export async function start({
       else res.end();
     }
   };
-  const server = httpServer(handle);
+  const server = httpServer(gate.overTls(handle));
 
   async function route(req, res) {
     const url = new URL(req.url, origin);

@@ -1,9 +1,9 @@
 // Who signs people in at the load balancer (designs/architecture/hosted.md, “Who is asking”): the identity provider
 // a team already has, or a new one. Signing in there says who a person is. Whether they may use this Postbox is
-// Postbox’s allow list, so a provider shared with other applications admits none of their people by itself.
+// Postbox’s allow list of subjects, so a provider shared with other applications admits none of their people by itself.
 
 import { RemovalPolicy, Stack } from 'aws-cdk-lib';
-import { OAuthScope, UserPool, UserPoolClientIdentityProvider } from 'aws-cdk-lib/aws-cognito';
+import { ClientAttributes, Mfa, OAuthScope, UserPool, UserPoolClientIdentityProvider } from 'aws-cdk-lib/aws-cognito';
 import { ListenerAction, UnauthenticatedAction } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { AuthenticateCognitoAction } from 'aws-cdk-lib/aws-elasticloadbalancingv2-actions';
 
@@ -27,6 +27,10 @@ function newPool(scope) {
     selfSignUpEnabled: false,
     signInAliases: { email: true },
     standardAttributes: { fullname: { required: true, mutable: true } },
+    // A second factor for everyone, from an authenticator app: a password alone doesn’t open a team’s rooms.
+    mfa: Mfa.REQUIRED,
+    mfaSecondFactor: { otp: true, sms: false },
+    deletionProtection: true,
     removalPolicy: RemovalPolicy.RETAIN,
   });
   // A sign-in page’s prefix is one name for all of AWS, so it carries this stack’s own id.
@@ -60,6 +64,11 @@ export function signInOf(scope, signIn, { origin, sessionTimeout }) {
     supportedIdentityProviders: [UserPoolClientIdentityProvider.COGNITO],
     oAuth: { flows: { authorizationCodeGrant: true }, scopes: SCOPES, callbackUrls: [`${origin}/oauth2/idpresponse`] },
     preventUserExistenceErrors: true,
+    // It signs people in through the load balancer and does nothing else: no flow that takes a password directly,
+    // and no writing of a person’s attributes, which name them in Postbox.
+    authFlows: {},
+    readAttributes: new ClientAttributes().withStandardAttributes({ email: true, emailVerified: true, fullname: true }),
+    writeAttributes: new ClientAttributes(),
   });
   return {
     clientId: client.userPoolClientId,

@@ -6,6 +6,7 @@ import { httpError } from '../helpers.mjs';
 import { People } from '../people.mjs';
 import { createIdentity } from './index.mjs';
 import { refusalLog } from './refusal-log.mjs';
+import { endAt } from './stream-end.mjs';
 
 /**
  * @param {{ store: import('../store.mjs').Store, account?: import('./index.mjs').Principal, signIn?: import('./index.mjs').SignIn }} deps
@@ -30,7 +31,9 @@ export function whoIs({ store, account, signIn }) {
         return null;
       }
       try {
-        return people.of(await identity.identify(req));
+        const principal = await identity.identify(req);
+        if (path === '/api/stream' && principal.until) endAt(req, principal.until, { now: signIn?.now });
+        return people.of(principal);
       } catch (e) {
         refused?.(e);
         throw e;
