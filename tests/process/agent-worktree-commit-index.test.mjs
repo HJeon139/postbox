@@ -154,7 +154,15 @@ test('#1844 an index replaced by a pipe or a link leaves the turn uncommitted, w
 
 test('#1844 after the commit, what git knew of each unchanged file stays in the worktree’s index', async () => {
   const w = await turn('index-stat');
+  // A tracked file edited and not staged, as an agent’s edit tool leaves it, beside one the turn didn’t touch.
+  git(w.p.folder, ['config', 'user.name', 'Agent']);
+  writeFileSync(join(w.p.folder, 'kept.txt'), 'kept\n');
+  git(w.p.folder, ['add', 'kept.txt']);
+  git(w.p.folder, ['commit', '-qm', 'kept']);
+  git(w.dir, ['merge', '-q', '--ff-only', git(w.p.folder, ['rev-parse', 'HEAD']).trim()]);
+  writeFileSync(join(w.dir, 'README.md'), 'edited\n');
   assert.equal(await w.commit(), true, w.logs.join('\n'));
-  const debug = git(w.dir, ['ls-files', '--debug', 'README.md']);
+  assert.equal(git(w.dir, ['status', '--porcelain']), '', 'the worktree’s index is the commit’s');
+  const debug = git(w.dir, ['ls-files', '--debug', 'kept.txt']);
   assert.doesNotMatch(debug, /size: 0\b/, 'its size is still known, so the next status needn’t read it again');
 });

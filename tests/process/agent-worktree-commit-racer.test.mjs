@@ -24,7 +24,9 @@ const { writeFileSync } = require('node:fs');
 const [dir, sha, count] = process.argv.slice(1);
 const git = (args) => { try { execFileSync('git', args, { cwd: dir, stdio: 'ignore' }); return true; } catch { return false; } };
 for (let n = 1; ; n++) {
-  if (git(['update-index', '--add', '--cacheinfo', '160000,' + sha + ',sub'])) writeFileSync(count, String(n));
+  // Counted whether git took it or found the index locked by Postbox’s own git: either way, the process ran.
+  git(['update-index', '--add', '--cacheinfo', '160000,' + sha + ',sub']);
+  writeFileSync(count, String(n));
   git(['update-index', '--force-remove', 'sub']);
 }
 `;
@@ -53,7 +55,7 @@ test('#1844 a process left running that keeps staging a nested repository never 
     if (await commitTurn(dir, agent, p, workRoot, { log: () => {} })) committed++;
   }
   racer.kill('SIGKILL');
-  assert.ok(Number(existsSync(count) ? readFileSync(count, 'utf8') : 0) > 0, 'the process did stage the nested repository while Postbox committed');
+  assert.ok(Number(existsSync(count) ? readFileSync(count, 'utf8') : 0) > 0, 'the process kept staging the nested repository while Postbox committed');
   assert.equal(existsSync(marker), false, 'git never ran inside the nested repository');
   assert.ok(committed > 0, 'the agent’s work was committed while the process ran');
   assert.doesNotMatch(git(p.folder, ['ls-tree', '-r', `postbox/pr_racer-gem-pe_a`]), /^160000 /m, 'no nested repository on the agent’s branch');

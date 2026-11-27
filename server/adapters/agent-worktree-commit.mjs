@@ -112,12 +112,9 @@ async function commitIn(git, place, turn) {
     const index = join(dir, 'index');
     if (!(await copyIndex(join(place.admin, 'index'), index))) return { why: 'its index isn’t a file Postbox can copy' };
     const done = await commitFrom(git, place, index, turn);
-    if ('committed' in done && done.committed) {
-      // With -m, an entry that already matches the commit keeps what git knew of its file, so the next status doesn’t
-      // read every file again; an index -m can’t take (one with a conflict) is set to the commit outright.
-      const synced = await pin(git, place)(['read-tree', '-m', 'HEAD']);
-      if (synced.code !== 0) await pin(git, place)(['read-tree', 'HEAD']);
-    }
+    // --reset keeps what git knew of each file that already matches the commit, so the next status doesn’t read every
+    // file again, whatever else the worktree’s index held.
+    if ('committed' in done && done.committed) await pin(git, place)(['read-tree', '--reset', 'HEAD']);
     return done;
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -135,7 +132,7 @@ async function copyIndex(from, to) {
   if (!fh || typeof fh.close !== 'function') return fh?.code === 'ENOENT';
   try {
     if (!(await fh.stat()).isFile()) return false;
-    await writeFile(to, await fh.readFile());
+    await writeFile(to, fh.createReadStream({ autoClose: false }));
     return true;
   } catch {
     return false;
