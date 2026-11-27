@@ -53,7 +53,8 @@ test('#479: an Isolated persona’s turn runs with memory off; one with your set
   for (const usesHostSetup of [false, true]) {
     const seen = [];
     const adapter = new KiroCliAdapter({
-      workRoot: root,
+      // Under the test’s folder, as a data folder’s workspaces are: the turn notes its agent file beside it (#1864).
+      workRoot: join(root, 'work'),
       isolatedHome,
       env: { KIRO_HOME: yours },
       spawnImpl: /** @type {any} */ (fakeSpawn([{ lines: fixture('first'), code: 0 }], seen)),

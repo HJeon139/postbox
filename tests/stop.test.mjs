@@ -116,7 +116,7 @@ test('#126: the Claude Code CLI starts in its own group, and Stop signals the gr
   const spawned = [];
   const adapter = new ClaudeCodeAdapter({
     bin: 'claude',
-    workRoot: '/tmp/pb-test-work',
+    workRoot: `${STOP_DIR}/work`,
     spawnImpl: /** @type {any} */ (
       (_bin, _args, opts) => {
         spawned.push(opts);
@@ -288,7 +288,7 @@ test('#126: the Kiro CLI starts in its own group too, and Stop signals the group
   const spawned = [];
   const adapter = new KiroCliAdapter({
     bin: 'kiro-cli',
-    workRoot: '/tmp/pb-test-work',
+    workRoot: `${STOP_DIR}/work`,
     isolatedHome: `${STOP_DIR}/kiro-home`,
     spawnImpl: /** @type {any} */ (
       (_bin, _args, opts) => {
@@ -346,7 +346,7 @@ test('#126: the Claude Code adapter ends a stopped turn only once the CLI’s wh
   };
   const adapter = new ClaudeCodeAdapter({
     bin: 'claude',
-    workRoot: '/tmp/pb-test-work',
+    workRoot: `${STOP_DIR}/work`,
     spawnImpl: /** @type {any} */ (() => child),
     kill,
     listProcesses: async () => [],
@@ -381,7 +381,7 @@ test('#61: an Agent SDK failure keeps the CLI’s own reason, from the stderr Po
   };
   const adapter = new AgentSdkAdapter({
     sdk,
-    workRoot: '/tmp/pb-test-work',
+    workRoot: `${STOP_DIR}/work`,
     spawnImpl: /** @type {any} */ (() => child),
     kill: fakeKill().kill,
     listProcesses: async () => [],
@@ -407,7 +407,7 @@ test('#126: the Agent SDK’s CLI is spawned by Postbox, in its own group; Stop 
   };
   const adapter = new AgentSdkAdapter({
     sdk,
-    workRoot: '/tmp/pb-test-work',
+    workRoot: `${STOP_DIR}/work`,
     spawnImpl: /** @type {any} */ (
       (_cmd, _args, opts) => {
         spawned.push(opts);

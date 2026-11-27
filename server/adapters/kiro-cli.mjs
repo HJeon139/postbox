@@ -42,7 +42,6 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { HarnessEvents } from '../harness-events.mjs';
@@ -51,6 +50,7 @@ import { checkRemoteContext } from './adapter.mjs';
 import { tooLongForArg } from './arg-prompt.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
+import { removeKiroAgent, writeKiroAgent } from './kiro-agent-files.mjs';
 import { KIRO_TOOL_RULES, kiroAgent, kiroSystemPrompt } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn, remoteKiroHome } from './kiro-cli-remote.mjs';
@@ -351,12 +351,12 @@ export class KiroCliAdapter {
     } else {
       const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
       file = join(home, 'agents', `${agent}.json`);
-      await mkdir(join(home, 'agents'), { recursive: true });
       // The home Postbox owns, which every Isolated persona shares, keeps no memory (#479).
       if (!setupOf(persona).usesHostSetup) await kiroMemoryOff(home);
-      await writeFile(
+      await writeKiroAgent(
         file,
         JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders, reads: ctx.readFiles ?? [], kiroHome: home }), null, 2),
+        this.workRoot,
       );
       env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
     }
@@ -443,7 +443,7 @@ export class KiroCliAdapter {
       });
     } finally {
       // A remote turn’s file is the daemon’s to remove.
-      if (file) await rm(file, { force: true }).catch(() => {});
+      if (file) await removeKiroAgent(file, this.workRoot);
     }
   }
 }
