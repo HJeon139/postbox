@@ -4,6 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { warnSignIn } from '../server/remote/turns-signin.mjs';
+import { BACKEND_NAMES } from '../shared/agent-facts.mjs';
 import { HOST, rig, running, settled, sleep, starts, until } from './remote-turns-helpers.mjs';
 
 /** The host’s answer, as the manager’s status carries it. @param {object[]} harnesses */
@@ -145,5 +147,41 @@ test('#1608: an asking that fails starts the turn, raises no sign-out notice, an
     assert.deepEqual(unhandled, []);
   } finally {
     process.off('unhandledRejection', onUnhandled);
+  }
+});
+
+test('#1608: two turn starts on a host that get the same signed-out answer raise one notice, and a new answer another', async () => {
+  const r = rig();
+  r.hosts.signIns = signIns([{ name: 'claude-code', state: 'signed-out' }]);
+  for (const at of [1, 1, 2]) {
+    r.hosts.signIns = { ...r.hosts.signIns, at };
+    const turn = await running(r);
+    await sleep(10);
+    r.d.end(turn);
+    await settled(r);
+  }
+  assert.equal(signInNotes(r).length, 2, 'once for the answer at 1, once for the answer at 2');
+});
+
+test('#1608: each harness’s notice names its own login command', async () => {
+  for (const [backend, command] of [
+    ['claude-code', 'claude auth login'],
+    ['codex', 'codex login'],
+    ['kiro-cli', 'kiro-cli login'],
+  ]) {
+    /** @type {string[][]} */
+    const notes = [];
+    const rts = /** @type {any} */ ({
+      hosts: { signInCheck: async () => null, signInsNow: async () => signIns([{ name: backend, state: 'signed-out' }]) },
+      rt: { threads: { notify: (/** @type {string[]} */ ...a) => notes.push(a) } },
+      now: () => 0,
+    });
+    const turn = { remote: { hostId: `ho-${backend}` }, threadId: 'th' };
+    const ctx = { signal: new AbortController().signal, persona: { backend } };
+    await warnSignIn(rts, turn, ctx, { handle: 'coder' }, { name: HOST });
+    await until(() => notes.length > 0, `the ${backend} notice`);
+    assert.equal(notes.length, 1, backend);
+    assert.equal(notes[0][2], `${BACKEND_NAMES[backend]} on ${HOST} isn’t signed in`);
+    assert.ok(notes[0][3].includes(`Run “${command}” on ${HOST}`), `${backend}: ${notes[0][3]}`);
   }
 });

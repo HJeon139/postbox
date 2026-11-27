@@ -9,6 +9,15 @@ import { abortError } from './turns-shared.mjs';
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 
 /**
+ * Per host ID, the `at` of each harness’s signed-out answer already told, so a team of agents on one host hears that
+ * answer once, not once per turn start (#1608). An unchanged answer keeps its `at` (hosts-signins.mjs), so a sign-out
+ * is told again only once the host has said something else. A harness heard as anything else drops its own, so this
+ * holds an entry only for a host with a harness signed out.
+ * @type {Map<string, Map<string, number>>}
+ */
+const told = new Map();
+
+/**
  * A sign-in that’s run out shows before the turn, not at its first model request (the design, “Sign-in stays the
  * host’s”). It’s a warning, never a refusal: the check may be wrong, and the person decides. The start waits only for
  * signInCheck, as before #1608. It asks the host now whether the turn’s harness is signed in, without waiting, and
@@ -40,12 +49,15 @@ function signInsNow(rts, hostId) {
 }
 
 /**
- * The one warning for a turn, once the host has answered: its harness signed out, else a failed signInCheck.
+ * The one warning for a turn, once the host has answered: its harness signed out, the first time for that answer;
+ * else a failed signInCheck.
  * @param {RemoteTurns} rts @param {any} turn @param {any} se @param {any} host @param {string | undefined} harness
  * @param {any} check @param {any} now
  */
 function warnFrom(rts, turn, se, host, harness, check, now) {
+  const hostId = turn.remote.hostId;
   if (signedOut(now, harness)) {
+    if (!firstTelling(hostId, /** @type {string} */ (harness), now.at)) return;
     const name = BACKEND_NAMES[harness] ?? harness;
     rts.rt.threads.notify(
       'blocking',
@@ -56,6 +68,7 @@ function warnFrom(rts, turn, se, host, harness, check, now) {
     );
     return;
   }
+  if (harness && now) forgetTelling(hostId, harness); // an answer that says otherwise, not a failed asking
   if (check && !check.ok)
     rts.rt.threads.notify(
       'blocking',
@@ -64,6 +77,21 @@ function warnFrom(rts, turn, se, host, harness, check, now) {
       `The host’s sign-in check failed${check.code === null ? '' : ` (exit code ${check.code})`}, so @${se.handle}’s turn there may stop with “Sign-in needed”. Sign in on the host, then carry on.`,
       turn.threadId,
     );
+}
+
+/** Whether this signed-out answer is new for the host’s harness, noting it told. @param {string} hostId @param {string} harness @param {number} at */
+function firstTelling(hostId, harness, at) {
+  const byHarness = told.get(hostId) ?? new Map();
+  if (byHarness.get(harness) === at) return false;
+  told.set(hostId, byHarness.set(harness, at));
+  return true;
+}
+
+/** The harness isn’t signed out now, so its next sign-out is told again. @param {string} hostId @param {string} harness */
+function forgetTelling(hostId, harness) {
+  const byHarness = told.get(hostId);
+  if (!byHarness?.delete(harness) || byHarness.size) return;
+  told.delete(hostId);
 }
 
 /**
