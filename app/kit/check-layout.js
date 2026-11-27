@@ -221,6 +221,6 @@
   Object.assign(window.__pbCheck, {
     textOverflow: guard('text-overflow', textOverflow),
     textOverlap: guard('text-overlap', textOverlap),
-    ...{ clip, px, where, jump, hidden, shownPart, guard },
+    ...{ clip, px, where, jump, hidden, shownPart, guard, lineBoxes, opaque },
   });
 })();
