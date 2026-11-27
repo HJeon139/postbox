@@ -103,6 +103,43 @@ for (const mode of ROOM_MODES)
     expect.soft(layouts, `layouts over ${BURST} replies`).toBeLessThanOrEqual(BURST + 25);
   });
 
+/**
+ * Waits for a posted reply to become a node, and on a miss records which side lost it (#1814): the store’s seq once the
+ * reply was posted, against the page’s last applied seq, its stream’s state, whether its state holds the item, the
+ * conversation’s loaded range, whether it’s open there, and whether the node exists by the time of the read. A page seq
+ * short of the store’s means the event never arrived. One caught up with the item not in the state means the range
+ * check dropped it on arrival (app/js/item-ranges.mjs). The item in the state with no node means it wasn’t drawn.
+ * @param {import('@playwright/test').Page} page @param {string} threadId @param {string} id
+ */
+async function reachesPage(page, threadId, id) {
+  const posted = app.store.state.seq;
+  try {
+    await expect(page.locator(`[data-key="${id}"]`), 'the reply to reach the page').toBeAttached({ timeout: 15_000 });
+  } catch (e) {
+    const seen = await page
+      .evaluate(
+        async ([tid, iid]) => {
+          const m = await import('/app/js/client.mjs');
+          const range = m.client.ranges.get(tid);
+          return {
+            seq: m.client.seq,
+            connection: m.client.connection,
+            open: m.client.open.has(tid),
+            inState: Boolean(m.itemIn(tid, iid)),
+            range: range ? { start: range.start, total: range.total } : null,
+            node: Boolean(document.querySelector(`[data-key="${iid}"]`)),
+          };
+        },
+        [threadId, id],
+      )
+      .catch((err) => ({ error: String(err) }));
+    const record = JSON.stringify({ posted, storeNow: app.store.state.seq, page: seen });
+    console.log(`#1814 the reply didn’t reach the page: ${record}`);
+    test.info().annotations.push({ type: '#1814', description: record });
+    throw e;
+  }
+}
+
 for (const mode of ROOM_MODES)
   test(`#1047 a reply streaming one delta a frame for ${BURST} frames, followed, forces at most one layout a delta, ${mode}`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
@@ -110,7 +147,7 @@ for (const mode of ROOM_MODES)
     const { t, se } = await bigRoom(page, `Following, ${mode}`);
     await expect(page.locator('#main')).toHaveAttribute('data-view-mode', 'following');
     const it = arrange.post(app.rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
-    await expect(page.locator(`[data-key="${it.id}"]`), 'the reply to reach the page').toBeAttached({ timeout: 15_000 });
+    await reachesPage(page, t.id, it.id);
     await settled(page);
     const { forced } = await forcedOver(page, async () => {
       for (let i = 0; i < BURST; i++) {
