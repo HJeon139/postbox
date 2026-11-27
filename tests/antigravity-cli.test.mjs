@@ -19,11 +19,11 @@ import {
   excludeFile,
   excludePlugin,
   exitError,
-  FolderQueue,
   modelIds,
   PLUGIN_DIR,
   refusalFollowUp,
 } from '../server/adapters/antigravity-cli.mjs';
+import { FolderQueue } from '../server/adapters/folder-queue.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { tempDir } from './temp-dirs.mjs';
 

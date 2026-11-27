@@ -16,7 +16,7 @@
 //
 // and removes it when the turn ends. Checked with agy 1.4.5: the plugin’s server loads as `postbox_postbox` (plugin,
 // then server), and the plugin’s rules reach the model. Two turns in one folder would overwrite each other’s
-// plugin, so a turn waits for the one before it in the same folder (FolderQueue); each agent gets its own worktree,
+// plugin, so a turn waits for the one before it in the same folder (folder-queue.mjs’s FolderQueue); each agent gets its own worktree,
 // so agents don’t share one (agent-worktree.mjs, #1709). In a git repo the plugin folder
 // goes in .git/info/exclude, so it never shows in git status.
 //
@@ -51,7 +51,7 @@
 
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL, modelDefault } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
@@ -76,6 +76,7 @@ import { repeatsLastError } from './agy-repeated-error.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { stepId, toolOf } from './agy-tools.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
+import { FolderQueue } from './folder-queue.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned } from './prompt-sent.mjs';
@@ -481,40 +482,6 @@ export function exitError(code, stderr = '') {
     .join(' ')
     .slice(0, 400);
   return `Antigravity exited with code ${code}${why ? `: ${why}` : ''}.`;
-}
-
-/**
- * One turn at a time per folder: each turn’s plugin holds its own conversation’s MCP URL, so a second turn in the
- * same folder would overwrite the first’s, and the first’s cleanup would remove the second’s.
- */
-export class FolderQueue {
-  constructor() {
-    /** @type {Map<string, Promise<void>>} */
-    this.tails = new Map();
-  }
-  /** Whether a turn is running, or waiting, in the folder. */
-  busy(dir) {
-    return this.tails.has(resolve(dir));
-  }
-  /** @template T @param {string} dir @param {() => Promise<T>} fn @returns {Promise<T>} */
-  async run(dir, fn) {
-    const k = resolve(dir);
-    const before = this.tails.get(k) ?? Promise.resolve();
-    /** @type {() => void} */
-    let release = () => {};
-    const mine = new Promise((ok) => {
-      release = () => ok(undefined);
-    });
-    const tail = before.then(() => mine);
-    this.tails.set(k, tail);
-    try {
-      await before;
-      return await fn();
-    } finally {
-      release();
-      if (this.tails.get(k) === tail) this.tails.delete(k);
-    }
-  }
 }
 
 export class AntigravityCliAdapter {

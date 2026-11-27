@@ -12,7 +12,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { agentWorktree, branchFor, gitTimeoutFor, sharedFolder, worktreesRootFor } from '../server/adapters/agent-worktree.mjs';
-import { AntigravityCliAdapter, FolderQueue } from '../server/adapters/antigravity-cli.mjs';
+import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
+import { FolderQueue } from '../server/adapters/folder-queue.mjs';
 
 const ok = (stdout = '') => ({ code: 0, stdout, stderr: '' });
 const no = (stderr = '') => ({ code: 1, stdout: '', stderr });
