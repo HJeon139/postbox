@@ -8,7 +8,7 @@
 
 import { mapCodeSpans } from '../shared/code-spans.mjs';
 import { withoutFences } from '../shared/markdown-plain.mjs';
-import { termKey } from '../shared/term-key.mjs';
+import { foldTerm, termKey } from '../shared/term-key.mjs';
 
 // The coined references, one pattern each, matched in their own case in a reply (“step 3” in prose is just words):
 // a numbered label such as “Step 7” or “Requirement F3”;
@@ -41,7 +41,9 @@ export function numberedTerms(text) {
  * @returns {{ term: string, key: string }[]}
  */
 export function lintTerms(text, glossary, introduced = new Set()) {
-  const known = new Set(Object.values(glossary).map((g) => g.term.toLowerCase()));
+  // A term is known in any case and with any dash or quote, as the page links it: “U:45-52” is “U:45–52” (#102).
+  const sameTerm = (term) => foldTerm(term).toLowerCase();
+  const known = new Set(Object.values(glossary).map((g) => sameTerm(g.term)));
   const keys = new Set(Object.keys(glossary));
   const out = new Map();
   // Headings like “### Step 1 · The loop” label the reply’s own structure; they aren’t coined terms.
@@ -51,7 +53,7 @@ export function lintTerms(text, glossary, introduced = new Set()) {
   }
   for (const m of plain.matchAll(CODED)) {
     const key = termKey(m[0]);
-    if (!known.has(m[0].toLowerCase()) && !keys.has(key) && !introduced.has(key)) out.set(key, { term: m[0], key });
+    if (!known.has(sameTerm(m[0])) && !keys.has(key) && !introduced.has(key)) out.set(key, { term: m[0], key });
   }
   return [...out.values()];
 }

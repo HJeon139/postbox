@@ -34,6 +34,13 @@ test('a defined citation isn’t flagged, whichever dash it’s written with', (
   assert.deepEqual(flagged('U:45-52 and U:45–52 and R:31.', glossary), []);
 });
 
+test('a defined citation under a key of its own isn’t flagged, whichever dash it’s written with', () => {
+  const glossary = { 'cite-u': { term: 'U:45–52' } };
+  assert.deepEqual(flagged('See U:45-52.', glossary), []);
+  assert.deepEqual(flagged('See U:45—52.', { 'cite-u': { term: 'U:45-52' } }), []);
+  assert.deepEqual(flagged('Then Step 7 runs.', { 'first-step': { term: 'step 7' } }), []);
+});
+
 test('a citation the person introduced isn’t flagged', () => {
   const introduced = numberedTerms('what does r:31 mean, and §4.2?');
   assert.deepEqual(lintTerms('R:31 and §4.2 say so.', {}, introduced), []);
