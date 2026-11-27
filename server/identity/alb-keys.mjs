@@ -6,13 +6,15 @@
 //
 // The port is open to whatever the network lets reach it, and a key id is one of 2^122, so what a flood of made-up ids
 // can make Postbox do is bounded four ways:
-//   - a key is kept once had, so a key in use is never looked up again and no flood can shut it out;
+//   - a key is kept once had, and one in use stays kept, so made-up ids the endpoint has no key for can’t shut it out;
 //   - a key id whose lookup failed isn’t looked up again for a minute;
 //   - lookups of ids not yet had are bounded over time: so many in any minute, however many ids are tried;
 //   - lookups in flight are bounded at once, and what is remembered is bounded.
-// What a flood can still do, if it names the deployment’s load balancer: use up the minute’s lookups, so a key Postbox
-// hasn’t had yet (just after a start, or after the load balancer changes its key) waits up to a minute. People whose
-// key is kept are unaffected.
+// What a flood can still do, if it reaches the port without the load balancer and names its ARN, client and issuer:
+// take each lookup as the minute frees it, so a key Postbox hasn’t had yet (just after a start, after the load balancer
+// changes its key, or after other load balancers’ key ids have pushed it out while unused) is refused for as long as
+// the flood lasts. People whose key is kept are unaffected. The deployment’s network rules are what close that
+// (designs/architecture/hosted.md, “What it costs”).
 //
 // It fetches nothing itself: the caller gives it `get`, so nothing here reaches the network in a test, and the
 // provider that wires this in chooses how (its own change).
