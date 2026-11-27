@@ -232,6 +232,10 @@ test('#1937 an MCP tool’s description on its card is cleaned too: it’s the s
   const detail = JSON.parse(String(asked[0]?.detail ?? '{}'));
   assert.equal(detail.description, 'Ships liated the build.');
   assert.deepEqual(detail.arguments, { to: 'prod' }, 'the arguments as sent');
+  meta.tool_description = 'd'.repeat(10000);
+  await codexApproval(ctx, { id: 13, method: 'mcpServer/elicitation/request', params: { serverName: 'deploy', message: '', _meta: meta } });
+  const long = String(asked[1]?.detail ?? '');
+  assert.ok(long.length <= 4000, `a long description leaves the arguments within what a card keeps, not ${long.length}`);
 });
 
 test('#1937 an ordinary request for input reads on its card as the server wrote it, its lines kept', async () => {
