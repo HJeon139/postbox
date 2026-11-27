@@ -61,3 +61,33 @@ for (const width of [375, 1280]) {
     });
   }
 }
+
+test('#1964 a command’s output that scrolls at 375 px loses its tab stop once the window is wide enough for it to fit', async ({ page }) => {
+  const t = scripted.room('Command output, resized', []);
+  // Twelve lines that each wrap at 375 px, so the box scrolls there, and fit its 320 px at 1280 px.
+  const text = Array.from({ length: 12 }, (_, i) => `line ${i + 1} ${'word '.repeat(14)}`).join('\n');
+  const cmd = arrange.post(scripted.app.rt, t.id, {
+    kind: 'command',
+    command: 'cat notes',
+    cwd: '/tmp',
+    status: 'done',
+    text,
+    exitCode: 0,
+    ms: 10,
+    cut: false,
+  });
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  await synced(page, scripted.app);
+  const output = page.locator(`[data-key="${cmd.id}"] .cmd-out`);
+  await expect(output).toContainText('line 12');
+  await expect(output, 'it scrolls at 375 px').toHaveAttribute('tabindex', '0');
+  // The same box throughout: a box drawn again would start without a stop whatever the helper does.
+  await output.evaluate((el) => {
+    el.dataset.mark = 'same';
+  });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect.poll(() => output.evaluate((el) => el.scrollHeight > el.clientHeight), { message: 'it fits at 1280 px' }).toBe(false);
+  await expect(output, 'so its stop goes').not.toHaveAttribute('tabindex');
+  await expect(output, 'from the same box').toHaveAttribute('data-mark', 'same');
+});
