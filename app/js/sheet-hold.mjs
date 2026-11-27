@@ -68,8 +68,16 @@ export function holdSheet(dialog) {
   const added = new MutationObserver(observe);
   added.observe(body, { childList: true });
   // Your own scroll moves what’s under the pointer: it’s taken again there. The body’s own hold isn’t yours.
-  body.addEventListener('scroll', () => body.scrollTop !== ownTop && take(), { passive: true });
+  const scrolledByYou = () => {
+    if (body.scrollTop === ownTop) return false;
+    ownTop = body.scrollTop;
+    take();
+    return true;
+  };
+  body.addEventListener('scroll', scrolledByYou, { passive: true });
+  // So is a scroll in this frame its event hasn’t told of yet: held back, it ended there (#1884).
   const stop = onPointerMoved(() => {
+    if (scrolledByYou()) return;
     hold();
     take();
   });
