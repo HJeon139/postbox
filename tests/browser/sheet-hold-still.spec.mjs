@@ -140,3 +140,36 @@ test('#1632 a skill’s checkbox, pressed as it’s reached, stays under the pre
   const under = await page.evaluate(({ clientX, clientY }) => document.elementFromPoint(clientX, clientY)?.closest('[role="checkbox"]')?.textContent ?? '', at);
   expect(under, 'the skill is still under the press').toMatch(/skill-12/);
 });
+
+// #1884’s hole in the sheet: a frame after the pointer moves or the window loses focus, the sheet held what was under
+// the pointer without taking in a scroll of its body it hadn’t heard of yet, and pulled the body back, ending the
+// scroll. The scroll’s step is a write in a frame callback ahead of the one the blur asks for, as a smooth scroll steps.
+test('#1884 a scroll of the sheet’s body in the frame the window loses focus stands', async ({ page }) => {
+  const persona = started.app.rt.createPersona({ handle: 'scroll-blur', backend: 'claude-code' });
+  const lists = await lateLists(page);
+  await page.goto(`${started.app.origin}/`);
+  await synced(page, started.app);
+  await page.evaluate((id) => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', id)), persona.id);
+  await expect.poll(lists.asked, { message: 'the sheet to ask for both lists' }).toBe(2);
+  lists.letGo();
+  const box = page.getByRole('checkbox', { name: /skill-1\b/ });
+  await page.addStyleTag({ content: '.d-body { overflow-anchor: none; }' });
+  await box.scrollIntoViewIfNeeded();
+  await settled(page);
+  const r = await box.evaluate((b) => b.getBoundingClientRect());
+  await page.mouse.move(r.left + r.width / 2, r.top + r.height / 2);
+  await settled(page);
+  const body = page.getByRole('dialog').locator('.d-body');
+  const from = await body.evaluate((b) => {
+    const top = b.scrollTop;
+    const step = Math.min(120, b.scrollHeight - b.clientHeight - top);
+    requestAnimationFrame(() => {
+      b.scrollTop = top + step;
+    });
+    dispatchEvent(new Event('blur'));
+    return { top, step };
+  });
+  expect(from.step, 'room to scroll the body').toBeGreaterThan(20);
+  await settled(page);
+  expect(await body.evaluate((b) => b.scrollTop), 'where the scroll took the body').toBe(from.top + from.step);
+});
