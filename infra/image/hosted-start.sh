@@ -22,16 +22,16 @@ name=agents
 unfit() {
   nl='
 '
-  case "$POSTBOX_HOST_IDENTITY$POSTBOX_HOST_ADDRESS" in *"$nl"*) echo "has more than one line" && return ;; esac
-  printf '%s' "$POSTBOX_HOST_IDENTITY" | grep -Eq '^ssh-ed25519 [A-Za-z0-9+/=]+$' || { echo "isn’t one ed25519 public key" && return; }
-  printf '%s' "$POSTBOX_HOST_ADDRESS" | grep -Eq '^[A-Za-z0-9.:-]+$' || echo "has an address with a character none uses"
+  case "$POSTBOX_HOST_IDENTITY$POSTBOX_HOST_ADDRESS" in *"$nl"*) echo "identity or address has more than one line" && return ;; esac
+  printf '%s' "$POSTBOX_HOST_IDENTITY" | grep -Eq '^ssh-ed25519 [A-Za-z0-9+/=]+$' || { echo "identity isn’t one ed25519 public key" && return; }
+  printf '%s' "$POSTBOX_HOST_ADDRESS" | grep -Eq '^[A-Za-z0-9.:-]+$' || echo "address has a character an address doesn’t use"
 }
 
 if [ -n "${POSTBOX_HOST_KEY:-}" ]; then
   why=$(unfit)
   if [ -n "$why" ]; then
     # Postbox still starts: people keep their rooms, and the host shows as one it can’t reach until this is put right.
-    echo "The agent host’s identity or address $why, so the host “$name” isn’t set up. Make the machine again (infra/README.md)." >&2
+    echo "The agent host’s $why, so the host “$name” isn’t set up. Make the machine again (infra/README.md)." >&2
   else
     mkdir -p "$HOME/.ssh"
     printf '%s\n' "$POSTBOX_HOST_KEY" > "$HOME/.ssh/agent-host"

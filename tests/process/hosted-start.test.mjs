@@ -62,7 +62,7 @@ test('an identity or address that would be more than its own line of a file ssh 
     'another kind of key': { POSTBOX_HOST_IDENTITY: 'ssh-rsa AAAAB3NzaC1yc2E' },
     'a key with a comment after it': { POSTBOX_HOST_IDENTITY: `${IDENTITY} someone` },
     'what a late signal could say': { POSTBOX_HOST_IDENTITY: 'failed' },
-    'an address with a space': { POSTBOX_HOST_ADDRESS: '10.0.3.7 ProxyCommand=x' },
+    'an address with a space': { POSTBOX_HOST_ADDRESS: '10.0.3.7 x' },
     'an address of two lines': { POSTBOX_HOST_ADDRESS: '10.0.3.7\n  ProxyCommand x' },
   };
   for (const [what, over] of Object.entries(unfit))
