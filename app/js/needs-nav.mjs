@@ -4,10 +4,11 @@
 // thread), waits for it to be drawn, then scrolls it into view, focuses it, and outlines it for a moment.
 
 import { conversationOf, needsOrder, whereNeeds } from '/shared/needs.mjs';
-import { client, hrefOf, liveSessions } from './client.mjs';
+import { client, itemIn, liveSessions } from './client.mjs';
 import { meId, needsMe } from './needs-mine.mjs';
 import { reach } from './open-threads.mjs';
-import { navigate, route, toast } from './ui.mjs';
+import { messagePane } from './pane-route.mjs';
+import { navigate, paneHref, route, toast } from './ui.mjs';
 import { jumpTo } from './view-jump.mjs';
 import { mountFor } from './window-live.mjs';
 
@@ -31,10 +32,13 @@ function here() {
 export async function focusItem(itemId, threadId = null) {
   // With no conversation named, the one on screen: an item the page doesn’t hold elsewhere is in no view to jump in.
   const r = route();
-  await reach(threadId ?? (r.view === 'thread' ? r.threadId : null), itemId);
+  const thread = threadId ?? (r.view === 'thread' ? r.threadId : null);
+  const held = await reach(thread, itemId);
   // A window holding the item off the page mounts it first (window.mjs, #866).
   const find = () => mountFor(itemId ?? '') ?? document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
   let node = find();
+  // Its open thread loaded, and the server has no such item there: no frame will draw it, so it isn’t waited for (#168).
+  if (!node && !held && thread && client.open.has(thread)) return false;
   for (const end = Date.now() + 3000; !node && Date.now() < end; node = find()) await frame();
   if (!node) return false;
   // A transcript just mounted settles at its end on its first frame (thread.mjs, settle()).
@@ -46,7 +50,8 @@ export async function focusItem(itemId, threadId = null) {
   // its frame) would read as the view having stopped short of the end, and be held there, the item under the composer (#410).
   const scroller = node.parentElement?.parentElement;
   (scroller?.matches('.sp-body') ? scroller : window).dispatchEvent(new Event('scroll'));
-  const control = node.querySelector('button:not([disabled]), input, textarea, select');
+  // What it asks, if it asks: never the reactions and actions under every message, where Enter would react to it (#168).
+  const control = [...node.querySelectorAll('button:not([disabled]), input, textarea, select')].find((c) => !c.closest('.msg-actions'));
   if (!control && !node.hasAttribute('tabindex')) node.setAttribute('tabindex', '-1');
   (control ?? node).focus({ preventScroll: true });
   node.classList.remove('arrived');
@@ -62,8 +67,52 @@ export async function focusItem(itemId, threadId = null) {
  * @param {string} itemId @param {string} threadId
  */
 export function goToItem(itemId, threadId) {
-  if (threadId && here().at !== threadId) navigate(hrefOf(threadId));
-  return focusItem(itemId, threadId);
+  if (!threadId) return focusItem(itemId, null);
+  return goToAddress(itemId, threadId);
+}
+
+/** @type {{ conv: string, key: string } | null} the message last gone to by its address, in its conversation */
+let addressed = null;
+
+/**
+ * Goes to a message by its address (#168): the address goes on the history, so Back returns, and this goes to the
+ * message itself, every time it’s asked, a second time after a pane change too. What opens beside it, messagePane says.
+ * @param {string} itemId @param {string} threadId
+ */
+function goToAddress(itemId, threadId) {
+  const conv = conversationOf(S(), threadId);
+  const to = paneHref(conv, { ...messagePane(route(), conv, threadId === conv ? null : threadId), item: itemId });
+  // The address is this one’s: focusAddressed, as it comes in, doesn’t go to it a second time.
+  addressed = { conv, key: `${threadId}?m=${itemId}` };
+  navigate(to);
+  return landOn(itemId, threadId);
+}
+
+/**
+ * Goes to a message, and says so when the thread doesn’t have it. One loaded but not drawn in time is a slow page, not
+ * a missing message. @param {string} itemId @param {string} threadId
+ */
+async function landOn(itemId, threadId) {
+  const found = await focusItem(itemId, threadId);
+  if (!found && !itemIn(threadId, itemId)) toast({ title: 'That message isn’t here', text: 'It may have been deleted, or it’s in another conversation.' });
+  return found;
+}
+
+/**
+ * Goes to the message an address the page didn’t make names (m=, #168): as the page loads, and as Back, forward or a
+ * pasted address changes it, once per message in a conversation, so Back to an address within it, as after a link to
+ * Work, doesn’t pull the view back to the message. Going to it on purpose is goToAddress’s. One the thread doesn’t
+ * have opens the thread and says so.
+ */
+export function focusAddressed() {
+  const r = route();
+  if (r.view !== 'thread' || addressed?.conv !== r.threadId) addressed = null;
+  if (r.view !== 'thread' || !r.item) return;
+  const thread = r.sideId ?? r.threadId;
+  const key = `${thread}?m=${r.item}`;
+  if (addressed?.key === key) return;
+  addressed = { conv: r.threadId, key };
+  void landOn(r.item, thread);
 }
 
 let last = null;
@@ -72,8 +121,7 @@ export function goToNeeds(se) {
   if (!needsMe(se)) return;
   const where = whereNeeds(S(), se);
   last = { sessionId: se.id, where };
-  if (here().at !== where) navigate(hrefOf(where));
-  void focusItem(se.needs.itemId, where);
+  void goToAddress(se.needs.itemId, where);
 }
 
 /**

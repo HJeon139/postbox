@@ -47,4 +47,4 @@ flowchart LR
 
 Work is one of the conversation’s side views in the right pane ([front-end.md](front-end.md), “The right pane”): a compact form beside the conversation (`mountWorkPane`) and a full form over the window (`mountWork`). Both forms read the same ledger through `summarize()` and ask git through the same endpoint; the compact form adds nothing to the store.
 
-**Revisit when** the CLI reports files a command changed (then use that, in place of #240’s snapshot), or when the Agent SDK’s results stop carrying `tool_use_result`.
+**Revisit when** the CLI reports files a command changed (then use that, in place of #240’s snapshot), or when Claude Code’s results stop carrying `tool_use_result`.

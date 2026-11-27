@@ -8,9 +8,9 @@ import { fitBars, namesAt } from '../app/js/quota-fit.mjs';
 const bar = (backend, full, host = null) => ({ backend, full, host });
 
 test('bars of different backends keep their names, full or short', () => {
-  const bars = [bar('claude-code', 'Claude Code'), bar('agent-sdk', 'Agent SDK'), bar('codex', 'Codex')];
-  assert.deepEqual(namesAt(bars, false), ['Claude Code', 'Agent SDK', 'Codex']);
-  assert.deepEqual(namesAt(bars, true), ['Claude', 'SDK', 'Codex']);
+  const bars = [bar('claude-code', 'Claude Code'), bar('kiro-cli', 'Kiro CLI'), bar('codex', 'Codex')];
+  assert.deepEqual(namesAt(bars, false), ['Claude Code', 'Kiro CLI', 'Codex']);
+  assert.deepEqual(namesAt(bars, true), ['Claude', 'Kiro', 'Codex']);
 });
 
 test('two bars of one backend get the shortest start of their hosts’ names that tells them apart', () => {

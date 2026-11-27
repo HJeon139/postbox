@@ -34,10 +34,10 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
 import { withQuota, withTransient } from '../harness-failure.mjs';
+import { claudeModels } from '../remote/host/harness-models.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
-import { claudeModels } from './claude-models.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
@@ -143,8 +143,7 @@ export class ClaudeCodeAdapter {
   }
 
   /**
-   * Forgets a deleted persona (#208): its memory folders, which the Agent SDK’s turns share. registerBackends always
-   * registers this adapter beside the SDK’s, so the SDK needs no forget of its own.
+   * Forgets a deleted persona (#208): its memory folders.
    */
   forget(persona) {
     return forgetMemory(this.workRoot, persona);

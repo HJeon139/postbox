@@ -29,7 +29,6 @@ const who = {
 /** Each backend’s turn message for an input, as its adapter builds it. */
 const BACKENDS = {
   'claude-code': () => turnGuide({ kind: 'input', text: TEXT }, { ...who, persona: persona('claude-code') }).message,
-  'agent-sdk': () => turnGuide({ kind: 'input', text: TEXT }, { ...who, persona: persona('agent-sdk') }).message,
   'kiro-cli': () => turnGuide({ kind: 'input', text: TEXT }, { ...who, persona: persona('kiro-cli'), toolRules: KIRO_TOOL_RULES }).message,
   'antigravity-cli': () => turnGuide({ kind: 'input', text: TEXT }, { ...who, persona: persona('antigravity-cli'), toolRules: null, setup: false }).message,
   codex: () => {

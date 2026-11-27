@@ -3,7 +3,7 @@
 How to review a change to Postbox, and the JavaScript, Node, agent-backend, browser, security and testing rules that make “review it properly” a specific instruction.
 
 This page sits beside three others, and repeats none of them:
-- [engineering-practices.md](engineering-practices.md) is the gate and the per-tool rules (Node, Biome, TypeScript, the Agent SDK, the DOM, axe, Kokoro, tests, commits). Where a rule is already there, this page links to it.
+- [engineering-practices.md](engineering-practices.md) is the gate and the per-tool rules (Node, Biome, TypeScript, Claude Code, the DOM, axe, Kokoro, tests, commits). Where a rule is already there, this page links to it.
 - [architecture.md](architecture.md) is the high-level design, and its child documents in [architecture/](architecture/) record each engineering decision, what it rests on, and when to revisit it.
 - [intent.md](intent.md) records the product decisions, and its “Writing” section governs every word this page asks you to write: plain American English, sentence case, curly quotes.
 
@@ -14,7 +14,7 @@ Make simple, minimal changes, and don’t reinvent what already exists. In Postb
 ## Responding to a prompt
 
 A prompt’s example of a defect is a symptom. Find the pattern and fix the cause, then look for the same class of error everywhere it could be:
-- A bug in one adapter is a question about all of them. Postbox has five real backends (`claude-code`, `agent-sdk`, `kiro-cli`, `antigravity-cli`, `codex`) and the mock, so a refusal that doesn’t reach a card on one is checked on the other five.
+- A bug in one adapter is a question about all of them. Postbox has four real backends (`claude-code`, `kiro-cli`, `antigravity-cli`, `codex`) and the mock, so a refusal that doesn’t reach a card on one is checked on the other four.
 - A defect the end-to-end UAT found is a check waiting to be written. When a check can catch the class, it goes into `tools/uat/checks.mjs`, as `refusal-without-card` and `settings-leak` did.
 - A limit fixed in one place is fixed in all of them: the catalog, the event builder, the kit, the agent guide and the MCP tool descriptions all read `shared/limits.mjs` (#50).
 
@@ -167,7 +167,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 - **A signal cleans up.** Ctrl-C, a kill or a closed terminal during steps 2 and 3 passes on to the command running then, and nothing more starts. The temporary worktree is removed (`git worktree remove --force` on its folder alone, never a prune of your other worktrees), and the script exits with the signal’s code.
 - **It exits** 0 when every step passed, else with the first failed step’s number (1 to 4), or 64 for a command line it can’t use. It ends with one line to quote in a hand-back: `signoff #845 head=1a2b3c4d load=3.5/18 passed=4 failed=0 -> PASS`. It only reads from GitHub: it never labels, comments or pushes.
 
-**Install the way CI does.** CI runs Node 22 and `npm ci --ignore-scripts`, so the optional packages never download their models or binaries. A result from a machine with `kokoro-js` or the Agent SDK installed, and CI without them, are two different environments, and a change that touches either path says which one it ran in.
+**Install the way CI does.** CI runs Node 22 and `npm ci --ignore-scripts`, so the optional packages never download their models or binaries. A result from a machine with `kokoro-js` installed, and CI without it, are two different environments, and a change that touches that path says which one it ran in.
 
 **Use only your own ports and your own data.** Start a server with `--port` and `--data` of your own; a spec’s `startPostbox()` picks a free port and a temp folder for it. Never touch the preview on 4173, another tool’s server on 4320, or the person’s data: `~/.postbox`, which every run without `--data` shares, and a clone’s `data/`. Postbox refuses to start on a folder another Postbox is using, but `--fresh` without `--data` would still empty the person’s store. A spec or tool that talked to a server it didn’t start reports on someone else’s Postbox.
 
@@ -263,7 +263,7 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 
 ## Agent backends
 
-engineering-practices.md, “Building on Claude Code and the Agent SDK”, holds the rules for credentials, explicit settings, recorded streams, surfacing what the harness decides, and the agent guide. These add what a review checks across every backend.
+engineering-practices.md, “Building on Claude Code”, holds the rules for credentials, explicit settings, recorded streams, surfacing what the harness decides, and the agent guide. These add what a review checks across every backend.
 
 **Everything that shapes a turn is passed in one place.** `server/adapters/setup.mjs` builds the setting sources, output style, denied tools, MCP config, model and effort. An adapter that adds a flag of its own beside it is a second place to keep in step, and the two will drift.
 
@@ -338,7 +338,7 @@ Each habit comes from a defect that cost a fix in Postbox or in an earlier servi
 3. **Know whose settings you’re reading.** Anything that depends on the person’s setup (their Claude Code settings, MCP servers, global CLAUDE.md, home folder) is read on purpose, in one place, and a persona can opt out of it (Isolated). Tests never read the real one.
 4. **Walk the whole chain in a new environment, and claim only the level of evidence you tested.** Receiver evidence has three levels: the protocol accepted the field, the model-facing artifact recorded it (for a fork, count the parent history the backend references), and the model behaved as told. A fake server accepting a payload shows the first only; #584 shows the second, and Markdown obedience stays unverified. For a new backend, a new browser or a new listen address, trace the turn, the permissions, the stream and the rendering end to end before saying it works. Headless Chrome passed every sandboxed app while the desktop app’s pane refused them all (architecture/sandbox.md, “Sandboxed pages that load nothing”).
 5. **A test asserts what its name claims.** A test named for order asserts order. Every contract that lands (a limit, an MCP tool, a setting passed to a turn, a catalog block) lands with the test that pins it, as the test that fails when a limit is missing from the guide does.
-6. **Check a dependency’s behavior before relying on it.** Read the documentation, the SDK’s shipped `sdk.d.ts`, or a real turn, and use the mechanism it gives. `noImplicitAny` is off and the optional SDK may not be installed, so `tsc` won’t tell you a call matches.
+6. **Check a dependency’s behavior before relying on it.** Read the documentation, the harness’s published type definitions (Claude Code’s are `sdk.d.ts` in Anthropic’s Agent SDK package on npm, which Postbox doesn’t install), or a real turn, and use the mechanism it gives. `noImplicitAny` is off, so `tsc` won’t tell you a call matches.
 7. **Publish whole or not at all, and refuse on ambiguity.** Never expose a partial file, record or message: write a draft, sync it, then publish it with an atomic step (a rename, a hard link; [`fs.rename`][node-fs-rename], [`fs.link`][node-fs-link], [`filehandle.sync`][node-fs-sync]). Never reclaim, delete or overwrite on a guess, an age or an empty file; refuse and say why. The data-folder lock failed review three times in 1a for creating a file and filling it afterwards, and for reclaiming a mutex by age; text sliced by code units splits a surrogate pair ([MDN][mdn-string-utf16]) (`designs/508/storage-design.md`, “The data-folder lock”).
 8. **One failure policy.** Every failure that applies enters the same policy, and the test covers every entry point and the shared outcome. The policy need not restore state: 1a deliberately leaves optimistic memory in place and closes the store to commits, and a snapshot failure has its own policy. Fixing the commit failure left the flush failure open in the same file, because there were two ways to fail and no test that both reached the policy. One funnel alone does not prove every entry reaches it.
 9. **A check that can fail, for the stated reason.** A validator or conformance check (a no-output detector, a lint rule) is shown rejecting the input it should reject. A regression spec is shown failing on the baseline code with the test harness in place, on the assertion it names; an import error, a missing helper or an arbitrary red file does not count. A characterization test that records today’s behavior may pass on both versions, is named so, and does not assert a model’s wording. Stateful code gets the failure cases and interleavings its invariants imply, forced by a latch at the operation boundary rather than a sleep that assumes the writer got there. An ordinary assertion does not need a second test.

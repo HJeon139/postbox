@@ -23,7 +23,7 @@ These come from designs/developing.md, “Errors” and “Types that refuse the
 
 ## Agent backends
 
-These come from designs/developing.md, “Agent backends”, and designs/engineering-practices.md, “Building on Claude Code and the Agent SDK (Anthropic)”:
+These come from designs/developing.md, “Agent backends”, and designs/engineering-practices.md, “Building on Claude Code (Anthropic)”:
 - Everything that shapes a turn (setting sources, output style, denied tools, MCP config, model, effort) is built in `server/adapters/setup.mjs`, in one place.
 - Read what an adapter can do (`capabilities`), never its name. An `if (adapter.name === …)` is a capability nobody declared.
 - A fixture is a recorded real turn with local paths removed (`POSTBOX_CLAUDE_RECORD`, `POSTBOX_CODEX_RECORD`, `POSTBOX_KIRO_RECORD`). Never edit one to make a test pass.

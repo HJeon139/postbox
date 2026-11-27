@@ -143,7 +143,7 @@ export async function start({
   const rt = new Runtime({ store, adapters, config, blobs, narrator, spawnShell, hosts });
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture/view-app.md, “Agents see their app”).
   startViewApp(rt, { dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` });
-  const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
+  const firstReal = ['claude-code', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
   await seed(rt, { dataDir, backend: firstReal, demo });
   settleInterrupted(rt);
   stopStreaming(rt);

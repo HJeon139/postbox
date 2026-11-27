@@ -1,6 +1,6 @@
 // Each harness’s quota usage as the harness-event contract’s `quota` kind (#442; designs/architecture/adapters.md,
 // “Quota: each backend’s usage, in the composer”): a status, and windows each with a name, the share used from 0 to 1,
-// and when it resets. Only Claude Code, the Agent SDK, Codex and Antigravity report one; Postbox never makes up a
+// and when it resets. Only Claude Code, Codex and Antigravity report one; Postbox never makes up a
 // figure for a harness that doesn’t. These are the person’s own figures: recorded fixtures keep them scrubbed (tools/privacy-check.mjs).
 
 /** Claude’s window names, as the bars show them. */
@@ -28,7 +28,7 @@ function resetMs(t) {
 }
 
 /**
- * Claude Code’s and the Agent SDK’s `rate_limit_event`’s `rate_limit_info`: each of its unified windows, else the one
+ * Claude Code’s `rate_limit_event`’s `rate_limit_info`: each of its unified windows, else the one
  * window it names. A rejected limit with no overage to go on with is out; a warning is a warning.
  * @param {any} info @returns {{ status: string, windows: any[] } | null}
  */

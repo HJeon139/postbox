@@ -8,7 +8,6 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { claudeArgs } from '../server/adapters/claude-code.mjs';
 import { WRITE_TOOLS, writeRules } from '../server/adapters/setup.mjs';
 import { Runtime } from '../server/runtime.mjs';
@@ -18,11 +17,9 @@ import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const cliBase = { sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g' };
-const sdkBase = { cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', abortController: new AbortController() };
 const after = (args, flag) => args[args.indexOf(flag) + 1];
-/** The ask rules a turn hands Claude Code: the CLI’s --settings, and the SDK’s settings. */
+/** The ask rules a turn hands Claude Code, in the CLI’s --settings. */
 const cliAsk = (persona, rules) => JSON.parse(after(claudeArgs({ ...cliBase, persona, rules }), '--settings')).permissions?.ask ?? [];
-const sdkAsk = (persona, rules) => sdkOptions({ ...sdkBase, persona, rules }).settings.permissions?.ask ?? [];
 const writeEntries = (ask) => ask.filter((r) => WRITE_TOOLS.includes(r));
 
 // The calls behind the decision: a push chained with a read of the remote, and a PR from a body file.
@@ -47,7 +44,7 @@ test('in Auto, Postbox adds no write ask rules of its own; Ask me and Accept edi
 });
 
 test('a persona with no mode set runs in Auto, so it gets no write ask rules either', () => {
-  // claudeArgs and sdkOptions read a missing mode as auto (MODES’ default), as the runtime does.
+  // claudeArgs reads a missing mode as auto (MODES’ default), as the runtime does.
   assert.deepEqual(writeRules({}), []);
   assert.deepEqual(writeRules({ model: 'mock' }), []);
 });
@@ -57,33 +54,25 @@ test('a Claude Code CLI turn in Auto gets no write ask rule in --settings; in As
   assert.deepEqual(cliAsk({ model: 'mock', permissionMode: 'ask' }), WRITE_TOOLS);
 });
 
-test('an Agent SDK turn in Auto gets no write ask rule in its settings; in Ask me it gets every one', () => {
-  assert.deepEqual(writeEntries(sdkAsk({ model: 'mock', permissionMode: 'auto' })), []);
-  assert.deepEqual(sdkAsk({ model: 'mock', permissionMode: 'ask' }), WRITE_TOOLS);
-});
-
-test('the person’s own conversation ask rules stay in Auto and in Ask me, for both backends', () => {
+test('the person’s own conversation ask rules stay in Auto and in Ask me', () => {
   const rules = { ask: ['Bash(npm publish:*)'] };
-  for (const ask of [cliAsk, sdkAsk]) {
-    assert.deepEqual(ask({ model: 'mock', permissionMode: 'auto' }, rules), ['Bash(npm publish:*)'], ask.name);
-    assert.deepEqual(ask({ model: 'mock', permissionMode: 'ask' }, rules), [...WRITE_TOOLS, 'Bash(npm publish:*)'], ask.name);
-  }
+  assert.deepEqual(cliAsk({ model: 'mock', permissionMode: 'auto' }, rules), ['Bash(npm publish:*)']);
+  assert.deepEqual(cliAsk({ model: 'mock', permissionMode: 'ask' }, rules), [...WRITE_TOOLS, 'Bash(npm publish:*)']);
 });
 
 test('in Auto, a chained git push and a gh pr create meet no ask rule of Postbox’s, so the harness decides them', () => {
-  for (const ask of [cliAsk({ model: 'mock', permissionMode: 'auto' }), sdkAsk({ model: 'mock', permissionMode: 'auto' })])
-    for (const command of [PUSH, PR]) {
-      const v = verdict(ask, command, 'auto');
-      assert.equal(v.decision, 'mode', `${command}: ${JSON.stringify(v)}`);
-    }
+  const ask = cliAsk({ model: 'mock', permissionMode: 'auto' });
+  for (const command of [PUSH, PR]) {
+    const v = verdict(ask, command, 'auto');
+    assert.equal(v.decision, 'mode', `${command}: ${JSON.stringify(v)}`);
+  }
 });
 
 test('in Ask me, a chained git push and a gh pr create still meet Postbox’s write ask rule', () => {
-  for (const ask of [cliAsk({ model: 'mock', permissionMode: 'ask' }), sdkAsk({ model: 'mock', permissionMode: 'ask' })]) {
-    const push = verdict(ask, PUSH, 'ask');
-    assert.deepEqual([push.decision, push.rule, push.part], ['ask', 'Bash(git push:*)', 'git push origin feat/x']);
-    assert.deepEqual([verdict(ask, PR, 'ask').decision, verdict(ask, PR, 'ask').rule], ['ask', 'Bash(gh pr create:*)']);
-  }
+  const ask = cliAsk({ model: 'mock', permissionMode: 'ask' });
+  const push = verdict(ask, PUSH, 'ask');
+  assert.deepEqual([push.decision, push.rule, push.part], ['ask', 'Bash(git push:*)', 'git push origin feat/x']);
+  assert.deepEqual([verdict(ask, PR, 'ask').decision, verdict(ask, PR, 'ask').rule], ['ask', 'Bash(gh pr create:*)']);
 });
 
 /** A Claude Code agent whose turns the test scripts, working in a temp folder (as tests/write-guard.test.mjs’s). */

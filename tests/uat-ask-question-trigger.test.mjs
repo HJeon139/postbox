@@ -1,14 +1,14 @@
 // #521's UAT trigger: an AskUserQuestion question shown as a choice block, answered, and the agent going on in the same
 // turn with the answer as the tool's result. Read from a room's items as a run records them, made by a real Runtime:
-// a turn that asks through the SDK's canUseTool (server/adapters/sdk-permission.mjs), with the recorded input.
+// a turn that asks as a permission prompt (tests/ask-prompt.mjs), with the recorded input.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { canUseTool } from '../server/adapters/sdk-permission.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
 import * as arrange from './arrange.mjs';
+import { promptFor } from './ask-prompt.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 const RECORDED = JSON.parse(readFileSync(new URL('fixtures/claude-code/ask-user-question-prompts.json', import.meta.url), 'utf8')).prompts;
@@ -37,7 +37,7 @@ async function asking({ input = ONE, after = (c, answer) => c.text(`Going with $
   });
   r.adapter.next.push(async (c) => {
     c.text('Let me ask you.');
-    const answer = await canUseTool(c, 'AskUserQuestion', structuredClone(input), { toolUseID: 'toolu_uat_1' });
+    const answer = await promptFor(c, 'AskUserQuestion', structuredClone(input), 'toolu_uat_1');
     answered(answer);
     await after(c, answer);
   });

@@ -20,7 +20,7 @@ export function checkSetup({ usesHostSetup, canPublish, allowRequested, mcpOff, 
   if (mcpOff !== undefined && !names(mcpOff)) throw httpError(422, `The MCP servers turned off are a list of up to ${MAX_MCP_OFF} server names.`);
   if (skillsOff !== undefined && !names(skillsOff)) throw httpError(422, `The skills turned off are a list of up to ${MAX_MCP_OFF} skill names.`);
 }
-/** A persona’s effort is one of the levels Claude Code and the SDK take (#60). */
+/** A persona’s effort is one of the levels Claude Code takes (#60). */
 export function checkEffort(effort) {
   if (!EFFORT_LEVELS.includes(effort)) throw httpError(422, `Effort is one of ${EFFORT_LEVELS.join(', ')}.`);
 }

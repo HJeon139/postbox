@@ -283,7 +283,7 @@ async function writeRule(file, { behavior, rule, remove = false, unlessClaimedSi
 }
 
 /**
- * The settings overlay (`--settings`, the SDK’s `settings`) with a conversation’s ask rules (#66). Allow and deny
+ * The settings overlay (`--settings`) with a conversation’s ask rules (#66). Allow and deny
  * rules for a conversation go in `--allowedTools` and `--disallowedTools`; ask has no flag, so it goes in the
  * overlay’s `permissions.ask`, the settings key the person’s own files use, which Claude Code merges with theirs.
  * @param {Record<string, any>} overlay @param {string[]|undefined} ask
@@ -299,70 +299,4 @@ export function withAskRules(overlay, ask) {
  */
 export function withAllowRules(overlay, allow) {
   return allow?.length ? { ...overlay, permissions: { ...(overlay.permissions ?? {}), allow: [...(overlay.permissions?.allow ?? []), ...allow] } } : overlay;
-}
-
-// ── Always allow on a permission card (#66, #10) ─────────────────────────────────────────
-// The Agent SDK’s prompts carry Claude Code’s own suggestions (canUseTool’s `suggestions`): the exact changes behind
-// “don’t ask again”. Returning them as `updatedPermissions` applies them. The CLI’s prompt tool sends none, and its
-// `permission_suggestions` are never read (#353): a copy of its prompt could carry any.
-
-const DESTINATIONS = new Set(['userSettings', 'projectSettings', 'localSettings', 'session', 'cliArg']);
-const SDK_MODES = { default: 'ask', acceptEdits: 'accept edits', plan: 'plan', dontAsk: 'don’t ask', auto: 'auto', bypassPermissions: 'run everything' };
-const WHERE = {
-  localSettings: 'in this folder (.claude/settings.local.json)',
-  userSettings: 'everywhere you use Claude Code (~/.claude/settings.json)',
-};
-
-/** A suggested rule as Claude Code writes it: Bash(npm test:*). */
-const ruleText = (r) => `${r.toolName}${r.ruleContent ? `(${r.ruleContent})` : ''}`;
-
-/**
- * What Always allow sends back, and the same in words, from a prompt’s suggestions; null when there’s nothing to
- * allow always. Rules go to this folder’s local settings, as the CLI saves “don’t ask again”, and as #66 decided
- * for rules made in Postbox. So a rule suggested for the session only, which in Postbox would end with the turn
- * (each turn is a new Claude Code session), or for the project’s shared settings, which belong to the person’s
- * team, is saved in the local file instead, and `moved` says so. A rule for the person’s user settings stays there.
- * A mode or a folder for the session stays as suggested: it lasts for the rest of the turn.
- * @param {unknown} suggestions
- * @returns {{ updates: any[], lines: { text: string, rule?: string }[], moved: string|null } | null}
- */
-export function alwaysAllow(suggestions) {
-  if (!Array.isArray(suggestions)) return null;
-  const updates = [];
-  const lines = [];
-  /** @type {string|null} */
-  let moved = null;
-  for (const s of suggestions.slice(0, 20)) {
-    if (!s || typeof s !== 'object' || !DESTINATIONS.has(s.destination)) continue;
-    if (s.type === 'addRules' && s.behavior === 'allow' && Array.isArray(s.rules)) {
-      // A rule that wouldn’t fit the panel’s bound is left out whole: cutting it short would make another rule.
-      const rules = s.rules
-        .filter((r) => r && typeof r.toolName === 'string' && r.toolName && (r.ruleContent === undefined || typeof r.ruleContent === 'string'))
-        .map((r) => ({ toolName: r.toolName, ...(r.ruleContent ? { ruleContent: r.ruleContent } : {}) }))
-        .filter((r) => cleanRule(ruleText(r)) === ruleText(r))
-        .slice(0, 20);
-      if (!rules.length) continue;
-      const destination = s.destination === 'userSettings' ? 'userSettings' : 'localSettings';
-      if (destination !== s.destination)
-        moved =
-          s.destination === 'projectSettings'
-            ? 'Claude Code suggested the project’s shared settings. Postbox saves it in this folder’s local settings instead, so your team’s file stays as it is.'
-            : 'Claude Code suggested this for its session only. Each Postbox turn is a new Claude Code session, so Postbox saves it in this folder’s local settings instead, where the CLI saves “don’t ask again”.';
-      updates.push({ type: 'addRules', rules, behavior: 'allow', destination });
-      for (const r of rules) lines.push({ text: `Always allow ${ruleText(r)} ${WHERE[destination]}`, rule: ruleText(r) });
-    } else if (s.type === 'setMode' && Object.hasOwn(SDK_MODES, s.mode)) {
-      // Only for the rest of the turn. Saved as a default mode, it would change a settings file (the project’s, which
-      // the panel never writes, or the person’s own), and Postbox passes the mode with every turn anyway.
-      if (s.destination !== 'session' && s.destination !== 'cliArg') continue;
-      updates.push({ type: 'setMode', mode: s.mode, destination: 'session' });
-      lines.push({ text: `Switch to ${SDK_MODES[s.mode]} mode for the rest of this turn` });
-    } else if (s.type === 'addDirectories' && Array.isArray(s.directories)) {
-      const directories = s.directories.filter((d) => typeof d === 'string' && d && d.length <= 1000).slice(0, 20);
-      if (!directories.length) continue;
-      const destination = s.destination === 'session' || s.destination === 'cliArg' ? 'session' : 'localSettings';
-      updates.push({ type: 'addDirectories', directories, destination });
-      lines.push({ text: `Let it work in ${directories.join(', ')} ${destination === 'session' ? 'for the rest of this turn' : WHERE.localSettings}` });
-    }
-  }
-  return updates.length ? { updates, lines, moved } : null;
 }

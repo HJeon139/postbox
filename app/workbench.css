@@ -967,8 +967,26 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .thread-root > .btn { align-self: flex-start; }
 
 /* Under a message: Reply in thread, or its replies. */
-.msg-actions { display: flex; align-items: center; gap: 8px; }
+/* A row too narrow for every action wraps between them, before any shrinks, so the reactions stay on one line: at
+   375 px the last actions go to a line of their own (#168). */
+.msg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; row-gap: 4px; }
 .msg-actions .btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
+/* Copy link, an icon alone, 20 px wide, so a side thread’s panel at 1280 px fits its row on one line, as on main, with
+   about 4 px to spare. Where fonts run wider, Copy link wraps to a line of its own, lined up with the row, and nothing
+   squeezes (#168). Its 8 px gaps keep a 24 px target’s room clear of its neighbors’ (WCAG 2.5.8, spacing). */
+.msg-actions .btn.sm[data-copy-link] { width: 20px; padding: 0; }
+/* An action's icon drawn by the action, not by a span of its own: the actions under a message cost no more elements with
+   Copy link than without it (#168), within the page's element budget (#1155). The element's --m names its icon.
+   It's data-glyph, not data-icon, which the reactions use for their pictures. */
+.msg-actions [data-glyph]::before { content: ''; display: inline-block; width: 12px; height: 12px; flex: none; vertical-align: -1px;
+  background: currentColor; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
+/* In forced colors a background is the system's Canvas, which hid the icon: it takes the text's forced color instead. */
+@media (forced-colors: active) {
+  .msg-actions [data-glyph]::before { forced-color-adjust: none; background: ButtonText; }
+  .msg-actions a[data-glyph]::before { background: LinkText; }
+  .msg-actions span[data-glyph]::before { background: CanvasText; }
+  .msg-actions [data-glyph]:disabled::before { background: GrayText; }
+}
 .turn.me .msg-actions { justify-content: flex-end; }
 .msg-actions .replies { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--accent); text-decoration: none;
   padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; }
