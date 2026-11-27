@@ -6,7 +6,8 @@
 // runs it with --disable-slash-commands. So their adapters refuse it before it’s posted, through the hook Codex uses
 // for a conversation not started yet (#425), and say why.
 
-const COMPACT = /^\/compact(?:\s|$)/;
+/** /compact, alone or with words after it: what Codex runs as its compaction (codex.mjs) and the others refuse. */
+export const COMPACT = /^\/compact(?:\s|$)/;
 
 /**
  * An adapter’s `refuses` for a harness with no compaction: /compact, alone or with words after it, is refused with the
