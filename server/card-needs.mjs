@@ -72,8 +72,9 @@ export const TURN_TIED = new Set(['failed', 'block', 'toolask']);
 /**
  * Which turns' asking blocks, refusals and tool requests count, answered here only. A turn that doesn't move on (another
  * agent's wake, a lint pass) keeps the turns whose cards counted when it started (`se.keptTurnIds`, keptTurns): they
- * count mid-turn, at its end and after a restart, until you move on. During a running turn only those do, and the block
- * it kept (`se.keptId`, nextNeed's `keep`): its own end decides its own cards, and main's mid-turn release left no need.
+ * count mid-turn, at its end and after a restart, until you move on. During a running turn those do, the block it kept
+ * (`se.keptId`, nextNeed's `keep`) and the running turn's own cards until it closes (#1748), so a mid-turn release falls
+ * back to a form the turn showed; the turn before's don't (#69).
  * Otherwise the last turn too, which the session keeps in the store so a restart keeps it, or, for a session from
  * before it did, the turn of the card being released, which was the need.
  * @param {any} rt @param {any} se @param {any} [released]
@@ -81,7 +82,10 @@ export const TURN_TIED = new Set(['failed', 'block', 'toolask']);
  */
 function turnsOf(rt, se, released = null) {
   const kept = se.keptTurnIds ?? [];
-  if (rt.turns.has(se.id)) return kept;
+  // The running turn's own cards count too (#1748): an asking block it showed is the need from when it's shown. Not once
+  // it is closing (endTurn): its end decides them then, so a failed turn's block doesn't flash before its failure.
+  const turn = rt.turns.get(se.id);
+  if (turn) return turn.closed ? kept : [turn.id, ...kept];
   const last = se.lastTurnId ?? released?.turnId ?? null;
   return last ? [last, ...kept] : kept;
 }
@@ -156,6 +160,47 @@ export function offerNeed(rt, se, need, state) {
   if (!takesNeed(rt, rt.store.pending.session(se.id) ?? se, need)) return false;
   rt.sessions.update(se.id, { needs: need, state });
   return true;
+}
+
+/**
+ * An asking block an agent just showed (#1748): it is the agent's need from now, not only from its turn's end, so the
+ * top bar counts it while the turn runs on. The session keeps its state, since its turn runs on, as a wake request's does.
+ * @param {any} rt @param {any} caller  the session, as the caller read it @param {any} it  the block's item @param {string} threadId
+ */
+function offerShown(rt, caller, it, threadId) {
+  // Only the running turn's own: a block shown with no turn (an older one, re-shown) waits quietly, as on main (#69).
+  const turn = rt.turns.get(caller.id);
+  if (!turn || turn.closed || it.turnId !== turn.id) return;
+  // The session as written: the state it keeps may be held behind a commit, and the caller's copy is the published one (#623).
+  const se = rt.store.pending.session(caller.id) ?? caller;
+  const need = needOf(rt, se, it, threadId, [turn.id], null);
+  if (need) offerNeed(rt, se, need, se.state);
+}
+
+/**
+ * A turn you stopped (turn-stop.mjs): a need its own asking block made mid-turn goes with it, so its form waits quietly
+ * in the sidebar, as a stopped turn's form did before #1748, and the count agrees with the idle agent. Stop closes the
+ * turn without its end (endTurn), which is what otherwise decides the turn's cards. @param {any} rt @param {any} turn
+ */
+function stoppedNeed(rt, turn) {
+  // The session as written, as the stop's own write may be held behind a commit (#623).
+  const se = rt.store.pending.session(turn.sessionId);
+  const need = se?.needs;
+  // A need names its thread only when it's away from the agent's own (awayFrom).
+  if (need?.kind !== 'block' || rt.store.pending.item(need.threadId ?? se.threadId, need.itemId)?.turnId !== turn.id) return;
+  // What's left is what waited before it: the kept turns' cards. Not turnsOf's, whose last turn is this one by now.
+  rt.sessions.update(se.id, { needs: nextNeed(rt, se, { turnIds: se.keptTurnIds ?? [] }) });
+}
+
+/**
+ * A block shown or withdrawn moves the need (Apps raises both on the bus): a withdrawn one is released, and an asking
+ * one shown, or asked again by an update, is offered (#1748). A stopped turn drops the need its own block made.
+ * @param {any} rt
+ */
+export function blockNeeds(rt) {
+  rt.bus.on('block.withdrawn', ({ se, itemId }) => releaseNeed(rt, se, itemId));
+  rt.bus.on('block.asking', ({ se, item, threadId }) => offerShown(rt, se, item, threadId));
+  rt.bus.on('turn.stopping', ({ turn }) => stoppedNeed(rt, turn));
 }
 
 /**
