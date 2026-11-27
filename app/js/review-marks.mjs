@@ -59,9 +59,13 @@ export function regionsOf(b, d) {
   return out;
 }
 
-/** The anchor of the next region marked on a review: one past the highest it has. @param {any} b @param {any} d */
+/**
+ * The anchor of the next region marked on a review: one past the highest it has, the open box’s too, which becomes a
+ * draft comment when the new one opens (startComment). @param {any} b @param {any} d
+ */
 function nextAnchor(b, d) {
-  const taken = [...(b.threads ?? []), ...d.comments].map((x) => x.anchor).filter((a) => typeof a === 'string' && REGION_ANCHOR.test(a));
+  const open = d.composingRegion ? [{ anchor: d.composing }] : [];
+  const taken = [...(b.threads ?? []), ...d.comments, ...open].map((x) => x.anchor).filter((a) => typeof a === 'string' && REGION_ANCHOR.test(a));
   return `region ${Math.max(0, ...taken.map((a) => Number(a.slice('region '.length)))) + 1}`;
 }
 

@@ -95,7 +95,7 @@ test('#856 a region an agent numbers first while the person’s draft is open is
 });
 
 test('#856 what was typed on a region stays as its draft comment when the person marks another', async ({ page }) => {
-  const { block } = await review(page);
+  const { block, answer } = await review(page);
   await block.getByRole('button', { name: 'Mark a part of the app' }).click();
   await drag(page, block, [0.1, 0.5], [0.4, 0.9]);
   await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('The legend overlaps.');
@@ -105,4 +105,14 @@ test('#856 what was typed on a region stays as its draft comment when the person
   const drafted = block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
   await expect(drafted.filter({ hasText: 'The legend overlaps.' }), 'what was typed on region 1 is its draft').toHaveCount(1);
   await expect(block.locator('.rv-marks .rv-region[data-region="1"]'), 'and region 1 is still drawn').toHaveCount(1);
+  await expect(block.locator('.rv-pins').getByText(/^On region 1 · x 10%, y 50%, 30% × 40%, on v1$/), 'on the place it was typed on').toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Comment on region 2' }), 'the new box starts empty').toHaveValue('');
+  await page.getByRole('textbox', { name: 'Comment on region 2' }).fill('This axis is cut off.');
+  await block.getByRole('button', { name: /^Submit/ }).click();
+  await expect
+    .poll(() => answer()?.map((c) => [c.anchor, Math.round(c.region.x * 10) / 10, c.text]), { message: 'each text on its own region' })
+    .toEqual([
+      ['region 1', 0.1, 'The legend overlaps.'],
+      ['region 2', 0.6, 'This axis is cut off.'],
+    ]);
 });
