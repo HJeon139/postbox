@@ -5,7 +5,7 @@
 // failure of any part refuses the request.
 //
 // What the load balancer sends is in its documentation, “Authenticate users using an Application Load Balancer”
-// (https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-authenticate-users.html, read 27
+// (https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-authenticate-users.html, read 26
 // November 2026): the token’s header carries `alg`, `kid`, `signer`, `iss`, `client` and `exp`, its payload the
 // claims of the identity provider’s user info, its parts are base64url with their padding kept, and it is signed
 // with ES256.
@@ -26,7 +26,9 @@ const SIGNATURE_BYTES = 64;
 /**
  * Why a token was refused, for the server’s own log and the tests. What a person is shown never says which: a
  * request with no sign-in learns only that it needs one.
- * @typedef {'malformed' | 'algorithm' | 'key-id' | 'key' | 'signature' | 'signer' | 'client' | 'issuer' | 'no-expiry' | 'expired' | 'subject'} Refusal
+ * `key` is no key to be had; `key-form` is an answer that isn’t a P-256 public key, which is how a surprise in the form
+ * the endpoint serves keys in would read.
+ * @typedef {'malformed' | 'algorithm' | 'key-id' | 'signer' | 'client' | 'issuer' | 'key' | 'key-form' | 'signature' | 'no-expiry' | 'expired' | 'subject'} Refusal
  */
 
 /** @param {Refusal} code @param {unknown} [cause] */
@@ -47,10 +49,10 @@ function objectOf(part) {
 }
 
 /** The key a lookup answered with, if it is a P-256 public key; else nothing. @param {unknown} found */
-function p256Key(found) {
+export function p256Key(found) {
   try {
     const key = createPublicKey(/** @type {any} */ (found));
-    return key.asymmetricKeyType === 'ec' && key.asymmetricKeyDetails?.namedCurve === 'prime256v1' ? key : null;
+    return key.asymmetricKeyDetails?.namedCurve === 'prime256v1' ? key : null; // only an EC key has a curve
   } catch {
     return null; // not a key at all
   }
@@ -65,11 +67,12 @@ function expiryOf(exp) {
 /**
  * Checks the token the load balancer forwarded, and answers who it is for.
  *
- * In order, so nothing of the token’s is believed before its signature holds: it is three parts of JSON; its
- * algorithm is ES256, whatever it claims; its key id has a key id’s shape; the key looked up is a P-256 key; the
- * signature is the key’s over the first two parts. Then, from the header that signature covers: the signer is this
- * deployment’s load balancer, the client and the issuer are this deployment’s, and it hasn’t expired. Then the
- * payload names a subject.
+ * In order: it is three parts of JSON; its algorithm is ES256, whatever it claims; its key id has a key id’s shape;
+ * its signer, client and issuer are this deployment’s. Those three are read before the signature is checked, and
+ * that believes nothing: a token is refused for them, never accepted, and acceptance still needs the signature over
+ * the same bytes. They come first so that a request has to name this deployment’s own load balancer before Postbox
+ * looks a key up for it at all. Then the key looked up is a P-256 key, and the signature is that key’s over the first
+ * two parts. Then, from the header the signature covers, it hasn’t expired, and the payload names a subject.
  *
  * @param {unknown} sent  the header’s value, as the request carried it
  * @param {{ signer: string, client: string, issuer: string, now?: () => number,
@@ -90,17 +93,23 @@ export async function checkAlbToken(sent, { signer, client, issuer, keyOf, now =
 
   if (header.alg !== 'ES256') throw refuse('algorithm');
   if (typeof header.kid !== 'string' || !KEY_ID.test(header.kid)) throw refuse('key-id');
-  const key = p256Key(await keyOf(header.kid).catch((e) => Promise.reject(refuse('key', e))));
-  if (!key) throw refuse('key');
+  if (header.signer !== signer) throw refuse('signer');
+  if (header.client !== client) throw refuse('client');
+  if (header.iss !== issuer) throw refuse('issuer');
 
-  const signature = PART.test(parts[2]) ? Buffer.from(parts[2], 'base64url') : Buffer.alloc(0);
+  // However the lookup fails, by answering nothing, rejecting or throwing as it is called, there is no key.
+  const found = await Promise.resolve()
+    .then(() => keyOf(header.kid))
+    .catch((e) => Promise.reject(refuse('key', e)));
+  if (found === null || found === undefined) throw refuse('key');
+  const key = p256Key(found);
+  if (!key) throw refuse('key-form');
+
+  const signature = Buffer.from(parts[2], 'base64url');
   const signed = `${parts[0]}.${parts[1]}`;
   if (signature.length !== SIGNATURE_BYTES || !createVerify('SHA256').update(signed).verify({ key, dsaEncoding: 'ieee-p1363' }, signature))
     throw refuse('signature');
 
-  if (header.signer !== signer) throw refuse('signer');
-  if (header.client !== client) throw refuse('client');
-  if (header.iss !== issuer) throw refuse('issuer');
   const expiry = expiryOf(header.exp);
   if (expiry === null) throw refuse('no-expiry');
   if (expiry * 1000 <= now()) throw refuse('expired');

@@ -59,6 +59,8 @@ test('no token, or one that isn’t three parts of JSON, is no one', async () =>
     await refused(check(sent), 'malformed');
   // A header that came twice reaches Node as one string joined by a comma: not a token.
   await refused(check(`${token()}, ${token()}`), 'malformed');
+  // An array is JSON but not a header, and a part outside base64url’s alphabet isn’t a part.
+  for (const sent of [`${part([1])}.${part({})}.sig`, ` ${token()}`]) await refused(check(sent), 'malformed');
 });
 
 test('the algorithm is ES256 whatever the token says: none, a symmetric one and another curve’s are refused before any key is fetched', async () => {
@@ -73,10 +75,11 @@ test('the algorithm is ES256 whatever the token says: none, a symmetric one and 
 
 test('the key is a P-256 key: a token signed with another curve’s key, though it says ES256, is refused', async () => {
   const p384 = generateKeyPairSync('ec', { namedCurve: 'P-384' });
-  await refused(check(token({ key: p384.privateKey }), { keyOf: async () => pem(p384.publicKey) }), 'key');
+  await refused(check(token({ key: p384.privateKey }), { keyOf: async () => pem(p384.publicKey) }), 'key-form');
   const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  await refused(check(token(), { keyOf: async () => pem(rsa.publicKey) }), 'key');
-  await refused(check(token(), { keyOf: async () => 'not a key' }), 'key');
+  await refused(check(token(), { keyOf: async () => pem(rsa.publicKey) }), 'key-form');
+  // Text that isn’t a key at all reads as the key’s form, not its absence: how a surprise at the endpoint would show.
+  await refused(check(token(), { keyOf: async () => 'not a key' }), 'key-form');
 });
 
 test('a key id is checked for its shape before it is looked up, so nothing of the token’s choosing goes into a URL', async () => {
@@ -102,14 +105,42 @@ test('a key that can’t be had refuses the request', async () => {
     }),
     'key',
   );
+  // A lookup that throws as it is called, or answers at once and not later, is handled the same.
+  await refused(
+    check(token(), {
+      keyOf: () => {
+        throw new Error('thrown as it was called');
+      },
+    }),
+    'key',
+  );
+  assert.equal((await check(token(), { keyOf: () => pem(p256.publicKey) })).subject, 'u-1');
+});
+
+test('a token that doesn’t name this deployment’s load balancer, client and issuer is refused before any key is looked up', async () => {
+  let fetched = 0;
+  const keyOf = async () => {
+    fetched++;
+    return pem(p256.publicKey);
+  };
+  for (const header of [{ signer: 'arn:other' }, { client: 'another-app' }, { iss: 'https://other-idp.example' }])
+    await assert.rejects(check(token({ header }), { keyOf }), (/** @type {any} */ e) => e.status === 401);
+  assert.equal(fetched, 0, 'a made-up token makes no lookup');
 });
 
 test('the signature is checked before any claim is believed: a changed payload, a changed header and another key’s signature are refused', async () => {
   const [h, p, sig] = token().split('.');
   await refused(check(`${h}.${part({ sub: 'u-admin' })}.${sig}`), 'signature');
-  // A header changed to say another signer, with the old signature: refused as a bad signature, not as a wrong signer.
+  // A header changed to last longer, with the old signature: refused as a bad signature, so its new exp is never read.
   await refused(
-    check(`${part({ alg: 'ES256', kid: KID, signer: 'arn:other', iss: DEPLOYMENT.issuer, client: DEPLOYMENT.client, exp: NOW / 1000 + 120 })}.${p}.${sig}`),
+    check(
+      `${part({ alg: 'ES256', kid: KID, signer: DEPLOYMENT.signer, iss: DEPLOYMENT.issuer, client: DEPLOYMENT.client, exp: NOW / 1000 + 99999 })}.${p}.${sig}`,
+    ),
+    'signature',
+  );
+  // And an expired token whose signature is bad is refused for its signature: nothing under it is believed first.
+  await refused(
+    check(`${part({ alg: 'ES256', kid: KID, signer: DEPLOYMENT.signer, iss: DEPLOYMENT.issuer, client: DEPLOYMENT.client, exp: 1 })}.${p}.${sig}`),
     'signature',
   );
   const other = generateKeyPairSync('ec', { namedCurve: 'P-256' });
