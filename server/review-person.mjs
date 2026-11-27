@@ -4,28 +4,10 @@
 // the answer writes the person’s, and only review_block another agent’s.
 
 import { validateBlock } from '../shared/catalog.mjs';
-import { PERSON, personNext, REGION_ANCHOR, sameRegion, threadsError } from '../shared/review-comments.mjs';
+import { PERSON, personNext, regionAnchor, threadsError } from '../shared/review-comments.mjs';
 import { httpError } from './helpers.mjs';
 import { ownedAuthors } from './review-authors.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
-
-/**
- * A new comment on a region, renumbered when another thread already holds its “region N” with a different region: an
- * agent’s comment can arrive while the person’s draft, numbered from what was on screen, is still open (#856). The
- * review keeps both, each under its own number, instead of refusing the person’s. A region already held under
- * another number, such as by an earlier comment of the same answer, takes that number.
- * @param {Record<string, any>} anchor @param {any[]} threads
- */
-function renumbered(anchor, threads) {
-  const held = threads.filter((t) => t.region && typeof t.anchor === 'string' && REGION_ANCHOR.test(t.anchor));
-  const clash = held.some((t) => t.anchor === anchor.anchor && !sameRegion(t.region, anchor.region));
-  if (!anchor.region || !clash) return anchor;
-  // Its other comments in this answer, already renumbered, hold it: they keep one number.
-  const same = held.find((t) => sameRegion(t.region, anchor.region));
-  if (same) return { ...anchor, anchor: same.anchor };
-  const top = Math.max(0, ...held.map((t) => Number(t.anchor.slice('region '.length))));
-  return { ...anchor, anchor: `region ${top + 1}` };
-}
 
 /**
  * The block with the person’s comments added, each a thread of its own, or a reply in the thread it names; the
@@ -41,7 +23,7 @@ export function personReview(it, values, revision) {
   const made = new Set();
   let n = 0;
   const comments = given.map(({ text, threadId, ...given1 }) => {
-    const anchor = renumbered(given1, threads);
+    const anchor = given1.region ? { ...given1, anchor: regionAnchor(given1, threads) } : given1;
     const k = threadId === undefined ? -1 : threads.findIndex((t) => t.id === threadId);
     if (k > -1) {
       threads[k] = { ...threads[k], comments: [...threads[k].comments, { author: PERSON, text }] };

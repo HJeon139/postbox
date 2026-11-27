@@ -6,7 +6,7 @@ import { REGION_ANCHOR } from '/shared/review-comments.mjs';
 import { mountApp } from './apps.mjs';
 import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
-import { attachMarks, markControls, paintMarks, regionNote, regionsOf, versionOf } from './review-marks.mjs';
+import { attachMarks, markControls, paintMarks, regionNote, regionsOf, renumberDraft, versionOf } from './review-marks.mjs';
 
 /** The anchor of a comment on the app as a whole: what the agent reads in the answer. */
 export const WHOLE_APP = 'the whole app';
@@ -84,6 +84,7 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
   const kept = keeping?.itemId === itemId && keeping.key === key;
   const appEl = h('div.rv-app', { 'data-app': key, ...(kept ? { 'data-kept': '' } : {}) });
   const pins = h('div.rv-pins');
+  if (!done) renumberDraft(b, d);
   const anchors = new Set(
     [...(b.threads ?? []).map((t) => t.anchor), ...d.comments.map((c) => c.anchor), ...(d.composing ? [d.composing] : [])].filter(Boolean),
   );

@@ -125,6 +125,22 @@ export function regionNameError(c) {
 export const sameRegion = (a, b) => ['x', 'y', 'w', 'h', 'version'].every((k) => a?.[k] === b?.[k]);
 
 /**
+ * The anchor a comment on a region takes beside what the review already holds: its own, unless another thread holds
+ * that “region N” for another place, or for a part. An agent’s comment can arrive while the person’s draft, numbered
+ * from what was on screen, is still open (#856), so the page draws both and the answer keeps both, each under its own
+ * number: the place’s number if a thread already holds it, else the next past every “region N” held.
+ * @param {Record<string, any>} c  the comment @param {any[]} held  the threads, and comments placed before this one
+ */
+export function regionAnchor(c, held) {
+  if (!c.region || typeof c.anchor !== 'string') return c.anchor;
+  const named = held.filter((t) => typeof t.anchor === 'string' && REGION_ANCHOR.test(t.anchor));
+  if (!named.some((t) => t.anchor === c.anchor && !sameRegion(t.region, c.region))) return c.anchor;
+  const same = named.find((t) => t.region && sameRegion(t.region, c.region));
+  if (same) return same.anchor;
+  return `region ${Math.max(0, ...named.map((t) => Number(t.anchor.slice('region '.length)))) + 1}`;
+}
+
+/**
  * Why a review’s threads name one region twice, as sentences: each “region N” is one place, so two threads on it with
  * different regions would draw one and list the other in the wrong place (#856). @param {any[]} threads
  */

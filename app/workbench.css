@@ -1213,10 +1213,13 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .rv-marks { position: relative; z-index: 1; pointer-events: none; }
 .rv-marks.marking { pointer-events: auto; cursor: crosshair; touch-action: none; outline: 2px dashed var(--accent); outline-offset: -2px; }
 .rv-marks.marking:focus-visible { outline-style: solid; }
-.rv-region { position: absolute; box-sizing: border-box; border: 2px solid var(--accent); border-radius: 2px; pointer-events: none; }
-.rv-region.marking { border-style: dashed; }
-.rv-region.point { width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--accent); }
-.rv-region-n { position: absolute; top: 0; left: 0; padding: 0 4px; font-size: 11px; line-height: 16px; color: var(--text); background: var(--panel); border: 1px solid var(--accent); border-radius: 2px; }
+/* A drawn region is a mark, not a control, so it’s in the text’s color; amber is the box being marked, which the
+   keys and the pointer move. */
+.rv-region { position: absolute; box-sizing: border-box; border: 2px solid var(--text); border-radius: 2px; pointer-events: none; }
+.rv-region.marking { border: 2px dashed var(--accent); }
+.rv-region.point { width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--text); }
+.rv-region.point.marking { background: var(--accent); }
+.rv-region-n { position: absolute; top: 0; left: 0; padding: 0 4px; font-size: 11px; line-height: 16px; color: var(--text); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 2px; }
 .rv-region.point .rv-region-n { left: 14px; top: -4px; }
 
 /* Command palette, settings and lists */

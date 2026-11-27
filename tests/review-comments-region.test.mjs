@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
-import { commentAt, commentErrors } from '../shared/review-comments.mjs';
+import { commentAt, commentErrors, regionAnchor } from '../shared/review-comments.mjs';
 import { settle, setup, turn } from './blocks-fixture.mjs';
 
 const box = { x: 0.12, y: 0.3, w: 0.2, h: 0.15, version: 3 };
@@ -176,4 +176,24 @@ test('#856 the person’s region that another comment numbered first while their
     s.adapter.calls.at(-1).message.event.values.comments.map((c) => c.anchor),
     ['region 2', 'region 2'],
   );
+});
+
+test('#856 a region’s number past what the review holds: past every “region N”, a part of that name too', () => {
+  const at = (x) => ({ x, y: 0.1, w: 0.1, h: 0.1, version: 1 });
+  const theirs = { anchor: 'region 1', region: at(0.5) };
+  const oldPart = { anchor: 'region 2' };
+  // Not held, or held for the same place: it keeps its number.
+  assert.equal(regionAnchor({ anchor: 'region 1', region: at(0.1) }, []), 'region 1');
+  assert.equal(regionAnchor({ anchor: 'region 1', region: at(0.5) }, [theirs]), 'region 1');
+  // Held for another place: the next number past both the region and the part.
+  const held = [theirs, oldPart];
+  const r1 = { anchor: 'region 1', region: at(0.1) };
+  assert.equal(regionAnchor(r1, held), 'region 3');
+  held.push({ ...r1, anchor: 'region 3' });
+  // The person’s next region, numbered 2 on their page, meets the part: it moves past the one just placed.
+  assert.equal(regionAnchor({ anchor: 'region 2', region: at(0.3) }, held), 'region 4');
+  // A second comment on the first place takes its new number.
+  assert.equal(regionAnchor({ anchor: 'region 1', region: at(0.1) }, held), 'region 3');
+  // A comment on a part is no region’s.
+  assert.equal(regionAnchor({ anchor: 'region 1' }, held), 'region 1');
 });

@@ -5,7 +5,7 @@
 // the app’s content (apps.mjs, sizeFrame), so of the app itself. Each region on the version shown is drawn with its
 // number; one on another version is listed only, with its version (designs/agent-apps.md, the review block).
 
-import { REGION_ANCHOR, regionText } from '/shared/review-comments.mjs';
+import { REGION_ANCHOR, regionAnchor, regionText } from '/shared/review-comments.mjs';
 import { shownVersion } from './apps.mjs';
 import { client } from './client.mjs';
 import { h } from './dom.mjs';
@@ -35,6 +35,19 @@ const clamp = (/** @type {number} */ v, /** @type {number} */ lo, /** @type {num
 export function versionOf(b, done) {
   const app = client.state.apps[b.appId];
   return app ? shownVersion(app, !done) : null;
+}
+
+/**
+ * Gives the draft’s regions the numbers the answer will give them: one an agent’s comment numbered first, while the
+ * draft was open, moves to the next number, so the page draws both, each where it is (#856). @param {any} b @param {any} d
+ */
+export function renumberDraft(b, d) {
+  const held = [...(b.threads ?? [])];
+  for (const c of d.comments) {
+    if (c.region) c.anchor = regionAnchor(c, held);
+    held.push(c);
+  }
+  if (d.composingRegion && typeof d.composing === 'string') d.composing = regionAnchor({ anchor: d.composing, region: d.composingRegion }, held);
 }
 
 /** The region of each anchor that has one: the threads’, the drafts’ and the open comment box’s. @param {any} b @param {any} d */

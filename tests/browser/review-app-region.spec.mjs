@@ -52,7 +52,12 @@ async function review(page, extra = {}, code = BARE) {
   await expect(block.locator('iframe.app-iframe'), 'the review draws the app').toHaveCount(1);
   await expect(block.locator('.app-body > .rv-marks'), 'with Postbox’s layer over its frame').toHaveCount(1);
   const answer = () => calls.find((m) => m.kind === 'event' && m.event.blockId === blockId)?.event.values.comments;
-  return { block, answer, item: () => store.item(thread.id, item.id) };
+  /** The review’s agent updates it, with these fields over the block as shown. */
+  const update = (/** @type {Record<string, any>} */ fields) => {
+    const r = tools.update_block({ block: { ...store.item(thread.id, item.id).block, ...fields } });
+    if (!r.ok) throw new Error(r.message);
+  };
+  return { block, answer, update, item: () => store.item(thread.id, item.id) };
 }
 
 /**
@@ -256,4 +261,34 @@ test('#856 a room with two app reviews, opened afresh, draws a region marked on 
   await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('The legend overlaps.');
   await block.getByRole('button', { name: 'Add draft comment' }).click();
   await expect(block.locator('.rv-marks .rv-region[data-region="1"]'), 'its region is drawn on its app').toHaveCount(1);
+});
+
+test('#856 a region an agent numbers first while the person’s draft is open is drawn beside the draft’s, which takes the next number', async ({ page }) => {
+  const { block, update, answer } = await review(page);
+  await block.getByRole('button', { name: 'Mark a part of the app' }).click();
+  await drag(page, block, [0.1, 0.5], [0.4, 0.9]);
+  await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('The legend overlaps.');
+  await block.getByRole('button', { name: 'Add draft comment' }).click();
+  // The agent, which saw no region yet, comments on a place of its own as “region 1”.
+  const theirs = { x: 0.6, y: 0.1, w: 0.2, h: 0.2, version: 1 };
+  update({ threads: [{ id: 'a1', status: 'open', anchor: 'region 1', region: theirs, comments: [{ author: '@researcher', text: 'Is this axis right?' }] }] });
+  const pins = block.locator('.rv-pins');
+  await expect(pins.getByText('On region 1 · x 60%, y 10%, 20% × 20%, on v1'), 'the agent’s is listed where it is').toBeVisible();
+  await expect(pins.getByText(/^On region 2 · x 10%, y 50%, 30% × 40%, on v1$/), 'the draft’s takes the next number').toBeVisible();
+  expect(within(await drawnAt(block.locator('.rv-marks .rv-region[data-region="1"]')), theirs), 'region 1 is drawn where the agent put it').toBe(true);
+  expect(
+    within(await drawnAt(block.locator('.rv-marks .rv-region[data-region="2"]')), { x: 0.1, y: 0.5, w: 0.3, h: 0.4, version: 1 }),
+    'region 2 where the person marked it',
+  ).toBe(true);
+  // A drawn region is a mark, not a control: it’s not in the interaction color.
+  const colors = await block.locator('.rv-marks .rv-region[data-region="1"]').evaluate((el) => {
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    const probe = document.body.appendChild(Object.assign(document.createElement('i'), { style: `color:${accent}` }));
+    const amber = getComputedStyle(probe).color;
+    probe.remove();
+    return { border: getComputedStyle(el).borderTopColor, amber };
+  });
+  expect(colors.border, 'a drawn region isn’t amber').not.toBe(colors.amber);
+  await block.getByRole('button', { name: /^Submit/ }).click();
+  await expect.poll(() => answer()?.map((c) => c.anchor), { message: 'the answer keeps the draft’s new number' }).toEqual(['region 2']);
 });
