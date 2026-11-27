@@ -2,7 +2,20 @@
 
 Part of [the architecture](../architecture.md). How the same Postbox that runs on your own computer runs on a server for a team, what changes at its edge, and what stays exactly as it is. Who is asking is in [people.md](people.md); the request gate this changes is in [security-boundaries.md](security-boundaries.md), “This computer alone”; hosts are in [remote-hosts.md](remote-hosts.md).
 
-**Status.** Proposed, and begun. Built: the token check of “The check, whole” (`server/identity/alb-token.mjs`), the key lookup it asks (`server/identity/alb-keys.mjs`), and the provider behind `identify(req)` with the allow list of #1733 and the settings it is refused without (`server/identity/alb.mjs`, `server/identity/sign-in-settings.mjs`). Given sign-in settings, every request is whoever signed in or is refused, reads included, and `/mcp` isn’t there. Only `start()`’s `signIn` option gives them, which the tests use: the command line has no way to, since nothing yet fetches a key or answers a public address. So every rule in AGENTS.md and security-boundaries.md is still true of any Postbox a person can start, and a run on your own computer is as it was. Next: fetching a key, the health check, a stream that ends at its token’s `exp` and what a navigation is shown, then the address: sign-in is built before the address, the other way round from the table under “The slices, in order”, so that nothing answers a public origin before it can tell who is asking. The owner set the direction on 26 November 2026 ([the frame and the answers, in the owner’s words](https://github.com/HJeon139/postbox/issues/1733#issuecomment-7207630150), called “the owner’s answers” below), and each slice under “The slices, in order” is its own pull request. “Open questions for the owner” lists what this document does not settle.
+**Status.** Proposed, and partly built. A Postbox can be started hosted with `postbox --hosted <settings file>` (`server/hosted-settings.mjs`), and `infra/` deploys one to AWS for a test (“The test deployment on AWS”). Built:
+
+- **The address:** one public origin, listening on every address, `!` and app links refused, the cookie `Secure` (`server/request-gate.mjs`).
+- **Sign-in:** the token check of “The check, whole” (`server/identity/alb-token.mjs`), the key lookup and its real fetch with a time and size bound (`server/identity/alb-keys.mjs`, `server/identity/alb-key-fetch.mjs`), the provider behind `identify(req)` with the allow list of #1733 (`server/identity/alb.mjs`, `server/identity/sign-in-settings.mjs`), the health check, `/mcp` refused, and a line in the server’s log for each reason a sign-in was refused (`server/identity/refusal-log.mjs`).
+
+Not built, so a hosted Postbox is for a test and not yet for a team:
+
+- **Rooms by membership.** Everyone on the allow list reaches every room.
+- **A stream that ends at its token’s `exp`,** and a page for a navigation that isn’t signed in, which gets the API’s JSON today.
+- **Postbox’s own browser.** A request addressed to loopback is refused like any other, so an agent’s view of its app (`view_app`) fails when hosted until “Postbox’s own browser” under “Open questions for the owner” is answered.
+- **The mock agent and the first start.** The mock is still registered and seeded when hosted.
+- **Every row of “What assumed one computer”** but the first.
+
+Without `--hosted`, every rule in AGENTS.md and security-boundaries.md is true as it was, and each test file of a hosted behavior starts a local Postbox beside the hosted one and checks it is unchanged. Sign-in and the address landed together, so nothing answers a public origin before it can tell who is asking. The owner set the direction on 26 November 2026 ([the frame and the answers, in the owner’s words](https://github.com/HJeon139/postbox/issues/1733#issuecomment-7207630150), called “the owner’s answers” below), and each slice under “The slices, in order” is its own pull request. “Open questions for the owner” lists what this document does not settle.
 
 ## Three ways to run, and which this serves
 
@@ -85,7 +98,7 @@ The unsigned headers the balancer also adds (`x-amzn-oidc-identity`, `x-amzn-oid
 - **The health check** (the owner’s answers: “Yes, health check only”):
   - one fixed path, matched exactly, for GET and HEAD only;
   - a fixed status and body, the same whatever the store’s state: no version, no uptime, no counts, and none of the store’s status, whose cause can name a path on the server;
-  - answered before `admit`’s `Host` check as well as before sign-in, since the balancer’s check comes from its own nodes with a `Host` that isn’t the public origin (to confirm in the deployment slice). It is the one route that answers any `Host`;
+  - answered before `admit`’s `Host` check as well as before sign-in, since the balancer’s check comes from its own nodes with the target’s private address and port as its `Host` ([Troubleshoot your Application Load Balancers](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-troubleshooting.html), read 26 November 2026). It is the one route that answers any `Host`. The path is `/health`;
   - there only when hosted, so a local gate is unchanged;
   - liveness only. When every target fails its check the balancer sends traffic anyway, so a check tied to the store gains nothing and risks a restart that drops every stream.
 
@@ -101,7 +114,7 @@ The unsigned headers the balancer also adds (`x-amzn-oidc-identity`, `x-amzn-oid
 
 **What a refused request gets.** An API call and the event stream get a status, with nothing that says more than “sign in”; a navigation gets a page that says so. With the balancer’s `deny`, a request with no session gets 401, but one whose session has expired is still redirected to the provider, so the page handles both: it notices either on a background request and reloads.
 
-**A stream outlives nothing.** `/api/stream` is checked as it opens and then lives as long as the page. Hosted, a stream ends no later than its token’s `exp`, and the page reconnects with a fresh one, so a person removed from the allow list, or signed out, stops receiving within one token’s life. The event stream sends a keep-alive every 15 seconds (`server/live-streams.mjs`), which should sit under the balancer’s idle timeout; that number isn’t on the page cited above and is confirmed in the deployment slice.
+**A stream outlives nothing.** `/api/stream` is checked as it opens and then lives as long as the page. Hosted, a stream ends no later than its token’s `exp`, and the page reconnects with a fresh one, so a person removed from the allow list, or signed out, stops receiving within one token’s life. The event stream sends a keep-alive every 15 seconds (`server/live-streams.mjs`), which sits under the balancer’s idle timeout: 60 seconds by default, reset by any data either way ([Edit attributes for your Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/edit-load-balancer-attributes.html), read 26 November 2026).
 
 **The hop from the balancer is clear text unless Postbox serves TLS.** The AWS page: to encrypt the claims, the target group uses HTTPS. With no proxy beside it and Postbox speaking plain HTTP, the signed header and the access token cross the cluster’s network unencrypted on every request. Proposed: accept the clear hop inside the cluster’s private network, state it in the deployment recipe as the network’s to protect, and revisit if a deployment can’t. Serving TLS itself would give Postbox a certificate to hold and renew.
 
@@ -183,6 +196,51 @@ What the deployment brings, since `ssh` runs with `BatchMode=yes` and `StrictHos
 - **Leaving the allow list ends the sign-in, not the reach.** A member could have had an agent read the host account’s credentials while they were one.
 - **The data folder holds every room, upload and profile, unencrypted by Postbox.** It is set with `--data` on the attached volume; the default is the account’s home, which a container loses.
 
+## Agents on AWS: Bedrock for the models, and where AgentCore fits
+
+**Proposed, for the owner to rule on** (the owner, 26 November 2026: “Consider the system architecture and the need to integrate to AgentCore and Bedrock as the hosting of the models for Claude Code, Codex, and Kiro”). Each fact below was read from the vendor’s documentation on 26 November 2026, and what couldn’t be confirmed says so.
+
+**The models: Amazon Bedrock in the deployment’s own account, by the host’s role and no key.**
+
+| Backend | On Bedrock | What the host sets | Source |
+|---|---|---|---|
+| Claude Code | Yes. Credentials come from the AWS default chain, an ECS task role or an instance profile among them | `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION`, and a pinned model (`ANTHROPIC_MODEL` and the `ANTHROPIC_DEFAULT_*_MODEL` settings); the role may `bedrock:InvokeModel` and `InvokeModelWithResponseStream`. Its WebSearch tool isn’t available there | [Claude Code on Amazon Bedrock](https://code.claude.com/docs/en/amazon-bedrock) |
+| Codex | Yes, from Codex 0.128.0, in the few regions that host OpenAI’s models | `model_provider = "amazon-bedrock"` in the host’s `config.toml`, and no `OPENAI_API_KEY`. That a task role alone is enough isn’t in OpenAI’s documentation: to confirm on a host | [Codex with Amazon Bedrock](https://developers.openai.com/codex/amazon-bedrock) |
+| Kiro CLI | No. It signs in with `KIRO_API_KEY` and spends Kiro credits; nothing documents it using Bedrock in your own account | A key on the host, which is the host’s secret and never Postbox’s | [Kiro CLI, headless](https://kiro.dev/docs/cli/headless/) |
+
+This keeps the rule that Postbox never reads, stores or passes a key: the role and the settings are the host’s, set by the deployment. It changes nothing in Postbox’s code, since a host’s daemon starts the CLI in the host account’s environment ([remote-hosts.md](remote-hosts.md)).
+
+**Where the CLIs run: a host image first, AgentCore Runtime as a second way in.**
+
+```mermaid
+flowchart LR
+  B[Browser] -->|HTTPS| LB[Load balancer: TLS and sign-in]
+  LB --> P[Postbox server: one task, one disk]
+  P -->|"ssh, as today"| H["Agent host: a long-lived task with the CLIs and a work folder"]
+  P -.->|"proposed: the daemon’s protocol over HTTPS"| R["AgentCore Runtime: one microVM per session"]
+  H -->|"task role"| M[Amazon Bedrock]
+  R -->|"execution role"| M
+```
+
+- **First, an agent host is a container of our own** on the same cluster: Node, an SSH server, the three CLIs and a work folder on a volume, with a role that may call Bedrock. Postbox dials it over `ssh` exactly as it dials any host, so nothing in the protocol changes and the local way to run is untouched. This is the “Cloud hosts” slice.
+- **AgentCore Runtime doesn’t take SSH.** It runs an ARM64 container that answers `POST /invocations` and `GET /ping` on port 8080, one microVM per session, at most 8 hours a session and 60 minutes a stream, with a filesystem that is gone when the session ends unless session storage (a preview, 1 GB) or a volume is attached ([the service contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-service-contract.html), [sessions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-sessions.html), [filesystems](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-filesystem-configurations.html)). So it is not a host as Postbox knows one.
+- **What it would take:** the host daemon’s protocol, JSON lines that resume from a byte offset, carried over the runtime’s HTTP stream instead of `ssh`. That is the same split “What keeps bring your own agents possible” names: the protocol apart from the connection. A stream cut at 60 minutes is a disconnect the protocol already resumes from.
+- **What it would buy:** each agent’s session in its own microVM, which is the wall between rooms’ agents that one shared host doesn’t give (“What membership is not”); no SSH key for the server to hold; and pay for the seconds a turn runs.
+- **What it would cost:** a second transport to build and review; a session’s 8-hour limit against rooms that run for days, so the work folder must live on an attached volume; and Kiro still needs its key.
+- **AgentCore Identity, Gateway and Memory aren’t needed for this.** Identity’s outbound credentials are the natural answer to “Whose name is on a commit or a push from a host” in the table above, when that row is taken up.
+
+The question for the owner is “AgentCore as a second way to run agents” under “Open questions for the owner”.
+
+## The test deployment on AWS
+
+`infra/` holds a CDK app, and `Dockerfile` the server’s image ([infra/README.md](../../infra/README.md) is the recipe). It is the smallest stack that proves the hosted edge against a real load balancer:
+
+- one Application Load Balancer with an HTTPS listener that signs people in with an Amazon Cognito user pool the stack makes, and forwards to
+- one Fargate task of the server’s image, with the data folder on an EFS file system, in subnets where **only the load balancer’s security group reaches its port** (the owner, 26 November 2026: “Network rules”);
+- one task at a time, the old one stopped before the new one starts, which is how the deployment keeps one writer (“One server, one disk”).
+
+It is ECS, not the Kubernetes cluster this document’s first notes named, because it is the least to run for a test and the image is the same on either. Which a team’s deployment uses is “ECS or a Kubernetes cluster” under “Open questions for the owner”.
+
 ## One server, one disk
 
 **Decision.** A hosted Postbox is one process on one disk. The store is one append-only log with one writer, read from memory ([store.md](store.md)), and the event streams, who has what open and the running turns live in that process. On AWS that is one replica with one attached volume, on a Kubernetes cluster (the owner’s answers, “Earlier”).
@@ -230,6 +288,8 @@ The address, sign-in and membership slices change a security boundary and are re
 - **What else follows membership.** This document puts only rooms behind membership, and keeps the agents, the projects, the hosts and people’s profiles shared by everyone signed in. That costs this: anyone signed in can add an agent of a room they can’t reach to a room of their own and ask it what it knows, and can edit that agent’s instructions. Keep them shared, and say plainly that membership keeps a person from a room’s page, not from what its agents know; or have agents follow membership too, so an agent is added to a room, edited or deleted only by someone who is a member of every room it is in, which costs a team the reuse of one agent across rooms with no member in common?
 - **A name that changes at the provider.** A person’s record keeps the name it was first kept with. Hosted, should the record follow the provider’s claims at each sign-in, which is what “the name is the provider’s” reads as, though an agent that goes on writing the old user name then asks no one (a mention resolves by the current one); or keep the first, and show a name the provider no longer gives?
 - **Postbox’s own browser.** Let it in over loopback with a secret made at each start, reading as no person, or build the view another way so nothing but a signed request is answered? The other way: the capture’s browser already routes every request through Postbox’s process (`server/view-app/browser.mjs`), so it can answer each from Postbox’s handler there, with no socket; a fulfilled request can’t stream, so the capture page reads state once instead of following the stream.
+- **AgentCore as a second way to run agents.** Build the agent host image first and reach it over SSH, as proposed, and take AgentCore Runtime up after as a second transport for the daemon’s protocol; or go to AgentCore first, which delays any agent running on AWS until that transport exists? And is Kiro, which can’t use Bedrock in your own account, wanted on a hosted Postbox with a Kiro key on the host?
+- **ECS or a Kubernetes cluster.** The test stack is ECS on Fargate. Should a team’s deployment be the same, or a Kubernetes cluster as first noted?
 - **Antigravity doesn’t run on a host yet.** A hosted Postbox offers Claude Code, Kiro and Codex; the Agent SDK, which runs in Postbox’s own process, is being removed ([#1834](https://github.com/HJeon139/postbox/pull/1834)). Leave Antigravity out of a hosted Postbox until a host runs it, which costs a team that backend, or make running it on a host part of the cloud hosts slice, which adds it to the daemon and needs a test on a host?
 
 ## Revisit when

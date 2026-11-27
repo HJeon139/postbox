@@ -1,7 +1,7 @@
 // Postbox server: serves the app, the API, live updates over server-sent events, the MCP endpoint and
 // the sandbox frames for agent-written apps. Node only, no dependencies.
 //
-//   node server/index.mjs [--port 4173] [--data <folder>] [--fresh] [--demo]
+//   node server/index.mjs [--port 4173] [--data <folder>] [--fresh] [--demo] [--hosted <settings file>]
 //
 // The same as the postbox command (bin/postbox.mjs), which reads the flags and finds the data folder (server/home.mjs).
 
@@ -83,11 +83,12 @@ const OUTPUT_HEADERS = { 'content-type': 'text/plain; charset=utf-8', 'x-content
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
  *           host?: string, spawnShell?: typeof import('node:child_process').spawn, openUrl?: (cmd: [string, string[]]) => Promise<unknown>, hosts?: import('./remote/hosts.mjs').HostManager|null,
  *           wake?: Parameters<typeof import('./remote/wake.mjs').watchWake>[1], probes?: Partial<typeof PROBES>, archiveTurns?: boolean,
- *           account?: import('./identity/index.mjs').Principal, signIn?: import('./identity/index.mjs').SignIn }} [opts]
+ *           account?: import('./identity/index.mjs').Principal, signIn?: import('./identity/index.mjs').SignIn, publicOrigin?: string }} [opts]
  *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
  *   checks pass a temp folder, so they never read the real one)
  *   account: who the computer’s account is (server/identity/index.mjs, #558); tests and screenshot runs pass a fixture person’s
  *   signIn: a hosted Postbox’s sign-in (designs/architecture/hosted.md); given, every request is whoever signed in, or refused
+ *   publicOrigin: a hosted Postbox’s one public address, which it answers in place of 127.0.0.1 (server/request-gate.mjs)
  *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
  *   host: the address it listens on, 127.0.0.1; `!` commands refuse to run on any other (tests check that)
  *   spawnShell: how `!` commands start (tests pass a fake)
@@ -115,10 +116,11 @@ export async function start({
   archiveTurns = false,
   account = undefined,
   signIn = undefined,
+  publicOrigin = undefined,
 } = {}) {
   // Before anything is opened: sign-in settings that leave something out stop the start, with nothing held (#1733).
   if (signIn) signInSettings(signIn.settings);
-  const origin = `http://127.0.0.1:${port}`;
+  const origin = publicOrigin ?? `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
   const { store, blobs, mediaDir } = await openDataFolder(dataDir, { fresh });
   const adapters = new AdapterRegistry().register(new MockAdapter());
@@ -171,6 +173,8 @@ export async function start({
   // port, and two Postboxes on one computer don’t overwrite each other’s.
   const token = Buffer.from(randomBytes(32).toString('base64url'));
   const cookieName = `pb_token_${port}`;
+  // Hosted, it is sent only over TLS, as the public origin is reached (designs/architecture/hosted.md, “The address it answers”).
+  const setCookie = `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/${publicOrigin ? '; Secure' : ''}`;
   const cookieRe = new RegExp(`(?:^|;\\s*)${cookieName}=([^;]*)`); // lint-allow regex: pb_token_ and the port number
   const hasToken = (req) => {
     const sent = Buffer.from(String(req.headers.cookie ?? '').match(cookieRe)?.[1] ?? '');
@@ -183,7 +187,7 @@ export async function start({
     req.headers['sec-fetch-mode'] === 'navigate' || req.headers['sec-fetch-site'] === 'same-origin' || req.headers['sec-fetch-site'] === 'none';
 
   // Who it answers before any route, and what runs only on this computer alone (server/request-gate.mjs).
-  const gate = requestGate({ port, host: () => host });
+  const gate = requestGate({ port, host: () => host, publicOrigin });
   // Who each request is from (#558): the provider’s answer, and the person that is.
   const who = whoIs({ store, account, signIn });
 
@@ -217,7 +221,7 @@ export async function start({
   async function route(req, res) {
     const url = new URL(req.url, origin);
     const path = url.pathname;
-    const host = (req.headers.host ?? '').toLowerCase();
+    if (gate.health(req, res, path)) return;
     gate.admit(req);
     // Every write needs the page’s token (#74), except /mcp, where agents call Postbox’s tools with their session.
     if (req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && !hasToken(req))
@@ -248,7 +252,7 @@ export async function start({
       return file(
         res,
         await servedFile(STATIC['/app/'], 'index.html'),
-        { ...appHeaders(config), ...(fromBrowser(req) ? { 'set-cookie': `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/` } : {}) },
+        { ...appHeaders(config), ...(fromBrowser(req) ? { 'set-cookie': setCookie } : {}) },
         req,
       );
     if (path === '/favicon.svg') return file(res, await servedFile(BUNDLED_MEDIA, 'favicon.svg'), {}, req);
@@ -263,7 +267,7 @@ export async function start({
     }
 
     // Sandbox frames: agent apps and Mermaid diagrams (server/sandbox-routes.mjs).
-    const sandbox = sandboxRoute(store, origin, `http://${host}`, path, url);
+    const sandbox = sandboxRoute(store, origin, gate.framedBy(req), path, url);
     if (sandbox) return raw(res, 200, sandbox.html, sandbox.headers);
     let m;
 
