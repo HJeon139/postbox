@@ -142,7 +142,8 @@
     const hits = Object.entries(anchorMap).filter(([, el]) => el?.isConnected && el.contains(e.target));
     const inner = hits.find(([, el]) => !hits.some(([, other]) => other !== el && el.contains(other)));
     const control = e.target.closest(CONTROLS);
-    if (!inner || (control && inner[1].contains(control))) return;
+    // A part that takes focus itself, as a card may, isn’t a control inside it.
+    if (!inner || (control && control !== inner[1] && inner[1].contains(control))) return;
     post({ type: 'pin', anchor: inner[0] });
   });
 

@@ -84,8 +84,9 @@ test('#855 an app that names parts keeps its tags, and a tag’s click opens a c
 });
 
 test('a click anywhere in a highlighted part opens a comment on it, and a click on a control in the part still works the app', async ({ page }) => {
-  // The chart is inside a panel that is a part too: the innermost part takes the click.
-  const PARTS = `<main style="padding:12px;color:var(--text)"><section id="p" style="padding:24px"><div id="c" style="height:120px;padding:8px">Chart<button id="b" type="button" style="color:var(--text);background:var(--panel)">Count</button><output id="o">0</output></div></section></main>
+  // The chart is inside a panel that is a part too: the innermost part takes the click. The chart takes focus itself, as a
+  // card may, which doesn’t make it one of the app’s own controls inside it.
+  const PARTS = `<main style="padding:12px;color:var(--text)"><section id="p" style="padding:24px"><div id="c" tabindex="0" style="height:120px;padding:8px">Chart<button id="b" type="button" style="color:var(--text);background:var(--panel)">Count</button><output id="o">0</output></div></section></main>
 <script>document.getElementById('b').onclick = () => { const o = document.getElementById('o'); o.textContent = String(+o.textContent + 1); };
 postbox.anchors({ panel: document.getElementById('p'), chart: document.getElementById('c') });</script>`;
   const { block } = await review(page, 'parts', PARTS);
