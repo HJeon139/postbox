@@ -49,6 +49,7 @@ test('a token the load balancer signed for this Postbox is its person: the issue
     issuer: 'https://idp.example',
     subject: 'u-1',
     claims: { sub: 'u-1', name: 'Robin Example', email: 'robin@example.com' },
+    until: NOW + 120_000,
   });
   // The parts keep their padding, which a strict base64url decoder refuses: this token’s header and payload end in “=”.
   assert.match(token().split('.')[0] + token().split('.')[1], /=/);

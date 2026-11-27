@@ -24,7 +24,7 @@ npm install -g ./postbox-<version>.tgz
 postbox
 ```
 
-A global install brings the optional packages too (Kokoro and `playwright-core`); add `--omit=optional` to a project install to leave them out. `postbox --help` lists its flags: `--port`, `--data`, `--fresh`, `--demo`, `--move-data`, `-v` (`--version`) and `-h` (`--help`). The package holds only what runs (`bin/`, `app/`, `server/`, `shared/` and `agent-plugin/`, the skills Postbox gives its agents) and `CHANGELOG.md`, and its build line under **Personas** shows the commit it was packed from. Upgrading or uninstalling it leaves your conversations alone, since they’re in `~/.postbox`, not in the package.
+A global install brings the optional packages too (Kokoro and `playwright-core`); add `--omit=optional` to a project install to leave them out. `postbox --help` lists its flags: `--port`, `--data`, `--fresh`, `--demo`, `--move-data`, `--hosted`, `-v` (`--version`) and `-h` (`--help`). The package holds only what runs (`bin/`, `app/`, `server/`, `shared/` and `agent-plugin/`, the skills Postbox gives its agents) and `CHANGELOG.md`, and its build line under **Personas** shows the commit it was packed from. Upgrading or uninstalling it leaves your conversations alone, since they’re in `~/.postbox`, not in the package.
 
 Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `~/.postbox` as an event log, so they survive a restart and an upgrade. Set `POSTBOX_HOME` to keep them somewhere else, or pass `--data <folder>` for one run. Add `--fresh` to start over.
 
@@ -74,7 +74,7 @@ Postbox uses [semantic versioning](https://semver.org/), from [Conventional Comm
 - **Each open tab holds one connection.** Browsers allow 6 connections per host over HTTP/1.1, so with about six Postbox tabs open, new requests wait. Postbox closes its stream when a tab is put away, but it doesn’t yet share one stream across tabs.
 - **The pre-display check is approximate.** It finds overflow, missing labels and alt text, positive tabindex, low contrast and script errors. It doesn’t yet detect every keyboard trap or verify that saved state restores correctly.
 - **Semantic search is a stub.** It uses a small table of related words until your own index is connected. Lexical search (BM25) is real.
-- **There’s no sign-in.** Postbox is for one person on one machine, and it refuses requests from other hosts and other sites.
+- **There’s no sign-in on your own computer.** There Postbox is for one person on one machine, and it refuses requests from other hosts and other sites. A Postbox for a team runs on a server with `--hosted <settings file>`, behind a load balancer that signs people in; it is being built, and [architecture/hosted.md](architecture/hosted.md) says what works and what doesn’t yet.
 - **An attached session has two writers.** If you write to it from Postbox while a terminal turn is still running, both resume the same session. Postbox can’t see that a terminal is busy.
 - **Each Claude Code turn starts a new process.** Resuming a session adds a second or two before the first token. A long-lived process per session would remove it.
 - **Kokoro’s dependencies have open advisories** (`sharp`, and `sprintf-js` through `onnxruntime-node`) with no fixed versions yet. They run only in the narration process, never in the server.

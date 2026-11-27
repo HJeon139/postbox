@@ -1,0 +1,8 @@
+{
+  "app": "node app.mjs",
+  "context": {
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/aws-ecs:arnFormatIncludesClusterName": true,
+    "@aws-cdk/aws-efs:denyAnonymousAccess": true
+  }
+}

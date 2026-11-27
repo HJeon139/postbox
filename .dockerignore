@@ -1,0 +1,10 @@
+# Only what the Dockerfile copies is sent to the build.
+*
+!package.json
+!CHANGELOG.md
+!bin
+!app
+!server
+!shared
+!agent-plugin
+server/build-commit.txt

@@ -20,6 +20,7 @@ test('a signed-in person on the allow list is a principal: the issuer and subjec
     subject: 'u-1',
     username: 'robin',
     name: 'Robin Example',
+    until: NOW + 120_000,
   });
 });
 
