@@ -2,23 +2,31 @@
 // Postbox starts, and what the routes in server/index.mjs ask of them. Kept out of that file, which is at its length
 // ceiling.
 
+import { httpError } from '../helpers.mjs';
 import { People } from '../people.mjs';
 import { createIdentity } from './index.mjs';
 
 /**
- * @param {{ store: import('../store.mjs').Store, account?: import('./index.mjs').Principal }} deps
+ * @param {{ store: import('../store.mjs').Store, account?: import('./index.mjs').Principal, signIn?: import('./index.mjs').SignIn }} deps
  *   account: who the computer’s account is, for the local provider; a test or a screenshot run passes a fixture’s
+ *   signIn: a hosted Postbox’s sign-in (designs/architecture/hosted.md); given, every request is whoever signed in
  */
-export function whoIs({ store, account }) {
-  const identity = createIdentity({ account });
+export function whoIs({ store, account, signIn }) {
+  const identity = createIdentity({ account, signIn });
   const people = new People({ store });
   return {
     people,
     /**
      * The person a request is from, as the provider says, never read from its body. /mcp is an agent’s way in, and no
-     * person’s. @param {import('node:http').IncomingMessage} req @param {string} path
+     * person’s: on your own computer it is answered without asking who, and hosted it has no caller (a turn on a host
+     * reaches its tools through the daemon), so it is refused as if it weren’t there.
+     * @param {import('node:http').IncomingMessage} req @param {string} path
      */
-    of: async (req, path) => (path === '/mcp' ? null : people.of(await identity.identify(req))),
+    of: async (req, path) => {
+      if (path !== '/mcp') return people.of(await identity.identify(req));
+      if (signIn) throw httpError(404, 'There’s nothing here.');
+      return null;
+    },
     /**
      * Who a message is from, for the send (server/send-message.mjs): their id, which it is stamped with, and `keep`,
      * which makes them someone this Postbox knows. The send calls it once nothing can refuse the message, so a refused
