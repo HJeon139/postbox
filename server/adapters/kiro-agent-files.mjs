@@ -96,6 +96,8 @@ export async function sweepKiroAgents(root) {
   }
   // Cleaning up never stops Postbox from starting: a record it can’t rewrite is tried again at the next start.
   await change(root, () => left).catch((e) =>
-    console.error(`Postbox couldn’t update its record of Kiro agent files (${e instanceof Error ? e.message : e}). It tries again at the next start.`),
+    console.error(
+      `Postbox couldn’t update ${recordIn(root)} (${e instanceof Error ? e.message : e}). Check that Postbox can write to its data folder; it tries again at the next start.`,
+    ),
   );
 }

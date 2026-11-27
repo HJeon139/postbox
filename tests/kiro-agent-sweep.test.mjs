@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import { removeKiroAgent, sweepKiroAgents, writeKiroAgent } from '../server/adapters/kiro-agent-files.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { fakeCtx, fakeSpawn, fixture } from './kiro-cli-fakes.mjs';
@@ -95,10 +95,14 @@ test('#1864 a record the sweep can’t rewrite doesn’t stop Postbox from start
   await writeKiroAgent(p.file, '{}', p.workRoot);
   // The data folder closed to writing: the agent file goes, but its record can’t be renamed over.
   chmodSync(p.data, 0o555);
+  const said = mock.method(console, 'error', () => {});
   try {
     await sweepKiroAgents(p.workRoot);
   } finally {
+    said.mock.restore();
     chmodSync(p.data, 0o755);
   }
   assert.equal(existsSync(p.file), false, 'the agent file is still removed');
+  assert.deepEqual(record(p.data), [p.file], 'the record is as it was, for the next start');
+  assert.match(String(said.mock.calls.at(-1)?.arguments[0]), /couldn’t update .*kiro-agents\.json .*Check that Postbox can write to its data folder/);
 });
