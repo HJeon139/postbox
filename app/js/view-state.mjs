@@ -3,7 +3,6 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
-import { countItems } from './item-places.mjs';
 import { bind, unbind } from './view-bind.mjs';
 import { browserMoved, clamped, measure } from './view-box.mjs';
 /** @typedef {import('./view-hold.mjs').Hold} Hold */
@@ -293,8 +292,6 @@ export function mountView({ el, inPanel, nodes, was }) {
   // (work-pane-thread.spec.mjs). The likely cause, not proven: going full screen and back changes the box’s width, and
   // its items in view draw at the new width over the frames after, clamping the view again once the size is seen.
   if (!inPanel) skipOffscreen(el);
-  // A skipped item’s contents are out of the accessibility tree, so each item says its place (#1048, item-places.mjs).
-  if (!inPanel) countItems(el);
   // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
   // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it
