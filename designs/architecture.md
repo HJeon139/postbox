@@ -142,7 +142,7 @@ Each is one line: the decision, why, and where its detail is.
 |---|---|
 | [store.md](architecture/store.md) | The event log, snapshots, commits, recovery and the writer’s lock; how agent data reaches the store |
 | [assets.md](architecture/assets.md) | Attachments, agents’ assets, their retention and their search |
-| [background-processes.md](architecture/background-processes.md) | Background work that outlives a turn: keeping a harness’s background jobs and marked work, wake on exit, and hosts (proposed, #1614) |
+| [background-processes.md](architecture/background-processes.md) | Background work that outlives a turn: an agent with a job running takes messages right away, the job’s end wakes it, and the order the backends and hosts get that in (proposed, #1614) |
 | [front-end.md](architecture/front-end.md) | The page without a framework or build, the transcript window, and the right pane |
 | [adapters.md](architecture/adapters.md) | The five backends, the harness-event contract, the guide and the shared limits |
 | [agent-setup.md](architecture/agent-setup.md) | What a turn is given: setting sources, publishing tools, writes outside Postbox, MCP servers, skills, hooks, tools, model and effort |
@@ -155,6 +155,7 @@ Each is one line: the decision, why, and where its detail is.
 | [diagram-legibility.md](architecture/diagram-legibility.md) | The checks on a reply, and the pipeline that brings their findings to the agent |
 | [security-boundaries.md](architecture/security-boundaries.md) | This computer alone, the page’s token, `!` commands, and what reaches the browser |
 | [people.md](architecture/people.md) | Who is asking, a person’s record and profile, and what agents are told of them |
+| [hosted.md](architecture/hosted.md) | One Postbox for a team on a server (proposed): the address it answers, sign-in at the load balancer, who may reach a room, what assumed one computer, and the slices |
 | [work-ledger.md](architecture/work-ledger.md) | The work ledger, what a command committed, and Restore |
 | [run-clock.md](architecture/run-clock.md) | Run clocks for timed trials, off by default: state, the turn’s line, holds and stops, and the outage limit |
 | [remote-hosts.md](architecture/remote-hosts.md) | The daemon, its protocol, the shim, turn states, the SSH connection, security and keeping a host up to date |

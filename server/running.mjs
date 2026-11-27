@@ -26,6 +26,10 @@ export class Running {
      * One per session, replaced by the next, and never read to decide whether the session is busy.
      */
     this.left = new Map();
+    /** @type {Map<string, (() => void)[]>} sessionId → what waits for its stopped turn to exit (afterExit) */
+    this.exitWaits = new Map();
+    /** Whether a shutdown stopped waiting for stopped turns to exit (releaseWaits) */
+    this.released = false;
     this.shuttingDown = false;
   }
 
@@ -111,6 +115,29 @@ export class Running {
   /** The session’s stopped turn has exited. @param {string} sessionId */
   exited(sessionId) {
     this.exiting.delete(sessionId);
+    for (const done of this.exitWaits.get(sessionId) ?? []) done();
+    this.exitWaits.delete(sessionId);
+  }
+
+  /**
+   * Settles once the session’s stopped turn has exited, or at once if none is exiting: what forgetting a deleted
+   * persona waits for, since its CLI may write the memory being removed as it exits (#1797). The stop’s watchdog
+   * (turn-stop.mjs) ends the wait for a process that never exits, and so does a shutdown (releaseWaits).
+   * @param {string} sessionId @returns {Promise<void>}
+   */
+  afterExit(sessionId) {
+    // Once a shutdown stopped waiting (releaseWaits), no wait would ever settle: none is made.
+    if (!this.exiting.has(sessionId) || this.released) return Promise.resolve();
+    const waits = this.exitWaits.get(sessionId) ?? [];
+    this.exitWaits.set(sessionId, waits);
+    return new Promise((done) => waits.push(() => done()));
+  }
+
+  /** Settles every wait for a stopped turn’s exit: Postbox, shutting down, waits for those processes no longer. */
+  releaseWaits() {
+    this.released = true;
+    for (const waits of this.exitWaits.values()) for (const done of waits) done();
+    this.exitWaits.clear();
   }
 
   /** The session’s turn on a host waits to be attached again (#1135). @param {string} sessionId @param {string} hostId */
