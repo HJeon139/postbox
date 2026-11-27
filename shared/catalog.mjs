@@ -8,7 +8,8 @@
 import { appFontErrors } from './app-fonts.mjs';
 import { option, options } from './catalog-options.mjs';
 import { INTENT_CHARS, LIMITS, REVIEW_THREADS_MAX } from './limits.mjs';
-import { ANCHOR, anchorError, author, PERSON, REGION, regionClashes, regionError, threadsError } from './review-comments.mjs';
+import { ANCHOR, anchorError, author, PERSON, threadsError } from './review-comments.mjs';
+import { REGION, regionClashes, regionError } from './review-regions.mjs';
 import { bool, described, id, int, jsonOf, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
 import { isSafeUrl, LOCAL_HTTP } from './urls.mjs';
 

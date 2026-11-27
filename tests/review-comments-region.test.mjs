@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
-import { commentAt, commentErrors, regionAnchor } from '../shared/review-comments.mjs';
+import { commentAt, commentErrors } from '../shared/review-comments.mjs';
+import { regionAnchor } from '../shared/review-regions.mjs';
 import { settle, setup, turn } from './blocks-fixture.mjs';
 
 const box = { x: 0.12, y: 0.3, w: 0.2, h: 0.15, version: 3 };

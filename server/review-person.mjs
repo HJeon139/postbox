@@ -4,7 +4,8 @@
 // the answer writes the person’s, and only review_block another agent’s.
 
 import { validateBlock } from '../shared/catalog.mjs';
-import { PERSON, personNext, regionAnchor, threadsError } from '../shared/review-comments.mjs';
+import { PERSON, personNext, threadsError } from '../shared/review-comments.mjs';
+import { regionAnchor } from '../shared/review-regions.mjs';
 import { httpError } from './helpers.mjs';
 import { ownedAuthors } from './review-authors.mjs';
 import { keepReviewThreads } from './review-comments.mjs';

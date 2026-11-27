@@ -5,7 +5,7 @@
 // the app’s content (apps.mjs, sizeFrame), so of the app itself. Each region on the version shown is drawn with its
 // number; one on another version is listed only, with its version (designs/agent-apps.md, the review block).
 
-import { REGION_ANCHOR, regionAnchor, regionText } from '/shared/review-comments.mjs';
+import { REGION_ANCHOR, regionAnchor, regionText } from '/shared/review-regions.mjs';
 import { shownVersion } from './apps.mjs';
 import { client } from './client.mjs';
 import { h } from './dom.mjs';

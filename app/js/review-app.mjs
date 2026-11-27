@@ -2,7 +2,7 @@
 // anchor beside it (designs/agent-apps.md, the review block). An app that names no parts says so, and the person
 // comments on the whole app instead (#855), or marks a point or a box anywhere on it (#856, review-marks.mjs).
 
-import { REGION_ANCHOR } from '/shared/review-comments.mjs';
+import { REGION_ANCHOR } from '/shared/review-regions.mjs';
 import { mountApp } from './apps.mjs';
 import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
