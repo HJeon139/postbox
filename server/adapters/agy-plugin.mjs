@@ -1,8 +1,7 @@
 // The plugin Postbox puts in an Antigravity agent’s folder for a turn: its files, where it goes, and keeping it out of
 // git status.
 
-import { existsSync } from 'node:fs';
-import { chmod, mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { agentSkillFiles } from './agent-plugin.mjs';
 import { HOOK_TIMEOUT_S } from './agy-hook.mjs';
@@ -51,8 +50,12 @@ export async function writeAgyPlugin(dir, files, root = null) {
 export async function removeAgyPlugin(plugin, root = null) {
   await rm(plugin, { recursive: true, force: true }).catch(() => {});
   for (const dir of [dirname(plugin), dirname(dirname(plugin))]) await rmdir(dir).catch(() => {});
-  // Dropped only once it’s gone: one the turn couldn’t remove stays noted, for the next start to try again.
-  if (root && !existsSync(plugin)) await dropPlugin(root, plugin).catch(() => {});
+  // Dropped only once it’s gone: one the turn couldn’t remove, or can’t even look at, stays noted for the next start.
+  const gone = await lstat(plugin).then(
+    () => false,
+    (/** @type {any} */ e) => e?.code === 'ENOENT',
+  );
+  if (root && gone) await dropPlugin(root, plugin).catch(() => {});
 }
 
 /** The files of Postbox’s skills a persona keeps on (#207), for the plugin’s skills/ folder. */

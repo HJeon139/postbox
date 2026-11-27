@@ -63,16 +63,22 @@ test('#314 a record edited to name another folder removes nothing there', async 
   assert.equal(readFileSync(join(kept, 'todo.md'), 'utf8'), 'mine\n', 'only a plugin’s own folder is ever removed');
 });
 
-test('#314 a plugin the turn couldn’t remove stays noted, for the next start to remove', async () => {
-  const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
-  const folder = tempDir('pb-agy-folder-');
-  const plugin = join(folder, PLUGIN_DIR);
-  await writeAgyPlugin(plugin, files(), workRoot);
-  // Its folder made read-only, as an agent could: the turn’s removal fails.
-  chmodSync(join(folder, '.agents', 'plugins'), 0o555);
-  await removeAgyPlugin(plugin, workRoot);
-  chmodSync(join(folder, '.agents', 'plugins'), 0o755);
-  assert.ok(existsSync(plugin), 'still there');
-  await sweepAgyPlugins(workRoot);
-  assert.equal(existsSync(plugin), false, 'removed at the next start');
+// File modes don’t stop root, whose rm goes through: where the tests run as root, this case can’t make a failed removal.
+const ROOT = process.getuid?.() === 0;
+test('#314 a plugin the turn couldn’t remove stays noted, for the next start to remove', {
+  skip: (process.platform === 'win32' || ROOT) && 'POSIX modes, not root',
+}, async () => {
+  // Its folder made read-only, or closed to look into, as an agent could: the turn’s removal fails.
+  for (const mode of [0o555, 0o000]) {
+    const workRoot = join(tempDir('pb-agy-data-'), 'workspaces');
+    const folder = tempDir('pb-agy-folder-');
+    const plugin = join(folder, PLUGIN_DIR);
+    await writeAgyPlugin(plugin, files(), workRoot);
+    chmodSync(join(folder, '.agents', 'plugins'), mode);
+    await removeAgyPlugin(plugin, workRoot);
+    chmodSync(join(folder, '.agents', 'plugins'), 0o755);
+    assert.ok(existsSync(plugin), `still there (${mode.toString(8)})`);
+    await sweepAgyPlugins(workRoot);
+    assert.equal(existsSync(plugin), false, `removed at the next start (${mode.toString(8)})`);
+  }
 });
