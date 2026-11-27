@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.2.0 (2026-11-27)
+
+### Features
+
+- **identity:** a provider for whoever a load balancer signed in, with an allow list
+- **identity:** check the sign-in token a load balancer forwards
+
+### Fixes
+
+- **identity:** a signed-in person whose token lacks the named claims is told why
+- **identity:** refuse an allow list with a part that can't be read, and test exact matching
+- **identity:** a key in use stays the newest in the key store
+- **identity:** the settings and the key lookup share one rule for a region
+- **identity:** bound what made-up key ids can make the sign-in check do
+
 ## 5.1.1 (2026-11-27)
 
 ### Fixes
