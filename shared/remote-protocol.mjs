@@ -95,10 +95,10 @@
 //   reads the rest of that connection’s answers (#1683).
 // - `signins {}` asks the daemon whether each harness its welcome found is signed in, by that harness’s own status
 //   command (server/remote/host/harness-signin.mjs), run as an argument list with no shell and no stdin, for at most
-//   15 s, its answer kept 60 s. `signed { harnesses }` answers it, one entry per harness found: its name, its state
-//   (SIGN_IN_STATES) and, when signed in, the sign-in’s method and when it runs out (epoch ms, or null), never the
-//   command’s own output, which names the account. Also new without a version number: a daemon from before it
-//   refuses it as `models`’ do, and Postbox reads that as unknown (#1608).
+//   15 s; a sign-in is kept 60 s, and a sign-out or unknown is asked again. `signed { harnesses }` answers it, one
+//   entry per harness found: its name, its state (SIGN_IN_STATES) and, when signed in, the sign-in’s method and when it
+//   runs out (epoch ms, or null), never the command’s own output, which names the account. Also new without a version
+//   number: a daemon from before it refuses it as `models`’ do, and Postbox reads that as unknown (#1608).
 //
 // This module is the protocol’s one entry point, and its parts are the remote-protocol-*.mjs modules beside it, one
 // concern each: constants, checks (single values), parts (what several messages carry), files (the host’s), the

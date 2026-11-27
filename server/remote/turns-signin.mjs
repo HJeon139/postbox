@@ -10,15 +10,41 @@ import { abortError } from './turns-shared.mjs';
 
 /**
  * A sign-in that’s run out shows before the turn, not at its first model request (the design, “Sign-in stays the
- * host’s”). It’s a warning, never a refusal: the check may be wrong, and the person decides. When the host last said
- * the turn’s harness isn’t signed in (#1608), the warning says so and names the command to run there; else a failed
- * signInCheck warns as before.
+ * host’s”). It’s a warning, never a refusal: the check may be wrong, and the person decides. The start waits only for
+ * signInCheck, as before #1608. It asks the host now whether the turn’s harness is signed in, without waiting, and
+ * decides the warning when the answer comes (warnFrom): a sign-out names the command to run there, else a failed
+ * signInCheck warns as before, so the two never give two notices.
  * @param {RemoteTurns} rts @param {any} turn @param {any} ctx @param {any} se @param {any} host
  */
 export async function warnSignIn(rts, turn, ctx, se, host) {
-  const [check, now] = await Promise.all([signInCheck(rts, turn.remote.hostId), signInsNow(rts, turn.remote.hostId)]);
+  const check = await signInCheck(rts, turn.remote.hostId);
   if (ctx.signal.aborted) throw abortError();
-  const harness = ctx.persona?.backend;
+  void signInsNow(rts, turn.remote.hostId)
+    .then((now) => {
+      if (!ctx.signal.aborted) warnFrom(rts, turn, se, host, ctx.persona?.backend, check, now);
+    })
+    .catch((/** @type {any} */ e) => console.error(`The sign-in warning before a turn on ${host.name} failed: ${e?.message}`));
+}
+
+/**
+ * The host’s answer now, over the session the turn runs on, so a sign-in the person fixed since is heard (#1608); null
+ * when there’s no asking or it fails, which warns of no sign-out. Never rejects: nothing waits on it to catch one.
+ * @param {RemoteTurns} rts @param {string} hostId @returns {Promise<any>}
+ */
+function signInsNow(rts, hostId) {
+  try {
+    return Promise.resolve(rts.hosts?.signInsNow?.(hostId) ?? null).catch(() => null);
+  } catch {
+    return Promise.resolve(null); // an asking that throws as it’s called is one that failed: no sign-out heard
+  }
+}
+
+/**
+ * The one warning for a turn, once the host has answered: its harness signed out, else a failed signInCheck.
+ * @param {RemoteTurns} rts @param {any} turn @param {any} se @param {any} host @param {string | undefined} harness
+ * @param {any} check @param {any} now
+ */
+function warnFrom(rts, turn, se, host, harness, check, now) {
   if (signedOut(now, harness)) {
     const name = BACKEND_NAMES[harness] ?? harness;
     rts.rt.threads.notify(
@@ -28,7 +54,9 @@ export async function warnSignIn(rts, turn, ctx, se, host) {
       `${host.name} says ${name} there isn’t signed in, so @${se.handle}’s turn there may stop with “Sign-in needed”. Run “${LOGIN_COMMANDS[harness]}” on ${host.name}, then carry on.`,
       turn.threadId,
     );
-  } else if (check && !check.ok)
+    return;
+  }
+  if (check && !check.ok)
     rts.rt.threads.notify(
       'blocking',
       se,
@@ -36,33 +64,6 @@ export async function warnSignIn(rts, turn, ctx, se, host) {
       `The host’s sign-in check failed${check.code === null ? '' : ` (exit code ${check.code})`}, so @${se.handle}’s turn there may stop with “Sign-in needed”. Sign in on the host, then carry on.`,
       turn.threadId,
     );
-}
-
-/** How long a turn’s start waits for the host to say whether its harness is signed in, before it warns of nothing. */
-export const SIGN_IN_TURN_WAIT_MS = 5000;
-
-/**
- * The host’s answer now, over the session the turn runs on, not one before it, so a sign-in the person fixed since is
- * heard (#1608); null when it doesn’t come within SIGN_IN_TURN_WAIT_MS, so a slow host never holds the turn up.
- * @param {RemoteTurns} rts @param {string} hostId @returns {Promise<any>}
- */
-function signInsNow(rts, hostId) {
-  const asked = rts.hosts?.signInsNow?.(hostId);
-  if (!asked) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), SIGN_IN_TURN_WAIT_MS);
-    timer.unref?.();
-    asked.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(null);
-      },
-    );
-  });
 }
 
 /**

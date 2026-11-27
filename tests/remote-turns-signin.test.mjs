@@ -1,12 +1,12 @@
-// The warning before a turn starts on a host (server/remote/turns-signin.mjs): when the host last said the turn’s
-// harness isn’t signed in (#1608), the person hears so with the command to run there, and the turn still starts.
-// tests/remote-turns.test.mjs says how the rig works.
+// The warning before a turn starts on a host (server/remote/turns-signin.mjs): when the host, asked as the turn starts,
+// says the turn’s harness isn’t signed in (#1608), the person hears so with the command to run there, and the turn
+// starts without waiting for the answer. tests/remote-turns.test.mjs says how the rig works.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { HOST, rig, running, settled, starts } from './remote-turns-helpers.mjs';
+import { HOST, rig, running, settled, sleep, starts, until } from './remote-turns-helpers.mjs';
 
-/** The host’s last answer, as the manager’s status carries it. @param {object[]} harnesses */
+/** The host’s answer, as the manager’s status carries it. @param {object[]} harnesses */
 const signIns = (harnesses) => ({ at: 1, harnesses });
 
 /** The sign-in notices the turn raised. @param {ReturnType<typeof rig>} r */
@@ -74,4 +74,76 @@ test('#1608: a turn’s start warns from what the host says now, not from an ans
   );
   lapsed.d.end(two);
   await settled(lapsed);
+});
+
+/** An asking the test answers when it likes: signInsNow, and resolve or reject for its answer. */
+function deferred() {
+  /** @type {(v: any) => void} */
+  let resolve = () => {};
+  /** @type {(e: any) => void} */
+  let reject = () => {};
+  const p = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { signInsNow: () => p, resolve, reject };
+}
+
+test('#1608: the start reaches the host while the host’s answer is pending, and a sign-out heard after warns', async () => {
+  const r = rig();
+  const answer = deferred();
+  r.hosts.signInsNow = answer.signInsNow;
+  // A slow status command on the host holds nothing: the start goes out before any answer (the review of #1957).
+  r.rt.sendMessage(r.t.id, { text: 'hi' });
+  await until(() => starts(r.d).length === 1, 'the start before the host’s answer', 250);
+  assert.deepEqual(signInNotes(r), [], 'nothing said before the answer');
+  answer.resolve(signIns([{ name: 'claude-code', state: 'signed-out' }]));
+  await until(() => signInNotes(r).length === 1, 'the notice once the answer comes');
+  assert.equal(signInNotes(r)[0].title, `Claude Code on ${HOST} isn’t signed in`);
+  r.d.end(starts(r.d)[0].turn);
+  await settled(r);
+});
+
+test('#1608: a turn stopped before the host’s answer comes raises no sign-in notice', async () => {
+  const r = rig();
+  const answer = deferred();
+  r.hosts.signInsNow = answer.signInsNow;
+  r.rt.sendMessage(r.t.id, { text: 'hi' });
+  await until(() => starts(r.d).length === 1, 'the start before the host’s answer', 250);
+  r.rt.stop(r.se().id);
+  await settled(r);
+  answer.resolve(signIns([{ name: 'claude-code', state: 'signed-out' }]));
+  await sleep(20);
+  assert.deepEqual(signInNotes(r), [], 'a stopped turn hears nothing of its host’s sign-in');
+});
+
+test('#1608: an asking that fails starts the turn, raises no sign-out notice, and leaves no unhandled rejection', async () => {
+  /** @type {unknown[]} */
+  const unhandled = [];
+  const onUnhandled = (/** @type {unknown} */ e) => unhandled.push(e);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    // Without a signInCheck, nothing at all; with a failed one, its own notice, as when the host says nothing.
+    for (const [signIn, titles] of [
+      [null, []],
+      [{ ok: false, code: 1, at: 1 }, [`Sign-in on ${HOST} may have run out`]],
+    ]) {
+      const r = rig({ signIn });
+      r.hosts.signInsNow = async () => {
+        throw new Error('the link failed');
+      };
+      const turn = await running(r);
+      await sleep(20);
+      assert.equal(starts(r.d).length, 1);
+      assert.deepEqual(
+        signInNotes(r).map((n) => n.title),
+        titles,
+      );
+      r.d.end(turn);
+      await settled(r);
+    }
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
 });
