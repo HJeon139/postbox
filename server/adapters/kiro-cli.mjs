@@ -59,8 +59,8 @@ import { kiroHomeFor } from './kiro-home.mjs';
 import { kiroMemoryOff } from './kiro-memory.mjs';
 import { kiroResult, REFUSED } from './kiro-result.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
-import { KINDS, toolOf } from './kiro-tools.mjs';
-import { withoutToolMarkup } from './model-markup.mjs';
+import { toolCall } from './kiro-tools.mjs';
+import { markupHolder } from './model-markup.mjs';
 import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned, recordOnceWritten } from './prompt-sent.mjs';
@@ -133,22 +133,16 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
     if (st.thinking) emit({ kind: 'thinking_end', block: `thought-${st.thoughts}` });
     st.thinking = false;
   };
-  const call = (/** @type {any} */ u) => {
-    // Only a call’s first update names its kind.
-    if (u.kind) st.kinds.set(u.toolCallId, u.kind);
-    const { name, input } = toolOf({ ...u, kind: st.kinds.get(u.toolCallId) });
-    // v3 loads tool definitions on demand (“Tool Load”), as Claude Code’s ToolSearch does.
-    const native = u.title === 'Tool Load' ? 'ToolSearch' : clip(u.title || KINDS[/** @type {keyof typeof KINDS} */ (u.kind)] || 'Using a tool', 80);
-    emit({ kind: 'tool_call', id: u.toolCallId, name: name ?? native, input, final: true, ...(native === 'ToolSearch' ? { work: false } : {}) });
-  };
+  // DeepSeek’s tool-call marker, held back until it’s whole and dropped then (model-markup.mjs, #1916, #1934).
+  const markup = markupHolder(emit);
+  const call = (/** @type {any} */ u) => toolCall(emit, st.kinds, u);
   const update = (/** @type {any} */ u) => {
     const kind = u?.sessionUpdate;
+    if (kind !== 'agent_message_chunk') markup.letGo();
     if (kind !== 'agent_thought_chunk') endThought();
     switch (kind) {
       case 'agent_message_chunk': {
-        const text = withoutToolMarkup(u.content?.type === 'text' ? String(u.content.text ?? '') : '');
-        if (!text) return;
-        return emit({ kind: 'text', text });
+        return markup.chunk(u.content?.type === 'text' ? String(u.content.text ?? '') : '');
       }
       case 'agent_thought_chunk':
         if (!st.thinking) st.thoughts += 1;
@@ -209,6 +203,7 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
           contextUsed(d.contextUsagePercentage);
           return;
         case 'runFinished':
+          markup.letGo();
           endThought();
           st.finished = d;
           emit({ kind: 'turn_end', isError: d.status !== 'success' });
@@ -218,6 +213,7 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
           else if (d.stopReason === 'max_tokens') st.error = 'The reply hit the model’s output limit before it finished.';
           return;
         case 'runError':
+          markup.letGo();
           endThought();
           emit({ kind: 'turn_end', isError: true });
           st.error = `Kiro couldn’t run the turn: ${clip(d.message ?? 'no reason given', 400)}`;

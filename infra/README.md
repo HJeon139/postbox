@@ -4,13 +4,60 @@ This folder deploys one hosted Postbox to your own AWS account, to prove its edg
 
 It is a CDK app in plain JavaScript, with its own `package.json`. The `postbox` package still has no dependencies: nothing here ships in it.
 
+## The architecture
+
+What a deployment is, with each part in the construct that makes it. The numbers are the order a request meets them.
+
 ```mermaid
 flowchart LR
-  B[Browser] -->|"HTTPS, then sign-in"| LB[Load balancer]
-  LB -->|"HTTP :8080, with the signed token"| T[Postbox]
-  T --- D[(Data folder)]
-  T -->|"HTTPS, by the NAT gateway"| K[Key endpoint]
-  X[Anything else] -. "no route, no rule, no token" .-> T
+  B([Browser])
+  subgraph yours [Yours]
+    Z[Hosted zone, or a certificate]
+    I[Identity provider, or a new user pool]
+  end
+  subgraph net [PostboxNetwork: one VPC]
+    subgraph public [Public subnets]
+      subgraph edge [PostboxEdge]
+        LB[Load balancer]
+      end
+      N[NAT gateway]
+    end
+    subgraph private [Private subnets]
+      subgraph server [PostboxServer]
+        S[Postbox, one task]
+      end
+      subgraph data [PostboxData]
+        D[(Data folder)]
+      end
+    end
+  end
+  Z -. "the name and its certificate" .-> LB
+  B -->|"1 HTTPS"| LB
+  LB -->|"2 sign-in"| I
+  LB -->|"3 HTTP 8080, with the token it signed"| S
+  S --- D
+  S -->|"its key lookups, and apps’ fetches"| N
+  X([Anything else]) -. "no address, no rule, no token" .-> S
+```
+
+| Part | What it does | What protects it |
+|---|---|---|
+| Load balancer | Ends TLS, signs each person in at the provider, and forwards the request with a token it signs | TLS 1.2 and later, one listener, one action: no request is forwarded unsigned |
+| Postbox | Checks that token on every request, then its own allow list, then answers | No public address; port 8080 admitted from the load balancer’s security group alone; a read-only container with no capability |
+| Data folder | Every room, upload and profile, on EFS | Mounted by the task’s role alone, through one access point, over TLS |
+| NAT gateway | The server’s only way out: the load balancer’s signing key, AWS, what apps fetch, and `ssh` to hosts | The server’s security group lets out ports 443 and 80, 22 for hosts, and 2049 to its disk alone |
+
+**What it doesn’t run yet: an agent.** The server’s image carries no agent CLI and its disk is read-only, so a project made here has no folder to name: a project’s root folder is a folder where agents work, and on a hosted Postbox that is on an agent host, which isn’t built. The proposed next part is one more construct, a machine with a disk of its own that the server reaches over `ssh` and that reaches the models on Amazon Bedrock by its role (hosted.md, “What runs an agent host, weighed”, which also says why not Kubernetes yet, why not Ray Serve, and where AgentCore fits):
+
+```mermaid
+flowchart LR
+  LB[Load balancer] --> S[Postbox]
+  subgraph private [Private subnets]
+    S --- D[(Data folder)]
+    S -->|"ssh, from the server alone"| H[Agent host, proposed]
+    H --- W[(Work disk)]
+  end
+  H -->|"its role, no key"| M[Amazon Bedrock]
 ```
 
 ## What it makes, and what it costs

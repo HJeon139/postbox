@@ -2,7 +2,7 @@
 
 ![Working row](../../screenshots/working-row.png)
 
-**Where:** At the end of the conversation, while an agent is thinking or calling tools.
+**Where:** At the end of the conversation, while an agent is thinking, calling tools or waiting on its background work.
 
 ## Why it exists
 
@@ -11,6 +11,7 @@ A moving ring alone doesn’t say what the agent is doing. This row says it in a
 ## Expected functionality
 
 - One row per agent in the conversation that’s thinking or calling tools: its ring, name, and state, plus the current step while it calls a tool.
+- After its reply, while only its background work runs on (a job, a Monitor or a subagent started in the background), the row reads “waiting on background work: Waiting for a background job” (or subagent, or how many), and its ring, here and in the sidebar, holds still in the idle color, labeled “Waiting on background work”, not “Calling tools” (#189). A call of its own after that turns it back to calling tools.
 - Below that, its latest one or two sentence-boundary stretches of thinking (real agents send summarized thinking), or of a subagent’s progress, updated a few times a second. The glimpse is at most three lines, never starts with an ellipsis, and ends with one only when a long stretch is cut (#478).
 - Then a line per subagent at work, attributed: its latest narration in quotes (“general-purpose: “The word count came back as 3.””), else its current step (#73).
 - The row goes away while the agent writes its reply, since the reply shows then, and when the turn ends.
@@ -22,12 +23,14 @@ A moving ring alone doesn’t say what the agent is doing. This row says it in a
 2. Scene 10b (“Tidy the workspace”): watch the end of the conversation, and the agent’s row in the sidebar’s Agents section.
 3. Run Postbox with real agents and ask for something that takes thought, such as “Plan how you’d split the corpus into chapters, then do it.”
 4. Run `npx playwright test transcript glimpse` (`tests/browser/transcript.spec.mjs` and `tests/browser/glimpse.spec.mjs`): they measure the row’s position, step truncation, sentence-boundary glimpse and scroll following at 1280 and 375 px.
+5. With a real Claude Code agent, ask for “Start a subagent in the background that sleeps 20 seconds, then tell me when it’s done.” Watch its row and ring after its first reply. `npx playwright test ring-background` checks the same with a scripted agent.
 
 **Pass if:**
 - The row appears within a second of sending, and shows readable thinking.
 - The glimpse starts at a sentence boundary, stays within three lines at 1280 and 375 px, and marks a cut at its end with an ellipsis.
 - Updating the glimpse while the view is at the end keeps the view at the end.
 - It names the step while a tool runs.
+- While only background work runs after the reply, it says “waiting on background work” and its ring doesn’t move.
 - It disappears once the reply starts streaming, and after the turn.
 - It starts at the same left edge as the messages, not at the edge of the pane.
 

@@ -20,10 +20,24 @@ export function sessionPatch(se, change) {
   /** @type {Record<string, any>} */
   const patch = {};
   const unset = [];
-  for (const [k, v] of Object.entries(change)) {
+  for (const [k, v] of Object.entries(withBackground(se, change))) {
     if (v === undefined) {
       if (Object.hasOwn(se, k)) unset.push(k);
     } else if (!Object.hasOwn(se, k) || !same(se[k], v)) patch[k] = v;
   }
   return unset.length ? { id: se.id, patch, unset } : { id: se.id, patch };
+}
+
+/**
+ * A change of state that doesn’t say the agent waits on background work ends that wait (#189). Only a running turn’s
+ * waiting() says it does (harness-tools.mjs), so its next think, write or call clears it, and so do a turn’s start,
+ * every way a turn ends and a restart’s sweep, each of which sets a state: none can leave the flag stale.
+ * @param {Record<string, any>} se @param {Record<string, any>} change
+ */
+function withBackground(se, change) {
+  if (!se.background || !Object.hasOwn(change, 'state') || Object.hasOwn(change, 'background')) return change;
+  // A need offered or released while the wait goes on, such as its background subagent’s permission prompt, isn’t the
+  // agent’s own work, so the wait holds through it (card-needs.mjs, offerNeed and releaseNeed).
+  if (Object.hasOwn(change, 'needs') && (change.state === 'needs' || change.state === 'tool')) return change;
+  return { ...change, background: false };
 }

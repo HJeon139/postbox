@@ -59,14 +59,17 @@ export function deliver(rt, sessionId, message, { summarizeTo = null, threadId =
   if (!slash && !summarizeTo) asked.message = message = withEntries(rt, sessionId, where, message);
   // Postbox’s own marks (the turn’s chosen id, and how it takes entries) stay with Postbox, not the agent’s message.
   const { turnId, fromEntries: _taken, entriesWait: _waits, ...asSent } = message;
-  // What the agent is sent, and the tools-down note it took, which a failed turn gives back (tools-down.mjs, #1171).
-  const { toolsDownTaken, ...built } = turnMessage(rt, se, asSent, where, slash);
+  // What the agent is sent, and what it took from the session, which a turn that never reaches the agent gives back
+  // (store-outage.mjs, takenBack): the tools-down note (#1171), the waiting notices and the folded lint (#1904).
+  const { toolsDownTaken, contextTaken, lintTaken, ...built } = turnMessage(rt, se, asSent, where, slash);
   message = built;
   const persona = rt.persona(se.personaId);
   const adapter = rt.placement.registeredAdapter(persona);
   const turn = newTurn(se, { ...message, turnId }, persona, { where, slash, summarizeTo, asked });
   if (held) turn.clockStops = true;
   turn.toolsDownTaken = toolsDownTaken ?? null;
+  turn.contextTaken = contextTaken ?? [];
+  turn.lintTaken = lintTaken ?? [];
   rt.running.begin(turn);
   // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
   const hostId = adapter ? rt.placement.hostOf(persona) : null;
@@ -139,7 +142,8 @@ function turnMessage(rt, se, message, where, slash) {
   // background; the brief isn’t context, it goes with the room’s facts (turnFacts).
   if (se.context?.length && !slash) {
     // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
-    message = { ...message, context: [...notUrgent(se.context), ...(message.context ?? [])] };
+    const told = notUrgent(se.context);
+    message = { ...message, context: [...told, ...(message.context ?? [])], contextTaken: told };
     rt.sessions.update(sessionId, (now) => ({ context: (now.context ?? []).filter((/** @type {string} */ x) => !se.context.includes(x)) })); // only what it read
   }
   // Postbox’s tools didn’t load last turn: told once, whatever the backend, and given back by a turn that never ran

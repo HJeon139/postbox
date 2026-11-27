@@ -107,19 +107,23 @@ export function lint(checks, sessionId, turnId, problems) {
 
 /**
  * Another turn starts before a lint turn went (the person wrote during the settle, say): the problems join that
- * turn, so a lint turn never lands after it, and later reports for the earlier turns are dropped.
+ * turn, so a lint turn never lands after it, and later reports for the earlier turns are dropped, unless that turn
+ * never reached its agent and gave them back (store-outage.mjs, takenBack; #1904).
  */
 export function foldLint(checks, sessionId, message) {
   const problems = [];
+  const taken = [];
   for (const e of checks.lints.values()) {
     if (e.sessionId !== sessionId || !e.ended || e.sent) continue;
     clearTimeout(e.timer);
     e.timer = null;
     e.sent = true;
+    taken.push(e);
     problems.push(...e.problems);
   }
   // Its own place in the turn (formatMessage, server/adapters/guide.mjs): after the request, before the background.
-  return problems.length ? { ...message, lint: formatLint(lintMessage(problems), { folded: true }) } : message;
+  // lintTaken: the entries, which a turn that never reached the agent gives back (store-outage.mjs, takenBack; #1904).
+  return problems.length ? { ...message, lint: formatLint(lintMessage(problems), { folded: true }), lintTaken: taken } : message;
 }
 
 /** Clears the waits of lint turns still settling, as close() does (runtime-close.mjs, stopTimers). */

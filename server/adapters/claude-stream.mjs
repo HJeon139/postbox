@@ -5,13 +5,13 @@
 // the ctx calls, so recorded streams can test it.
 
 import { HarnessEvents } from '../harness-events.mjs';
-import { clip } from '../harness-tools.mjs';
 import { contentBlocks } from './claude-content.mjs';
 import { commandsOf, postboxServerStatus } from './claude-init.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 import { claudeQuota, emitQuota } from './quota-windows.mjs';
 
 export { describePermission } from './claude-permission.mjs';
+export { forkPointMissing, resultError } from './claude-result.mjs'; // moved; its importers keep this path
 export { commandsOf }; // moved to claude-init.mjs; its importers keep this path
 
 // Default context windows until a turn’s result reports the real one.
@@ -268,7 +268,9 @@ function assistantEvent(/** @type {any} */ ctx, /** @type {Function} */ emit, /*
     st.answered = m.model;
     ctx.reported?.({ model: m.model });
   }
-  const blocks = contentBlocks(m.content);
+  // Claude Code’s own API-error line, before its result, isn’t the agent’s reply: the result says the same as the turn’s
+  // error (resultError), and as a reply part it read as the turn reaching its agent (#1904, takenBack).
+  const blocks = e.is_api_error_message === true ? [] : contentBlocks(m.content);
   blocks.forEach((b, i) => {
     if (isToolBlock(b)) emit({ kind: 'tool_call', id: b.id, name: b.name, input: b.input, final: true });
     else if (b.type === 'thinking' && b.thinking && !st.thoughtMessages.has(m.id)) emit({ kind: 'thinking', text: b.thinking, whole: true });
@@ -326,31 +328,3 @@ function resultEvent(/** @type {any} */ ctx, /** @type {Function} */ emit, /** @
 
 /** A harness’s reset time in epoch seconds as epoch ms, or null when it gave none. @param {unknown} s */
 export const secondsToMs = (s) => (typeof s === 'number' && Number.isFinite(s) ? s * 1000 : null);
-
-/** Why a finished stream failed, in words for the person, or null if it didn’t. */
-export function resultError(result) {
-  if (!result) return 'Claude Code ended without finishing the turn.';
-  if (!result.is_error && result.subtype === 'success') return null;
-  // The reasons Claude Code gives (result.errors), bounded: a failure that only says “hit an error” can’t be fixed.
-  const reasons = (Array.isArray(result.errors) ? result.errors : [])
-    .filter((e) => typeof e === 'string' && e.trim())
-    .slice(0, 3)
-    .map((e) => clip(e, 300));
-  const why = reasons.length ? `: ${reasons.join('; ')}` : '.';
-  if (result.subtype === 'error_max_turns') return 'The agent hit its turn limit before finishing.';
-  if (result.subtype === 'error_during_execution') return `Claude Code hit an error while running the turn${why}`;
-  const text = typeof result.result === 'string' && result.result.trim() ? result.result.trim() : null;
-  return text ? clip(text, 400) : `Claude Code reported a failure (${result.subtype ?? 'unknown'})${why}`;
-}
-
-/**
- * Whether a fork failed because Claude Code can’t find the message it was asked to start at
- * (--resume-session-at): that message is no longer on the session’s chain.
- * `also` is more text to look in, such as stderr. A turn that succeeded never counts,
- * whatever stderr says: its reply stands.
- */
-export function forkPointMissing(result, also = '') {
-  if (result && !result.is_error) return false;
-  const said = [...(Array.isArray(result?.errors) ? result.errors : []), also].map(String).join('\n');
-  return /No message found with message\.uuid/.test(said);
-}
