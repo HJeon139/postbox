@@ -30,8 +30,8 @@ const block = (title) =>
 const q = (sel) => `document.querySelector(${js(sel)})`;
 /** Captures taken during the demo, at the moment a scene is on screen: [scene, name, finder, prepare?]. */
 const DURING = [
-  ['15-permission', 'permission-card', item('Let @indexer run a command')],
-  ['15b-refusal', 'refusal-card', item('Refused: @indexer’s subagent')],
+  ['15-permission', 'permission-card', item('Let indexer run a command')],
+  ['15b-refusal', 'refusal-card', item('Refused: indexer’s subagent')],
   ['15b-refusal', 'activity-steps', `[...document.querySelectorAll('.transcript details.activity')].at(-1)?.closest('.item')`, 'open-activity-last'],
   ['10-plus-menu', 'plus-menu', q('.menu'), 'plus'],
   ['10-plus-menu', 'proposal-card', item('New teammate')],
@@ -40,9 +40,9 @@ const DURING = [
   ['09-errors', 'invalid-block', item('wasn’t shown, so in words')],
   ['09-errors', 'app-crashed', item('stopped working')],
   ['09-errors', 'stopped-reply', item('Stopped by you')],
-  ['03-thread', 'queued-message', q('.composer .queued, .composer [class*="queue"]')],
 ];
-// Not taken, since the demo doesn’t show them: the wake confirm (its chain ends long before the room’s limit of 1,000),
+// Not taken, since the demo doesn’t show them: a queued message (the demo’s is delivered before its scene’s shot), the
+// wake confirm (its chain ends long before the room’s limit of 1,000),
 // and a side thread’s link and panel (agents wake each other in the conversation since #372). Their UAT pages say how
 // to reach each one.
 
@@ -65,7 +65,12 @@ const AFTER = [
     `[...document.querySelectorAll('.transcript > .item')].find((n) => n.querySelector('.who pb-ring') && n.querySelector('.md p'))`,
   ],
   ['activity-line', 'Index the shelf', `[...document.querySelectorAll('.transcript details.activity')].at(0)?.closest('.item')`, 'open-activity'],
-  ['work-chip', 'Citation fixes', `document.querySelector('.transcript .work-chip')?.closest('.item')`],
+  // The turn’s line is its activity line now; under the reply is the list of what the turn made (app/js/work-list.mjs).
+  [
+    'work-chip',
+    'Citation fixes',
+    `[...document.querySelectorAll('.transcript .wl-rows')].find((n) => n.textContent.includes('Citation preview'))?.closest('.item')`,
+  ],
   ['work-view', 'work:Citation fixes', q('aside.workpane')],
   ['explainer-citations', 'ReAct, step by step', item('Step 1')],
   ['citation-card', 'ReAct, step by step', q('.hovercard'), 'cite'],
@@ -76,7 +81,7 @@ const AFTER = [
   ['shared-summary', 'ReAct, step by step', `document.querySelector('.shared-card')?.closest('.item')`],
   ['topic-thread-panel', 'topic', q('aside.sidepanel')],
   ['compaction-divider', 'Index planning', `[...document.querySelectorAll('.transcript > .item')].find((n) => n.textContent.includes('Context compacted'))`],
-  ['system-wake-line', 'Index planning', item('wake itself')],
+  ['system-wake-line', 'Index planning', item('woke itself')],
   ['progress-block', 'Index planning', block('Index the shelf')],
   [
     'choice-block',
