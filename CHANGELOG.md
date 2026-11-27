@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.3 (2026-11-27)
+
+### Fixes
+
+- **text:** cut a signed-in name, git's worktree refusal and a quota host at a whole character
+- **remote:** forget checks both of a persona's folders on a host before removing either
+- **text:** cut a job's output path and a hook's scanned text whole, and fix the sweep's notes
+- **remote:** forget removes a deleted Isolated Kiro agent's home on a host too
+- **adapters:** an Isolated Kiro agent's home on a host is its own, by persona id, not its handle
+- **text:** cut names a backend sends, search queries and diagnostics whole
+- **text:** cut what the page shortens to a length whole
+- **text:** cut what a remote host and its install say whole
+- **text:** cut tools' and harnesses' errors and output whole
+- **text:** cut a retired app's reason and the names and text people read whole
+- **claude-code:** let a turn that ends on postbox's react end with no text
+
 ## 5.4.2 (2026-11-27)
 
 ### Fixes
