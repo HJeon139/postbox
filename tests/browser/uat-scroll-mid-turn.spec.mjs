@@ -113,3 +113,34 @@ test('a scroll interrupt pages back and forth while a reply streams, and view-mo
     await turn.end();
   }
 });
+
+test('a reading view that moves on its own between a move’s two samples, mid-stream, is caught by view-moved', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the UAT driver works the page through Chromium’s DevTools protocol');
+  test.setTimeout(60_000);
+  const { t } = roomIn(app, 'Runner scroll nudged mid-turn');
+  await openIn(app, page, t);
+  const turn = streamingTurn(page, t);
+  try {
+    await expect(page.getByRole('button', { name: 'Stop researcher’s reply' }), 'the turn is running').toBeVisible();
+    const facts = { probes: newProbes() };
+    const d = driver(await runnerPage(page));
+    // The pause between the move’s two samples moves the page by itself, with no input recorded: the defect
+    // view-moved is there to catch, a reading view that jumps while a reply streams below it.
+    const pause = async () => {
+      await page.evaluate(() => window.scrollBy({ top: 300, behavior: 'instant' }));
+      await frames(page);
+    };
+    const interrupt = { after: 1, do: 'scroll', moves: ['up'] };
+    const mid = interruptAct(interrupt, { fault: async () => '', answer: async () => '', ctx: { d, facts, step: 3, pause } });
+    const said = await d.interrupt({ ...interrupt, do: mid.do }, { answer: mid.answer });
+    expect(said, 'the move was made while the reply streamed').toMatch(/while the agent worked/);
+    const found = viewMoved.run(facts).filter((x) => !x.unverified);
+    expect(
+      found.map((x) => x.key.split(':')[1]),
+      'view-moved reports the move it compared mid-stream',
+    ).toEqual(['moved']);
+    expect(found[0].evidence).toMatch(/^Within step 3, with no input between/);
+  } finally {
+    await turn.end();
+  }
+});
