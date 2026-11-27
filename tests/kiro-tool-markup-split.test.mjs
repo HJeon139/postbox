@@ -80,3 +80,17 @@ test('#1934 a long run of spaces or tabs in a chunk is held in linear time, neve
     assert.ok(took < 200, `100,000 of ${JSON.stringify(run)} took ${Math.round(took)} ms`);
   }
 });
+
+test('#1934 a run of one-space chunks after a line break is held in linear time', () => {
+  let said = '';
+  const markup = markupHolder((e) => {
+    said += e.text;
+  });
+  const started = performance.now();
+  markup.chunk('words\n');
+  for (let i = 0; i < 50_000; i++) markup.chunk(' ');
+  markup.chunk('more');
+  const took = performance.now() - started;
+  assert.equal(said, `words\n${' '.repeat(50_000)}more`);
+  assert.ok(took < 200, `50,000 one-space chunks took ${Math.round(took)} ms`);
+});

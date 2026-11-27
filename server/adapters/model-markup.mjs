@@ -30,6 +30,13 @@ export function markupHolder(emit) {
   return {
     /** A message chunk’s words. @param {string} text */
     chunk(text) {
+      // Nothing held and no end that could start a hold: shown as is, without the pattern, as most chunks are.
+      if (!held && !text.includes('<') && !/\s/u.test(text.at(-1) ?? '')) return say(text);
+      // Space after held space stays held, so a run of space chunks after a line break isn’t scanned again each time.
+      if (/\s/u.test(held.at(-1) ?? '') && !/\S/u.test(text)) {
+        held += text;
+        return;
+      }
       const all = held + text;
       const maybe = /** @type {RegExpExecArray} */ (MAYBE_MARKER.exec(all));
       held = maybe[0];
