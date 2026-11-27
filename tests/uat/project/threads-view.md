@@ -15,7 +15,7 @@ Threads stay findable after you close the panel: topic threads, each a branch of
 - A side thread: its pair as the title (“@a ↔ @b”), then “Side thread · in <conversation> · n messages · <the agent at work there and what it’s doing, such as “@b is calling tools”, “@b needs you” or “@b failed”, or idle> · when”, with that agent’s ring, or the pair’s.
 - Each opens the thread in the panel beside its conversation.
 - A press on a thread isn’t lost when the list redraws under it, as it does with each status change while an agent works (#1010): while the mouse or Space is down, the redraw waits until the press ends, after its click, or 3 s after it began.
-- An empty state explains how to start one, and that side threads show here when an agent wakes another.
+- An empty state explains how to start one (Reply in thread under a message). It promises no side thread: agents wake each other in the conversation since #372.
 
 ## Steps to reproduce
 
