@@ -46,7 +46,8 @@ export function endTurn(rt, turn, err) {
   settleReplies(rt, turn, items, err);
   rt.bus.emit('turn.replied', { turn, se, items, err });
   if (err && err.name !== 'AbortError') {
-    // Only a turn that never reached the agent, with no reply part or step of its own, gives the note back (#1171).
+    // Only a turn that left no reply part or step of its own gives the note back (#1171): as near as Postbox can tell, one
+    // that never reached the agent.
     if (!turn.first) toolsDownLost(se, turn.toolsDownTaken, (patch) => saveBackendState(rt, se.id, patch));
     endFailed(rt, se, turn, err);
     return;

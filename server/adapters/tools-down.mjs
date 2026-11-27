@@ -25,8 +25,8 @@ const NOTE = {
 
 /**
  * The note for this turn when Postbox’s tools didn’t load last turn, or ''. The runtime adds it to the turn’s notices,
- * which every backend gives the agent, and clears it, so it’s told once, whatever the backend; a turn that fails
- * before it reaches the agent gives it back (toolsDownLost), so it’s told exactly once (#1161, #1162, #489). A
+ * which every backend gives the agent, and clears it, so it’s told once, whatever the backend. A failed turn that left
+ * no reply part or step gives it back (toolsDownLost), so it’s never lost; it’s told again only after such a turn (#1161, #1162, #489). A
  * command is the whole prompt, since Claude Code runs it only when the prompt is /name and its arguments (#67), and a
  * re-attached turn sends the agent nothing (#120): the note waits for the next turn that can carry it.
  * @param {any} se  the session @param {any} message
