@@ -69,3 +69,40 @@ test('of two options with one label, a name that gives a description picks the o
   assert.equal(pick('Plan — fast'), 1);
   assert.equal(pick('Plan — cheap'), 0);
 });
+
+// #1782: the tester joins a label and its description however it reads them. innerText puts a chip's two spans on two
+// lines, so a newline is the likeliest; a colon, a dash or a closed-up em dash come too.
+test('an option named as its label and description joined by a newline, a colon or another dash is found', () => {
+  const list = [chip('Weekly with alerts', 'a summary and an alert on drops'), chip('Weekly', 'every Monday')];
+  for (const name of [
+    'Weekly: every Monday',
+    'Weekly – every Monday',
+    'Weekly - every Monday',
+    'Weekly—every Monday',
+    'Weekly–every Monday',
+    'Weekly\nevery Monday',
+  ])
+    assert.equal(found(byOption(ITEM, SEL, name), list), 'Weekly', JSON.stringify(name));
+});
+
+test('a loose join must give the whole description, so it never guesses from a label alone', () => {
+  const list = [chip('Weekly', 'every Monday')];
+  for (const name of ['Weekly: every Tuesday', 'Weekly every', 'Weekly-ish']) assert.equal(found(byOption(ITEM, SEL, name), list), null, JSON.stringify(name));
+});
+
+test('a name starting with a label and “ — ” still finds it, whatever follows, as #1754 had it', () => {
+  assert.equal(found(byOption(ITEM, SEL, 'Text only — no chart')), 'Text only');
+});
+
+test('an option with no description isn’t found by a loose join to nothing', () => {
+  assert.equal(found(byOption(ITEM, SEL, 'Text only undefined')), null);
+});
+test('a whole label and description wins over a longer label that holds the name, whatever the join', () => {
+  const list = [chip('Plan: fast mode'), chip('Plan fast mode'), chip('Plan', 'fast')];
+  for (const name of ['Plan: fast', 'Plan fast']) assert.equal(found(byOption(ITEM, SEL, name), list), 'Plan', JSON.stringify(name));
+});
+
+test('of labels a “ — ” name starts with, the longest wins when the rest is no whole description', () => {
+  const list = [chip('Daily', 'each evening'), chip('Daily — with digest', 'each morning')];
+  assert.equal(found(byOption(ITEM, SEL, 'Daily — with digest — and more'), list), 'Daily — with digest');
+});
