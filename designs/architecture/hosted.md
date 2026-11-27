@@ -238,7 +238,7 @@ The owner, 27 November 2026, after a project couldn’t be made on the test depl
 - **The server is a web server with one disk.** It answers pages, keeps the event log and dials hosts. Its read-only disk on the test deployment is a default this deployment set, not a limit of Fargate, and nothing it does needs more than its data folder.
 - **An agent host is a machine.** A CLI holds a session for hours, clones repositories, installs dependencies, runs builds, tests and browsers, and may need Docker. It needs a fast disk that outlives a restart, and the freedom a developer’s computer has.
 
-They stay apart for a reason that is a boundary, not tidiness: an agent has a shell, and a shell in the server’s container would hold the data folder, which is every room, each host’s daemon token and the server’s SSH key (“What everyone on one Postbox shares”). So “make the server writable and run agents in it” would end membership before it is built. What was missing on the test deployment is the second part, which this slice doesn’t build.
+They stay apart for a reason that is a boundary, not tidiness: an agent has a shell, and a shell in the server’s container would hold the data folder, which is every room and each host’s daemon token, and the server’s SSH key beside it (“What everyone on one Postbox shares”). So “make the server writable and run agents in it” would end membership before it is built. What was missing on the test deployment is the second part, which this slice doesn’t build.
 
 | What would run the agent host | A disk that outlives a restart | Docker and builds as on a developer’s computer | What it adds to build and run | Fit |
 |---|---|---|---|---|
@@ -285,7 +285,7 @@ The question for the owner is “What runs an agent host” under “Open questi
 
 **Secure by default, and not by the network alone** (the owner, 27 November 2026, asking for an independent adversarial review: the construct “does not rely heavily on security perimeter”). What admits a person is three checks a request can’t skip by reaching the port: the load balancer’s sign-in, Postbox’s check of the signed token against this deployment’s own load balancer, client and provider, and Postbox’s allow list of subjects. The review found no way past them, and what it did find is fixed in the construct’s defaults: no admission by a claim a person could write for themselves, a verified email address, a stream that ends with its sign-in, a container with a read-only disk and no capability, and a disk no principal but the task’s role can mount. **Still leaning on the network:** the hop from the load balancer to the task is plain HTTP inside the VPC, as “The hop from the balancer is clear text unless Postbox serves TLS” proposes; AWS’s own guidance is HTTPS to the target, and it is “TLS on the hop from the load balancer” under “Open questions for the owner”.
 
-It is ECS, not the Kubernetes cluster this document’s first notes named, because it is the least to run for a test and the image is the same on either. Which a team’s deployment uses is “ECS or a Kubernetes cluster” under “Open questions for the owner”.
+It is ECS, not the Kubernetes cluster this document’s first notes named, because it is the least to run for a test and the image is the same on either. Whether a team’s deployment stays on ECS or moves to a Kubernetes cluster is “What runs an agent host” under “Open questions for the owner”.
 
 ## One server, one disk
 

@@ -11,9 +11,9 @@ What a deployment is, with each part in the construct that makes it. The numbers
 ```mermaid
 flowchart LR
   B([Browser])
-  subgraph yours [Yours, or made new]
-    Z[Hosted zone]
-    I[Identity provider]
+  subgraph yours [Yours]
+    Z[Hosted zone, or a certificate]
+    I[Identity provider, or a new user pool]
   end
   subgraph net [PostboxNetwork: one VPC]
     subgraph public [Public subnets]
@@ -45,7 +45,7 @@ flowchart LR
 | Load balancer | Ends TLS, signs each person in at the provider, and forwards the request with a token it signs | TLS 1.2 and later, one listener, one action: no request is forwarded unsigned |
 | Postbox | Checks that token on every request, then its own allow list, then answers | No public address; port 8080 admitted from the load balancer’s security group alone; a read-only container with no capability |
 | Data folder | Every room, upload and profile, on EFS | Mounted by the task’s role alone, through one access point, over TLS |
-| NAT gateway | The only way out, for the load balancer’s key and what apps fetch | Ports 443 and 80 out, and 22 for hosts |
+| NAT gateway | The server’s only way out: the load balancer’s signing key, AWS, what apps fetch, and `ssh` to hosts | The server’s security group lets out ports 443 and 80, 22 for hosts, and 2049 to its disk alone |
 
 **What it doesn’t run yet: an agent.** The server’s image carries no agent CLI and its disk is read-only, so a project made here has no folder to name: a project’s root folder is a folder where agents work, and on a hosted Postbox that is on an agent host, which isn’t built. The proposed next part is one more construct, a machine with a disk of its own that the server reaches over `ssh` and that reaches the models on Amazon Bedrock by its role (hosted.md, “What runs an agent host, weighed”, which also says why not Kubernetes yet, why not Ray Serve, and where AgentCore fits):
 
