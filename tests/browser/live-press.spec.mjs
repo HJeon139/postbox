@@ -190,8 +190,43 @@ test('#1837 a job’s Stop pressed by keyboard stays pressed and focused across 
   // Pressed again, by mouse and by keyboard: forced, since Playwright won’t click what says it’s disabled, but a person can.
   await stop.click({ force: true });
   await page.keyboard.press(' ');
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(r)));
+  // A request the page makes after both presses: a stop either sent would have reached its route first.
+  let marked = false;
+  await page.route('**/pb-test-marker', (route) => {
+    marked = true;
+    return route.fulfill({ status: 204 });
+  });
+  await page.evaluate(() => fetch('/pb-test-marker'));
+  await expect.poll(() => marked).toBe(true);
   expect(stops, 'one stop, though pressed again').toBe(1);
   letGo();
   await finish(['stopper']);
+});
+
+// A stop that went through is kept for its reply: the next turn’s reply, whose process numbers its jobs afresh, has its
+// own Stop for a job of the same id (#1837).
+test('#1837 a later turn’s job with the id of one stopped before has a Stop that can be pressed', async ({ page }) => {
+  scripts.set('again', async ({ emit, who }) => {
+    emit({ kind: 'tool_call', id: 'bg3', name: 'Bash', input: { command: 'npm run watch', run_in_background: true }, final: true });
+    emit({ kind: 'tool_result', id: 'bg3', text: 'Command running in background with ID: bash_3', background: { job: 'bash_3' } });
+    await hold(who, 1);
+  });
+  const t = await running(page, ['again']);
+  await page.route('**/jobs/bash_3/stop', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
+  const stop = page.locator('.bg-jobs').getByRole('button', { name: /^Stop the background job/ });
+  await stop.click();
+  await expect(stop).toHaveAttribute('aria-disabled', 'true');
+  await finish(['again']);
+  // The next turn starts a job the CLI numbers the same.
+  scripted.app.rt.sendMessage(t.id, { text: '@again once more' });
+  await expect.poll(() => at('again')).toBe(1);
+  await synced(page, scripted.app);
+  const fresh = page
+    .locator('.transcript > [data-key]')
+    .last()
+    .locator('.bg-jobs')
+    .getByRole('button', { name: /^Stop the background job/ });
+  await expect(fresh).toBeVisible();
+  await expect(fresh, 'the new turn’s Stop isn’t drawn pressed').not.toHaveAttribute('aria-disabled', 'true');
+  await finish(['again']);
 });
