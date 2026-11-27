@@ -8,8 +8,8 @@
 //   node tools/record-claude-once.mjs                 writes tests/fixtures/claude-code/once.json
 //   node tools/record-claude-once.mjs --out <file>
 //
-// What’s kept is an allowlist: each run’s init (its version, model, tools and MCP servers, with every server and MCP
-// tool renamed) and result (the answer, tokens and cost), with ids replaced. Your folders, commands, skills, plugins,
+// What’s kept is an allowlist: each run’s init (its version, model, tools, MCP servers and which kinds of memory it
+// loaded, with every server and MCP tool renamed and no paths) and result (the answer, tokens and cost), with ids replaced. Your folders, commands, skills, plugins,
 // server names and quota are left out.
 
 import { spawn } from 'node:child_process';
@@ -45,6 +45,7 @@ function kept(m) {
   if (m?.type === 'system' && m.subtype === 'init')
     return {
       ...pick(m, ['type', 'subtype', 'claude_code_version', 'model', 'permissionMode']),
+      ...(m.memory_paths ? { memory_paths: Object.keys(m.memory_paths) } : {}), // Which memory it loaded, never where.
       cwd: '/workspace/rec',
       session_id: NO_ID,
       tools: (m.tools ?? []).map((/** @type {string} */ t, /** @type {number} */ i) => (isMcpTool(t) ? `mcp__sanitized_mcp__tool_${i}` : t)),
@@ -63,9 +64,9 @@ function kept(m) {
 async function record(bin, prompt) {
   const seen = { args: /** @type {string[]} */ ([]), out: '', err: '', exit: /** @type {number|null} */ (null) };
   const spawnImpl = /** @type {any} */ (
-    (/** @type {string} */ b, /** @type {string[]} */ args) => {
+    (/** @type {string} */ b, /** @type {string[]} */ args, /** @type {any} */ opts) => {
       seen.args = args;
-      const child = spawn(b, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = spawn(b, args, { ...opts, stdio: ['pipe', 'pipe', 'pipe'] }); // Its stderr is kept, to report.
       child.stdout.on('data', (d) => (seen.out += d));
       child.stderr.on('data', (d) => (seen.err = (seen.err + d).slice(-4000)));
       child.on('close', (code) => (seen.exit = code));
@@ -107,6 +108,7 @@ async function main() {
     else {
       const tools = init.tools ?? [];
       console.log(`  tools offered: ${tools.length}, of them MCP tools: ${tools.filter(isMcpTool).length}; MCP servers: ${(init.mcp_servers ?? []).length}`);
+      console.log(`  memory loaded: ${Object.keys(init.memory_paths ?? {}).join(', ') || 'none'}`);
     }
     runs.push({ call, args: r.args, exit: r.exit, output: r.said.map(kept).filter(Boolean) });
   }

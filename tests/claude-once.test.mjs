@@ -49,9 +49,15 @@ test('claudeOnce sends the prompt on the CLI’s input, for one turn with no too
   assert.equal(run.prompt, 'Summarize this.');
   assert.equal(
     run.args.join(' '),
-    '-p --output-format json --verbose --system-prompt Answer the message exactly as it asks. --model haiku --max-turns 1 --tools= --setting-sources= --no-session-persistence',
+    '-p --output-format json --verbose --system-prompt Answer the message exactly as it asks. --model haiku --max-turns 1 --tools= --setting-sources= --strict-mcp-config --no-session-persistence',
   );
   assert.ok(!run.args.includes('Summarize this.'), 'the prompt is never an argument, where a leading dash would read as an option');
+});
+
+test('claudeOnce turns the CLI’s auto memory off, and leaves the rest of its environment as Postbox’s', async () => {
+  const cli = fakeClaude(JSON.stringify(RESULT));
+  await claudeOnce('claude', 'p', { model: 'haiku', timeoutMs: 1000, spawnImpl: cli.spawnImpl });
+  assert.deepEqual(cli.seen[0].opts.env, { ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
 });
 
 test('claudeOnce reads the result out of a list of the run’s messages too', async () => {
@@ -96,6 +102,9 @@ test('claudeHere is Claude Code’s CLI only when Claude Code runs on this compu
 const RECORDING = new URL('./fixtures/claude-code/once.json', import.meta.url);
 const unrecorded = !existsSync(RECORDING) && 'not recorded yet: node tools/record-claude-once.mjs (two real Haiku calls)';
 
+// Both prompts are under 1,300 characters, a few hundred tokens: far more than that is context Postbox didn’t send.
+const MOST_INPUT_TOKENS = 2000;
+
 test('claudeOnce reads what the real CLI printed for a summary and for the write check', { skip: unrecorded }, async () => {
   const { runs } = JSON.parse(readFileSync(RECORDING, 'utf8'));
   assert.deepEqual(
@@ -111,6 +120,11 @@ test('claudeOnce reads what the real CLI printed for a summary and for the write
     assert.equal(typeof answer?.costUsd, 'number', `${run.call}: its cost`);
     const init = run.output.find((m) => m.subtype === 'init');
     assert.deepEqual(init?.tools, [], `${run.call}: the call is offered no tool, MCP’s included`);
+    assert.deepEqual(init.mcp_servers, [], `${run.call}: no MCP server starts`);
+    assert.equal(init.memory_paths, undefined, `${run.call}: no memory is loaded`);
+    const usage = run.output.find((m) => m.type === 'result').usage;
+    const read = usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens;
+    assert.ok(read < MOST_INPUT_TOKENS, `${run.call}: read ${read} tokens, so the call carries more than its own short prompt`);
     if (run.call === 'judge') assert.ok(allowedQuote(answer.text, [ASKED], CALL), `the judge’s answer reads as allow: ${answer.text}`);
   }
 });

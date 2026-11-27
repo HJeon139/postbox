@@ -1,7 +1,7 @@
 // One answer from Claude Code’s CLI, for Postbox’s own cheap calls: a thread’s summary (server/thread-summary.mjs) and
 // the check on a write the person asked for (server/write-intent.mjs). `claude -p` with the prompt on its input, one
-// turn, no tools, none of the person’s settings (so no hooks, rules or steering files) and no saved session; it uses
-// the sign-in Claude Code already has. Postbox never reads or stores a key.
+// turn, no tools or MCP servers, none of the person’s settings (so no hooks, rules or steering files) or auto memory,
+// and no saved session; it uses the sign-in Claude Code already has. Postbox never reads or stores a key.
 
 import { spawn } from 'node:child_process';
 import { stopProbe } from './remote/host/probe-stop.mjs';
@@ -33,8 +33,15 @@ export const onceArgs = (model) => [
   '1',
   '--tools=',
   '--setting-sources=',
+  '--strict-mcp-config', // With no --mcp-config: the call has no MCP server, as it has no tools.
   '--no-session-persistence',
 ];
+
+/**
+ * The CLI’s environment: Postbox’s own, with auto memory off, which no argument above turns off. The call is about
+ * what its prompt holds, and nothing else.
+ */
+const onceEnv = () => ({ ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
 
 /**
  * The run’s result in what the CLI printed: the object itself, or the one in a list of the run’s messages.
@@ -61,7 +68,7 @@ export function claudeOnce(bin, prompt, { model, timeoutMs, spawnImpl = spawn })
     /** @type {any} */
     let child;
     try {
-      child = spawnImpl(bin, onceArgs(model), { stdio: ['pipe', 'pipe', 'ignore'] });
+      child = spawnImpl(bin, onceArgs(model), { stdio: ['pipe', 'pipe', 'ignore'], env: onceEnv() });
     } catch {
       resolve(null);
       return;
