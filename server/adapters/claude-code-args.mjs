@@ -1,8 +1,22 @@
 // The claude CLI’s arguments for one turn (server/adapters/claude-code.mjs runs it; the header there lists them).
 
+import { terminalToolsEnv } from '../../shared/terminal-tools.mjs';
 import { withAllowRules, withAskRules } from '../permission-rules.mjs';
-import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
+import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, POSTBOX_SERVER, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
 import { withSteering } from './steering.mjs';
+
+/**
+ * Postbox’s react, by the full name Claude Code gives it: Postbox’s server is registered as POSTBOX_SERVER on this
+ * computer (postboxServer) and on a host (shimServer) alike. A turn whose last call is react may end with no text (#1712).
+ */
+export const POSTBOX_REACT_TOOL = `mcp__${POSTBOX_SERVER}__react`;
+
+/**
+ * The environment a local claude runs in: this process’s own, with Postbox’s react added to the tools after which
+ * Claude Code lets a turn end quietly, kept with any the person set (#1712, shared/terminal-tools.mjs).
+ * @param {Record<string, string | undefined>} env
+ */
+export const claudeEnv = (env) => terminalToolsEnv(env, POSTBOX_REACT_TOOL);
 
 // Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
 // settings, or auto, and an agent you set to ask could end up not asking. (manual is the CLI’s name for default.)
