@@ -122,6 +122,9 @@ async function mergeTree(d, root, baseSha) {
     const files = r.out.split('\n\n')[0].split('\n').slice(1).filter(Boolean);
     return { conflict: `conflicts with ${baseSha.slice(0, 8)} in ${files.join(', ') || 'files git didn’t name'}` };
   }
+  // 129 is git’s usage error: --write-tree and --name-only came in git 2.38 (both in its builtin/merge-tree.c).
+  if (r.code === 129)
+    return { conflict: `git merge-tree exited 129: ${firstLine(r.out)}. Its --write-tree and --name-only need git 2.38 or later: update git` };
   if (r.code !== 0) return { conflict: `git merge-tree exited ${r.code}: ${firstLine(r.out)}` };
   return { tree: firstLine(r.out) };
 }

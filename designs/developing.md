@@ -158,7 +158,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 1. **The head is pushed:** the local HEAD is the pull request’s head on GitHub.
 2. **Biome at each commit** from the merge base to HEAD, in a temporary worktree. Merge commits are skipped: each commit is reviewed and reverted alone, and a merge’s diff is what the base brought in.
-3. **The merged tree:** `git merge-tree` with the base fetched from the pull request’s base repository, then Biome and `npm run lint:project` on the merge.
+3. **The merged tree:** `git merge-tree --write-tree` (git 2.38 or later) with the base fetched from the pull request’s base repository, then Biome and `npm run lint:project` on the merge.
 4. **GitHub’s checks:** `tools/signoff-checks.mjs`, every check `main`’s rules require, CodeQL included.
 
 - **The browser passes are CI’s.** The sign-off runs no `npx playwright test`. The required check “Demo in Chrome, with accessibility checks” passes only when every shard of both passes passed (`.github/workflows/check.yml`, job `end-to-end`), so step 4 reads them there. What CI doesn’t hold is a head merged with current `main`, since `main`’s rules don’t require a head to be up to date: step 3 checks that. With no local gate, it needs no particular Node: CI’s checks ran on CI’s Node.

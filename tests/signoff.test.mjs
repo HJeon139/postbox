@@ -85,6 +85,16 @@ test('a merge conflict with the freshly fetched base fails step 3, naming the fi
   assert.equal(ran(w, /^npm run -s lint:project$/).length, 0, 'nothing ran on a merge that didn’t happen');
 });
 
+test('a git too old for merge-tree --write-tree fails step 3, naming the git version it needs', async () => {
+  const usage = { code: 129, out: 'usage: git merge-tree [--trivial-merge] <base-tree> <branch1> <branch2>\n' };
+  const w = world({ answers: [[/^git merge-tree /, usage]] });
+  assert.equal(await signoff(['840'], w.d), EXIT.merged);
+  assert.match(
+    line(w, /^✖ 3\./),
+    /git merge-tree exited 129: usage: git merge-tree .*\. Its --write-tree and --name-only need git 2\.38 or later: update git$/,
+  );
+});
+
 test('a merged tree that fails the project lints fails step 3', async () => {
   const w = world({ answers: [[/^npm run -s lint:project$/, { code: 1, out: 'lint-tokens: no problems.\nlint-caps: 1 problem(s)\n' }]] });
   assert.equal(await signoff(['840'], w.d), EXIT.merged);
