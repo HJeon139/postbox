@@ -116,3 +116,14 @@ test('#856 what was typed on a region stays as its draft comment when the person
       ['region 2', 0.6, 'This axis is cut off.'],
     ]);
 });
+
+test('#856 a region’s box left blank takes no number: the next mark is region 1 again', async ({ page }) => {
+  const { block } = await review(page);
+  await block.getByRole('button', { name: 'Mark a part of the app' }).click();
+  await drag(page, block, [0.75, 0.2], [0.75, 0.2]);
+  await expect(page.getByRole('textbox', { name: 'Comment on region 1' }), 'a point opens its box').toBeFocused();
+  await block.getByRole('button', { name: 'Mark a part of the app' }).click();
+  await drag(page, block, [0.1, 0.5], [0.4, 0.9]);
+  await expect(page.getByRole('textbox', { name: 'Comment on region 1' }), 'the blank one was dropped, so this is region 1').toBeFocused();
+  await expect(block.locator('.rv-marks .rv-region'), 'and only it is drawn').toHaveCount(1);
+});
