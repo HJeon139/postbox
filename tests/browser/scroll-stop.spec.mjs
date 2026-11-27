@@ -91,3 +91,54 @@ test('#1964 a command’s output that scrolls at 375 px loses its tab stop once 
   await expect(output, 'so its stop goes').not.toHaveAttribute('tabindex');
   await expect(output, 'from the same box').toHaveAttribute('data-mark', 'same');
 });
+
+// A box not laid out yet keeps its stop, as before #1964: one in an item the transcript skips drawing (content-visibility),
+// which axe still checks by measuring it, and one a repaint puts back where focus was (keepFocus in ui.mjs).
+test('#1964 in a long room the transcript skips drawing, no command’s output scrolls without a tab stop', async ({ page }) => {
+  const t = scripted.room('Many commands', []);
+  for (let i = 0; i < 60; i++)
+    arrange.post(scripted.app.rt, t.id, {
+      kind: 'command',
+      command: `step ${i}`,
+      cwd: '/tmp',
+      status: 'done',
+      text: i % 2 ? 'ok' : LONG,
+      exitCode: 0,
+      ms: 10,
+      cut: false,
+    });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  await synced(page, scripted.app);
+  await expect(page.locator('.cmd-out')).toHaveCount(60);
+  const unreachable = await page
+    .locator('.cmd-out')
+    .evaluateAll((boxes) => boxes.filter((b) => b.scrollHeight > b.clientHeight && !b.hasAttribute('tabindex')).length);
+  expect(unreachable, 'outputs that scroll with no tab stop').toBe(0);
+});
+
+test('#1964 a repaint that keeps focus leaves it on an output that scrolls', async ({ page }) => {
+  const t = scripted.room('Focus kept', []);
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  await synced(page, scripted.app);
+  // The Work view repaints its command outputs inside keepFocus on each work event; this paints such a box the same way.
+  const after = await page.evaluate(async (long) => {
+    const { keepFocus } = await import('/app/js/ui.mjs');
+    const { scrollStop } = await import('/app/js/scroll-stop.mjs');
+    const { h } = await import('/app/js/dom.mjs');
+    const root = document.createElement('div');
+    document.body.append(root);
+    const paint = () =>
+      root.replaceChildren(
+        h('button', { type: 'button' }, 'before'),
+        scrollStop(h('pre.md-code.cmd-out', { 'aria-label': 'Output of seq 40' }, h('code', long))),
+        h('button', { type: 'button' }, 'after'),
+      );
+    paint();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    /** @type {HTMLElement} */ (root.querySelector('pre')).focus();
+    keepFocus(root, paint);
+    return document.activeElement?.tagName;
+  }, LONG);
+  expect(after, 'focus came back to the output').toBe('PRE');
+});

@@ -18,13 +18,14 @@ function fit(box) {
 
 /**
  * Keeps a box’s tab stop to while it scrolls, from when it’s first laid out and as its size changes, as with the
- * window’s. Its content isn’t watched: each of these is drawn again, as a new box, when its content changes. The box
- * must be in the page by the next frame: one still out of it then is let go, as one removed would be. A box in an
- * item the transcript skips drawing (content-visibility) gets its stop once the item draws, a frame before it comes
- * into view. Returns the box, for h().
+ * window’s. It starts with the stop, so a box not laid out yet keeps it, as before #1964: one in an item the
+ * transcript skips drawing (content-visibility, which axe still checks), one a repaint puts back where focus was
+ * (keepFocus in ui.mjs, as the Work view repaints), or one still out of the page at the next frame. Its content isn’t
+ * watched: each of these is drawn again, as a new box, when its content changes. Returns the box, for h().
  * @template {HTMLElement} T @param {T} box @returns {T}
  */
 export function scrollStop(box) {
+  box.setAttribute('tabindex', '0');
   boxes.observe(box);
   return box;
 }
