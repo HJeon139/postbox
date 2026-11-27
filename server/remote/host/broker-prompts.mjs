@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { HOST_DEFAULTS, REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
+import { cutText } from '../../../shared/text-parts.mjs';
 import { note, record, refusal, unrecorded, written } from './broker-records.mjs';
 import { CANCELED, key, STOPPED_TEXT, takes } from './broker-state.mjs';
 
@@ -108,7 +109,7 @@ export async function permission(b, c, turn, m) {
   const k = key(turn, m.id);
   const known = b.prompts.get(k);
   /** A prompt that couldn’t be written down is denied, never left waiting or allowed. @param {string} text */
-  const deny = (text) => c.send('permission-answer', { id: m.id, result: { behavior: 'deny', message: text.slice(0, REMOTE_LIMITS.messageChars) } });
+  const deny = (text) => c.send('permission-answer', { id: m.id, result: { behavior: 'deny', message: cutText(text, REMOTE_LIMITS.messageChars) } });
   if (known) {
     // Another shim gets nothing of it (#353): only the shim that asked, by its key, hears the answer, on each
     // connection it makes. Checked first, so another shim hears the same whatever request it sends, and can’t tell

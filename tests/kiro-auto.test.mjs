@@ -94,7 +94,7 @@ test('#1723 without Shell, or in Accept edits, the file tools keep their folders
 
 test('#1723 on a host, the Kiro home kept from edits is Postbox’s own for an Isolated agent, else ~/.kiro', async () => {
   const { remoteKiroHome } = await import('../server/adapters/kiro-cli-remote.mjs');
-  assert.equal(remoteKiroHome({ handle: 'kay', usesHostSetup: false }, '/srv/hostuser'), '/srv/hostuser/.postbox-remote/kiro-home/kay');
+  assert.equal(remoteKiroHome({ id: 'pe_kay', handle: 'kay', usesHostSetup: false }, '/srv/hostuser'), '/srv/hostuser/.postbox-remote/kiro-home/pe_kay');
   assert.equal(remoteKiroHome({ handle: 'kay', usesHostSetup: true }, '/srv/hostuser'), '/srv/hostuser/.kiro');
   assert.equal(remoteKiroHome({ handle: 'kay' }, undefined), null);
 });
@@ -127,5 +127,5 @@ test('#1723 the turn’s agent file denies edits of its Kiro home, as given and 
   const start = await startOf(remote.d);
   play(remote.d, start, 'first');
   await turn;
-  assert.deepEqual(homeDeny(JSON.parse(start.agentFile.text)), [`${HOME}/.postbox-remote/kiro-home/kiro`]);
+  assert.deepEqual(homeDeny(JSON.parse(start.agentFile.text)), [`${HOME}/.postbox-remote/kiro-home/pe_kiro`]);
 });

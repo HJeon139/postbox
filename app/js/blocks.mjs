@@ -6,6 +6,7 @@ import './md-images.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { own } from '/shared/state-assets.mjs';
+import { cutText } from '/shared/text-parts.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
 import { asDrawn, closing } from './block-close.mjs';
 import { draft, drafts } from './block-drafts.mjs';
@@ -136,7 +137,7 @@ function invalidBlock(item) {
       'div.block-body',
       md(item.fallback),
       h('p.small.dim', `This is the agent’s plain-text version. ${why} ${item.errors.join(' ')}`),
-      h('details.raw', h('summary', 'Show the raw block'), h('pre.mono', raw.slice(0, 20000))),
+      h('details.raw', h('summary', 'Show the raw block'), h('pre.mono', cutText(raw, 20000))),
     ),
   );
 }
