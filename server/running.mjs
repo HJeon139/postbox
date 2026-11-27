@@ -120,11 +120,20 @@ export class Running {
   /**
    * Settles once the session’s stopped turn has exited, or at once if none is exiting: what forgetting a deleted
    * persona waits for, since its CLI may write the memory being removed as it exits (#1797). The stop’s watchdog
-   * (turn-stop.mjs) ends the wait for a process that never exits. @param {string} sessionId @returns {Promise<void>}
+   * (turn-stop.mjs) ends the wait for a process that never exits, and so does a shutdown (releaseWaits).
+   * @param {string} sessionId @returns {Promise<void>}
    */
   afterExit(sessionId) {
     if (!this.exiting.has(sessionId)) return Promise.resolve();
-    return new Promise((done) => this.exitWaits.set(sessionId, [...(this.exitWaits.get(sessionId) ?? []), () => done()]));
+    const waits = this.exitWaits.get(sessionId) ?? [];
+    this.exitWaits.set(sessionId, waits);
+    return new Promise((done) => waits.push(() => done()));
+  }
+
+  /** Settles every wait for a stopped turn’s exit: Postbox, shutting down, waits for those processes no longer. */
+  releaseWaits() {
+    for (const waits of this.exitWaits.values()) for (const done of waits) done();
+    this.exitWaits.clear();
   }
 
   /** The session’s turn on a host waits to be attached again (#1135). @param {string} sessionId @param {string} hostId */

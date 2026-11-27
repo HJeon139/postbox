@@ -11,7 +11,8 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { untilTurns } from './until-turns.mjs';
 
-test('#1797 a persona deleted while its turn is still exiting is forgotten only once that turn has exited', async () => {
+/** A room whose agent’s turn has started, on a backend whose stopped turn ends only when exit() is called. */
+async function slowExit() {
   const store = new Store(null);
   /** @type {() => void} */
   let exit = () => {};
@@ -39,6 +40,11 @@ test('#1797 a persona deleted while its turn is still exiting is forgotten only 
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
   rt.sendMessage(t.id, { text: 'Work on it.' });
   await untilTurns(() => rt.turns.size === 1, 'the turn to start');
+  return { store, rt, p, forgot, exit: () => exit() };
+}
+
+test('#1797 a persona deleted while its turn is still exiting is forgotten only once that turn has exited', async () => {
+  const { store, rt, p, forgot, exit } = await slowExit();
   const { forgotten } = rt.deletePersona(p.id);
   assert.equal(store.state.personas[p.id], undefined, 'the persona is gone at once');
   // Its turn is stopped but hasn’t exited. A forget that didn’t wait would have run by the next turn of the event
@@ -51,4 +57,14 @@ test('#1797 a persona deleted while its turn is still exiting is forgotten only 
   await forgotten;
   assert.deepEqual(forgot, [p.id], 'forgotten once it has exited');
   assert.equal(rt.exiting.size, 0);
+});
+
+test('#1797 a shutdown that stops waiting for a deleted agent’s turn forgets it then, so its memory doesn’t stay for good', async () => {
+  const { rt, p, forgot } = await slowExit();
+  const { forgotten } = rt.deletePersona(p.id);
+  // Postbox shuts down, and its turn never exits within the grace.
+  await rt.stopTurns({ graceMs: 1 });
+  await untilTurns(() => forgot.length > 0, 'it to be forgotten once Postbox stopped waiting');
+  await forgotten;
+  assert.deepEqual(forgot, [p.id], 'forgotten once Postbox stopped waiting');
 });
