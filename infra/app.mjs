@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A CDK app that deploys one hosted Postbox (infra/README.md) as four stacks, and an example of using its constructs
+// A CDK app that deploys one hosted Postbox (infra/README.md) as one stack for each part, and an example of using its constructs
 // in stacks of your own. What is yours comes in as context, from `-c name=value` or from `cdk.context.json` beside
 // this file, which git ignores: your domain, your hosted zone, your identity provider and who may sign in are never
 // in this file.
@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { App, CfnOutput, SecretValue, Stack } from 'aws-cdk-lib';
 import { Certificate } from 'aws-cdk-lib/aws-certificatemanager';
 import { UserPool, UserPoolDomain } from 'aws-cdk-lib/aws-cognito';
+import { Volume } from 'aws-cdk-lib/aws-ec2';
 import { HostedZone } from 'aws-cdk-lib/aws-route53';
+import { PostboxAgentHost } from './lib/agent-host.mjs';
 import { PostboxData } from './lib/data.mjs';
 import { PostboxEdge } from './lib/edge.mjs';
 import { hostedSettings } from './lib/hosted-postbox.mjs';
@@ -82,7 +84,7 @@ const name = context('stackName') ?? 'PostboxTest';
 const stackOf = (/** @type {string} */ part) => new Stack(app, `${name}${part}`, { env });
 
 const network = new PostboxNetwork(stackOf('Network'), 'Network', { openTo: context('openTo') });
-const { vpc, balancerGroup, serverGroup, diskGroup } = network;
+const { vpc, balancerGroup, serverGroup, diskGroup, hostGroup } = network;
 const data = new PostboxData(stackOf('Data'), 'Data', { vpc, diskGroup });
 
 const edgeStack = stackOf('Edge');
@@ -96,6 +98,24 @@ const edge = new PostboxEdge(edgeStack, 'Edge', {
 });
 new CfnOutput(edgeStack, 'Url', { value: edge.origin });
 
+// Where agents run: one machine the server reaches over SSH, unless -c agentHost=false leaves it out.
+const off = (/** @type {string} */ key) => context(key) === 'false' || context(key) === false;
+/** A work disk kept from a machine before this one, by its volume id. @param {string} volumeId */
+const keptDisk = (volumeId) => Volume.fromVolumeAttributes(app, 'KeptWorkDisk', { volumeId, availabilityZone: vpc.privateSubnets[0].availabilityZone });
+const host = off('agentHost')
+  ? undefined
+  : new PostboxAgentHost(stackOf('Host'), 'Host', {
+      vpc,
+      hostGroup,
+      parameters: `/postbox/${name}`,
+      instanceType: context('hostInstanceType'),
+      workGiB: context('hostWorkGiB') ? Number(context('hostWorkGiB')) : undefined,
+      workDisk: context('hostWorkVolumeId') ? keptDisk(context('hostWorkVolumeId')) : undefined,
+      claudeCode: context('claudeCodeVersion'),
+      codex: context('codexVersion'),
+      sessionManager: context('hostSessionManager') === 'true' || context('hostSessionManager') === true,
+    });
+
 // The server’s stack is made once someone may sign in: Postbox doesn’t start without an allow list. Until then the
 // other three deploy, so a new user pool exists to make the first person in.
 const subjects = list(context('allowSubjects'));
@@ -108,6 +128,14 @@ if (subjects.length || groups.length) {
     claims: { username: usernameClaim(provider), name: context('claimName') ?? 'name' },
     allow: { subjects, groups: groups.length ? { claim: context('allowGroupsClaim'), any: groups } : undefined },
   });
-  const server = new PostboxServer(serverStack, 'Server', { vpc, serverGroup, ...data, targets: edge.targets, source: { root, commit: commit() }, hosted });
+  const server = new PostboxServer(serverStack, 'Server', {
+    vpc,
+    serverGroup,
+    ...data,
+    targets: edge.targets,
+    source: { root, commit: commit() },
+    hosted,
+    host,
+  });
   new CfnOutput(serverStack, 'LogGroup', { value: server.logGroup });
 } else console.error('No one may sign in yet, so the server’s stack is left out. Name someone with -c allowSubjects=<their subject> (infra/README.md).');
