@@ -80,3 +80,19 @@ test('#1162 “postbox:” inside another server’s error detail isn’t Postbo
   await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi.' }, ctx), /tried the postbox: socket/);
   assert.equal(down(ctx), undefined);
 });
+
+test('#1905 Codex’s words reach the step cleaned, as Kiro’s do: no bidi or zero-width characters, no line breaks, no split character', async () => {
+  const { codexRefusal } = await import('../server/adapters/codex-thread.mjs');
+  const ctx = context();
+  // The recorded refusal, with what a server’s own error text could carry: a right-to-left override, a zero-width
+  // space, a line break and a line separator, and an emoji where the 400-character cut falls.
+  const said = `${refused('postbox').message} \u202Edeliated\u202C\u200B\nnext line\u2028more `;
+  // Cleaning drops the three invisible characters, so the emoji starts at index 399 of what’s cut, across the cut at 400.
+  const message = `${said}${'x'.repeat(399 - (said.length - 3))}\u{1F600} and the rest`;
+  codexRefusal(ctx, { message });
+  const detail = String(down(ctx)?.detail ?? '');
+  assert.ok(detail, 'a step says so');
+  assert.doesNotMatch(detail, /[\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2028\u2029\n\r]/u);
+  assert.doesNotMatch(detail, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/, 'no lone surrogate');
+  assert.match(detail, /next line more/, 'a line break becomes a space');
+});
