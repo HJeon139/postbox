@@ -75,6 +75,14 @@ test('a comment typed in an open box but not yet added goes with Submit review, 
     ]);
 });
 
+test('an empty comment box left open adds nothing to the review Submit sends', async ({ page }) => {
+  const { block, blockId } = await twoDrafts(page, 'Submit with an empty box');
+  await block.locator('.g-mark[data-line="7"]').click();
+  await block.getByRole('textbox', { name: 'Comment on line 7' }).fill('   ');
+  await block.getByRole('button', { name: 'Submit review', exact: true }).click();
+  await expect.poll(() => sent(blockId)?.map((c) => c.text)).toEqual(['on three', 'on five']);
+});
+
 test('#858 deleting a draft before the one being edited leaves the edit on its own comment', async ({ page }) => {
   const { block, blockId, open } = await twoDrafts(page, 'Delete before');
   await block.locator('.g-mark[data-line="7"]').click();
