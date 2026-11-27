@@ -11,6 +11,7 @@ import { exitError as agyExitError } from '../server/adapters/agy-errors.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { kiroExitError } from '../server/adapters/kiro-errors.mjs';
+import { cleanLines } from '../shared/text-parts.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** A CLI that writes `stderr` and exits with code 1, before answering anything. @param {string} stderr */
@@ -131,4 +132,9 @@ test('#1938 a CLI’s exit error keeps the end of its last lines when they run l
     ),
   );
   assert.match(said, /: x+ Error: the build failed\.$/);
+});
+
+test('#1938 half a character left alone goes from a CLI’s words and a card’s lines, and two halves an invisible character split don’t join', () => {
+  assert.equal(cleanLines('a\uDE00b\n\uD83D\u200B\uDE00c', 99), 'ab\nc');
+  assert.equal(kiroExitError(1, 'error: \uD83D\u200B\uDE00x\uD800'), 'Kiro exited with code 1: error: x.');
 });
