@@ -226,3 +226,21 @@ test('after a restart, answering the card ahead of a failed reply brings back it
   assert.equal(se.needs?.kind, 'failed');
   assert.equal(se.state, 'failed', 'Retry shows, not a plain needs-you');
 });
+
+// #1868: a view request is turn-tied as a tool request is (TURN_TIED), so another agent's wake keeps it, and the
+// person moving on clears it.
+test('#1868 a view request from the turn before stays the need across another agent’s wake, and moving on clears it', async () => {
+  const r = room();
+  const card = arrange.post(r.rt, r.t.id, { kind: 'viewask', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', status: 'open' });
+  r.setNeed('viewask', card.id);
+  const work = held();
+  r.adapter.next.push(work.step);
+  r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' }); // not you moving on
+  await sleep(5);
+  work.release();
+  await settle(r.rt);
+  assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, card.id, 'still the need after the wake');
+  r.rt.sendMessage(r.t.id, { text: '@alpha never mind, carry on' });
+  await settle(r.rt);
+  assert.equal(r.store.state.sessions[r.alpha.id].needs ?? null, null, 'moving on clears it');
+});

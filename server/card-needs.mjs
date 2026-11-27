@@ -67,7 +67,7 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
 export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, toolask: 4, viewask: 4, hop: 5, mention: 6 });
 
 /** The needs tied to a turn: the person moving on clears them (runtime.mjs, the turn's start). The rest wait until answered. */
-export const TURN_TIED = new Set(['failed', 'block', 'toolask']);
+export const TURN_TIED = new Set(['failed', 'block', 'toolask', 'viewask']);
 /** The needs a turn's own card offers while it runs (offerShown), which a stopped turn takes with it (stoppedNeed). */
 const OFFERED_MID_TURN = new Set(['block', 'toolask', 'viewask']);
 
