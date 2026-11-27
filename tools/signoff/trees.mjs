@@ -3,7 +3,9 @@
 // until the step removes it.
 // - Step 2: Biome at each commit from the merge base to HEAD, on the files that commit changes, with the biome.json
 //   of that commit. A commit that fails is red even when a later one fixes it: each commit is reviewed and reverted
-//   alone (designs/engineering-practices.md, “Commits and versions”).
+//   alone (designs/engineering-practices.md, “Commits and versions”). Merge commits are skipped: against their first
+//   parent they change every file the base brought in, checked by today’s Biome against an old biome.json, so a
+//   Biome upgrade on main would mark an old merge red.
 // - Step 3: the tree a merge would make with the base freshly fetched from the pull request’s base repository.
 //   main’s ruleset doesn’t require a head to be current with main, so a head green on its own can still conflict, or
 //   fail a lint, once merged. A conflict fails; a clean merge is checked out and runs Biome and the project lints, as
@@ -90,9 +92,10 @@ async function changedFiles(d, root, sha, stop) {
  * @param {import('./deps.mjs').Deps} d @param {string} root @param {string} mergeBase
  */
 export async function eachCommit(d, root, mergeBase) {
-  const shas = (await must(d, ['git', 'rev-list', '--reverse', `${mergeBase}..HEAD`], { cwd: root })).split('\n').filter(Boolean);
+  const range = ['git', 'rev-list', '--reverse', '--no-merges', `${mergeBase}..HEAD`];
+  const shas = (await must(d, range, { cwd: root })).split('\n').filter(Boolean);
   // A pull request with no commits of its own checked nothing: that’s a wrong base, not a pass.
-  if (!shas.length) return { ok: false, why: `no commits between the merge base ${mergeBase.slice(0, 8)} and HEAD` };
+  if (!shas.length) return { ok: false, why: `no commits other than merges between the merge base ${mergeBase.slice(0, 8)} and HEAD` };
   /** @type {string[]} */
   const red = [];
   await inWorktree(d, root, shas[0], async (dir, stop) => {

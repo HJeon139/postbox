@@ -118,10 +118,23 @@ test('several failures exit with the first one’s step, and every step still re
   assert.match(w.lines.at(-1), /passed=2 failed=2 -> FAIL at step 1$/);
 });
 
+test('step 2 skips merge commits: against their first parent they change every file the base brought in', async () => {
+  const merge = '9'.repeat(40);
+  // As git answers: a merge from main sits between the pull request’s own commits unless --no-merges leaves it out.
+  const revList = (argv) => ({ code: 0, out: `${(argv.includes('--no-merges') ? COMMITS : [COMMITS[0], merge, COMMITS[1]]).join('\n')}\n` });
+  const w = world({ answers: [[/^git rev-list /, revList]] });
+  assert.equal(await signoff(['840'], w.d), EXIT.pass, w.lines.join('\n'));
+  assert.deepEqual(
+    ran(w, /^git checkout/).map((c) => c.argv.at(-1)),
+    COMMITS,
+  );
+  assert.match(line(w, /^✔ 2\./), /Biome passes at each of 2 commits/);
+});
+
 test('a range with no commits fails step 2: a wrong base checked nothing', async () => {
-  const w = world({ answers: [[/^git rev-list --reverse /, { code: 0, out: '' }]] });
+  const w = world({ answers: [[/^git rev-list --reverse --no-merges /, { code: 0, out: '' }]] });
   assert.equal(await signoff(['840'], w.d), EXIT.commits);
-  assert.match(line(w, /^✖ 2\./), /no commits between the merge base aaaaaaaa and HEAD/);
+  assert.match(line(w, /^✖ 2\./), /no commits other than merges between the merge base aaaaaaaa and HEAD/);
 });
 
 test('a pull request gh can’t read fails step 1, and the steps that need its base say why they can’t run', async () => {

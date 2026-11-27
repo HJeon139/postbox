@@ -114,7 +114,7 @@ function defaults(head) {
     [/^git rev-parse refs\/remotes\/origin\/main$/, ok(`${STALE_SHA}\n`)],
     // The merge base of HEAD and the fetched base; a stale base has another, so a range from it is told apart.
     [/^git merge-base HEAD /, (argv) => ok(`${argv.at(-1) === BASE_SHA ? MERGE_BASE : '6'.repeat(40)}\n`)],
-    [/^git rev-list --reverse /, ok(`${COMMITS.join('\n')}\n`)],
+    [/^git rev-list --reverse --no-merges /, ok(`${COMMITS.join('\n')}\n`)],
     [/^git diff -z --name-only /, ok('tools/signoff.mjs\0')],
     [/^git (worktree|checkout) /, ok()],
     [/^git merge-tree /, ok(`${'e'.repeat(40)}\n`)],

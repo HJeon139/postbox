@@ -157,7 +157,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 **Sign off with `tools/signoff.mjs`, not a script of your own** (#845). In sprint 3, each author’s and reviewer’s own scripts failed quietly: a sign-off posted over a `git merge-tree` conflict, a spec list passed as one shell word ran no tests, and a wait that printed nothing for 15 minutes had its turn stopped. `node tools/signoff.mjs <pr>` runs four steps and prints a line as each ends. A failed step doesn’t stop the ones after it, so one run reports every problem:
 
 1. **The head is pushed:** the local HEAD is the pull request’s head on GitHub.
-2. **Biome at each commit** from the merge base to HEAD, in a temporary worktree.
+2. **Biome at each commit** from the merge base to HEAD, in a temporary worktree. Merge commits are skipped: each commit is reviewed and reverted alone, and a merge’s diff is what the base brought in.
 3. **The merged tree:** `git merge-tree` with the base fetched from the pull request’s base repository, then Biome and `npm run lint:project` on the merge.
 4. **GitHub’s checks:** `tools/signoff-checks.mjs`, every check `main`’s rules require, CodeQL included.
 

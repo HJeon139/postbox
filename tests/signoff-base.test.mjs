@@ -20,7 +20,7 @@ test('step 2’s range and step 3’s merge use the base fetched from the pull r
   assert.deepEqual(ran(w, /^git fetch /)[0].argv, ['git', 'fetch', '--quiet', '--no-tags', '--', BASE_REPO, 'refs/heads/main']);
   assert.equal(ran(w, /^git fetch /)[0].o.env?.GIT_TERMINAL_PROMPT, '0', 'a credential prompt fails the fetch rather than waiting on it');
   assert.deepEqual(ran(w, /^git merge-base /)[0].argv, ['git', 'merge-base', 'HEAD', BASE_SHA]);
-  assert.equal(ran(w, /^git rev-list /)[0].argv.at(-1), `${MERGE_BASE}..HEAD`);
+  assert.deepEqual(ran(w, /^git rev-list /)[0].argv, ['git', 'rev-list', '--reverse', '--no-merges', `${MERGE_BASE}..HEAD`]);
   assert.deepEqual(ran(w, /^git merge-tree /)[0].argv.slice(-2), ['HEAD', BASE_SHA]);
   assert.ok(ran(w, /^git commit-tree /)[0].argv.includes(BASE_SHA));
   assert.equal(ran(w, new RegExp(`refs/remotes|${STALE_SHA}`)).length, 0, 'nothing read the remote-tracking ref');
