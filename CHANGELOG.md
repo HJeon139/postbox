@@ -2,6 +2,37 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.6.0 (2026-11-27)
+
+### Features
+
+- **uat:** fail a run whose screenshot shows text over text, cut off or broken
+- **kit:** check text run into a control and words broken mid-word
+
+### Fixes
+
+- **kit:** skip text sitting right in a closed details, not only its child elements
+- **app:** a block's title keeps its longest word whole in a narrow head
+- **app:** a step's long output shows its newest lines
+- **kit:** count a closed details' content as hidden
+- **kit:** only a control missing at the point counts as not showing
+- **uat:** put a view that was at the end back at the end, and draw inside try
+- **kit:** a control not drawn at the point where it meets text doesn't show there
+- **uat:** leave a view that followed the end following it after the layout check
+- **uat:** draw every item while Postbox's layout check measures
+- **kit:** undo the skipped-content and floating-pair changes to the shared checks
+- **kit:** one floating over the other isn't text running into a control
+- **kit:** don't measure content the browser skips off screen
+- **kit:** exempt a cut-off label only when the box that cuts it fades it
+- **kit:** a control floats over text only when its fixed box doesn't hold the text
+- **uat:** add a screenshot's layout findings only once it's read whole
+- **kit:** count only a gradient fade on the box that cuts as shortened
+- **kit:** hide text under a control only when the control floats with the window
+- **uat:** list a screenshot text-layout can't read as unverified
+- **uat:** keep the page's own animation frames while the layout check runs
+- **kit:** let an opaque control over text hide it, and skip breaks asked for
+- **kit:** count text faded out with a mask as shortened on purpose
+
 ## 5.5.2 (2026-11-27)
 
 ### Fixes

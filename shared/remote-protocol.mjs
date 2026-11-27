@@ -93,6 +93,12 @@
 //   from before it refuses it as `models`’ do, and the removal stays owed until the host runs this version (#491).
 //   A refused `forget` is an `error` with `re: 'forget'` and its `persona`, so Postbox settles nothing but that one and
 //   reads the rest of that connection’s answers (#1683).
+// - `signins {}` asks the daemon whether each harness its welcome found is signed in, by that harness’s own status
+//   command (server/remote/host/harness-signin.mjs), run as an argument list with no shell and no stdin, for at most
+//   15 s; a sign-in is kept 60 s, and a sign-out or unknown is asked again. `signed { harnesses }` answers it, one
+//   entry per harness found: its name, its state (SIGN_IN_STATES) and, when signed in, the sign-in’s method and when it
+//   runs out (epoch ms, or null), never the command’s own output, which names the account. Also new without a version
+//   number: a daemon from before it refuses it as `models`’ do, and Postbox reads that as unknown (#1608).
 //
 // This module is the protocol’s one entry point, and its parts are the remote-protocol-*.mjs modules beside it, one
 // concern each: constants, checks (single values), parts (what several messages carry), files (the host’s), the
@@ -108,11 +114,15 @@ import {
   HARNESSES,
   HOST_DEFAULTS,
   HOST_ENFORCED,
+  LOGIN_COMMANDS,
   MESSAGE_FILE,
   PROTOCOL_VERSION,
   REMOTE_DIR,
   REMOTE_LIMITS,
   SIGN_IN_CHECK_MS,
+  SIGN_IN_KEEP_MS,
+  SIGN_IN_STATES,
+  SIGN_IN_STATUS_MS,
   SOCKET_PATH_BYTES,
   STDIN_KINDS,
   TOOL_ROUTES,
@@ -149,6 +159,7 @@ export {
   HOST_DEFAULTS,
   HOST_ENFORCED,
   hostPaths,
+  LOGIN_COMMANDS,
   lookedText,
   MESSAGE_FILE,
   message,
@@ -159,6 +170,9 @@ export {
   REMOTE_LIMITS,
   refusesType,
   SIGN_IN_CHECK_MS,
+  SIGN_IN_KEEP_MS,
+  SIGN_IN_STATES,
+  SIGN_IN_STATUS_MS,
   SOCKET_PATH_BYTES,
   STDIN_KINDS,
   socketPathFits,
@@ -174,6 +188,7 @@ export {
 };
 
 /** @typedef {import('./remote-protocol-constants.mjs').Harness} Harness */
+/** @typedef {import('./remote-protocol-constants.mjs').SignInState} SignInState */
 /** @typedef {import('./remote-protocol-files.mjs').ExitRecord} ExitRecord */
 /** @typedef {import('./remote-protocol-files.mjs').RunnerRecord} RunnerRecord */
 /** @typedef {import('./remote-protocol-files.mjs').StartRecord} StartRecord */

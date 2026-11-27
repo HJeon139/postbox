@@ -2,9 +2,11 @@
 // `codex` installation supplies sign-in, configuration, sandboxing and the model catalog.
 import { spawn } from 'node:child_process';
 import { realpath } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 import { cleanTail } from '../../shared/text-parts.mjs';
 import { withQuota } from '../harness-failure.mjs';
+import { LOCK as DATA_FOLDER_LOCK } from '../home.mjs';
 import { codexApproval } from './codex-approval.mjs';
 import { codexEffortOf, createCodexMapper, errorText } from './codex-mapper.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
@@ -19,6 +21,7 @@ import { COMPACT } from './no-compaction.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { AUTO_MODEL, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 import { stderrTail } from './stderr-tail.mjs';
+import { inCheckoutData } from './steering.mjs';
 
 export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
 export { CODEX_CAPABILITIES, codexRemoteConfigArgs, createCodexRebuild } from './codex-remote.mjs';
@@ -71,6 +74,36 @@ export function codexConfigArgs(mcpUrl) {
     ...postboxMcpApprovalArgs(),
     ...CODEX_MEMORY_OFF,
   ];
+}
+
+/**
+ * The local app-server’s arguments for a turn: Postbox’s server and its approvals, where its walk for AGENTS.md
+ * stops (codexSteeringArgs), and the persona’s web search.
+ * @param {any} ctx @param {string} cwd  the turn’s working folder @param {string} workRoot  the data folder’s workspaces
+ */
+function appServerArgs(ctx, cwd, workRoot) {
+  return [
+    'app-server',
+    '--listen',
+    'stdio://',
+    ...codexConfigArgs(ctx.mcpUrl),
+    ...codexSteeringArgs(cwd, dirname(workRoot)),
+    ...codexWebSearchArgs(ctx.persona),
+  ];
+}
+
+/**
+ * Where an agent in Postbox’s data folder inside a clone stops Codex’s walk for AGENTS.md (#319): at the data folder,
+ * by `postbox.lock`, which Postbox keeps there, as well as at a `.git`. Codex loads AGENTS.md from the nearest folder
+ * holding a root marker down to its working folder (`project_root_markers`, `.git` by default), so it loaded the
+ * checkout’s own, the rules for developing Postbox; now it loads the data folder’s and the agent’s own only, as
+ * Claude Code’s claudeMdExcludes does (steering.mjs). A project whose folder is the checkout, or a data folder in no
+ * repository, is left as it is. Measured with Codex 0.167.0’s thread/start instructionSources, with no model turn.
+ * @param {string} folder  the agent’s working folder @param {string} dataDir  Postbox’s data folder
+ * @returns {string[]}
+ */
+export function codexSteeringArgs(folder, dataDir) {
+  return inCheckoutData(folder, dataDir) ? ['-c', `project_root_markers=${JSON.stringify(['.git', DATA_FOLDER_LOCK])}`] : [];
 }
 
 /** The Codex thread a turn continues: a fork’s source, else the session’s own, or none. @param {any} state */
@@ -187,12 +220,11 @@ export class CodexAdapter {
     const remote = ctx.remote ?? null;
     const attach = remote?.attach ?? null;
     const cwd = remote ? remote.folder : await realFolder(await this.folderFor(ctx.persona, ctx.project));
-    const args = ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl), ...codexWebSearchArgs(ctx.persona)];
     // Its own process group, so stopping the turn reaches everything the app-server started (#126); on a host, the daemon’s.
     /** @type {any} */
     const child = remote
       ? spawnRemoteCodex(remote, attach, cwd, this.bin, ctx.persona)
-      : this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
+      : this.spawn(this.bin, appServerArgs(ctx, cwd, this.workRoot), { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
     const exitedP = new Promise((r) => {
       child.once('exit', r);
       child.once('close', r);
