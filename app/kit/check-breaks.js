@@ -6,7 +6,7 @@
 // biome-ignore lint/suspicious/noRedundantUseStrict: the page runs this as a classic script, which isn’t strict without it.
 'use strict';
 {
-  const { clip, px, where, jump, hidden, shown, shownPart, lineBoxes, opaque, guard } = window.__pbCheck;
+  const { clip, px, where, jump, hidden, shown, shownPart, lineBoxes, opaque, meeting, guard } = window.__pbCheck;
   const CONTROLS = 'button, [role=button], [role=checkbox], [role=radio], [role=tab], a[href], input:not([type=hidden]), select, textarea, summary';
   const range = document.createRange();
 
@@ -95,9 +95,10 @@
       for (const t of texts) {
         if (found.size >= 3 || t.r.top >= c.r.bottom) break;
         const cross = crossing(t.r, c.r);
+        if (!cross) continue;
         const key = `${clip(t.n.textContent)}\u0000${where(c.el)}`;
-        if (!cross || found.has(key) || belongs(t.n, c.el) || asks++ >= 200) continue;
-        const at = [(Math.max(t.r.left, c.r.left) + Math.min(t.r.right, c.r.right)) / 2, (Math.max(t.r.top, c.r.top) + Math.min(t.r.bottom, c.r.bottom)) / 2];
+        if (found.has(key) || belongs(t.n, c.el) || asks++ >= 200) continue;
+        const at = meeting(t.r, c.r);
         if (!bothShow(t.n.parentElement, c.el, at[0], at[1], y0)) continue;
         found.set(key, {
           code: 'text-on-control',

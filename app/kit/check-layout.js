@@ -134,6 +134,8 @@
     return boxes.sort((a, b) => a.r.top - b.r.top);
   }
 
+  // The middle of where two boxes cross, [x, y]: the point asked what’s drawn there.
+  const meeting = (a, b) => [(Math.max(a.left, b.left) + Math.min(a.right, b.right)) / 2, (Math.max(a.top, b.top) + Math.min(a.bottom, b.bottom)) / 2];
   // Whether both texts show where they meet: one painted over by something opaque of another’s (a list scrolled under
   // its sticky footer) is hidden there, not overlapped.
   const opaque = (e) => {
@@ -181,7 +183,7 @@
         // Lines set tight can touch by a few pixels; text over text covers a good part of a line’s height.
         if (x <= 2 || y <= 2 || y < Math.min(a.r.height, b.r.height) / 3) continue;
         const key = `${clip(a.n.textContent)}\u0000${clip(b.n.textContent)}`;
-        const mid = [(Math.max(a.r.left, b.r.left) + Math.min(a.r.right, b.r.right)) / 2, (Math.max(a.r.top, b.r.top) + Math.min(a.r.bottom, b.r.bottom)) / 2];
+        const mid = meeting(a.r, b.r);
         if (found.has(key) || asks++ >= 200) continue;
         if (bothShow(a, b, mid[0], mid[1], y0))
           found.set(key, { a: clip(a.n.textContent), b: clip(b.n.textContent), at: [a, b].map((t) => where(t.n.parentElement)), x: px(x), y: px(y) });
@@ -223,6 +225,6 @@
   Object.assign(window.__pbCheck, {
     textOverflow: guard('text-overflow', textOverflow),
     textOverlap: guard('text-overlap', textOverlap),
-    ...{ clip, px, where, jump, hidden, shownPart, guard, lineBoxes, opaque },
+    ...{ clip, px, where, jump, hidden, shownPart, guard, lineBoxes, opaque, meeting },
   });
 })();
