@@ -46,6 +46,7 @@ import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-gr
 import { recordOnceWritten } from './prompt-sent.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
+import { stderrTail } from './stderr-tail.mjs';
 import { checkoutSteering } from './steering.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
@@ -225,7 +226,6 @@ export class ClaudeCodeAdapter {
         reject(new Error(remote ? `Couldn’t start Claude Code on the host: ${e.message}` : `Couldn’t start Claude Code (${this.bin}): ${e.message}`));
         return;
       }
-      let stderr = '';
       let finished = false;
       const exited = new Promise((r) => {
         child.once('exit', r);
@@ -258,27 +258,25 @@ export class ClaudeCodeAdapter {
           ),
         ),
       );
-      child.stderr.on('data', (d) => {
-        stderr = (stderr + d).slice(-4000);
-      });
+      const stderr = stderrTail(child);
       readStream(ctx, child, mapper);
       const done = (code) => {
         if (finished) return;
         finished = true;
         stop.off();
         // A fork whose branch point is gone keeps nothing from this run: no session id, no checkpoint.
-        if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, stderr)) return resolve({ missingForkPoint: true });
+        if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, stderr())) return resolve({ missingForkPoint: true });
         ctx.saveState({ ...mapper.endState, ...(mapper.sessionId ? { fork: null } : {}) });
         const current = mapper.sessionId ?? ctx.state.claudeSessionId;
         if (mapper.lastUuid && current) ctx.checkpoint?.({ claudeSessionId: current, uuid: mapper.lastUuid });
         if (ctx.signal.aborted) return resolve({});
         // A session to resume or fork that Claude Code no longer has. On a host, the result says it too (remoteSaid).
-        const said = remote ? remoteSaid(stderr, mapper.result) : stderr;
+        const said = remote ? remoteSaid(stderr(), mapper.result) : stderr();
         if ((resume || fork) && /No conversation found|session .* not found/i.test(said)) return resolve({ missingSession: true });
         const failure = resultError(mapper.result);
         if (failure) {
           // Its last three lines, cleaned as a CLI’s words are (#1938).
-          const why = cleanSaid(stderr.trim().split('\n').slice(-3).join(' '), 400);
+          const why = cleanSaid(stderr().trim().split('\n').slice(-3).join(' '), 400);
           const error = withQuota(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`), mapper.quota);
           // A provider error that passes, such as 529 Overloaded, by the result’s HTTP status (#1713); an API Claude
           // Code couldn’t reach, by the result’s own word for it, so a scheduled wake retries (#466).
