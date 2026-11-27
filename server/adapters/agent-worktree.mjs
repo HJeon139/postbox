@@ -11,13 +11,13 @@
 //
 // If the project’s folder is below the repository’s top, the agent works in the same folder within its worktree. Its
 // changes land on its branch, not in the project’s folder, until they’re merged. Files the repository doesn’t track,
-// such as node_modules, .env and build output, aren’t in it. An
+// such as node_modules, .env and build output, aren’t in it; the project’s submodules are (agent-submodules.mjs). An
 // agent that ran in the project’s folder before starts its agy conversation over once, since agy keeps a conversation
 // per folder. Every git command runs with an argument array and with the repository’s hooks and filters off
 // (ledger-git.mjs’s runGit), so making a worktree runs nothing the repository’s config names.
 //
-// Where there’s nothing to make a worktree from (a project folder not in a git repository, one with no commit yet,
-// or one whose repository has submodules), and where git refuses one (a branch checked out elsewhere), the agent starts in a folder of its own beside
+// Where there’s nothing to make a worktree from (a project folder not in a git repository, or one with no commit
+// yet), and where git refuses one (a branch checked out elsewhere), the agent starts in a folder of its own beside
 // the project and works in the project’s folder (agent-own-folder.mjs, #1856); a refusal is also logged, told to the
 // agent and shown in the room. An agent whose persona names a folder keeps it, and one in a project with no folder
 // keeps its workspace (folder.mjs’s agentFolder). So turns wait only where they’d start in one folder: one agent’s
@@ -30,6 +30,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { storedFolder } from '../folder-path.mjs';
 import { runGit } from '../ledger-git.mjs';
 import { folderName, ownFolderFor } from './agent-own-folder.mjs';
+import { addSubmodules } from './agent-submodules.mjs';
 import { gitPointer } from './agy-git-dir.mjs';
 import { agentFolder } from './folder.mjs';
 import { exists, gitsOwnLock, gitsReason, removeWorktree, stateOf } from './worktree-state.mjs';
@@ -55,7 +56,7 @@ export const gitTimeoutFor = (args) => (args.includes('worktree') && args.includ
 /** git as Postbox runs it (ledger-git.mjs): an argument array, the repository’s hooks and filters off. @type {Git} */
 const defaultGit = (cwd, args) => runGit(cwd, args, gitTimeoutFor(args));
 
-/** Worktrees being made now, by folder, so two turns starting at once make one. @type {Map<string, ReturnType<typeof worktree>>} */
+/** Worktrees being made now, by folder, so two turns starting at once make one. @type {Map<string, ReturnType<typeof whole>>} */
 const making = new Map();
 /**
  * The folder each agent’s worktree gave for a project’s folder, once made, so the next call (each turn, the
@@ -88,9 +89,6 @@ export async function agentPlace(persona, project, workRoot, { git = defaultGit,
   const top = await git(project.folder, ['rev-parse', '--show-toplevel', '--show-prefix']);
   // Not in a repository, or in one with no commit yet, which would give an empty worktree without the project’s files.
   if (top.code !== 0 || (await git(project.folder, ['rev-parse', '--verify', '--quiet', 'HEAD'])).code !== 0) return { folder: await beside() };
-  // One with submodules has none yet either: a worktree holds them empty, and the turn-end commit leaves a worktree
-  // with a repository in its index uncommitted (agent-worktree-commit.mjs), so the work would stay there unseen.
-  if ((await git(project.folder, ['rev-parse', '--verify', '--quiet', 'HEAD:.gitmodules'])).code === 0) return { folder: await beside() };
   const [first = '', line = ''] = top.stdout.split('\n');
   const repo = first.trim();
   // Where the project’s folder sits below the repository’s top, as git prints it: `apps/web/`, or empty.
@@ -99,7 +97,7 @@ export async function agentPlace(persona, project, workRoot, { git = defaultGit,
   const which = createHash('sha256').update(repo).digest('hex').slice(0, 8);
   const dir = join(worktreesRootFor(workRoot), folderName(project.id), `${folderName(persona.id || persona.handle)}-${which}`);
   const once = (/** @type {string} */ line) => !logged.has(`${dir}\n${line}`) && logged.add(`${dir}\n${line}`) && log(line);
-  const made = making.get(dir) ?? worktree(git, project.folder, dir, branchFor(persona, project));
+  const made = making.get(dir) ?? whole(git, { repo, folder: project.folder, dir, branch: branchFor(persona, project) });
   making.set(dir, made);
   const ready = await made.finally(() => making.get(dir) === made && making.delete(dir));
   if ('why' in ready) {
@@ -108,6 +106,7 @@ export async function agentPlace(persona, project, workRoot, { git = defaultGit,
     );
     return { folder: await beside(), why: ready.why };
   }
+  for (const s of ready.left) once(`Postbox left the submodule ${s.path} empty in @${persona.handle}’s worktree: ${s.why}.`);
   const folder = prefix ? await agentFolder({ ...persona, folder: join(ready.dir, prefix) }, project, workRoot) : ready.dir;
   known.set(key, { dir: ready.dir, folder });
   return { folder };
@@ -119,6 +118,17 @@ export async function agentPlace(persona, project, workRoot, { git = defaultGit,
  * @param {Parameters<typeof agentPlace>} args @returns {Promise<string>}
  */
 export const agentWorktree = async (...args) => (await agentPlace(...args)).folder;
+
+/**
+ * An agent’s worktree with the project’s submodules in it (agent-submodules.mjs), or git’s reason when it refuses the
+ * worktree. A submodule that stays empty doesn’t stop the agent working there: `left` names each.
+ * @param {Git} git @param {{ repo: string, folder: string, dir: string, branch: string }} o  repo: the repository’s top
+ * @returns {Promise<{ dir: string, left: { path: string, why: string }[] } | { why: string }>}
+ */
+async function whole(git, { repo, folder, dir, branch }) {
+  const made = await worktree(git, folder, dir, branch);
+  return 'dir' in made ? { dir: made.dir, left: await addSubmodules(git, { repo, dir: made.dir, branch }) } : made;
+}
 
 /**
  * The worktree at dir, made if it isn’t there: on its branch if that exists, else on a new one from HEAD. Git’s reason
@@ -140,7 +150,8 @@ async function worktree(git, repo, dir, branch) {
   // as the person’s own on a drive that isn’t mounted (#766). Git keeps a record someone locked.
   if (!(await exists(dir))) await git(repo, ['worktree', 'remove', '--force', dir]);
   const has = (await git(repo, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0;
-  // Submodules aren’t fetched: that could reach the network with the repository’s own ssh command.
+  // Git’s own submodule checkout stays off: it could reach the network with the repository’s own ssh command. Theirs
+  // are made after, from the person’s own repositories (agent-submodules.mjs).
   const add = ['-c', 'submodule.recurse=false', 'worktree', 'add'];
   const added = await git(repo, has ? [...add, dir, branch] : [...add, '-b', branch, dir]);
   if (added.code === 0) return { dir };
