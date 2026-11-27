@@ -197,3 +197,10 @@ test('view-moved is silent at exactly a pixel, and fires past it, for a move and
   assert.deepEqual(findings([sample(1, { actual: 121, expected: 120 })]), []);
   assert.equal(findings([sample(1, { actual: 121.25, expected: 120 })]).length, 1);
 });
+
+test('view-moved keeps two stale samples within one step apart, as an interrupt’s mid-turn samples are (#805)', () => {
+  const mid = [sample(3, { at: T0 + 3000, actual: 140 }), sample(3, { at: T0 + 4000, actual: 140 })];
+  const stale = findings(mid).filter((x) => x.key.startsWith('view-moved:stale:'));
+  assert.equal(stale.length, 2);
+  assert.equal(new Set(stale.map((x) => x.key)).size, 2, 'each sample is its own finding');
+});
