@@ -301,11 +301,12 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .rail .row .name { flex: 1; min-width: 0; line-height: 1.25; }
 .rail .row .name span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rail .row .name .sub { font-size: 12px; color: var(--dim); }
-/* The names give way to the status word: a room’s long list of agents ends in “…”, and “· needs you” stays whole. */
+/* The names give way to the status word: a room’s long list of agents ends in “…”, and “· needs you” stays whole; a
+   word longer than the line ends in “…” once the names are down to 2em. */
 .rail .row .name .sub { display: flex; }
-.rail .row .name .sub > .who { flex: 0 1 auto; min-width: 0; }
+.rail .row .name .sub > .who { flex: 0 1000 auto; min-width: 2em; }
 .rail .row .name .sub .state-word { display: inline; }
-.rail .row .name .sub > .state-word { flex: none; white-space: pre; overflow: visible; }
+.rail .row .name .sub > .state-word { white-space: pre; }
 .stack { display: inline-flex; }
 .stack { width: 30px; flex-wrap: wrap; gap: 1px; justify-content: center; }
 .stack pb-ring { margin: 0; }
