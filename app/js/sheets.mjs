@@ -749,9 +749,7 @@ export function confirmDelete(se, { keepConversation = false, removed } = {}) {
         'Delete session',
       ),
     ],
-    initialFocus: () => null,
   });
-  dlg.dialog.querySelector('.d-foot .btn')?.focus();
 }
 
 // ── Settings ────────────────────────────────────────────────────────────────────────────
