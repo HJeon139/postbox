@@ -8,7 +8,7 @@ import { needHost, releaseHost } from './turns-need.mjs';
 import { openCards } from './turns-prompt-cards.mjs';
 import { endCard } from './turns-prompts.mjs';
 import { interrupted, reattach, whenBack } from './turns-resume.mjs';
-import { key, ON_HOST, sessionOfTurn, updateRemote } from './turns-shared.mjs';
+import { key, ON_HOST, remoteOf, sessionOfTurn, updateRemote } from './turns-shared.mjs';
 import { askStop, dropStop } from './turns-stops.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
@@ -68,7 +68,7 @@ export function keepsCard(rts, it) {
  * @param {RemoteTurns} rts @param {string} sessionId
  */
 export function cancel(rts, sessionId) {
-  const se = rts.rt.s.sessions[sessionId];
+  const se = remoteOf(rts, sessionId); // as written, a held remoteTurn included (#623)
   const r = se?.remoteTurn;
   if (!r || rts.live.has(sessionId)) return false;
   const pending = rts.restoring.get(r.turn) === sessionId;

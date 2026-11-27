@@ -6,7 +6,7 @@ import { clockStopConfirmed } from '../run-clock.mjs';
 import { hostOf } from './placement.mjs';
 import { linkOf, listen, needHost, releaseHost } from './turns-need.mjs';
 import { openCards } from './turns-prompt-cards.mjs';
-import { ON_HOST, send, updateRemote } from './turns-shared.mjs';
+import { ON_HOST, remoteOf, send, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Stop} Stop */
@@ -30,14 +30,15 @@ export function askStop(rts, sessionId, hostId, turn, { send: now = true, state 
     rts.stopping.set(turn, s);
     needHost(rts, hostId);
   }
-  const r = rts.rt.s.sessions[sessionId]?.remoteTurn;
-  if (r) {
+  const entry = stopEntry({ turn, hostId, at: rts.now() }, s);
+  // Added to the stops as written, so one asked behind a held commit isn’t dropped (#623).
+  updateRemote(rts, sessionId, (r) => {
     const stopping = r.stopping ?? [];
-    updateRemote(rts, sessionId, {
-      ...(stopping.some((/** @type {any} */ x) => x.turn === turn) ? {} : { stopping: [...stopping, stopEntry({ turn, hostId, at: rts.now() }, s)] }),
+    return {
+      ...(stopping.some((/** @type {any} */ x) => x.turn === turn) ? {} : { stopping: [...stopping, entry] }),
       ...(state && r.turn === turn ? { state: 'stopping', at: rts.now() } : {}),
-    });
-  }
+    };
+  });
   // The person’s Stop: its open cards learn it, so whichever message ends them tells the agent the Stop withdrew the
   // request, not the person refusing it (#853). Any other stop (a sign-in end, an errored end, a hung stop, the
   // restart’s re-ask) leaves them, so the agent hears it expired (#721).
@@ -82,21 +83,21 @@ export function stopConfirmed(rts, turn, unkilled = false) {
 /** A stop’s flags changed: its entry in remoteTurn.stopping says so, for a restart. @param {RemoteTurns} rts @param {string} sessionId @param {string} turn */
 export function saveStop(rts, sessionId, turn) {
   const s = rts.stopping.get(turn);
-  const r = rts.rt.s.sessions[sessionId]?.remoteTurn;
+  // The stops as written: one asked behind a held commit is saved too, and none is dropped (#623).
+  const r = remoteOf(rts, sessionId)?.remoteTurn;
   if (!s || !r?.stopping?.some((/** @type {any} */ x) => x.turn === turn)) return;
-  updateRemote(rts, sessionId, {
-    stopping: r.stopping.map((/** @type {any} */ x) => (x.turn === turn ? stopEntry({ turn: x.turn, hostId: x.hostId, at: x.at }, s) : x)),
-  });
+  updateRemote(rts, sessionId, (now) => ({
+    stopping: (now.stopping ?? []).map((/** @type {any} */ x) => (x.turn === turn ? stopEntry({ turn: x.turn, hostId: x.hostId, at: x.at }, s) : x)),
+  }));
 }
 
 /** @param {RemoteTurns} rts @param {string} sessionId @param {string} turn */
 export function dropStop(rts, sessionId, turn) {
-  const r = rts.rt.s.sessions[sessionId]?.remoteTurn;
-  if (!r) return;
-  updateRemote(rts, sessionId, {
+  // Taken from the stops as written, so another stop or a state held behind a commit isn’t undone (#623).
+  updateRemote(rts, sessionId, (r) => ({
     stopping: (r.stopping ?? []).filter((/** @type {any} */ x) => x.turn !== turn),
     ...(r.turn === turn && r.state === 'stopping' ? { state: 'done', at: rts.now() } : {}),
-  });
+  }));
 }
 
 /**

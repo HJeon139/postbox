@@ -39,7 +39,6 @@ const FROM_PUBLISHED = {
   // rules: a conversation's rule, copied whole from the session (found once the guard read copies given whole, #623);
   // addDirs: a folder removed, or added
   'permissions-panel.mjs': ['changePermissionRule', 'changePermissionFolder', 'changePermissionFolder'],
-  'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn: a host turn's state
   'thread-catch-up.mjs': ['threadTail', 'threadCatchUp', 'reactionLines'], // seenIn and reactionsTold: catch-up markers per thread
 };
 

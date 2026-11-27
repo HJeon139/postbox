@@ -16,7 +16,6 @@ import { BIND, GETTER, PUBLISHED_SESSION } from './session-read-forms.mjs';
  */
 const DECIDED_PUBLISHED = {
   'permission-cards.mjs': ['resolveDenial'], // allowOnce, also built from the published session (session-write-guard’s FROM_PUBLISHED)
-  'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn, the same
 };
 
 /** A published read of one session or of a thread's: what a deciding read reads. */

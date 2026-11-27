@@ -92,6 +92,10 @@ export const PENDING = {
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies
   'remote/turns-prompt-cards.mjs': ['permissionCards'], // a host turn’s own cards, and a question’s blocks (#1059): the sweep its callers settle, and the calls an attach after a restart holds (#353)
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
+  // A remote turn’s session as written, for each read that decides a write of its remoteTurn (its replies, stops, state,
+  // resume count), and every session as written, for the sweeps that resume or check one: each maybe written behind a
+  // held commit (#623).
+  'remote/turns-shared.mjs': ['remoteOf', 'remotes'],
   'remote/turns.mjs': ['noteAttach', 'noteAttach'], // the session and the persona: whether it awaits attach, which decides a delivery’s wait, with the persona as written (#1135)
   'reply-segment.mjs': ['wordsSegment', 'placeStep'], // whether the turn’s open part is still its thread’s last decides where its next words and steps go
   // The conversation createThread just wrote, with the agents it joined: its route’s answer is its own write, which a

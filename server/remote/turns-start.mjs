@@ -17,7 +17,7 @@ import { continueAs, keepOrigin } from './turns-origin.mjs';
 import { claimShown, endOrphanCards } from './turns-prompts.mjs';
 import { replaying } from './turns-replay.mjs';
 import { signInCheck } from './turns-resume.mjs';
-import { abortError, OFFSET_SAVE_MS, updateRemote, whyLine } from './turns-shared.mjs';
+import { abortError, OFFSET_SAVE_MS, remoteOf, updateRemote, whyLine } from './turns-shared.mjs';
 import { sendSnapshot } from './turns-snapshot.mjs';
 import { askStop } from './turns-stops.mjs';
 
@@ -218,7 +218,7 @@ function renamedBusy(rts, e, hostId, se) {
  * @param {RemoteTurns} rts @param {string} sessionId @param {string | null} hostId  where the new turn runs, or null for here
  */
 export function leaveMoved(rts, sessionId, hostId) {
-  const r = rts.rt.s.sessions[sessionId]?.remoteTurn;
+  const r = remoteOf(rts, sessionId)?.remoteTurn; // as written (#623)
   if (!r?.turn || r.hostId === hostId || rts.restoring.get(r.turn) !== sessionId) return;
   rts.restoring.delete(r.turn);
   rts.noteAttach(sessionId);
@@ -236,24 +236,26 @@ function allocate(rts, live, folder) {
   const id = randomUUID();
   adopt(rts, live, id);
   leaveMoved(rts, live.sessionId, live.hostId);
-  const se = rts.rt.s.sessions[live.sessionId];
-  const prior = se?.remoteTurn ?? {};
-  rts.rt.sessions.update(live.sessionId, {
-    remoteTurn: {
-      hostId: live.hostId,
-      turn: id,
-      offset: 0,
-      rtTurn: live.rt.id,
-      threadId: live.rt.threadId,
-      folder,
-      state: 'running',
-      at: rts.now(),
-      autoResumes: prior.resume?.auto ? (prior.autoResumes ?? 0) : 0,
-      replies: prior.replies ?? [],
-      stopping: prior.stopping ?? [],
-      // What it was asked, so a turn that continues it ends as it would have (prepare, turns-origin.mjs).
-      origin: live.origin,
-    },
+  // Built from the session as written, so a resume’s count, a kept reply or a stop held behind a commit carries over (#623).
+  rts.rt.sessions.update(live.sessionId, (se) => {
+    const prior = se.remoteTurn ?? {};
+    return {
+      remoteTurn: {
+        hostId: live.hostId,
+        turn: id,
+        offset: 0,
+        rtTurn: live.rt.id,
+        threadId: live.rt.threadId,
+        folder,
+        state: 'running',
+        at: rts.now(),
+        autoResumes: prior.resume?.auto ? (prior.autoResumes ?? 0) : 0,
+        replies: prior.replies ?? [],
+        stopping: prior.stopping ?? [],
+        // What it was asked, so a turn that continues it ends as it would have (prepare, turns-origin.mjs).
+        origin: live.origin,
+      },
+    };
   });
   // A scheduled wake’s own turn, which a restart leaves to this host turn (rearmWakes).
   noteScheduledTurn(rts.rt, live.rt);
@@ -299,6 +301,6 @@ export function offsetAt(rts, live, turn, upTo, now = false) {
   live.offset = upTo;
   if (!now && rts.now() - live.offsetSaved < OFFSET_SAVE_MS) return;
   live.offsetSaved = rts.now();
-  const se = rts.rt.s.sessions[live.sessionId];
-  if (se?.remoteTurn?.turn === turn) updateRemote(rts, se.id, { offset: upTo });
+  // As written: allocate’s remoteTurn for this host turn may still be held behind a commit (#623).
+  if (remoteOf(rts, live.sessionId)?.remoteTurn?.turn === turn) updateRemote(rts, live.sessionId, { offset: upTo });
 }
