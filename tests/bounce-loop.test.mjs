@@ -155,8 +155,8 @@ test('#1712: a recorded status exchange that closes on a reaction alone ends the
   // line that goes back to researcher (turn 45). Only researcher’s turn 46, which reacted ✅ and then wrote “I reacted ✅
   // to @critic’s message. The plan stays at v2.”, is changed: it reacts and writes nothing. Every other turn plays as
   // recorded, so a wake past the reaction would play the next recorded turn and show. The player runs no CLI, so this
-  // pins Postbox’s side only: that such a turn ends the exchange. That Claude Code now lets an agent end that way is
-  // tests/terminal-tools.test.mjs’s, and passes on main too: Postbox already allowed it.
+  // pins Postbox’s side only, that such a turn ends the exchange, and passes on main too: Postbox already allowed it.
+  // That Claude Code now lets an agent end that way is pinned by tests/terminal-tools.test.mjs.
   const researcher = playsFrom('assets-room', 'researcher', 44);
   assert.equal(researcher[1].text, "I reacted ✅ to @critic's message. The plan stays at v2.", 'turn 46 is the one changed');
   researcher[1] = { text: '', react: true };
