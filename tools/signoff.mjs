@@ -1,5 +1,6 @@
 // The local sign-off on a pull request (#845, part A1): what a reviewer runs before saying a head is ready, so a
-// sign-off fails loudly where sprint 3’s scripts failed quietly. Four steps, in order, each printed as it ends:
+// sign-off fails loudly where sprint 3’s scripts failed quietly. First it reads the pull request from GitHub and
+// fetches its base, once, for the steps that read them. Then four steps, in order, each printed as it ends:
 //   1. the head is pushed: the local HEAD is the pull request’s head on GitHub;
 //   2. Biome at each commit from the merge base to HEAD (tools/signoff/trees.mjs);
 //   3. the merged tree: HEAD merges cleanly with the base freshly fetched from the pull request’s base repository, and
@@ -25,39 +26,53 @@ export const EXIT = { pass: 0, head: 1, commits: 2, merged: 3, checks: 4, usage:
 
 /**
  * @typedef {{ ok: boolean, why?: string, note?: string }} StepResult
- * @typedef {{ pr: number, root: string, head: string, load?: { one: number, cores: number },
- *   base?: string, prUrl?: string, baseSha?: string, mergeBase?: string, fetchError?: string }} Ctx
+ * @typedef {{ pr: number, root: string, head: string, load?: { one: number, cores: number }, prError?: string,
+ *   prHead?: string, base?: string, prUrl?: string, baseSha?: string, mergeBase?: string, fetchError?: string }} Ctx
  */
 
-/** Step 1. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
-async function headIsPushed(d, ctx) {
-  const view = d.gh(['pr', 'view', String(ctx.pr), '--json', 'headRefOid,baseRefName,url']);
-  ctx.base = view.baseRefName;
-  ctx.prUrl = view.url;
-  if (view.headRefOid !== ctx.head) {
+/**
+ * Before the steps: reads the pull request and fetches its base, so that one decision, in one place, gives steps 2
+ * and 3 the same base. A failure is kept for the steps to report: step 1 a pull request gh can’t read, steps 2 and 3
+ * a base that couldn’t be fetched.
+ * @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx
+ */
+async function readPullRequest(d, ctx) {
+  try {
+    const view = d.gh(['pr', 'view', String(ctx.pr), '--json', 'headRefOid,baseRefName,url']);
+    Object.assign(ctx, { prHead: view.headRefOid, base: view.baseRefName, prUrl: view.url });
+  } catch (e) {
+    ctx.prError = e.message.split('\n')[0];
+    ctx.fetchError = 'no base branch: step 1 couldn’t read the pull request';
+    return;
+  }
+  try {
+    Object.assign(ctx, await fetchBase(d, ctx.root, { pr: ctx.pr, prUrl: String(ctx.prUrl), base: String(ctx.base) }));
+  } catch (e) {
+    ctx.fetchError = `couldn’t fetch ${ctx.base}: ${e.message.split('\n')[0]}`;
+  }
+}
+
+/** Step 1. @param {import('./signoff/deps.mjs').Deps} _d @param {Ctx} ctx @returns {Promise<StepResult>} */
+async function headIsPushed(_d, ctx) {
+  if (ctx.prError) return { ok: false, why: ctx.prError };
+  if (ctx.prHead !== ctx.head) {
     return {
       ok: false,
-      why: `local HEAD ${ctx.head.slice(0, 8)} isn’t #${ctx.pr}’s head on GitHub, ${String(view.headRefOid).slice(0, 8)}: push it, or check out that head`,
+      why: `local HEAD ${ctx.head.slice(0, 8)} isn’t #${ctx.pr}’s head on GitHub, ${String(ctx.prHead).slice(0, 8)}: push it, or check out that head`,
     };
   }
   return { ok: true, note: `${ctx.head.slice(0, 8)} is #${ctx.pr}’s head, into ${ctx.base}` };
 }
 
-/** Step 2: fetches the base first, for this step and the next. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
+/** Step 2. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
 async function commits(d, ctx) {
-  if (!ctx.base) return { ok: false, why: 'no base branch: step 1 couldn’t read the pull request' };
-  try {
-    Object.assign(ctx, await fetchBase(d, ctx.root, { pr: ctx.pr, prUrl: String(ctx.prUrl), base: ctx.base }));
-  } catch (e) {
-    ctx.fetchError = e.message;
-    return { ok: false, why: `couldn’t fetch ${ctx.base}: ${e.message}` };
-  }
-  return eachCommit(d, ctx.root, /** @type {string} */ (ctx.mergeBase));
+  if (!ctx.mergeBase) return { ok: false, why: `no fetched base to compare with: ${ctx.fetchError}` };
+  return eachCommit(d, ctx.root, ctx.mergeBase);
 }
 
 /** Step 3. @param {import('./signoff/deps.mjs').Deps} d @param {Ctx} ctx @returns {Promise<StepResult>} */
 async function merged(d, ctx) {
-  if (!ctx.base || !ctx.baseSha) return { ok: false, why: `no fetched base to merge with: ${ctx.fetchError ?? 'step 1 couldn’t read the pull request'}` };
+  if (!ctx.base || !ctx.baseSha) return { ok: false, why: `no fetched base to merge with: ${ctx.fetchError}` };
   return mergedTree(d, ctx.root, ctx.base, ctx.baseSha);
 }
 
@@ -113,6 +128,7 @@ export async function signoff(argv, d = defaultDeps()) {
     return EXIT.head;
   }
   ctx.load = { one: d.loadavg()[0], cores: d.cores() };
+  await readPullRequest(d, ctx);
   /** @type {number[]} */
   const failed = [];
   for (const step of STEPS) {

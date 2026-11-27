@@ -50,9 +50,34 @@ test('a pull request URL that names no repository fails steps 2 and 3, fetching 
   assert.equal(ran(w, /^git fetch /).length, 0);
 });
 
-test('a fetch that fails fails step 2, rather than falling back to what the clone last fetched', async () => {
+test('a fetch that fails fails steps 2 and 3, each naming why, rather than falling back to what the clone last fetched', async () => {
   const w = world({ answers: [[/^git fetch /, { code: 128, out: 'fatal: could not read from remote repository' }]] });
   assert.equal(await signoff(['840'], w.d), EXIT.commits);
-  assert.match(w.lines.find((l) => l.startsWith('✖ 2.')) ?? '', /couldn’t fetch main: .*could not read from remote repository/);
+  for (const n of [2, 3]) {
+    assert.match(
+      w.lines.find((l) => l.startsWith(`✖ ${n}.`)) ?? '',
+      /no fetched base to (compare|merge) with: couldn’t fetch main: .*could not read from remote repository/,
+    );
+  }
   assert.equal(ran(w, /^git rev-parse (refs\/remotes|--verify FETCH_HEAD)/).length, 0);
+});
+
+test('the base is fetched once, before any step reports, and steps 2 and 3 both use it', async () => {
+  /** How many lines the script had printed when git fetch ran. */
+  const at = [];
+  const w = world({
+    answers: [
+      [
+        /^git fetch /,
+        (_a, _o, w) => {
+          at.push(w.lines.length);
+          return { code: 0, out: '' };
+        },
+      ],
+    ],
+  });
+  assert.equal(await signoff(['840'], w.d), EXIT.pass, w.lines.join('\n'));
+  assert.deepEqual(at, [0], 'one fetch, before step 1’s line');
+  assert.equal(ran(w, /^git merge-base /).length, 1);
+  assert.match(w.lines.find((l) => l.startsWith('✔ 3.')) ?? '', /at bbbbbbbb/);
 });
