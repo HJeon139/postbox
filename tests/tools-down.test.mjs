@@ -18,7 +18,7 @@ function room() {
   const store = new Store(null);
   /** @type {any[]} */
   const sent = [];
-  const fail = { next: false, downAgain: /** @type {string | null} */ (null), afterWords: false };
+  const fail = { next: false, downAgain: /** @type {string | null} */ (null), afterWords: false, silent: false, hang: false };
   const adapter = {
     name: 'mock',
     async folderFor() {
@@ -26,6 +26,18 @@ function room() {
     },
     async deliver(/** @type {any} */ _se, /** @type {any} */ message, /** @type {any} */ ctx) {
       sent.push(message);
+      // A turn whose backend has emitted nothing yet, stopped there.
+      if (fail.hang) {
+        fail.hang = false;
+        // Stopped after it reached the agent: it wrote words first.
+        if (fail.afterWords) ctx.text('Working on it.');
+        await new Promise((_, reject) => ctx.signal.addEventListener('abort', () => reject(ctx.signal.reason)));
+      }
+      // A CLI that ran to its end and wrote nothing: an empty reply.
+      if (fail.silent) {
+        fail.silent = false;
+        return;
+      }
       // A CLI that couldn’t start: the turn never reached the agent.
       if (fail.next) {
         fail.next = false;
@@ -114,4 +126,35 @@ test('#1171 a turn that reached the agent and then failed doesn’t give the not
   r.fail.afterWords = true;
   await r.turn('Try again.');
   assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null, 'the agent read it in the turn that ran');
+});
+
+test('#1171 a turn that ran to its end with no reply doesn’t give the note back: its agent had it', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.silent = true;
+  await r.turn('Try again.');
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null);
+});
+
+test('#1171 a turn stopped before its backend emitted anything keeps the note for the next', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.hang = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  r.rt.stop(r.se.id);
+  for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'ran');
+});
+
+test('#1171 a turn stopped after it reached the agent doesn’t give the note back', async () => {
+  const r = room();
+  r.down('ran');
+  r.fail.hang = true;
+  r.fail.afterWords = true;
+  r.rt.sendMessage(r.t.id, { text: 'Try again.' });
+  for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
+  r.rt.stop(r.se.id);
+  for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
+  assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null);
 });

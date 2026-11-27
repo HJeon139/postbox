@@ -232,7 +232,9 @@ export const PENDING = {
   // a commit (#1713).
   'turn-transient.mjs': ['forgetWait', 'forgetWait', 'transientRetry', 'armRetry', 'retryRefused', 'retryRefused'],
   // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
-  'turn-stop.mjs': ['stop', 'turnExited'],
+  // toolsDownBack: whether a newer tools-down note was set, maybe behind a held commit, before a stopped turn gives its
+  // own back (#1171).
+  'turn-stop.mjs': ['toolsDownBack', 'stop', 'turnExited'],
   'stop-record.mjs': ['recordStopped'], // the stopped turn’s segments still streaming, maybe held behind a commit (#602)
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
