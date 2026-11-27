@@ -12,7 +12,8 @@ import { abortError } from './turns-shared.mjs';
  * Per host ID, the `at` of each harness’s signed-out answer already told, so a team of agents on one host hears that
  * answer once, not once per turn start (#1608). An unchanged answer keeps its `at` (hosts-signins.mjs), so a sign-out
  * is told again only once the host has said something else. A harness heard as anything else at a turn start drops its
- * own, so this holds at most one entry per harness of a host, until it answers otherwise or Postbox restarts.
+ * own, so this holds at most one entry per harness of a host, until it answers otherwise or Postbox restarts (a
+ * forgotten host’s stays till then).
  * @type {Map<string, Map<string, number>>}
  */
 const told = new Map();

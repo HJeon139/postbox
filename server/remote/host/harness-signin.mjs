@@ -9,8 +9,8 @@
 // The commands aren’t only reads (measured 27 November 2026 on macOS, tests/fixtures/remote/signin/README.md): three
 // runs each of `claude auth status` and `codex login status` changed none of their stored credentials, but kiro-cli’s
 // `whoami` wrote its data.sqlite3, which holds its sign-in token, and the binary refreshes an expired token when it
-// loads one, under a lock of its own. A refresh racing a Kiro turn’s is Kiro’s to settle: its lock, and its check that
-// doesn’t save a stale token, hold it, and Postbox reads none of it.
+// loads one, under a lock of its own. A refresh racing a Kiro turn’s appears to be Kiro’s to settle, going by its lock
+// and a stale-token check named for Builder ID; two at once weren’t tested. Postbox reads none of it.
 
 /**
  * The method names each harness is known to give, so nothing else reaches the host’s status and the event log (#1608).
