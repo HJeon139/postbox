@@ -2,7 +2,7 @@
 
 Part of [the architecture](../architecture.md). How Postbox knows who a request is from, what a person’s record holds, and what agents are told of them. The request gate it sits behind is in [security-boundaries.md](security-boundaries.md), “This computer alone” and “Writes need the page’s token”.
 
-**Status.** Built for [#558](https://github.com/HJeon139/postbox/issues/558): the seam, the local provider, a person’s record and profile. A second provider, for a Postbox hosted for one trusting team behind a sign-in allow list ([#1733](https://github.com/HJeon139/postbox/issues/1733)), is planned and not built; how a hosted Postbox runs is proposed in [hosted.md](hosted.md). Direction set by the owner on 23–25 November 2026: preserve the run on your own computer while the hosted one is built, with no shortcut or back door for one over the other, in one system that handles both.
+**Status.** Built for [#558](https://github.com/HJeon139/postbox/issues/558): the seam, the local provider, a person’s record and profile. A second provider, for a hosted Postbox behind a sign-in allow list ([#1733](https://github.com/HJeon139/postbox/issues/1733)), is built behind the seam (`alb`, `server/identity/alb.mjs`) and given only by `start()`’s `signIn` option, which the tests use: no Postbox a person can start reads a sign-in yet. How a hosted Postbox runs, and what is built of it, is in [hosted.md](hosted.md). Direction set by the owner on 23–25 November 2026: preserve the run on your own computer while the hosted one is built, with no shortcut or back door for one over the other, in one system that handles both.
 
 ## One seam, and nothing past it asks how Postbox is run
 
@@ -24,7 +24,7 @@ flowchart LR
 
 **What it rests on.** One person on their own computer is not a special case: it is the same record, route and turn as any person’s, with a provider that always gives the same answer. So the local run is exercised by every test of the general path, and a hosted run can’t drift from it.
 
-**No stand-in in production.** A test, the demo and the screenshot tools pass the provider a fixture person through `start()`’s `account` (`tools/fixture-person.mjs`), as they pass a fake host manager or a temp home. There is no environment variable or header that says who is asking.
+**No stand-in in production.** A test, the demo and the screenshot tools pass the provider a fixture person through `start()`’s `account` (`tools/fixture-person.mjs`), as they pass a fake host manager or a temp home. On your own computer there is no environment variable or header that says who is asking. Given sign-in settings, which only `start()` takes today, one header does: the token a load balancer signed, checked whole on every request ([hosted.md](hosted.md), “Who is asking”); no other header is read, and a sign-in header sent to a local Postbox is no one.
 
 ## A person’s record
 
