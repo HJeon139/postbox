@@ -490,6 +490,9 @@
   "claude-code/background-stopped.jsonl": {},
   "claude-code/background-subagent.jsonl": { "28": "launched", "49": "\n\n", "50": "finished" },
   "claude-code/block.jsonl": { "47": "T", "48": "ea", "49": " or coffee? Pick", "50": " one above", "51": "." },
+  "claude-code/connection-failed.jsonl": {
+    "10": "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)"
+  },
   "claude-code/compact.jsonl": {},
   "claude-code/denials.jsonl": {
     "137": "Step 1 was allowed",

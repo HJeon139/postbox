@@ -1,8 +1,9 @@
 // One classifier of a harness’s failures (#466, #467, #442, #1713): a turn lost to the network, one its backend refused
 // for quota, or one its provider failed for a while (overloaded, or a server error), read from structured marks on the
 // error the adapter threw and its causes, never from its words. Each adapter marks what its harness says: a network
-// code (`code`), an unreachable host (`kind: 'unreachable'`), a quota with its reset time (`quota`, withQuota), or the
-// HTTP status of a provider error that passes (`transient`, withTransient).
+// code (`code`), a harness’s own word for a connection it couldn’t make (`network`, withNetwork), an unreachable host
+// (`kind: 'unreachable'`), a quota with its reset time (`quota`, withQuota), or the HTTP status of a provider error that
+// passes (`transient`, withTransient).
 
 /** The codes of a network that went away under a turn (#466): seen from ssh, Kiro and Node’s own sockets. */
 export const NETWORK_CODES = Object.freeze(['EADDRNOTAVAIL', 'ENOTFOUND', 'ECONNRESET']);
@@ -24,7 +25,7 @@ const TRANSIENT = new Set(TRANSIENT_STATUSES);
 export function failureClass(error) {
   for (let e = error, depth = 0; e && depth < 10; e = e.cause, depth++) {
     if (e.quota) return { kind: 'quota', until: Number.isFinite(e.quota.until) ? e.quota.until : null };
-    if (e.kind === 'unreachable' || NETWORK.has(e.code)) return { kind: 'network' };
+    if (e.kind === 'unreachable' || e.network === true || NETWORK.has(e.code)) return { kind: 'network' };
     if (e.transient) return { kind: 'transient', status: e.transient.status };
   }
   return null;
@@ -32,6 +33,15 @@ export function failureClass(error) {
 
 /** Whether an error says the network was unavailable. @param {any} error */
 export const isNetworkFailure = (error) => failureClass(error)?.kind === 'network';
+
+/**
+ * Marks an error as a turn lost to the network, when its harness said so in a field of its own rather than a socket’s
+ * code, as Claude Code’s `api_error: "connection_failed"` (#466). @param {Error} error @param {boolean} lost
+ */
+export function withNetwork(error, lost) {
+  if (lost) Object.assign(error, { network: true });
+  return error;
+}
 
 /**
  * Marks an error as the backend refusing for quota, with when the quota resets (epoch ms) when the harness said, when
