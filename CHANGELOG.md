@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.5.0 (2026-11-27)
+
+### Features
+
+- **deploy:** an agent host, a machine the hosted server reaches over ssh
+
+### Fixes
+
+- **deploy:** the agent host's start log names which value was refused, and the test holds the space
+
 ## 5.4.12 (2026-11-27)
 
 ### Fixes
