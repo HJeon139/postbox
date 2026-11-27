@@ -33,6 +33,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
+import { cutText } from '../../shared/text-parts.mjs';
 import { withQuota, withTransient } from '../harness-failure.mjs';
 import { claudeModels } from '../remote/host/harness-models.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
@@ -276,7 +277,7 @@ export class ClaudeCodeAdapter {
         if ((resume || fork) && /No conversation found|session .* not found/i.test(said)) return resolve({ missingSession: true });
         const failure = resultError(mapper.result);
         if (failure) {
-          const why = stderr.trim().split('\n').slice(-3).join(' ').slice(0, 400);
+          const why = cutText(stderr.trim().split('\n').slice(-3).join(' '), 400);
           const error = withQuota(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`), mapper.quota);
           // A provider error that passes, such as 529 Overloaded, by the result’s HTTP status (#1713).
           return reject(withTransient(error, mapper.result?.api_error_status));

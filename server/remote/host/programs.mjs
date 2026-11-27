@@ -24,6 +24,7 @@ import { execFile as nodeExecFile } from 'node:child_process';
 import { constants, promises as fsp } from 'node:fs';
 import { versionIn } from '../../../shared/cli-version.mjs';
 import { checkHostPath } from '../../../shared/remote-settings.mjs';
+import { cutText } from '../../../shared/text-parts.mjs';
 import { mergePath } from './login-path.mjs';
 
 /** The oldest Node a runner runs on (the design’s “Finding programs”). */
@@ -163,7 +164,7 @@ export async function findPrograms({
         if (looked.length < LOOKED_MAX) looked.push(path);
         if (!(await isExecutable(path))) continue;
         const r = /** @type {{ version?: string | null, error?: string }} */ (await version(path));
-        if (r.error) problems.push({ code: 'version-failed', message: `${path} --version failed: ${r.error.slice(0, 500)}` });
+        if (r.error) problems.push({ code: 'version-failed', message: `${path} --version failed: ${cutText(r.error, 500)}` });
         return { name, path, version: r.version ?? null, looked, fromLogin: fromLogin() };
       }
       if (configured) problems.push({ code: 'not-found', message: `${configured} (${setting}) isn’t an executable file on this host.` });

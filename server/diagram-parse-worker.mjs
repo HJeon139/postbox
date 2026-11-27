@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { parentPort } from 'node:worker_threads';
+import { cutText } from '../shared/text-parts.mjs';
 
 const KIT = new URL('../app/kit/', import.meta.url);
 
@@ -60,7 +61,7 @@ parentPort?.on('message', async ({ id, src }) => {
   } catch (e) {
     if (!syntax(e)) return parentPort?.postMessage({ id, unknown: true });
     // As the sandbox page reports it: Mermaid’s message, and its line when it gives one.
-    const message = String(e?.message ?? e).slice(0, 1000);
+    const message = cutText(String(e?.message ?? e), 1000);
     const line = e?.hash?.loc?.first_line ?? Number(/line (\d+)/i.exec(message)?.[1] ?? 0);
     parentPort?.postMessage({ id, error: { message, line: line || null } });
   }

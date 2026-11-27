@@ -9,6 +9,7 @@
 import { promises as fsp } from 'node:fs';
 import { memoryFolderName } from '../../../shared/memory-folders.mjs';
 import { REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
+import { cutText } from '../../../shared/text-parts.mjs';
 import { fail, send } from './daemon-reply.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
@@ -22,7 +23,7 @@ export async function forget(d, c, m) {
     return fail(c, 'bad-message', 'forget.persona must be the id of a persona: letters, digits, _ and - only.', 'forget');
   const refuse = (/** @type {string} */ code, /** @type {string} */ text) => {
     d.log(`Couldn’t remove the memory of a deleted agent (${m.persona}): ${text}`);
-    void send(c, 'error', { code, message: text.slice(0, REMOTE_LIMITS.messageChars), re: 'forget', persona: m.persona });
+    void send(c, 'error', { code, message: cutText(text, REMOTE_LIMITS.messageChars), re: 'forget', persona: m.persona });
   };
   // Both checked before either is touched, so a refusal leaves the persona’s memory as it was, to be asked again.
   const parents = [`${d.p.root}/memory`, `${d.p.root}/kiro-home`];

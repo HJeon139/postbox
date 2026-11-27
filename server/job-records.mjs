@@ -2,6 +2,7 @@
 // that went with their CLI, and those a restart leaves behind. Jobs Postbox kept running after a Stop are watched in
 // server/kept-jobs.mjs. Moved from server/runtime.mjs (#1236); each function here takes the runtime first.
 
+import { cutText } from '../shared/text-parts.mjs';
 import { clipText } from './helpers.mjs';
 import { keptGroupsOf } from './kept-jobs.mjs';
 import { liveStored } from './live-buffer.mjs';
@@ -39,7 +40,7 @@ export function recordJob(rt, turn, j) {
       label: clipText(String(j.label ?? 'Background job'), 200),
       // Whole, up to a bound: Postbox finds the job’s process by its command.
       command: String(j.command ?? '').slice(0, 8000),
-      outputFile: typeof j.outputFile === 'string' && j.outputFile ? j.outputFile.slice(0, 1000) : null,
+      outputFile: typeof j.outputFile === 'string' && j.outputFile ? cutText(j.outputFile, 1000) : null,
       startedAt: Date.now(),
       state: 'running',
     };

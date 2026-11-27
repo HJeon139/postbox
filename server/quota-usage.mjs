@@ -4,6 +4,7 @@
 // turn sets and a turn that ends well clears (turn-quota.mjs), never this record’s status.
 
 import { quotaKeyOf } from '../shared/quota-key.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 
 /** A report the same as the last one is written again only once the last is this old, so its age stays true. */
 export const REWRITE_MS = 10 * 60_000;
@@ -22,11 +23,11 @@ export function quotaReport(r) {
     .filter((w) => w && typeof w.name === 'string' && w.name && Number.isFinite(w.used) && w.used >= 0 && w.used <= 1)
     .slice(0, MAX_WINDOWS)
     .map((w) => ({
-      name: w.name.slice(0, 12),
+      name: cutText(w.name, 12),
       used: w.used,
       resetsAt: Number.isFinite(w.resetsAt) && w.resetsAt > 0 ? Math.round(w.resetsAt) : null,
-      ...(typeof w.limit === 'string' && w.limit ? { limit: w.limit.slice(0, 40) } : {}),
-      ...(typeof w.limitName === 'string' && w.limitName ? { limitName: w.limitName.slice(0, 40) } : {}),
+      ...(typeof w.limit === 'string' && w.limit ? { limit: cutText(w.limit, 40) } : {}),
+      ...(typeof w.limitName === 'string' && w.limitName ? { limitName: cutText(w.limitName, 40) } : {}),
     }));
   if (!windows.length) return null;
   return { status: STATUSES.has(r.status) ? r.status : 'ok', windows };
