@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { fireScheduledWake, rearmWakes, retryHostWake } from '../server/scheduled-wakes.mjs';
+import { fireScheduledWake, rearmWakes, recordScheduledTool, retryHostWake, settleScheduledWake } from '../server/scheduled-wakes.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
 import { createFakeDaemon } from './fake-daemon.mjs';
@@ -75,4 +75,23 @@ test('#466 a host turn that names no runtime turn isn’t taken for a wake’s o
   retryHostWake(f.rt, f.alpha.id);
   assert.equal(f.store.state.schedules[sc.id].attempt, undefined);
   assert.equal(f.rt.timers.has(sc.id), false);
+});
+
+test('#466 a wake turn attached again that loses the network keeps the tools its first turn started in the recovery', () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Send the report.' });
+  arrange.cancelScheduledTimer(f.rt, sc.id);
+  f.store.emit('schedule', { ...f.store.state.schedules[sc.id], running: true, turnId: 'turn_first', startedTools: ['post_message'] });
+  // The turn attached again: a new runtime turn that carries the wake, whose replay reports one tool of its own.
+  const turn = {
+    id: 'turn_attached',
+    sessionId: f.alpha.id,
+    threadId: sc.threadId,
+    asked: { message: { kind: 'wake', note: 'Send the report.', scheduledWakeId: sc.id } },
+  };
+  recordScheduledTool(f.rt, turn, { name: 'Read', id: 'tool_1' }, false);
+  assert.deepEqual(f.store.state.schedules[sc.id].startedTools, ['post_message', 'Read'], 'kept for a second restart');
+  settleScheduledWake(f.rt, turn, Object.assign(new Error('The network dropped.'), { code: 'ECONNRESET' }));
+  assert.deepEqual(f.store.state.schedules[sc.id].recoveryTools, ['post_message', 'Read']);
+  clearTimeout(f.rt.timers.get(sc.id));
 });

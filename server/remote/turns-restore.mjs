@@ -35,7 +35,8 @@ export function restore(rts) {
     if (r.state === 'stopping' && !rts.stopping.has(r.turn)) updateRemote(rts, se.id, { state: 'done', at: rts.now() });
     if (ON_HOST.has(r.state)) {
       if (!rts.hosts || !rts.rt.s.hosts?.[r.hostId]) {
-        // A wake’s own turn there is lost to a host Postbox can’t reach, so the wake retries as from a network failure (#466).
+        // A wake’s own turn there is lost to a host Postbox can’t reach: it retries where its agent runs now, or stops
+        // (retryHostWake, #466).
         retryHostWake(rts.rt, se.id);
         interrupted(rts, se.id, 'Postbox can’t reach that host any more');
         continue;
@@ -81,7 +82,8 @@ export function keepsCard(rts, it) {
  * removing the host call it, after Stop, so nothing attaches or resumes for a conversation deleted or a host Postbox
  * no longer knows. A wake that turn was retries or stops (retryHostWake, #466). The host turn is asked to stop (the
  * daemon stops it as a whole), now if the host is connected, else at its next welcome; it’s in state `stopping`, not
- * `done`, until the daemon confirms it (askStop). Its cards can’t be answered any more. Returns whether there was a turn on the host to give up on.
+ * `done`, until the daemon confirms it (askStop). Its cards can’t be answered any more. Returns whether there was a
+ * turn on the host to give up on.
  * @param {RemoteTurns} rts @param {string} sessionId
  */
 export function cancel(rts, sessionId) {
@@ -96,9 +98,10 @@ export function cancel(rts, sessionId) {
   }
   const onHost = pending || ON_HOST.has(r.state);
   if (!onHost && !r.resume) return false;
+  // A wake left to this turn, or to its resume, isn’t left running with nothing to settle it: it retries or stops
+  // (retryHostWake, #466).
+  retryHostWake(rts.rt, sessionId);
   if (onHost) {
-    // A wake left to this turn isn’t left running with nothing to settle it: it retries, as at a restart (#466).
-    retryHostWake(rts.rt, sessionId);
     for (const card of openCards(rts, r.turn)) {
       rts.endedPrompts.add(key(r.turn, card.it.remote.prompt));
       endCard(rts, card, 'expired', '', rts.now());

@@ -9,7 +9,7 @@ import { offersBring } from '../bring.mjs';
 import { hostRulesOf } from '../host-rules.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
 import { backTo } from '../reply-back.mjs';
-import { noteScheduledTurn } from '../scheduled-wakes.mjs';
+import { noteScheduledTurn, retryHostWake } from '../scheduled-wakes.mjs';
 import { wokeOf } from '../turn-marks.mjs';
 import { carryAttachments } from './attachments.mjs';
 import { listen, needHost, releaseHost } from './turns-need.mjs';
@@ -223,6 +223,8 @@ function renamedBusy(rts, e, hostId, se) {
 export function leaveMoved(rts, sessionId, hostId) {
   const r = remoteOf(rts, sessionId)?.remoteTurn; // as written (#623)
   if (!r?.turn || r.hostId === hostId || rts.restoring.get(r.turn) !== sessionId) return;
+  // A wake that turn was retries where its agent runs now, as reattach’s give-up does (#466).
+  retryHostWake(rts.rt, sessionId);
   rts.restoring.delete(r.turn);
   rts.noteAttach(sessionId);
   rts.early.delete(r.turn);
@@ -239,6 +241,8 @@ function allocate(rts, live, folder) {
   const id = randomUUID();
   adopt(rts, live, id);
   leaveMoved(rts, live.sessionId, live.hostId);
+  // A turn that doesn’t continue the last one there ends the resume that carried a wake (#466).
+  if (!live.rt.origin) retryHostWake(rts.rt, live.sessionId);
   // Built from the session as written, so a resume’s count, a kept reply or a stop held behind a commit carries over (#623).
   rts.rt.sessions.update(live.sessionId, (se) => {
     const prior = se.remoteTurn ?? {};

@@ -2,8 +2,8 @@
 // for quota, or one its provider failed for a while (overloaded, or a server error), read from structured marks on the
 // error the adapter threw and its causes, never from its words. Each adapter marks what its harness says: a network
 // code (`code`), a harness’s own word for a connection it couldn’t make (`network`, withNetwork), an unreachable host
-// (`kind: 'unreachable'`), a quota with its reset time (`quota`, withQuota), or the HTTP status of a provider error that
-// passes (`transient`, withTransient).
+// (`kind: 'unreachable'`), a quota with its reset time (`quota`, withQuota), or the HTTP status of a provider error
+// that passes (`transient`, withTransient).
 
 /** The codes of a network that went away under a turn (#466): seen from ssh, Kiro and Node’s own sockets. */
 export const NETWORK_CODES = Object.freeze(['EADDRNOTAVAIL', 'ENOTFOUND', 'ECONNRESET']);

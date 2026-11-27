@@ -101,7 +101,8 @@ const addTool = (rt, turn, name, id) => {
   if (turn.scheduledTools.includes(clipped) || turn.scheduledTools.length >= TOOL_LIMIT) return;
   turn.scheduledTools.push(clipped);
   const sc = rt.store.pending.schedule(scheduleId);
-  if (sc) rt.store.emit('schedule', { ...sc, startedTools: [...turn.scheduledTools] });
+  // Kept with the tools an earlier turn of the same wake started, for a turn attached again after a restart (#466).
+  if (sc) rt.store.emit('schedule', { ...sc, startedTools: [...new Set([...(sc.startedTools ?? []), ...turn.scheduledTools])].slice(0, TOOL_LIMIT) });
 };
 
 /** Records a tool start, by toolUse or by activity, including what scheduled-wake recovery will need. */
@@ -145,9 +146,13 @@ export function settleScheduledWake(rt, turn, err) {
   if (!err || err.name === 'AbortError') return finishSchedule(rt, sc, err ? 'canceled' : 'done');
   // A host turn marked lost is still running there and RemoteTurns will attach it again: no second recovery is armed,
   // and the schedule stays running for the turn attached again, which carries the wake and settles it (#466).
-  if (rt.store.pending.session(turn.sessionId)?.remoteTurn?.state === 'lost') return;
+  const r = rt.store.pending.session(turn.sessionId)?.remoteTurn;
+  if (r?.state === 'lost') return;
+  // Nor while the wake’s own host turn still waits to be attached, when the attach’s own start failed (#466).
+  if (ON_HOST.has(r?.state) && typeof sc.turnId === 'string' && r.rtTurn === sc.turnId && sc.turnId !== turn.id) return;
   if (!isNetworkFailure(err)) return finishSchedule(rt, sc, 'done');
-  retryWake(rt, sc, turn, turn.scheduledTools ?? []);
+  // With the tools the wake’s earlier turn started too, as a turn attached again may not report them again (#466).
+  retryWake(rt, sc, turn, [...(sc.startedTools ?? []), ...(turn.scheduledTools ?? [])]);
 }
 
 /**

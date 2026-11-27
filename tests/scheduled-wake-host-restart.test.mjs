@@ -24,8 +24,8 @@ test('#466 a wake’s host turn attached again after a restart settles the wake 
   assert.equal(r.rt.timers.has(sc.id), false);
 });
 
-test('#466 a network failure in a wake’s host turn attached again after a restart retries the wake', async () => {
-  const { r, sc } = await wakeOnHostThenRestart();
+test('#466 an attach whose own start lost the network leaves the wake to its host turn, which runs it once', async () => {
+  const { r, sc, d, hostTurn } = await wakeOnHostThenRestart();
   // The restore’s welcome comes; the link is gone again by the time the attached turn asks for its own.
   const ensure = r.hosts.ensureWelcome;
   let calls = 0;
@@ -34,13 +34,18 @@ test('#466 a network failure in a wake’s host turn attached again after a rest
     return ensure(...a);
   };
   startUp(r);
-  await until(() => r.store.state.schedules[sc.id]?.attempt === 1, 'the wake’s retry');
-  const retry = r.store.state.schedules[sc.id];
-  assert.equal(retry.running, false);
-  assert.ok(r.rt.timers.has(sc.id), 'its bounded retry is armed');
-  assert.equal(line(r, sc).status, 'pending');
-  assert.equal(line(r, sc).retryAttempt, 1);
-  clearTimeout(r.rt.timers.get(sc.id));
+  await until(() => calls >= 2 && !r.rt.turns.size, 'the attach’s start to fail');
+  assert.equal(r.store.state.schedules[sc.id]?.attempt, undefined, 'not retried: its host turn still runs there');
+  assert.equal(r.rt.timers.has(sc.id), false);
+  // The host is back: the turn is attached again, and ends.
+  r.hosts.emit('status', r.host.id, r.hosts.status(r.host.id));
+  await until(() => r.rt.turns.size === 1, 'the turn to be attached again');
+  d.end(hostTurn, { code: 0, signal: null });
+  await until(() => line(r, sc).status === 'done', 'the wake to settle as done');
+  // Nothing else is due: a second start would come from a retry the inbox held behind the attach.
+  await until(() => !r.rt.turns.size && !r.rt.exiting.size, 'the turn to end');
+  assert.equal(r.store.state.schedules[sc.id], undefined);
+  assert.equal(starts(d).length, 1, 'the wake ran once on the host');
 });
 
 test('#466 a second restart during a wake’s host turn attached again leaves the wake to that turn', async () => {
