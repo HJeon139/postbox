@@ -5,6 +5,7 @@
 
 import { writeFile } from 'node:fs/promises';
 import { js } from '../browser.mjs';
+import { sampleLayout } from './layout-probe.mjs';
 import { ITEM, JUMP } from './selectors.mjs';
 
 // Each transcript on the page, its scroll box, and where its view starts: view-state.mjs’s box() and viewTop().
@@ -109,11 +110,12 @@ export const keeper =
     keepView(ev, fn, (m) => input({ cause: 'runner', ...m }));
 
 /**
- * @param {{ ev: (expr: string) => Promise<any>, page: any, sleep: (ms: number) => Promise<unknown>, input?: (e: any) => void }} o
+ * @param {{ ev: (expr: string) => Promise<any>, page: any, sleep: (ms: number) => Promise<unknown>, input?: (e: any) => void, layout?: (s: any) => void }} o
  *   ev: the driver’s page.evaluate; page: from tools/browser.mjs launch(); input: hears a shot that moved the person’s
- *   view, as the runner’s (facts.probes.inputs, tools/uat/probes.mjs)
+ *   view, as the runner’s (facts.probes.inputs, tools/uat/probes.mjs); layout: hears what the layout check found on
+ *   each whole-window shot (tools/uat/layout-probe.mjs, #681)
  */
-export function shots({ ev, page, sleep, input }) {
+export function shots({ ev, page, sleep, input, layout }) {
   /** What a person sees of an item, scrolled to it: shotItem, without putting the view back. */
   async function shotOf(key, file) {
     const ok = await ev(`(async () => { const n = ${ITEM(key)}; if (!n) return false; ${JUMP('n', 'start')}; return true; })()`);
@@ -137,10 +139,11 @@ export function shots({ ev, page, sleep, input }) {
      */
     shotItem: (key, file) => keep(() => shotOf(key, file)),
 
-    // It doesn’t scroll, so there’s no view to put back.
+    // The shot doesn’t scroll. The layout check that follows it (#681) can, so its view is put back after.
     async shotScreen(file) {
       const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(file, Buffer.from(data, 'base64'));
+      if (layout) layout(await keep(() => sampleLayout(ev)));
       return file;
     },
   };

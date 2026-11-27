@@ -30,11 +30,11 @@ const JOBS_BOX = (b) =>
 
 /**
  * @param {any} page  from tools/browser.mjs launch()
- * @param {{ beforeStop?: () => Promise<void>, input?: (e: any) => void }} [hooks]  beforeStop: runs just before every
+ * @param {{ beforeStop?: () => Promise<void>, input?: (e: any) => void, layout?: (s: any) => void }} [hooks]  beforeStop: runs just before every
  *   press of Stop (a host-mode run looks at what runs under each turn on its hosts then, tools/uat/hosts-watch.mjs);
  *   input: hears each input the driver makes that can move the person’s view, before it does (facts.probes.inputs,
  *   tools/uat/probes.mjs): a runner click, which scrolls what it clicks into view, and a shot or a read inside an app
- *   that didn’t put the view back
+ *   that didn’t put the view back; layout: hears the layout check of each whole-window shot (tools/uat/layout-probe.mjs)
  */
 export function driver(page, hooks = {}) {
   const ev = (expr) => page.evaluate(expr);
@@ -288,7 +288,7 @@ export function driver(page, hooks = {}) {
     /** The working row: which agents it shows, and their glimpse. */
     working: () => ev(`[...document.querySelectorAll('.working .work-row')].map((r) => r.innerText.replace(/\\s+/g, ' ').trim())`),
 
-    ...shots({ ev, page, sleep, input: hooks.input }),
+    ...shots({ ev, page, sleep, input: hooks.input, layout: hooks.layout }),
 
     /** Presses an app’s Expand (full screen) button and reports whether anything visibly changed. */
     agentPanel: (handle, set = {}) => agentPanel({ ev, clickAt, press, page }, handle, set),

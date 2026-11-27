@@ -1,5 +1,5 @@
 // The view’s checks (#712a): what the page drew, from the probes the runner records on it each step before any
-// screenshot (tools/uat/skip-probe.mjs).
+// screenshot (tools/uat/skip-probe.mjs), and on each whole-window screenshot (tools/uat/layout-probe.mjs, #681).
 
 /** A room longer than this must have most of its items skipped, as the big-room scenario’s does (#712). */
 export const LONG_ROOM = 1000;
@@ -38,4 +38,45 @@ function rowsSkipped(f) {
   ];
 }
 
-export const VIEW_CHECKS = [{ id: 'rows-skipped', inputs: ['probes'], issue: 712, run: rowsSkipped }];
+export const TEXT_LAYOUT = 'text-layout';
+
+/**
+ * #681: text drawn over text or run into a control, cut off by its box, or broken mid-word, on a whole-window
+ * screenshot, one finding for each problem however many screenshots show it. Each fails the run (checks-postbox.mjs,
+ * failsRun). A screenshot the check couldn’t measure, or one of its checks that threw (check-error), is listed as
+ * unverified instead, and fails nothing.
+ * @param {{ probes?: { layout?: any[] } }} f
+ */
+function textLayout(f) {
+  const out = new Map();
+  for (const s of f.probes?.layout ?? []) {
+    const unmeasured = s.error ?? s.problems.find((p) => p.code === 'check-error')?.message;
+    if (unmeasured)
+      out.set(`unverified:${s.step}`, {
+        key: `${TEXT_LAYOUT}:unverified:${s.step}`,
+        issue: null,
+        title: 'text-layout couldn’t check a screenshot',
+        evidence: `At step ${s.step}: ${unmeasured}`,
+        verdict: 'measurement',
+        note: 'Not a defect: the layout check couldn’t measure this screenshot, so the run doesn’t verify it.',
+        unverified: { check: TEXT_LAYOUT, step: s.step },
+      });
+    for (const p of s.error ? [] : s.problems.filter((x) => x.code !== 'check-error')) {
+      // The same problem on each screenshot is one finding, the first: its key leaves out the width the message starts
+      // with, and the sizes it measured, which change with the width.
+      const key = `${TEXT_LAYOUT}:${p.code}:${p.message.replace(/^At \d+ px, /, '').replace(/\d+(?: × \d+)? px/g, '… px')}`;
+      if (!out.has(key))
+        out.set(key, {
+          key,
+          title: 'Text on a Postbox screen is drawn over other text or a control, cut off, or broken mid-word',
+          evidence: `At step ${s.step}, in a window ${s.width} px wide: ${p.message}`,
+        });
+    }
+  }
+  return [...out.values()];
+}
+
+export const VIEW_CHECKS = [
+  { id: 'rows-skipped', inputs: ['probes'], issue: 712, run: rowsSkipped },
+  { id: TEXT_LAYOUT, inputs: ['probes'], issue: 681, run: textLayout },
+];

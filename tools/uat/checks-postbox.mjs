@@ -4,6 +4,7 @@
 // exits non-zero (tools/uat-run.mjs), so a script or session running UAT sees it without reading the report.
 
 import { clip } from '../../shared/text.mjs';
+import { TEXT_LAYOUT } from './checks-view.mjs';
 
 export const POSTBOX_OUTPUT = 'postbox-output';
 
@@ -96,5 +97,9 @@ function postboxOutput(f) {
 
 export const POSTBOX_OUTPUT_CHECKS = [{ id: POSTBOX_OUTPUT, inputs: ['postboxOutput'], issue: null, run: postboxOutput }];
 
-/** Whether a run’s findings fail it: any of this check’s does. @param {{ check?: string }[]} findings */
-export const failsRun = (findings) => findings.some((f) => f.check === POSTBOX_OUTPUT);
+/**
+ * Whether a run’s findings fail it: any of this check’s does, and any problem text-layout found on a screenshot
+ * (tools/uat/checks-view.mjs, #681), though not one it couldn’t verify.
+ * @param {{ check?: string, unverified?: any }[]} findings
+ */
+export const failsRun = (findings) => findings.some((f) => f.check === POSTBOX_OUTPUT || (f.check === TEXT_LAYOUT && !f.unverified));
