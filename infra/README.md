@@ -19,7 +19,16 @@ With nothing of yours given: one VPC with public and private subnets and one NAT
 
 ## Use what you already have
 
-`lib/hosted-postbox.mjs` is one construct, `HostedPostbox`, to put in a stack of your own. It makes what it isn’t given and uses what it is:
+The deployment is four constructs, each usable alone, and `HostedPostbox` (`lib/hosted-postbox.mjs`), which puts the four together in one scope:
+
+| Construct | What it is | Why it is apart |
+|---|---|---|
+| `PostboxNetwork` (`lib/network.mjs`) | The VPC, and the security groups that say who reaches whom | Everything else stands on it, and it rarely changes |
+| `PostboxData` (`lib/data.mjs`) | The disk the data folder is on | It is the one part that can’t be made again |
+| `PostboxEdge` (`lib/edge.mjs`) | The load balancer, its name and certificate, and the sign-in | It stands without a server behind it |
+| `PostboxServer` (`lib/server.mjs`) | The one task and its service | It changes with every release, and is the likeliest to fail to start |
+
+`app.mjs` puts each in a stack of its own, so a part that fails rolls back alone: a server that doesn’t start leaves the network, the disk and the edge standing, and the next deployment makes only the server again. They make what they aren’t given and use what they are:
 
 | You have | Give it | Else |
 |---|---|---|
@@ -62,7 +71,7 @@ npm install
 ```
 
 ```bash
-npx cdk deploy
+npx cdk deploy --all
 ```
 
 The outputs are `Url`, the address, and `LogGroup`, the server’s log. For a test with no name of your own, bring a self-signed certificate, and your browser will warn about it:
@@ -83,7 +92,7 @@ Read a person’s subject at the provider. For a Cognito user pool:
 aws cognito-idp list-users --user-pool-id <the pool’s id> --filter 'email = "<their email>"' --query "Users[].Attributes[?Name=='sub'].Value" --output text
 ```
 
-Then deploy with it in `allowSubjects`, which replaces the task with one that knows them. Someone the provider signs in who isn’t on the allow list is refused by Postbox, with a message that says so.
+Then deploy with it in `allowSubjects`, which changes the server’s stack alone and replaces the task with one that knows them. Someone the provider signs in who isn’t on the allow list is refused by Postbox, with a message that says so.
 
 ## What to check
 
@@ -95,7 +104,7 @@ Then deploy with it in `allowSubjects`, which replaces the task with one that kn
 ## Take it down
 
 ```bash
-npx cdk destroy
+npx cdk destroy --all
 ```
 
 The data folder’s file system is kept, and so is a user pool the stack made, so that taking a deployment down loses no one’s rooms or accounts by accident: delete them yourself when you mean to. A certificate you imported stays in ACM until you delete it there.

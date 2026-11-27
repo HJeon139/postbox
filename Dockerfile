@@ -20,10 +20,13 @@ COPY agent-plugin agent-plugin
 ARG POSTBOX_COMMIT=
 ENV POSTBOX_COMMIT=$POSTBOX_COMMIT NODE_ENV=production
 
-# The data folder is a volume the deployment attaches: a container’s own disk is lost with it.
-RUN mkdir /data && chown node:node /data
+# The two places Postbox writes, each a volume owned by the user it runs as, so the rest of the disk can be read-only:
+# the data folder, which the deployment attaches because a container’s own disk is lost with it, and a scratch folder
+# for its settings file and temporary files.
+RUN mkdir /data /run/postbox && chown node:node /data /run/postbox
 USER node
-VOLUME /data
+VOLUME ["/data", "/run/postbox"]
+ENV HOME=/run/postbox TMPDIR=/run/postbox
 EXPOSE 8080
 
 # The deployment mounts the settings file, or overrides this command to write one (infra/lib/server.mjs).

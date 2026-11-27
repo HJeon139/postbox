@@ -233,7 +233,7 @@ The question for the owner is “AgentCore as a second way to run agents” unde
 
 ## The test deployment on AWS
 
-`infra/` holds a CDK app, and `Dockerfile` the server’s image ([infra/README.md](../../infra/README.md) is the recipe). It is the smallest stack that proves the hosted edge against a real load balancer:
+`infra/` holds a CDK app, and `Dockerfile` the server’s image ([infra/README.md](../../infra/README.md) is the recipe). It is four constructs, the network, the data folder’s disk, the edge and the server, each in a stack of its own so that one that fails rolls back alone (the owner, 27 November 2026: “multiple stacks and atomic constructs instead of an all or nothing stack”), and it uses the hosted zone, identity provider and VPC a team already has. Together they are the least that proves the hosted edge against a real load balancer:
 
 - one Application Load Balancer with an HTTPS listener whose only action signs a person in and then forwards, at the identity provider the team has (a Cognito user pool or any OIDC provider) or a new user pool, to
 - one Fargate task of the server’s image, with no public address, with the data folder on an EFS file system only its role can mount, and a security group that admits its port from the load balancer’s alone (the owner, 26 November 2026: “Network rules”);

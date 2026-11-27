@@ -1,16 +1,20 @@
 #!/usr/bin/env node
-// A CDK app that deploys one hosted Postbox (infra/README.md), and an example of using the HostedPostbox construct
-// in a stack of your own. What is yours comes in as context, from `-c name=value` or from `cdk.context.json` beside
+// A CDK app that deploys one hosted Postbox (infra/README.md) as four stacks, and an example of using its constructs
+// in stacks of your own. What is yours comes in as context, from `-c name=value` or from `cdk.context.json` beside
 // this file, which git ignores: your domain, your hosted zone, your identity provider and who may sign in are never
 // in this file.
 
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { App, SecretValue, Stack } from 'aws-cdk-lib';
+import { App, CfnOutput, SecretValue, Stack } from 'aws-cdk-lib';
 import { Certificate } from 'aws-cdk-lib/aws-certificatemanager';
 import { UserPool, UserPoolDomain } from 'aws-cdk-lib/aws-cognito';
 import { HostedZone } from 'aws-cdk-lib/aws-route53';
-import { HostedPostbox } from './lib/hosted-postbox.mjs';
+import { PostboxData } from './lib/data.mjs';
+import { PostboxEdge } from './lib/edge.mjs';
+import { hostedSettings } from './lib/hosted-postbox.mjs';
+import { PostboxNetwork } from './lib/network.mjs';
+import { PostboxServer } from './lib/server.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const app = new App();
@@ -59,16 +63,34 @@ function signIn(stack) {
   };
 }
 
-const stack = new Stack(app, context('stackName') ?? 'PostboxTest', {
-  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
-});
-const groups = list(context('allowGroups'));
-new HostedPostbox(stack, 'Postbox', {
-  source: { root, commit: commit() },
-  address: address(stack),
-  signIn: signIn(stack),
-  claims: { username: context('claimUsername') ?? 'email', name: context('claimName') ?? 'name' },
-  allow: { subjects: list(context('allowSubjects')), groups: groups.length ? { claim: context('allowGroupsClaim'), any: groups } : undefined },
-  openTo: context('openTo'),
+// One stack a part, so that a part that fails rolls back alone: a server that doesn’t start leaves the network, the
+// disk and the edge standing, and the next deployment makes only the server again.
+const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
+const name = context('stackName') ?? 'PostboxTest';
+const stackOf = (/** @type {string} */ part) => new Stack(app, `${name}${part}`, { env });
+
+const network = new PostboxNetwork(stackOf('Network'), 'Network', { openTo: context('openTo') });
+const { vpc, balancerGroup, serverGroup, diskGroup } = network;
+const data = new PostboxData(stackOf('Data'), 'Data', { vpc, diskGroup });
+
+const edgeStack = stackOf('Edge');
+const provider = signIn(edgeStack);
+const edge = new PostboxEdge(edgeStack, 'Edge', {
+  vpc,
+  balancerGroup,
+  address: address(edgeStack),
+  signIn: provider,
   deletionProtection: context('deletionProtection') !== 'false' && context('deletionProtection') !== false,
 });
+new CfnOutput(edgeStack, 'Url', { value: edge.origin });
+
+const serverStack = stackOf('Server');
+const groups = list(context('allowGroups'));
+const hosted = hostedSettings(serverStack, {
+  edge,
+  signIn: provider,
+  claims: { username: context('claimUsername') ?? 'email', name: context('claimName') ?? 'name' },
+  allow: { subjects: list(context('allowSubjects')), groups: groups.length ? { claim: context('allowGroupsClaim'), any: groups } : undefined },
+});
+const server = new PostboxServer(serverStack, 'Server', { vpc, serverGroup, ...data, targets: edge.targets, source: { root, commit: commit() }, hosted });
+new CfnOutput(serverStack, 'LogGroup', { value: server.logGroup });
