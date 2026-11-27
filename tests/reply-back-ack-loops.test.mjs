@@ -31,7 +31,7 @@ for (const [room_, plays, ask, named] of [
     'researcher',
   ],
 ]) {
-  test(`#1591: an agent that reacts, then names the agent it reacted to, wakes it, until the chain’s cap stops it (${room_})`, async () => {
+  test(`#1591: an agent that reacts, then names the agent it reacted to, wakes it every time, up to the player’s limit (${room_})`, async () => {
     const { rt, adapter, t } = room(plays());
     rt.sendMessage(t.id, { text: ask });
     await settle(rt);

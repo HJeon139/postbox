@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { HOP_LIMIT } from '../shared/limits.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const runsOf = (file) => JSON.parse(readFileSync(new URL(`fixtures/uat/${file}`, import.meta.url), 'utf8')).runs;
@@ -14,6 +15,10 @@ const RUNS = { ...runsOf('bounce-loops-2026-11-21.json'), ...runsOf('ack-loops-2
 const DIR = tempDir('pb-bounce-loop-');
 /** The turns these tests run at most: past it the player says nothing, which ends the run. */
 export const LIMIT = 40;
+// The chain’s cap must sit past the player’s limit, or it ends a loop first and the tests read it as ended by a rule.
+// A POSTBOX_CHAIN_LIMIT exported from UAT work lowers it for the whole process.
+if (HOP_LIMIT <= LIMIT)
+  throw new Error(`The bounce-loop tests need the chain’s cap past ${LIMIT} wakes; POSTBOX_CHAIN_LIMIT sets it to ${HOP_LIMIT}. Unset it to run them.`);
 
 /** One agent’s recorded replies from a turn on: its words, and whether it reacted to the message that woke it. */
 export const playsFrom = (run, handle, from) =>
