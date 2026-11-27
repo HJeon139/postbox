@@ -53,9 +53,10 @@
       const other = el === control ? textEl : control;
       return !(e === other || other.contains(e)) || covers(e, el) || floats(e, el);
     };
+    // Not drawn at the point at all (the corner a button’s radius cuts away) is not showing there either (#681).
     const under = (el) => {
       const i = stack.indexOf(el);
-      return i > 0 && stack.slice(0, i).some((e) => hides(e, el));
+      return i < 0 || (i > 0 && stack.slice(0, i).some((e) => hides(e, el)));
     };
     return !under(textEl) && !under(control);
   }
