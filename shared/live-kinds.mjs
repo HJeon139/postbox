@@ -43,10 +43,11 @@ export const SESSION_FIELDS = Object.freeze(['toolCalls', 'toolCount', 'currentS
 
 /**
  * A session’s stored fields a session frame may carry beside its live ones: a running turn’s change of state or context,
- * stored as ever, rides on the frame sent with it, and its stored event isn’t sent to the page
- * (server/live-sent.mjs), so the change costs the wire one frame, as it did when the two were one patch.
+ * or of whether it waits on background work (#189), stored as ever, rides on the frame sent with it, and its stored
+ * event isn’t sent to the page (server/live-sent.mjs), so the change costs the wire one frame, as it did when the two
+ * were one patch.
  */
-export const CARRIED_FIELDS = Object.freeze(['state', 'ctx', 'updatedAt']);
+export const CARRIED_FIELDS = Object.freeze(['state', 'background', 'ctx', 'updatedAt']);
 
 /** @type {Shape} */
 const STEP = Object.freeze({ fields: STEP_FIELDS });

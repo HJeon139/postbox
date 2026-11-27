@@ -7,4 +7,5 @@
 !server
 !shared
 !agent-plugin
+!infra/image/hosted-start.sh
 server/build-commit.txt

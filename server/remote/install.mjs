@@ -43,7 +43,7 @@
 
 import { spawn as nodeSpawn } from 'node:child_process';
 import { REMOTE_DIR } from '../../shared/remote-protocol.mjs';
-import { cutText } from '../../shared/text-parts.mjs';
+import { cleanSaid } from '../../shared/text-parts.mjs';
 import { bundle, checkVersion, hostFiles, ROOT } from './install-bundle.mjs';
 import { installArgs, installCommand, tokenCommand } from './install-script.mjs';
 import { storeToken, TOKEN_RE, tokenFile } from './install-token.mjs';
@@ -163,14 +163,14 @@ function errorLine(stdout) {
 
 /**
  * Why an install failed other than exit 75, another Postbox running: its known exit, else what the host said, quoted
- * whole (#1686).
+ * whole (#1686) and cleaned as a program’s words are (#1938).
  * @param {{ code: number | null, signal: string | null }} r @param {string | undefined} known @param {string} said @param {string} quote
  */
 function failedWhy(r, known, said, quote) {
-  if (known) return `${known}${r.code === 66 && quote ? ` (${quote})` : ''}`;
-  if (r.code === 0) return `the host answered “${cutText(said, 200)}” instead of saying it installed`;
+  if (known) return `${known}${r.code === 66 && quote ? ` (${cleanSaid(quote, 300)})` : ''}`;
+  if (r.code === 0) return `the host answered “${cleanSaid(said, 200)}” instead of saying it installed`;
   const ended = `the install ended with ${r.signal ?? `exit status ${r.code}`}`;
-  return quote ? `${ended}: “${cutText(quote, 300)}”` : ended;
+  return quote ? `${ended}: “${cleanSaid(quote, 300)}”` : ended;
 }
 
 /**
@@ -218,7 +218,7 @@ export function tokenOutcome(d, r) {
   if (refused)
     throw new SshFailure(
       refused.code === 'no-node' ? 'no-node' : 'failed',
-      `Postbox installed its files on ${d}, but its host program couldn’t start there. It said: “${refused.message}”`,
+      `Postbox installed its files on ${d}, but its host program couldn’t start there. It said: “${cleanSaid(refused.message, 300)}”`,
       refused.code === 'no-node'
         ? `Install Node 22 or later on ${d}, or set its Node path in Postbox’s host settings, then install again.`
         : 'Fix that on the host, then install again.',
@@ -227,9 +227,10 @@ export function tokenOutcome(d, r) {
   if (r.code === 127 || r.code === 126) throw classifyExit({ destination: d, code: r.code, signal: r.signal, stderr: r.stderr });
   const token = lastLine(r.stdout);
   if (r.code === 0 && TOKEN_RE.test(token)) return token;
+  const hostSaid = cleanSaid(lastLine(r.stderr), 300);
   throw new SshFailure(
     'failed',
-    `Postbox installed its files on ${d}, but didn’t get the daemon’s token back${r.code ? ` (exit status ${r.code})` : ''}.${lastLine(r.stderr) ? ` The host said: “${cutText(lastLine(r.stderr), 300)}”` : ''}`,
+    `Postbox installed its files on ${d}, but didn’t get the daemon’s token back${r.code ? ` (exit status ${r.code})` : ''}.${hostSaid ? ` The host said: “${hostSaid}”` : ''}`,
     `Install again. If it fails the same way, check ~/${REMOTE_DIR}/token on ${d}: it should be a file of yours, holding one line.`,
     detail,
   );

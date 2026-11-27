@@ -1,13 +1,52 @@
 // A model’s own tool-call markup, left in the text a backend streams as the reply (#1916). On deepseek-3.2, Kiro’s
 // message chunks end with `<｜DSML｜function_calls` where the model then called a tool (recorded in
-// tests/fixtures/kiro-cli/tool-load-deepseek.jsonl, kiro-cli 3.6.2), and the person saw it in the reply. Only a marker
-// that ends the chunk goes, with the space before it: words that mention it elsewhere, in code or a sentence, stay.
-// DeepSeek’s recorded chunks are whole messages. Kiro streams other models in token-sized chunks (mcp-failed.jsonl,
-// isolated-deny.jsonl), and a marker split across chunks like those isn’t caught here.
+// tests/fixtures/kiro-cli/tool-load-deepseek.jsonl, kiro-cli 3.6.2), and the person saw it in the reply. Kiro streams
+// other models in token-sized chunks (mcp-failed.jsonl), so the marker can come split across them (#1934):
+// markupHolder holds back what could still become one, and drops it if it’s whole where the message ends. Words that
+// mention it elsewhere, in code or a sentence, stay.
 
-/** DeepSeek’s tool-call marker at the end of a chunk: fullwidth bars, a name, its `>` if it has one, then only space. */
-// A backtick before it is a quote in inline code that a token-sized chunk ended (#1916), not the model’s call.
-const TRAILING_MARKER = /\s*(?<!`)<｜DSML｜[A-Za-z_]+>?\s*$/u;
+/**
+ * What could still become the marker at the end of the text so far: any start of it, with the space before it, or a
+ * line break and space alone, as come before the marker where the whole-chunk rule drops them (#1916). Space with no
+ * line break isn’t held, so ordinary tokens reach the reply when they did. A match starts only where a run of space
+ * starts, so a long run is scanned once, not once from each of its characters.
+ */
+const MAYBE_MARKER = /(?:(?<!\s)(?:\s*(?<!`)<(?:｜(?:D(?:S(?:M(?:L(?:｜[A-Za-z_]*>?\s*)?)?)?)?)?)?|[^\S\n]*\n\s*))?$/u;
 
-/** The chunk without a tool-call marker at its end. @param {string} text */
-export const withoutToolMarkup = (text) => text.replace(TRAILING_MARKER, '');
+/** A whole marker and nothing else, with the space before it. */
+const WHOLE_MARKER = /^\s*<｜DSML｜[A-Za-z_]+>?\s*$/u;
+
+/**
+ * For a stream of message chunks: shows each through `emit` as reply text, holding back an end that could still become
+ * DeepSeek’s marker (#1934). The next chunk decides, as more of the same text; at a boundary (a tool call, a thought,
+ * the turn’s end), a whole marker is dropped and anything else is let go as the words it was.
+ * @param {(e: { kind: 'text', text: string }) => void} emit
+ */
+export function markupHolder(emit) {
+  let held = '';
+  const say = (/** @type {string} */ text) => {
+    if (text) emit({ kind: 'text', text });
+  };
+  return {
+    /** A message chunk’s words. @param {string} text */
+    chunk(text) {
+      // Nothing held and no end that could start a hold: shown as is, without the pattern, as most chunks are.
+      if (!held && !text.includes('<') && !/\s/u.test(text.at(-1) ?? '')) return say(text);
+      // Space after held space stays held, so a run of space chunks after a line break isn’t scanned again each time.
+      if (/\s/u.test(held.at(-1) ?? '') && !/\S/u.test(text)) {
+        held += text;
+        return;
+      }
+      const all = held + text;
+      const maybe = /** @type {RegExpExecArray} */ (MAYBE_MARKER.exec(all));
+      held = maybe[0];
+      say(all.slice(0, maybe.index));
+    },
+    /** At a boundary: what was held, as words, unless it was a whole marker. */
+    letGo() {
+      const rest = held;
+      held = '';
+      if (!WHOLE_MARKER.test(rest)) say(rest);
+    },
+  };
+}

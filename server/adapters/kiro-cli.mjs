@@ -59,12 +59,13 @@ import { kiroHomeFor } from './kiro-home.mjs';
 import { kiroMemoryOff } from './kiro-memory.mjs';
 import { kiroResult, REFUSED } from './kiro-result.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
-import { KINDS, toolOf } from './kiro-tools.mjs';
-import { withoutToolMarkup } from './model-markup.mjs';
+import { toolCall } from './kiro-tools.mjs';
+import { markupHolder } from './model-markup.mjs';
 import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned, recordOnceWritten } from './prompt-sent.mjs';
 import { effortOf, modelOf, recorderFor, setupOf } from './setup.mjs';
+import { stderrTail } from './stderr-tail.mjs';
 
 export { KIRO_PUBLISHING, KIRO_TOOL_RULES, kiroAgent, kiroRules } from './kiro-cli-agent.mjs';
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
@@ -133,22 +134,16 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
     if (st.thinking) emit({ kind: 'thinking_end', block: `thought-${st.thoughts}` });
     st.thinking = false;
   };
-  const call = (/** @type {any} */ u) => {
-    // Only a call’s first update names its kind.
-    if (u.kind) st.kinds.set(u.toolCallId, u.kind);
-    const { name, input } = toolOf({ ...u, kind: st.kinds.get(u.toolCallId) });
-    // v3 loads tool definitions on demand (“Tool Load”), as Claude Code’s ToolSearch does.
-    const native = u.title === 'Tool Load' ? 'ToolSearch' : clip(u.title || KINDS[/** @type {keyof typeof KINDS} */ (u.kind)] || 'Using a tool', 80);
-    emit({ kind: 'tool_call', id: u.toolCallId, name: name ?? native, input, final: true, ...(native === 'ToolSearch' ? { work: false } : {}) });
-  };
+  // DeepSeek’s tool-call marker, held back until it’s whole and dropped then (model-markup.mjs, #1916, #1934).
+  const markup = markupHolder(emit);
+  const call = (/** @type {any} */ u) => toolCall(emit, st.kinds, u);
   const update = (/** @type {any} */ u) => {
     const kind = u?.sessionUpdate;
+    if (kind !== 'agent_message_chunk') markup.letGo();
     if (kind !== 'agent_thought_chunk') endThought();
     switch (kind) {
       case 'agent_message_chunk': {
-        const text = withoutToolMarkup(u.content?.type === 'text' ? String(u.content.text ?? '') : '');
-        if (!text) return;
-        return emit({ kind: 'text', text });
+        return markup.chunk(u.content?.type === 'text' ? String(u.content.text ?? '') : '');
       }
       case 'agent_thought_chunk':
         if (!st.thinking) st.thoughts += 1;
@@ -209,6 +204,7 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
           contextUsed(d.contextUsagePercentage);
           return;
         case 'runFinished':
+          markup.letGo();
           endThought();
           st.finished = d;
           emit({ kind: 'turn_end', isError: d.status !== 'success' });
@@ -218,6 +214,7 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
           else if (d.stopReason === 'max_tokens') st.error = 'The reply hit the model’s output limit before it finished.';
           return;
         case 'runError':
+          markup.letGo();
           endThought();
           emit({ kind: 'turn_end', isError: true });
           st.error = `Kiro couldn’t run the turn: ${clip(d.message ?? 'no reason given', 400)}`;
@@ -353,7 +350,6 @@ export class KiroCliAdapter {
         const sent = ctx.prompt ? { guide: kiroSystemPrompt(persona, guide), text: prompt } : null;
         if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt, sent ? recordOnceWritten(ctx, child, sent) : undefined);
         else if (sent && !attach) recordOnceSpawned(ctx, child, sent);
-        let stderr = '';
         const c = child;
         const exited = new Promise((r) => {
           c.once('exit', r);
@@ -371,9 +367,7 @@ export class KiroCliAdapter {
             ),
           ),
         );
-        child.stderr.on('data', (d) => {
-          stderr = (stderr + d).slice(-4000);
-        });
+        const stderr = stderrTail(child);
         const record = recorderFor(ctx, this.env.POSTBOX_KIRO_RECORD);
         createInterface({ input: child.stdout }).on('line', (line) => {
           if (!line.trim()) return;
@@ -406,8 +400,8 @@ export class KiroCliAdapter {
           if (overSizeLimit(mapper.error)) return resolve({ tooLarge: mapper.error });
           if (mapper.error) return reject(kiroError(mapper.error, mapper.error));
           if (code !== 0 || !mapper.finished) {
-            const message = kiroExitError(code, stderr);
-            return reject(kiroError(message, `${message} ${stderr}`));
+            const message = kiroExitError(code, stderr());
+            return reject(kiroError(message, `${message} ${stderr()}`));
           }
           resolve({});
         };

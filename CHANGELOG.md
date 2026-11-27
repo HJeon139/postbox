@@ -2,6 +2,70 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.5.2 (2026-11-27)
+
+### Fixes
+
+- **remote:** clean the daemon's refusal, git's remote lines and the browser install's error
+- **remote:** clean what ssh or a host said before a host's error quotes it
+- **steps:** a running call's output on its step never starts with half a character
+- **text:** cleanSaid is cleanLines with line breaks as spaces, so both drop lone halves
+- **adapters:** Claude Code's, Kiro's and Antigravity's exit errors keep their stderr's end
+- **adapters:** decode a CLI's stderr as one stream, so a split character stays whole
+- **adapters:** CLI stderr in exit errors is cleaned, and never starts mid-character
+
+## 5.5.1 (2026-11-27)
+
+### Fixes
+
+- **thread:** wrap a long word, path or inline code in an agent's words
+- **app:** the page clips sideways overflow, so a widening only a layout sees can't rewrap the thread
+
+## 5.5.0 (2026-11-27)
+
+### Features
+
+- **deploy:** an agent host, a machine the hosted server reaches over ssh
+
+### Fixes
+
+- **deploy:** the agent host's start log names which value was refused, and the test holds the space
+
+## 5.4.12 (2026-11-27)
+
+### Fixes
+
+- **kiro:** skip the marker scan when nothing is held and a chunk can't start one
+- **kiro:** match a possible marker only where a run of space starts, so a long run is linear
+- **kiro:** hold back what could become DeepSeek's tool-call marker, so a split one never shows
+
+## 5.4.11 (2026-11-27)
+
+### Fixes
+
+- **ring:** a permission card during a background wait keeps the ring's waiting word
+- **agents:** an agent's side-thread entry redraws as it starts or stops a background wait
+- **ring:** an agent that waits only on its background work says so, and holds still
+- **server:** mark a session that waits only on background work
+
+## 5.4.10 (2026-11-27)
+
+### Fixes
+
+- **permissions:** clean a card's and a refusal's tool and summary as well as cutting them
+- **codex:** only Postbox's server by its exact name skips the card, not a look-alike cleaned to it
+- **codex:** keep a request for input's lines on its card, and clean the tool's name
+- **codex:** an MCP server's words on an approval card are cleaned and bounded
+
+## 5.4.9 (2026-11-27)
+
+### Fixes
+
+- **turns:** only this turn's own host link giving up keeps what it took
+- **turns:** one rule for a turn that never reached its agent, keeping a host turn that runs on there
+- **claude:** Claude Code's API-error line isn't reply text, so its turn reads as never reached
+- **turns:** a turn that never reaches its agent gives back its waiting notices and folded lint
+
 ## 5.4.8 (2026-11-27)
 
 ### Fixes

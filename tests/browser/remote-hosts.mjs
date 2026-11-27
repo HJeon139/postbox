@@ -6,6 +6,7 @@
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { pageWidth } from './page-width.mjs';
 import { startPostbox, windowWidth } from './postbox.mjs';
 
 /** The host manager, as the runtime uses it: each host’s status is what the spec sets, and its link takes anything. */
@@ -101,18 +102,20 @@ export async function axe(page) {
  * The width is the test’s (windowWidth): on a phone, a page that overflows widens innerWidth to fit.
  * @param {import('@playwright/test').Page} page  @param {string} selector
  */
-export const overflowing = (page, selector) =>
-  page.evaluate(
-    ([sel, w]) => {
-      const out = [...document.querySelectorAll(sel)]
+export const overflowing = async (page, selector) => {
+  const w = windowWidth(page);
+  const out = await page.evaluate(
+    ([sel, w]) =>
+      [...document.querySelectorAll(sel)]
         .filter((n) => {
           const b = n.getBoundingClientRect();
           return b.width && /** @type {HTMLElement} */ (n).offsetParent !== null && (b.right > w + 1 || b.left < -1);
         })
-        .map((n) => `${n.tagName}.${n.className}`);
-      const d = document.documentElement;
-      if (d.scrollWidth > w + 1) out.push(`the page, by ${d.scrollWidth - w} px`);
-      return out;
-    },
-    /** @type {const} */ ([selector, windowWidth(page)]),
+        .map((n) => `${n.tagName}.${n.className}`),
+    /** @type {const} */ ([selector, w]),
   );
+  // The page clips its sideways overflow, so its scrollWidth can’t show it; page-width.mjs measures what’s laid out.
+  const laidOut = await pageWidth(page);
+  if (laidOut > w + 1) out.push(`the page, by ${laidOut - w} px`);
+  return out;
+};

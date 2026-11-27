@@ -4,6 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import { audit } from './hosts.mjs';
+import { pageWidth } from './page-width.mjs';
 import { allowPageError, failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -71,7 +72,7 @@ for (const width of [1280, 375])
       pronouns: 'they/them',
       preferences: 'Short replies. American spelling.',
     });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), 'the page doesn’t scroll sideways').toBe(false);
+    expect(await pageWidth(page), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
     await audit(page, 'a saved profile');
 
     // It is Postbox’s, not the browser’s: a new page shows it, and no longer says the name is the account’s.

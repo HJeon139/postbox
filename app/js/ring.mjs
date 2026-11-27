@@ -14,8 +14,10 @@
 // context show beside its latest one (#622). It draws its track alone, in the idle color.
 //
 // An agent out of quota (#442), state="quota", holds still in the idle color: it isn’t an alarm. Nor is one whose turn
-// its provider failed and Postbox tries again on its own (#1713), state="retrying". A ring is a button to
-// what its agent needs only when the agent needs the person now (needs="you", from shared/needs.mjs).
+// its provider failed and Postbox tries again on its own (#1713), state="retrying". Nor is one that has replied and waits
+// only on its background work, a job or a subagent (#189), state="background-wait": its session’s state stays “tool”
+// so delivery waits on it, and `background` says what it waits on. A ring is a button to what its agent needs only
+// when the agent needs the person now (needs="you", from shared/needs.mjs).
 
 import { quotaOut, retryingNow } from '/shared/agent-state.mjs';
 import { needsAnother, needsMe } from './needs-mine.mjs';
@@ -32,6 +34,7 @@ const STATE_WORD = {
   stopping: 'Stopping',
   quota: 'Out of quota',
   retrying: 'Retrying',
+  'background-wait': 'Waiting on background work',
 };
 const STATE_VAR = { idle: '--st-idle', think: '--st-think', gen: '--st-gen', tool: '--st-tool', needs: '--accent', failed: '--alert' };
 const RING_SIZES = { xs: [4.5, 1.75, 3, 2], sm: [6, 2, 3.5, 2], lg: [10, 3, 5, 3] };
@@ -42,10 +45,16 @@ export const stateWord = (s) => STATE_WORD[s] ?? 'Idle';
 const THEIRS = 'Waits on another person';
 
 /**
- * A session’s state in a word or two, for the one looking: “Needs you” only when it is them it needs. Every other
- * state reads as it is, whoever a need is for. @param {any} se
+ * The state a session shows: its own, except that an agent whose turn only waits on its background work (#189) shows
+ * that, not “Calling tools”. @param {any} se
  */
-export const stateWordOf = (se) => (se.state === 'needs' && needsAnother(se) ? THEIRS : stateWord(se.state));
+const shownState = (se) => (se.state === 'tool' && se.background === true ? 'background-wait' : se.state);
+
+/**
+ * A session’s state in a word or two, for the one looking: “Needs you” only when it is them it needs. Every other
+ * state reads as it shows, whoever a need is for. @param {any} se
+ */
+export const stateWordOf = (se) => (se.state === 'needs' && needsAnother(se) ? THEIRS : stateWord(shownState(se)));
 
 /**
  * One ring of a <pb-ring>: what holds still, drawn in the ring’s own SVG, and what moves, if anything, drawn in an SVG
@@ -209,13 +218,13 @@ if (!customElements.get('pb-ring')) customElements.define('pb-ring', PbRing);
 
 /**
  * The state a session’s ring shows: out of quota, or retrying on its own, a failed or idle agent’s ring says so, and
- * isn’t the alert color of a failure the person can act on.
+ * isn’t the alert color of a failure the person can act on. Waiting on its background work, it holds still.
  */
 function ringState(se) {
   const resting = !se.state || se.state === 'idle' || se.state === 'failed';
   if (resting && quotaOut(se)) return 'quota';
   if (retryingNow(se)) return 'retrying';
-  return se.state ?? 'idle';
+  return shownState(se) ?? 'idle';
 }
 
 /**

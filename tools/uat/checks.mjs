@@ -2,7 +2,8 @@
 // (tools/uat/checks-remote.mjs), which read what host mode records (facts.hosts). The asset store’s checks
 // (tools/uat/checks-assets.mjs), which read the store a run left and what its tester did, and the view’s
 // (tools/uat/checks-view.mjs), which read the page’s probes, are added after them, and last the run’s own Postbox’s
-// output (tools/uat/checks-postbox.mjs), whose findings fail the run.
+// output (tools/uat/checks-postbox.mjs). Its findings fail the run, and so do text-layout’s (#681), apart from what
+// it couldn’t measure (checks-postbox.mjs, failsRun).
 
 import { ASSET_STORE_CHECKS } from './checks-assets.mjs';
 import { POSTBOX_OUTPUT_CHECKS } from './checks-postbox.mjs';

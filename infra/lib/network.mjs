@@ -27,6 +27,9 @@ export class PostboxNetwork extends Construct {
     // Postbox: in from the load balancer alone. Out, it reaches AWS and the key endpoint, and what agents’ apps fetch,
     // over HTTP and TLS; the hosts its agents run on over SSH; and its disk. Nothing else.
     this.serverGroup = group('ServerGroup', false);
+    // An agent host: in from Postbox alone, over SSH. Out, what an agent’s work needs: the models, packages and
+    // repositories over TLS and HTTP, and repositories over SSH. It reaches neither Postbox’s port nor its disk.
+    this.hostGroup = group('HostGroup', false);
     // The data folder’s disk: in from Postbox alone.
     this.diskGroup = group('DiskGroup', false);
 
@@ -39,6 +42,8 @@ export class PostboxNetwork extends Construct {
     this.serverGroup.addEgressRule(Peer.anyIpv4(), Port.tcp(80), 'net.fetch of an app, over plain HTTP');
     this.serverGroup.addEgressRule(Peer.anyIpv4(), Port.tcp(22), 'Agent hosts, over SSH');
     this.serverGroup.addEgressRule(this.diskGroup, Port.tcp(2049), 'The data folder');
+    this.hostGroup.addIngressRule(this.serverGroup, Port.tcp(22), 'Postbox, over SSH, and nothing else');
+    for (const port of [443, 80, 22]) this.hostGroup.addEgressRule(Peer.anyIpv4(), Port.tcp(port), 'What an agent works with');
     this.diskGroup.addIngressRule(this.serverGroup, Port.tcp(2049), 'The data folder, from Postbox');
   }
 }
