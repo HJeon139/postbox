@@ -14,6 +14,7 @@
 // rules say where the project is. Nothing is committed for it.
 
 import { dirname, join, resolve, sep } from 'node:path';
+import { cutText } from '../../shared/text-parts.mjs';
 
 /** An id as one folder’s name: anything but letters, digits, _ and - replaced, as setup.mjs names memory folders. @param {string} v */
 export const folderName = (v) => String(v).replace(/[^\w-]/g, '_');
@@ -39,7 +40,7 @@ export function besideNote(cwd, project, workRoot, why = '') {
   if (!project?.folder || !resolve(cwd).startsWith(`${resolve(ownFoldersRootFor(workRoot))}${sep}`)) return '';
   // Brief, as the worktree’s note is: agy’s rules file has about 750 characters to spare of its 12,000.
   const refused = why
-    ? ` Postbox couldn’t make you a git worktree (${why.slice(0, 120)}), so your changes there aren’t on a branch of your own and Postbox commits nothing for you: say so in your reply.`
+    ? ` Postbox couldn’t make you a git worktree (${cutText(why, 120)}), so your changes there aren’t on a branch of your own and Postbox commits nothing for you: say so in your reply.`
     : '';
   return [
     '## Where you work',

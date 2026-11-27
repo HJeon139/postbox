@@ -69,7 +69,7 @@ export const VALID = {
   notify: { text: 'hi' },
   host: { id: 'h2', name: 'host two' },
   'host.status': { id: 'h', status: { state: 'connected' } },
-  'host.forget': { id: 'h', add: ['pe_1'], drop: ['pe_2'] },
+  'host.forget': { id: 'h', add: ['pe_1'], drop: ['pe_2'], stop: { turn: 'host-turn-1', personaId: 'pe_1', unconfirmed: false, at: 1 } },
   quota: { id: 'claude-code', backend: 'claude-code', host: null, status: 'ok', windows: [], seenAt: 1 },
   'turn.archive': {
     convId: 't',

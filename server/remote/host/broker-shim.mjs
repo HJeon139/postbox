@@ -4,6 +4,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { encode, HOST_DEFAULTS, message, parseLine, REMOTE_LIMITS, TURN_FILES } from '../../../shared/remote-protocol.mjs';
+import { cutText } from '../../../shared/text-parts.mjs';
 import { endFromShim, permission } from './broker-prompts.mjs';
 import { refusal } from './broker-records.mjs';
 import { CANCELED, CANCELED_MSG } from './broker-state.mjs';
@@ -36,7 +37,7 @@ export function shimConnection(b, { first, write, end }) {
   };
   /** @type {Refuse} */
   const refuse = (code, text) => {
-    c.send('error', { code, message: text.slice(0, REMOTE_LIMITS.messageChars) });
+    c.send('error', { code, message: cutText(text, REMOTE_LIMITS.messageChars) });
     close();
     try {
       end();
@@ -65,7 +66,7 @@ async function handle(b, c, refuse, text) {
   const r = parseLine('shim-to-daemon', text);
   if (!r.ok) {
     if (!c.turn) return refuse('bad-message', r.error);
-    return c.send('error', { code: 'bad-message', message: r.error.slice(0, REMOTE_LIMITS.messageChars) });
+    return c.send('error', { code: 'bad-message', message: cutText(r.error, REMOTE_LIMITS.messageChars) });
   }
   const m = r.msg;
   if (!c.turn) return hello(b, c, refuse, m);

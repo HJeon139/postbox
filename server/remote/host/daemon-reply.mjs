@@ -2,6 +2,7 @@
 // driving Postbox, whichever connection that is now.
 
 import { encode, message, REMOTE_LIMITS, TURN_FILES } from '../../../shared/remote-protocol.mjs';
+import { cutText } from '../../../shared/text-parts.mjs';
 import { exists } from './daemon-files.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
@@ -18,7 +19,7 @@ export function send(c, type, body) {
 }
 /** @param {Conn} c @param {string} code @param {string} text @param {string} [re] @param {string} [turn] @param {string} [id]  the prompt or call it refuses @returns {undefined} */
 export function fail(c, code, text, re, turn, id) {
-  void send(c, 'error', { code, message: text.slice(0, REMOTE_LIMITS.messageChars), ...(re ? { re } : {}), ...(turn ? { turn } : {}), ...(id ? { id } : {}) });
+  void send(c, 'error', { code, message: cutText(text, REMOTE_LIMITS.messageChars), ...(re ? { re } : {}), ...(turn ? { turn } : {}), ...(id ? { id } : {}) });
 }
 
 /** The turn’s folder, or an error to the connection. @param {Daemon} d @param {Conn} c @param {string} turn @param {string} re */

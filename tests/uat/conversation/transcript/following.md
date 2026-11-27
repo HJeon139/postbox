@@ -17,6 +17,7 @@ In Dispatch mode you glance at a conversation to see what changed. That only wor
 - **The pill scrolls smoothly**, with motion allowed, all the way to the end, even over a long room whose older messages draw for the first time on the way down: no snap partway, and it ends following (#712a). Turning the wheel during it stops it where it is, and you’re reading there.
 - The pill floats just above the composer and takes no room, so showing or hiding it never moves the page. It shows only while the end is further below than the pill’s own height, so it never sits over the working rows or the end of the last message.
 - **A card at the bottom stays still.** When what follows the newest message shrinks (a working row going away, a card getting shorter once answered, the composer), the transcript keeps its height instead of pulling everything down, so a button you’re about to click doesn’t slide out from under the pointer. The space fills with the next message, or goes when the window’s width changes.
+- **Home and End go to the top and the end at once**, in any room, long or short (#866, #1884). Postbox moves the view itself rather than leaving it to the browser’s smooth keyboard scroll, which a write of the page’s ended partway in a long room and which once did nothing at all in a short one. They stay where they belong to something else: a field or a select, an editable block, a widget that moves its own choice, another scroller you’re in (Work, a command’s output, a side panel), and Ctrl+Home or Shift+End. In a dialog, a pinned hover card included, they move a field or a scroller in it, after a click there too, and never the conversation behind it.
 - Every browser behaves the same: the browser’s own scroll anchoring is off, and Postbox keeps the place itself.
 
 ## Steps to reproduce
@@ -28,7 +29,8 @@ In Dispatch mode you glance at a conversation to see what changed. That only wor
 5. At the bottom, type a six-line draft with Shift+Enter while an agent replies, then send it.
 6. Run `npx playwright test view-held-live` (`tests/browser/view-held-live.spec.mjs`): a running reply that shrinks and grows back eight times, and a shrink and regrowth in one frame with no input, at the bottom.
 7. With real agents, in a room of three, ask one for a task of many commands, such as checking 30 shops’ prices, and stay at the bottom, without touching the page, until its turn ends. Meanwhile the others work in side threads, so the rail’s rows change too.
-8. Run `npx playwright test hold-still` (`tests/browser/hold-still.spec.mjs`): reading mid-room while a reply streams above, a review moves to the end, an app grows and a picture loads; a choice’s button under the pointer while an app above it grows; and at the bottom, a choice’s button while replies arrive and between pressing and letting go, with a press or a resting pointer beside a reply still being laid out. With real agents, the end-to-end [hold still scenario](../../e2e/scenarios/holdstill.md).
+8. Run `npx playwright test page-edge-keys window-far` (`tests/browser/page-edge-keys.spec.mjs`, `window-far.spec.mjs`): Home and End in a short room and a long one, and End left to the composer, a select, an editable block, Work, a command’s output and Settings. By hand: in a room of a few dozen messages, click a message, press Home, then End; open Work, click in it and press End; open Settings and press End.
+9. Run `npx playwright test hold-still` (`tests/browser/hold-still.spec.mjs`): reading mid-room while a reply streams above, a review moves to the end, an app grows and a picture loads; a choice’s button under the pointer while an app above it grows; and at the bottom, a choice’s button while replies arrive and between pressing and letting go, with a press or a resting pointer beside a reply still being laid out. With real agents, the end-to-end [hold still scenario](../../e2e/scenarios/holdstill.md).
 
 **Pass if:**
 - At the bottom, the newest message never drifts out of view, and a card’s buttons don’t move when the working row below it goes away.
@@ -37,6 +39,7 @@ In Dispatch mode you glance at a conversation to see what changed. That only wor
 - In a long room, scrolled to the top, the pill glides to the newest message without jumping, and a wheel turn during the glide leaves you where it stopped (`tests/browser/view-skipped-smooth.spec.mjs`).
 - With the draft growing and after sending it, the newest message and the agent’s reply stay above the composer.
 - Nothing you read or point at moves while agents work, and a click lands on what you aimed at.
+- Home lands on the first message and End on the newest, in a short room as in a long one. End in Work scrolls Work, and End with Settings open leaves the conversation where it was.
 - Through the whole long turn of step 7, the reply’s newest step and words stay on screen. The view stays following (`data-view-mode="following"` on the transcript), there’s never more than a shrink’s worth of empty room below the reply, and the page never shows only empty room above the composer.
 
 ## Related

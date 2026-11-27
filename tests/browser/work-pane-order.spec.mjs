@@ -5,8 +5,15 @@
 
 import { expect, test } from '@playwright/test';
 import { writeAsset } from '../../server/assets.mjs';
+import { roomAsset } from '../../shared/room-refs.mjs';
 import * as arrange from '../arrange.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
+
+/** When an asset’s latest version was written. */
+const headAt = (state, convId, id) => {
+  const a = roomAsset(state, convId, id);
+  return a.versions[a.head - 1].at;
+};
 
 let app;
 let conv;
@@ -33,8 +40,10 @@ test.beforeAll(async () => {
     if (!r.ok) throw new Error(r.message);
     ids[key] = r.id;
   }
-  // A turn that ran one command, which worked, begun after every asset was written, so it touched none.
-  arrange.addWork(rt, conv.id, { id: 'wt_one', kind: 'turn', handle: 'librarian', startedAt: Date.now(), status: 'done' });
+  // A turn that ran one command, which worked, begun after every asset was written, so it touched none: a millisecond
+  // after the last write, not Date.now(), which can be the same millisecond, and then the turn wrote it (wroteIn).
+  const written = Math.max(...Object.values(ids).map((id) => headAt(store.state, conv.id, id)));
+  arrange.addWork(rt, conv.id, { id: 'wt_one', kind: 'turn', handle: 'librarian', startedAt: written + 1, status: 'done' });
   arrange.addWork(rt, conv.id, { id: 'wx_ok', kind: 'command', turnId: 'wt_one', command: 'ls notes', state: 'done', exit: 0, handle: 'librarian' });
   se = arrange.sessionsIn(rt, conv.id)[0];
   say('Start with `notes/plan.md`.');

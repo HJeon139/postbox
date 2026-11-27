@@ -79,7 +79,7 @@ function expiryOf(exp) {
  *   signer: the load balancer’s ARN; client and issuer: the application’s client id and the identity provider, since
  *   one load balancer can front several applications and a token minted for another verifies against the same key;
  *   keyOf: the public key for a key id (PEM text or a key object), or nothing when there is none
- * @returns {Promise<{ issuer: string, subject: string, claims: Record<string, unknown> }>}
+ * @returns {Promise<{ issuer: string, subject: string, claims: Record<string, unknown>, until: number }>}  until: when the token stops being good, in ms
  */
 export async function checkAlbToken(sent, { signer, client, issuer, keyOf, now = Date.now }) {
   for (const [name, value] of Object.entries({ signer, client, issuer }))
@@ -114,5 +114,5 @@ export async function checkAlbToken(sent, { signer, client, issuer, keyOf, now =
   if (expiry * 1000 <= now()) throw refuse('expired');
   if (typeof payload.sub !== 'string' || !payload.sub) throw refuse('subject');
 
-  return { issuer, subject: payload.sub, claims: payload };
+  return { issuer, subject: payload.sub, claims: payload, until: expiry * 1000 };
 }

@@ -41,6 +41,9 @@ export function emptyState() {
     hostStatus: map(),
     // Per host, the deleted personas whose memory folder there Postbox still has to remove (#491): [persona id].
     hostForgets: map(),
+    // Per host, the stops Postbox asked there for sessions since removed, not yet confirmed (#1796): [{ turn, personaId,
+    // unconfirmed, at }]. They hold a deleted persona’s removal there (#1680), and a restart asks them again.
+    hostStops: map(),
     // Each backend’s usage of its quota as its harness last reported it (#442, shared/quota-key.mjs’s key): the person’s
     // own figures, for the composer’s quota line. { id, backend, host, status, windows: [{ name, used, resetsAt }], seenAt }.
     quota: map(),
@@ -112,6 +115,8 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   'hosts',
   'hostStatus',
   'hostForgets',
+  // Turn and persona ids, which the sessions’ own stops (remoteTurn.stopping) show the page already.
+  'hostStops',
   // The person’s own usage figures, which reach only their page on this computer (designs/architecture/adapters.md).
   'quota',
   'work',

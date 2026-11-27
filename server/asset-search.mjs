@@ -7,6 +7,7 @@
 // new head: the key is every indexed asset’s id, version, hash and name. A few rooms are kept, the most recently searched.
 
 import { search as bm25, buildIndex, semanticStub } from '../shared/bm25.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { headOf, roomAssets } from './assets.mjs';
 
 /** How many rooms’ indexes are kept at once. */
@@ -109,7 +110,7 @@ async function roomIndex(assets, blobs, room) {
  * @param {any} args
  */
 export function searchArgs(args = {}) {
-  const query = String(args?.query ?? '').slice(0, QUERY_CHARS);
+  const query = cutText(String(args?.query ?? ''), QUERY_CHARS);
   const k = Math.max(1, Math.min(MAX_RESULTS, Math.floor(+args?.k || 12)));
   const mode = MODES.includes(args?.mode) ? args.mode : 'both';
   const named = Array.isArray(args?.assets) ? args.assets.slice(0, MAX_NAMED).map(String) : [];

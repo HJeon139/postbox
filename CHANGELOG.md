@@ -2,6 +2,119 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.4.5 (2026-11-27)
+
+### Fixes
+
+- **view:** label an item by its words only while it has focus
+- **view:** each drawing of an item gets an id of its own, so a redraw doesn't take focus
+- **view:** an item is an article named by its own words, made so before it's on the page
+- **view:** a card that is already a group keeps its role, and the working rows don't recount
+- **view:** each transcript item says its place, so a screen reader reaches skipped ones
+
+## 5.4.4 (2026-11-27)
+
+### Fixes
+
+- **needs:** a view request kept through another agent's wake doesn't ring again at its end
+- **needs:** a request asked again during a wake stays its kept turn's
+- **needs:** a tool or view request asked again in a later turn is that turn's need
+- **needs:** a view request is turn-tied, as a tool request is
+- **needs:** stopping a turn drops the need its tool or view request made
+- **needs:** a host question shown at its call's end is the need at once
+- **needs:** a view request rings with a notice at its turn's end
+- **needs:** a tool or view request raised mid-turn is the need at once
+
+## 5.4.3 (2026-11-27)
+
+### Fixes
+
+- **text:** cut a signed-in name, git's worktree refusal and a quota host at a whole character
+- **remote:** forget checks both of a persona's folders on a host before removing either
+- **text:** cut a job's output path and a hook's scanned text whole, and fix the sweep's notes
+- **remote:** forget removes a deleted Isolated Kiro agent's home on a host too
+- **adapters:** an Isolated Kiro agent's home on a host is its own, by persona id, not its handle
+- **text:** cut names a backend sends, search queries and diagnostics whole
+- **text:** cut what the page shortens to a length whole
+- **text:** cut what a remote host and its install say whole
+- **text:** cut tools' and harnesses' errors and output whole
+- **text:** cut a retired app's reason and the names and text people read whole
+- **claude-code:** let a turn that ends on postbox's react end with no text
+
+## 5.4.2 (2026-11-27)
+
+### Fixes
+
+- **keys:** Alt+Up/Down step over a hidden item instead of onto it
+
+## 5.4.1 (2026-11-27)
+
+### Fixes
+
+- **kiro:** the tool-load note's last sentence says which failure to report
+- **kiro:** name both of Kiro's tool loaders in the note on loading Postbox's tools
+
+## 5.4.0 (2026-11-27)
+
+### Features
+
+- **deploy:** the server's image and a CDK stack for a test deployment on AWS
+- **hosted:** start a hosted Postbox from a settings file, at its public address
+
+### Fixes
+
+- **infra:** lower-case the domain name so a hosted zone's record resolves
+- **remote:** a host keeps only a stop that names its turn, and lets go one its session also asked
+- **remote:** a deleted agent's memory on a host waits for its stopping turn across a restart
+
+## 5.3.3 (2026-11-27)
+
+### Fixes
+
+- **view:** Home and End are the page's only where a conversation is
+- **view:** a click in a dialog's scroller keeps its Home and End
+- **view:** the page takes Home and End in every room, not only a long one
+
+## 5.3.2 (2026-11-27)
+
+### Fixes
+
+- **turns:** a turn the store's outage stopped gives the tools-down note back too
+- **sheet:** a scroll of a sheet's body is not pulled back by its pointer hold
+- **view:** a scroll the transcript hasn't heard of yet isn't undone by a pointer's hold
+- **turns:** an empty reply keeps the tools-down note taken, and a stop before output gives it back
+- **turns:** only a turn that never reached the agent gives the tools-down note back
+- **kiro:** only a recorded mcp_connection_error reads as a server down, and Kiro's words are cleaned
+- **turns:** a turn that fails gives back the tools-down note it took
+
+## 5.3.1 (2026-11-27)
+
+### Fixes
+
+- **remote:** find a host turn's folder while its turn is held behind a commit
+- **remote:** drop a redundant Resume check; close the held tests' store whatever its release does
+- **remote:** the person's Resume of a removed conversation is refused, not an error
+- **remote:** a resume, and the person's Resume, read the remote turn as written
+- **remote:** read a remote turn's session as written where the read decides a write
+- **chain:** tell a stopped agent its message didn't go, and to send it later
+- **tools:** find the wake line before and after the scheduled wake fires
+- **links:** link no room asset inside a glossary term's text
+- **tools:** retarget shoot-uat's shots to what the demo shows now
+- **rail:** let a long status word give way too, after the names' first letters
+- **rail:** keep a room's status word whole in its sidebar row
+- **ui:** start every dialog with focus inside it
+- **tools:** shoot only what the demo shows, and fail on a missed shot
+- **mock:** say in words what each refused block held
+- **threads:** stop promising side threads on the Threads page
+- **activity:** point a refused step at its card without saying where
+- **markdown:** match no glossary term inside a link's text
+- **markdown:** draw streamed math once, from its source
+- **wakes:** a closed card tells its agent to send its message again, not to ask
+- **wakes:** a chain counted past a lowered cap still stops with its one line
+- **wakes:** an agent whose wake was held on a card is told when it goes
+- **composer:** the composer no longer counts agent wakes against a limit
+- **wakes:** the chain cap stops a wake with one line in the room, and no card
+
 ## 5.3.0 (2026-11-27)
 
 ### Features

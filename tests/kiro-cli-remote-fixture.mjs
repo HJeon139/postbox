@@ -107,6 +107,7 @@ export async function setup({ persona = {}, state = {}, remote = {} } = {}) {
     signal: abort.signal,
     mcpUrl: 'http://127.0.0.1:4280/mcp?session=se_1',
     persona: {
+      id: 'pe_kiro',
       handle: 'kiro',
       model: 'claude-opus-5-5',
       permissionMode: 'ask',

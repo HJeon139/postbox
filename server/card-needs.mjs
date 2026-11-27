@@ -67,7 +67,9 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
 export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, toolask: 4, viewask: 4, hop: 5, mention: 6 });
 
 /** The needs tied to a turn: the person moving on clears them (runtime.mjs, the turn's start). The rest wait until answered. */
-export const TURN_TIED = new Set(['failed', 'block', 'toolask']);
+export const TURN_TIED = new Set(['failed', 'block', 'toolask', 'viewask']);
+/** The needs a turn's own card offers while it runs (offerShown), which a stopped turn takes with it (stoppedNeed). */
+const OFFERED_MID_TURN = new Set(['block', 'toolask', 'viewask']);
 
 /**
  * Which turns' asking blocks, refusals and tool requests count, answered here only. A turn that doesn't move on (another
@@ -163,8 +165,8 @@ export function offerNeed(rt, se, need, state) {
 }
 
 /**
- * An asking block an agent just showed (#1748): it is the agent's need from now, not only from its turn's end, so the
- * top bar counts it while the turn runs on. The session keeps its state, since its turn runs on, as a wake request's does.
+ * An asking block an agent just showed (#1748), or a tool or view request it raised (#1868): it is the agent’s need from
+ * now, not only from its turn’s end, so the top bar counts it while the turn runs on. The session keeps its state.
  * @param {any} rt @param {any} caller  the session, as the caller read it @param {any} it  the block's item @param {string} threadId
  */
 function offerShown(rt, caller, it, threadId) {
@@ -178,24 +180,26 @@ function offerShown(rt, caller, it, threadId) {
 }
 
 /**
- * A turn you stopped (turn-stop.mjs): a need its own asking block made mid-turn goes with it, so its form waits quietly
- * in the sidebar, as a stopped turn's form did before #1748, and the count agrees with the idle agent. Stop closes the
- * turn without its end (endTurn), which is what otherwise decides the turn's cards. @param {any} rt @param {any} turn
+ * A turn you stopped (turn-stop.mjs): a need its own asking block, tool request or view request made mid-turn goes with
+ * it (#1748, #1868), so the card waits quietly, as a stopped turn's form did before #1748, and the count agrees with the
+ * idle agent. Stop closes the turn without its end (endTurn), which otherwise decides the turn's cards.
+ * @param {any} rt @param {any} turn
  */
 function stoppedNeed(rt, turn) {
   // The session as written, as the stop's own write may be held behind a commit (#623).
   const se = rt.store.pending.session(turn.sessionId);
   const need = se?.needs;
   // A need names its thread only when it's away from the agent's own (awayFrom).
-  if (need?.kind !== 'block' || rt.store.pending.item(need.threadId ?? se.threadId, need.itemId)?.turnId !== turn.id) return;
+  if (!OFFERED_MID_TURN.has(need?.kind) || rt.store.pending.item(need.threadId ?? se.threadId, need.itemId)?.turnId !== turn.id) return;
   // What's left is what waited before it: the kept turns' cards and the block the turn kept. Not turnsOf's, whose last
   // turn is this one by now, nor runningKeep's, as the turn has left rt.turns.
   rt.sessions.update(se.id, { needs: nextNeed(rt, se, { turnIds: se.keptTurnIds ?? [], keep: se.keptId ?? null }) });
 }
 
 /**
- * A block shown or withdrawn moves the need (Apps raises both on the bus): a withdrawn one is released, and an asking
- * one shown, or asked again by an update, is offered (#1748). A stopped turn drops the need its own block made.
+ * A card shown or withdrawn moves the need (raised on the bus): a withdrawn block is released, and an asking block shown
+ * or asked again (#1748), or a tool or view request raised or asked again (#1868), is offered. A stopped turn drops the
+ * need its own block or request made.
  * @param {any} rt
  */
 export function blockNeeds(rt) {

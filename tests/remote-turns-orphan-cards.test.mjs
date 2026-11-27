@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as arrange from './arrange.mjs';
 import { FIXTURE_PROMPT } from './fake-daemon.mjs';
-import { restarted, rig, running, settled, startUp, until } from './remote-turns-helpers.mjs';
+import { restarted, rig, running, settled, sleep, startUp, until } from './remote-turns-helpers.mjs';
 
 const cards = (r) => r.store.items(r.t.id).filter((i) => i.kind === 'permission');
 
@@ -50,7 +50,12 @@ test('#800 a card that still waits here is answered once by the Stop, as before'
   r.d.end(turn);
   await settled(r);
   assert.notEqual(cards(r)[0].status, 'open');
-  assert.equal(r.d.answers.filter((a) => a.id === 'p-1').length, 1, 'one answer to the host');
+  // The Stop’s answer crosses the fake daemon’s streams, which can take longer than the turn’s end (#1657).
+  const answers = () => r.d.answers.filter((a) => a.id === 'p-1').length;
+  await until(() => answers() > 0, 'the Stop’s answer at the host');
+  // Then a while for a second answer, which the check below rules out.
+  await sleep(20);
+  assert.equal(answers(), 1, 'one answer to the host');
 });
 
 for (const why of ['moved', 'unregistered'])

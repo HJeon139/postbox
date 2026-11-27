@@ -8,6 +8,10 @@ Part of [the architecture](../architecture.md). Everything Postbox passes to a t
 
 `--setting-sources user,project,local`, so an agent has the same skills, slash commands, plugins and permission rules as your terminal. A persona set to Isolated (“Uses your Claude Code setup” off) gets `project,local`: the project’s settings, and the local file where Always allow saves its rules.
 
+## Ending on a reaction
+
+`CLAUDE_CODE_TERMINAL_MCP_TOOLS=mcp__postbox__react`, added to any list the environment already holds, on this computer and on a host (#1712). Without it, Claude Code answers a turn whose last response has no text with “Your previous response had no visible output…”, so an agent that only reacted is made to write a line, and that line wakes the agent it answers. With it, a turn whose last call is Postbox’s `react` ends with nothing more; a turn that goes on to another tool isn’t cut short. The name follows `POSTBOX_SERVER`. The variable is undocumented: it was read from Claude Code 2.1.318 and checked with a local turn for each case. If a later version drops it, the only cost is that line coming back. Not checked: a value set in the `env` of the person’s Claude Code settings may replace Postbox’s, and drop `react` from it. Postbox’s own check (`server/empty-reply.mjs`) still decides whether such a turn owed words.
+
 ## Output style
 
 `--settings '{"outputStyle":"default"}'`. The flag layer sits above your user, project and local files, so a style such as Concise can’t fight the agent guide. A real turn confirmed it: with Concise in the folder’s local settings, `init.output_style` read `default`.

@@ -9,13 +9,14 @@
 
 import { LIVE_CAPS } from '../shared/limits.mjs';
 import { CARRIED_FIELDS, SESSION_FIELDS } from '../shared/live-kinds.mjs';
+import { cutText } from '../shared/text-parts.mjs';
 import { committed } from './live-sent.mjs';
 import { storeText } from './live-text.mjs';
 import { sessionPatch } from './session-patch.mjs';
 import { onSessionWrite, sendLive } from './store-live.mjs';
 
 /** A string at most LIVE_CAPS.string long; anything else as it is. @param {unknown} v */
-const capString = (v) => (typeof v === 'string' && v.length > LIVE_CAPS.string ? v.slice(0, LIVE_CAPS.string) : v);
+const capString = (v) => (typeof v === 'string' && v.length > LIVE_CAPS.string ? cutText(v, LIVE_CAPS.string) : v);
 
 /** An object with each string capped. @param {Record<string, any>} o */
 function capFields(o) {

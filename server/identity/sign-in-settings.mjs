@@ -49,6 +49,12 @@ export function signInSettings(given) {
     if (typeof s.claims?.[claim] !== 'string' || !s.claims[claim])
       throw missing(`claims.${claim}`, `the claim that holds a person’s ${claim === 'username' ? 'user name' : 'name'}`);
   const allow = allowList(s.allow);
+  // A Cognito user pool’s userinfo is a person’s attributes, which another client of the pool may let them write for
+  // themselves, so a group read from it would admit whoever wrote it. Its people are named by subject.
+  if (allow?.groups && s.issuer.startsWith('https://cognito-idp.'))
+    throw new Error(
+      'A Cognito user pool can’t back “allow.groups”: its userinfo carries attributes a person may be able to write. Name people by “allow.subjects”.',
+    );
   if (!allow)
     throw new Error(
       'A hosted Postbox needs an allow list, and its sign-in settings have none it can read. Set “allow” to who may sign in: “subjects”, a list of people by their subject, or “groups”, a claim and a list of the groups in it, and nothing else.',

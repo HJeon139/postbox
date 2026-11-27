@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
+import { Readable } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { start } from '../server/index.mjs';
 import { NOW, publicPem, SETTINGS, tokenFor } from './alb-fixture.mjs';
@@ -109,4 +110,64 @@ test('a Postbox given sign-in settings with no allow list doesn’t start, and s
   assert.match(String(outcome?.message ?? outcome), /needs an allow list/);
   // It stopped before it opened anything: the folder is as it was, with no store and no lock left in it.
   assert.deepEqual(readdirSync(dir), []);
+});
+
+/** A request the router can be handed and watched: fakeRequest’s answers end, and a stream’s doesn’t. */
+function watched(/** @type {string} */ path, /** @type {Record<string, string>} */ headers) {
+  const req = Object.assign(Readable.from([]), {
+    method: 'GET',
+    url: path,
+    headers: { host: `127.0.0.1:${PORT}`, ...headers },
+    socket: { remoteAddress: '127.0.0.1' },
+  });
+  const res = {
+    headersSent: false,
+    writeHead() {},
+    setHeader() {},
+    flushHeaders() {},
+    write: () => true,
+    end() {},
+    on() {},
+    once() {},
+    off() {},
+    destroy() {},
+  };
+  const closed = new Promise((ok) => req.once('close', () => ok('closed')));
+  const within = (/** @type {number} */ ms) => Promise.race([closed, new Promise((ok) => setTimeout(() => ok('open'), ms))]);
+  return { req, res, within };
+}
+
+test('a stream is ended when the sign-in it opened with ends, and no other request is', async () => {
+  // Good for 20 ms more, by the clock the sign-in check reads.
+  const soon = signed({ header: { exp: NOW / 1000 + 0.02 } });
+  const stream = watched('/api/stream', soon);
+  await hosted.handle(stream.req, stream.res);
+  assert.equal(stream.req.destroyed, false, 'open while its sign-in is good');
+  assert.equal(await stream.within(2000), 'closed');
+  const state = watched('/api/state', soon);
+  await hosted.handle(state.req, state.res);
+  assert.equal(await state.within(120), 'open', 'a request that isn’t the stream is never cut off');
+  state.req.destroy();
+});
+
+test('a refused sign-in is written to the server’s log by its reason’s name', async (t) => {
+  const said = t.mock.method(console, 'log', () => {});
+  const answer = await ask(hosted, PORT, { path: '/api/state', headers: signed({ header: { client: 'another-app' } }) });
+  assert.equal(answer.status, 401);
+  assert.deepEqual(
+    said.mock.calls.map((c) => c.arguments[0]),
+    ['Postbox refused a sign-in: client.'],
+  );
+});
+
+test('a public address is never answered without sign-in settings: such a start is refused before anything opens', async () => {
+  const dir = tempDir('pb-hosted-no-sign-in-');
+  await assert.rejects(
+    // A start that went ahead is closed again, so a missing refusal fails here and leaves nothing running.
+    start({ port: PORT + 3, dataDir: dir, fresh: true, quiet: true, claudeHome: dir, listen: false, publicOrigin: 'https://postbox.example.com' }).then((app) =>
+      app.close(),
+    ),
+    /A hosted Postbox needs its sign-in settings\./,
+  );
+  assert.deepEqual(readdirSync(dir), [], 'nothing was opened');
 });
