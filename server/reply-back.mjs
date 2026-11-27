@@ -1,9 +1,9 @@
 // A reply that goes back (#1518; designs/intent.md, the row on agents waking agents): a turn only other agents’
 // @-mentions started, whose replies @-mention no one, goes back to the agents whose mentions woke it, as if it had
 // mentioned them. Every time (#1523): chaining is how agents talk, and the room’s chain limit counts each bounce as
-// any wake. An exchange ends with a reaction to the reply that came back (#1553), or at an agent’s second reply in a
-// row to the same agent from a turn that reply woke and that did nothing but write (#1591). Functions take the Runtime first, as
-// waiting code does until Turns is a service.
+// any wake. A reply stops going back after a reaction to the reply that came back (#1553), or at an agent’s second
+// reply in a row to the same agent from a turn that reply woke and that did nothing but write (#1591). Neither holds a
+// wake an @-mention asks for. Functions take the Runtime first, as waiting code does until Turns is a service.
 
 /**
  * Whom a turn that took these entries goes back to when its replies @-mention no one: the agents whose mentions it
@@ -92,8 +92,9 @@ export function wroteOnlyTo(rt, se, threadId, turnId = null) {
 
 /**
  * Whether the agent ended its exchange with this one by a reaction (#1553): everything from it that woke this turn is a
- * reply that came back on its own, and the agent reacted to it. Its words, if it wrote any, then post without waking
- * it again. In two UAT runs of 21 November 2026, agents reacted ✅ and also wrote “Acknowledged.”, and each
+ * reply that came back on its own, and the agent reacted to it. Its words, if it wrote any, then post and don’t go
+ * back to it. They still wake whom they @-mention, that agent too: no rule holds a wake an @-mention asks for (#1591,
+ * the owner’s ruling of 26 November 2026: “A @mention always wakes. no matter what rule”). In two UAT runs of 21 November 2026, agents reacted ✅ and also wrote “Acknowledged.”, and each
  * acknowledgment went back, up to hop 262. Only a reply that came back counts: a direct @-mention is a request, and a
  * 👍 on it may come before the report, so a batch with one from that agent still goes back. Only a reaction made since
  * this turn began counts: one from a failed attempt the person retried doesn’t stop the Retry’s answer (critic’s review
