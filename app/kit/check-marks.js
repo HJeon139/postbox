@@ -22,11 +22,11 @@
   const SYMBOL = 30;
   // A dot or ring is a data mark up to this radius, in px; a larger circle is a diagram’s node, which holds its name.
   const DOT = 12;
-  // A closed outline up to this size in px, of up to this many commands, is a node, such as a box, a rounded box or a
-  // hexagon, and a label inside it is its name. A larger one is a region, and one of more commands is an area chart, a
-  // command for each data point: a label inside either can still sit on its edge.
+  // A closed outline up to this size in px is a node, such as a box, a rounded box or a hexagon, and a label centered in
+  // it, within this share of its width and height of its middle, is its name. A label off its middle, such as a value
+  // on a small area chart’s edge or at a radar’s vertex, and any label in a larger region, can still sit on its edge.
   const NODE = 160;
-  const SIDES = 12;
+  const MIDDLE = 0.2;
   // A line is a data series from this many points on. A straight line of two points is a fit line or a reference in a
   // chart (three or more dots or rings), and a diagram’s edge or a leader line anywhere else; one that’s level or upright, a
   // gridline, is never a mark.
@@ -68,6 +68,8 @@
   const painted = (paint, opacity) => alpha(paint) * opacity > 0.05;
   const solid = (paint, opacity) => alpha(paint) * opacity >= SOLID;
   const meets = (a, b, pad = 0) => a.left < b.right + pad && b.left < a.right + pad && a.top < b.bottom + pad && b.top < a.bottom + pad;
+  const centered = (a, b) =>
+    Math.abs((a.left + a.right - b.left - b.right) / 2) <= b.width * MIDDLE && Math.abs((a.top + a.bottom - b.top - b.bottom) / 2) <= b.height * MIDDLE;
   const within = (a, b) => a.left >= b.left - 1 && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
 
   /**
@@ -105,7 +107,7 @@
     if (!fill && !stroke) return null;
     const kind = fill ? 'a dot' : round ? 'a ring' : 'a line';
     const closed = el.tagName === 'path' && /z\s*$/i.test(el.getAttribute('d') ?? '');
-    const node = closed && r.width <= NODE && r.height <= NODE && points(el) <= SIDES;
+    const node = closed && r.width <= NODE && r.height <= NODE;
     return { el, r, fill, stroke, kind, round, node, straight, pad: width / 2, clip: clipOf(el, svg) };
   }
 
@@ -204,7 +206,7 @@
       for (const l of labels(svg, backings(svg))) {
         // A label inside its own dot, ring or node, such as a count or a name, is that mark’s label, not one drawn over
         // it. A line’s box holds labels that aren’t its own.
-        const own = (m) => (m.round || m.node) && within(l.r, m.r);
+        const own = (m) => within(l.r, m.r) && (m.round || (m.node && centered(l.r, m.r)));
         const under = all.find((m) => meets(l.r, m.r, m.pad) && !own(m) && hits(l, m) >= HITS);
         if (under) on.push({ ...l, kind: under.kind });
       }

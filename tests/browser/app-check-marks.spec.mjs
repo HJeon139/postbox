@@ -64,17 +64,17 @@ const APPS = {
   backed: `<svg id="backed" width="420" height="240" role="img" aria-label="Fit">${dots}${fit}<rect x="192" y="127" width="34" height="17" fill="var(--bg)"/><text x="196" y="140" ${T}>5:56</text></svg>`,
   // A dot reaching into the top of a label’s box, above its letters: it grazes the label without hiding it.
   grazed: `<svg id="grazed" width="420" height="240" role="img" aria-label="Runs">${dots}<text x="150" y="166.5" ${T}>Morning</text></svg>`,
-  // A diagram’s node, a hexagon whose slanted sides cut into the corners of the name it holds.
-  // The same graze in an SVG stretched twice as tall as its viewBox: the band scales with the vertical axis.
-  stretched: `<svg id="stretched" width="420" height="480" viewBox="0 0 420 240" preserveAspectRatio="none" role="img" aria-label="Runs">${dots}<text x="150" y="165.5" ${T}>Morning</text></svg>`,
-  // A rounded box drawn as a path, nine commands, its stroke under the ends of the name it holds.
+  // The same graze in an SVG stretched twice as tall as its viewBox, with dots small enough to stay dots once
+  // stretched: the band scales with the vertical axis.
+  stretched: `<svg id="stretched" width="420" height="480" viewBox="0 0 420 240" preserveAspectRatio="none" role="img" aria-label="Runs">${DOTS.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="5" fill="var(--s1)"/>`).join('')}<text x="150" y="164.5" ${T}>Morning</text></svg>`,
+  // A rounded box drawn as a path, its stroke under the ends of the name centered in it.
   rounded: `<svg id="rounded" width="200" height="120" role="img" aria-label="Steps"><path d="M50 30 H150 A10 10 0 0 1 160 40 V80 A10 10 0 0 1 150 90 H50 A10 10 0 0 1 40 80 V40 A10 10 0 0 1 50 30 Z" fill="none" stroke="var(--s1)" stroke-width="4"/><text x="100" y="64" text-anchor="middle" textLength="120" lengthAdjust="spacingAndGlyphs" ${T}>Committee review</text></svg>`,
+  // A diagram’s node, a hexagon whose slanted sides cut into the corners of the name it holds.
   named: `<svg id="named" width="200" height="120" role="img" aria-label="Steps"><path d="M40 60 L60 30 H140 L160 60 L140 90 H60 Z" fill="none" stroke="var(--s1)" stroke-width="4"/><text x="100" y="64" text-anchor="middle" textLength="116" lengthAdjust="spacingAndGlyphs" ${T}>Committee review</text></svg>`,
-  // A three-line callout with a dot on its first line: only that line’s own band reaches it; a band sized to the whole
-  // box missed it.
+  // A three-line callout with a dot on its first line, in that line’s own band.
   callout: `<svg id="callout" width="420" height="120" role="img" aria-label="Weeks"><circle cx="270" cy="34" r="4" fill="var(--s1)"/><text x="250" y="40" ${T}><tspan x="250">Best week</tspan><tspan x="250" dy="16">of the year,</tspan><tspan x="250" dy="16">after rest</tspan></text></svg>`,
-  // A sparkline of 24 points drawn as a small closed area, its last value printed on its top edge: an area, not a node.
-  spark: `<svg id="spark" width="200" height="90" role="img" aria-label="Visits"><path d="M10 60 L16 22 L22 48 L28 30 L34 52 L40 26 L46 44 L52 34 L58 50 L64 28 L70 46 L76 36 L82 54 L88 24 L94 42 L100 32 L106 48 L112 38 L118 44 L124 40 L130 40 L136 39 L142 40 L148 38 L148 70 L10 70 Z" fill="none" stroke="var(--s1)" stroke-width="2"/><text x="128" y="45" ${T}>42</text></svg>`,
+  // A week’s sparkline drawn as a small closed area, its last value printed on its top edge, off its middle: not its name.
+  spark: `<svg id="spark" width="200" height="90" role="img" aria-label="Visits"><path d="M10 60 L30 20 L50 44 L70 30 L90 46 L110 34 L130 40 L150 38 L150 70 L10 70 Z" fill="none" stroke="var(--s1)" stroke-width="2"/><text x="128" y="45" ${T}>42</text></svg>`,
   // A region larger than a node, its edge a line, with a label inside its box on that edge.
   region: `<svg id="region" width="420" height="240" role="img" aria-label="Costs"><path d="M20 220 L400 220 L400 20 Z" fill="none" stroke="var(--s2)" stroke-width="2"/><text x="200" y="125" ${T}>Forbidden</text></svg>`,
   // An axis as d3 draws one: its domain path, tick lines, and tick labels beside them, and its title on the line.
