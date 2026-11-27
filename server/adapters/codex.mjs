@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { realpath } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
-import { cleanTail } from '../../shared/text-parts.mjs';
+import { cleanSaid, cleanTail } from '../../shared/text-parts.mjs';
 import { withQuota } from '../harness-failure.mjs';
 import { LOCK as DATA_FOLDER_LOCK } from '../home.mjs';
 import { codexApproval } from './codex-approval.mjs';
@@ -27,6 +27,8 @@ export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
 export { CODEX_CAPABILITIES, codexRemoteConfigArgs, createCodexRebuild } from './codex-remote.mjs';
 export { codexApproval, createCodexMapper };
 
+/** Of what Codex says when a turn fails, shown to the person, as for its tool server’s refusal. */
+const SAID_MAX = 400;
 /** A local folder’s real path, or the folder as given if it can’t be resolved: Codex refuses a writable root with a symlink in its path. */
 const realFolder = (dir) => realpath(dir).catch(() => dir);
 
@@ -247,7 +249,8 @@ export class CodexAdapter {
       finish = (err) => (err ? reject(err) : resolve(undefined));
     });
     ended.catch(() => {});
-    const why = (text, said = reported) => `${text}${said ? `: ${said}` : '.'}`;
+    // What Codex said, cleaned as other harnesses’ errors are before the person reads them (#1905, #1938).
+    const why = (text, said = reported) => `${text}${said ? `: ${cleanSaid(said, SAID_MAX)}` : '.'}`;
     /** @type {(Error & { code?: string }) | null} how a remote turn ended, when that’s why it can’t finish */
     let endError = null;
     const host = remote ? createCodexHost(child, remote, attach) : null;
@@ -293,7 +296,7 @@ export class CodexAdapter {
         finish(err);
       } else if (result?.error) {
         reported = result.error;
-        fail(withQuota(new Error(result.error), result.quota));
+        fail(withQuota(new Error(cleanSaid(result.error, SAID_MAX)), result.quota));
       }
     };
     rl.on('line', (line) => {

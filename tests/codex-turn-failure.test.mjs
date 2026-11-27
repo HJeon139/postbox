@@ -60,3 +60,20 @@ test('#425 a failed Codex turn keeps the reason its error notification gave, as 
   const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => fakeAppServer([], { hold: true, beforeStarted: notifiedFirst }) });
   await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi' }, context()), { message: 'Codex turn failed: The model gpt-nope does not exist.' });
 });
+
+test('#425 what Codex says of a failed turn reaches the person cleaned and cut, from turn/completed or an error notification', async () => {
+  const said = `Bad‮gnp.exe\nsecond line ${'x'.repeat(600)}`;
+  const notice = { method: 'error', params: { error: { message: said }, willRetry: false } };
+  /** The error notification before turn/start’s answer, so it rejects that request itself. */
+  const notifiedBeforeAnswer = (/** @type {any} */ child) => child.stdout.write(`${JSON.stringify(notice)}\n`);
+  for (const end of [failsWith({ message: said }), failsWith({ message: 'Turn failed.' }, [notice]), notifiedBeforeAnswer]) {
+    const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => fakeAppServer([], { hold: true, beforeStarted: end }) });
+    const err = await adapter.deliver({}, { kind: 'user', text: 'Hi' }, context()).then(
+      () => assert.fail('the turn should fail'),
+      (/** @type {any} */ e) => e,
+    );
+    assert.match(err.message, /^(Codex turn failed: )?Bad/);
+    assert.doesNotMatch(err.message, /[‮\n]/, 'no bidi override or line break');
+    assert.ok(err.message.length <= 'Codex turn failed: '.length + 400, `cut to 400 characters, not ${err.message.length}`);
+  }
+});
