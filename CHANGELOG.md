@@ -2,6 +2,37 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.1.0 (2026-11-27)
+
+### Features
+
+- **tools:** a local sign-off script that fails loudly and talks while it waits
+
+### Fixes
+
+- **antigravity:** the plugin is written and removed only in a plain folder Postbox owns
+- **antigravity:** the start's sweep hashes only a regular mcp_config.json, so a FIFO can't hang it
+- **tools:** signoff names the git version merge-tree needs when git is too old
+- **tools:** signoff's Biome at each commit skips merge commits
+- **tools:** signoff's base fetch fails rather than waiting on a credential prompt
+- **tools:** a gh call that hangs fails the sign-off after two minutes
+- **tools:** signoff drops the toolchain step, which only the local gate needed
+- **antigravity:** the start's sweep never follows a link, and removes only the plugin its turn wrote
+- **tools:** signoff reads the browser passes from CI and runs no local gate
+- **tools:** step 2 reads workflows with Windows line endings, and the docs' Node sentence is back
+- **tools:** step 4's base-comparing lints use the fetched base, not origin/<base>
+- **antigravity:** a plugin is unnoted only when it's truly gone, and the mode test skips as root
+- **antigravity:** a plugin the turn couldn't remove stays noted for the next start
+- **antigravity:** a plugin a killed Postbox left in an agent's folder is removed at start
+- **tools:** signoff reads step 3's changed files with -z and passes them after --
+- **tools:** signoff's clean check counts untracked files whatever git's config says
+- **tools:** signoff fetches the base from the pull request's base repository
+- **tools:** signoff's step 2 fails on any node-version it can't read
+- **tools:** a signal during the sign-off's long parts reaches the command, then cleans up
+- **tools:** step 2 reads a matrix's block lists and include entries, and fails on what it can't read
+- **tools:** the gate log is written only when the tree and HEAD held through the run
+- **tools:** step 6's failure names GitHub's checks once, not twice
+
 ## 5.0.1 (2026-11-27)
 
 ### Fixes
