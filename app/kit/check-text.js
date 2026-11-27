@@ -197,25 +197,30 @@
     }
     return { left, top, right, bottom, width: right - left, height: bottom - top };
   }
-  // Cut short on purpose: an ellipsis, a clamp to a number of lines, or a box that cuts its text and fades it out where
-  // it does, as a topic thread’s long first message fades out above its Show all (#681). A mask that isn’t a gradient
-  // (an icon’s, an SVG’s mask) isn’t a fade.
-  const faded = (cs) => /gradient\(/.test(`${cs.maskImage} ${cs.webkitMaskImage}`) && /hidden|clip/.test(`${cs.overflowX} ${cs.overflowY}`);
+  // Cut short on purpose: an ellipsis, or a clamp to a number of lines.
   const shortened = (el) => {
     for (let e = el; e && e !== document.body; e = e.parentElement) {
       const cs = getComputedStyle(e);
-      if (cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') || faded(cs)) return true;
+      if (cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none')) return true;
     }
     return false;
   };
+  // A box that fades its text out where it cuts it, as a topic thread’s long first message fades out above its Show
+  // all (#681), cuts it on purpose. Only the box that does the cutting counts, and only a gradient: an icon’s or an
+  // SVG’s mask isn’t a fade.
+  const faded = (el) => {
+    const cs = getComputedStyle(el);
+    return /gradient\(/.test(`${cs.maskImage} ${cs.webkitMaskImage}`);
+  };
   // What cuts a label short: the element, an SVG’s edge, or another ancestor whose overflow is hidden, or the page’s
   // top or left edge, where no one can scroll. A box that scrolls doesn’t cut: you scroll to the rest. A label cut away
-  // whole is hidden on purpose (a carousel’s other slides, a closed accordion).
+  // whole is hidden on purpose (a carousel’s other slides, a closed accordion). The first box that cuts it decides: one
+  // that fades it out there cuts it on purpose, and the label isn’t reported (an empty string).
   function cutBy(el, r) {
     let { left, top, right, bottom } = r;
     let by = null;
-    const cut = (l, t, rt, b, who) => {
-      if (l > left + 2 || t > top + r.height / 3 || rt < right - 2 || b < bottom - r.height / 3) by = by ?? who;
+    const cut = (l, t, rt, b, who, box = null) => {
+      if (by === null && (l > left + 2 || t > top + r.height / 3 || rt < right - 2 || b < bottom - r.height / 3)) by = box && faded(box) ? '' : who;
       [left, top, right, bottom] = [Math.max(left, l), Math.max(top, t), Math.min(right, rt), Math.min(bottom, b)];
     };
     for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
@@ -224,7 +229,7 @@
       const y = /hidden|clip/.test(cs.overflowY);
       if (!x && !y) continue;
       const b = a.getBoundingClientRect();
-      cut(x ? b.left : -Infinity, y ? b.top : -Infinity, x ? b.right : Infinity, y ? b.bottom : Infinity, where(a));
+      cut(x ? b.left : -Infinity, y ? b.top : -Infinity, x ? b.right : Infinity, y ? b.bottom : Infinity, where(a), a);
     }
     cut(-scrollX, -scrollY, Infinity, Infinity, 'the page’s edge');
     return right - left > 0 && bottom - top > 0 ? by : null;
