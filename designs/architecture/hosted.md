@@ -16,7 +16,7 @@ The owner’s framing (the owner’s answers, “The three ways to run”):
 
 The owner’s concern with hosting is function, not deployment (the owner’s answers, “The purpose”): putting the page behind a load balancer is the small part. The work is in what Postbox assumes because the browser and the server have always been one computer.
 
-**An earlier direction, and how this reads it.** On [#1742](https://github.com/HJeon139/postbox/issues/1742#issuecomment-7198554497), the same day and before the frame above, the owner said: “the postbox server should behave more similarly to postbox remote ssh agents. where users from ‘some remote location’ can be added to the current postbox runtime’s room.” This document reads the later frame as the one to build to: a person comes to a hosted Postbox from wherever they are by signing in, and is in every room, as [#1733](https://github.com/HJeon139/postbox/issues/1733) has it. It does not build people added to one room and not another. Whether the earlier sentence asks for that is “People added to a room” under “Open questions for the owner”.
+**People come to a room; they aren’t in every room.** The owner, on [#1742](https://github.com/HJeon139/postbox/issues/1742#issuecomment-7198554497): “the postbox server should behave more similarly to postbox remote ssh agents. where users from ‘some remote location’ can be added to the current postbox runtime’s room.” And, asked whether a person may be in some rooms and not others ([the ruling on rooms](https://github.com/HJeon139/postbox/issues/1733#issuecomment-7207754214)): “Permissions to a room is managed by the user who created the room and membership controls authorization to access the room, not a global access to all rooms for all users.” So signing in gets a person into the Postbox, and a room’s membership gets them into a room (“Who may reach a room”).
 
 ## One system, and the difference is at the edge
 
@@ -43,7 +43,7 @@ flowchart LR
 
 **What it rests on.**
 - The owner’s direction of 23–25 November 2026, in [people.md](people.md), “Status”: one system that handles both, with no shortcut or back door for one over the other.
-- [#1733](https://github.com/HJeon139/postbox/issues/1733): a hosted Postbox is one trusting team. Everyone who signs in sees every room and directs every agent; signing in is attribution, not isolation.
+- [#1733](https://github.com/HJeon139/postbox/issues/1733): a hosted Postbox starts only with a sign-in allow list. Its body also says everyone on the list sees every room; [the ruling on rooms](https://github.com/HJeon139/postbox/issues/1733#issuecomment-7207754214) replaces that with membership, and the issue’s body is yet to follow.
 - The owner’s ruling of 26 November 2026 on [#1742](https://github.com/HJeon139/postbox/issues/1742#issuecomment-7198554497): a person’s name is the identity provider’s. Postbox manages no names.
 - The host machine’s own security is outside Postbox ([#1733](https://github.com/HJeon139/postbox/issues/1733), “The security posture, stated and not built around”).
 
@@ -107,6 +107,23 @@ The unsigned headers the balancer also adds (`x-amzn-oidc-identity`, `x-amzn-oid
 
 **The page’s token stays,** as what it always was: proof that a write came from Postbox’s own page and not another site. It is one secret per server start, shared by every page, and it was never who you are.
 
+## Who may reach a room
+
+**Decision** (the owner, 26 November 2026: [the ruling on rooms](https://github.com/HJeon139/postbox/issues/1733#issuecomment-7207754214)). Signing in says who a person is; it does not put them in any room. A room has members, and a person reaches a room only as a member of it.
+
+- **A room’s admins manage who is in it:** they add and remove people, as they add and remove its agents, in the room’s form in the main menu. Admin is a status of a member, given and taken away by an admin, not a fixed owner (the owner, 26 November 2026: “make the admin status something that can be assigned to members of the room instead of a hard coded owner status”). Whoever creates a room is its first member and its first admin, and a room keeps at least one admin, as it keeps at least one agent: the last admin can’t leave or give the status up until another member has it.
+- **A room a person isn’t in doesn’t exist for them.** It is in no state their page is given, no event on their stream, no search and no list, and a route that names it answers as if there were no such room. That is every route that carries a room’s data: its items and files, its Work, its apps and their pages, its agents’ sessions and their permissions.
+- **An @-mention of a person, and what needs a person, stay within the room’s members.**
+- **On your own computer nothing changes:** there is one person, who created every room.
+
+**What membership is not.** It is who may reach a room in Postbox. It is not a wall between the rooms’ agents: agents of two rooms that run on one host run as one account there and can read each other’s files (“Where agents run”, “What everyone on one Postbox shares”). A team that needs that wall gives the rooms different hosts.
+
+**What this document assumes stays shared by everyone signed in,** since the ruling is about rooms: the agents (personas), the projects, the hosts, and each person’s profile, which the owner ruled reaches every page ([people.md](people.md), “`people` is a public state key”). “What else follows membership” under “Open questions for the owner” asks what of this is wrong.
+
+**What it rests on.** What reaches a page is decided today in one place, the public keys of `shared/state.mjs` through `server/public-state.mjs` ([security-boundaries.md](security-boundaries.md), “What reaches the browser”), for one reader. Membership makes that a decision per person, for the state, the stream’s live and backlog frames, and every route that answers with a room’s data.
+
+**What it costs.** Every route that takes a room’s id gains a check, and a missed one is a leak, so the slice needs a test that walks every route with a non-member, as `tests/published-kept-out.test.mjs` walks them for private keys. The stream is filtered per connection. This is the largest slice here.
+
 ## What assumed one computer
 
 An audit of the code on 26 November 2026 (`main` at e7d50596e), corrected against the first review’s reading of each row. Each row is a decision for the slice named; none is decided here beyond the column “Hosted”.
@@ -122,7 +139,8 @@ An audit of the code on 26 November 2026 (`main` at e7d50596e), corrected agains
 | The work ledger’s git, pushes with `gh` | Run on the server, with its account’s sign-in (`server/ledger-git.mjs`, `server/push-on-request.mjs`) | Off for work on a host today ([remote-hosts.md](remote-hosts.md), “Revisit when”); unchanged | None |
 | Whose name is on a commit or a push from a host | The host account’s git and `gh` identity | Every person’s work is one author’s, and the version history is part of what a person comes back to | Several people |
 | What to do when a host fails | “Sign in to … in a terminal”, “Run `ssh …` in a terminal” (`server/remote/ssh-failures.mjs`, `server/remote/install.mjs`) | The person has no terminal on the server: the next step has to be one they can take | Same-machine |
-| Who may add a host, and what a host is named by | Any write with the page’s token (`server/hosts-routes.mjs`); the record’s name is the SSH destination, resolved by the server account’s SSH configuration (`server/remote/host-admin.mjs`) | Any member points the server’s key at any destination it knows. Accepted under the trusting team, and said in the recipe | Cloud hosts |
+| Who may add a host, and what a host is named by | Any write with the page’s token (`server/hosts-routes.mjs`); the record’s name is the SSH destination, resolved by the server account’s SSH configuration (`server/remote/host-admin.mjs`) | Anyone signed in points the server’s key at any destination it knows. Hosts are shared by everyone on the Postbox, as this document assumes, and the recipe says so | Cloud hosts |
+| What reaches a page | Every public key of the state, to the one reader there is (`server/public-state.mjs`) | Only the rooms a person is a member of, in the state, the stream and every route (“Who may reach a room”) | Rooms by membership |
 | Who has a room open, for reading an ask | One person per room, the last to say so (`viewers` in `server/threads.mjs`); a page says what it has open every ten seconds | With two people in a room, an ask of the one who isn’t the last isn’t read as it lands; their page’s next word, within ten seconds, reads it. A need shows for up to ten seconds; no read is lost | Several people |
 | Whether a room is open, for telling anyone | One time per room, for anyone (`viewing` in `server/threads.mjs`). While it is open, no unread is counted and no “mentioned you” or “finished” notice is raised (`server/turn-needs.mjs`) | **The larger half:** a person who is away is told nothing because someone else is looking. Per person | Several people |
 | Unread marks, the theme | One of each for the install (the theme in `shared/state.mjs`; unread counts on the thread and the session, `server/threads.mjs`, `server/turn-needs.mjs`) | Each person’s own (the owner’s answers: “Per person”). The theme can live in the browser, which is nothing to build on the server. Unread is one mark per person per room, written when they look, not a count per person written on every reply, or a room of many people writes once a person a reply. On a local run there is one person, so both read as they do now | Several people |
@@ -147,7 +165,7 @@ What the deployment brings, since `ssh` runs with `BatchMode=yes` and `StrictHos
 - hosts that are Linux with Node 22 or later, reachable from the server;
 - each agent CLI signed in on its host. How that is done is outside Postbox (the owner’s answers, “Earlier”).
 
-**What a trusting team shares,** which an operator reads before adding someone. It is the model of [#1733](https://github.com/HJeon139/postbox/issues/1733), “attribution, not isolation”, and these are its consequences:
+**What everyone on one Postbox shares,** which an operator reads before adding someone to the allow list. Membership keeps a person out of a room; it does not keep them from what the hosts hold:
 
 - **One sign-in per CLI per host, shared by everyone.** It is the host account’s, and so is the usage it spends.
 - **The server’s key reaches every host,** and the data folder holds each host’s daemon token.
@@ -180,16 +198,17 @@ What it would need, noted so no one mistakes it for small: a host with an owner,
 | This document | Merged |
 | **Address:** the public origin, and listening on every address | A Postbox started with a public origin answers it and refuses others; `!` and app links are refused from every address; with none, the gate’s tests pass unchanged. The rules it changes are changed with it |
 | **Sign-in:** the load balancer’s provider, with the allow list of [#1733](https://github.com/HJeon139/postbox/issues/1733) | Each part of “The check, whole” has a test that fails without it; a request with no identity gets no route but the three named; `/mcp` is refused; a stream ends at its token’s `exp`; a local run asks nothing. The rules it changes are changed with it |
+| **Rooms by membership:** a room’s members, managed by its admins | A person who isn’t a member finds the room in no state, no event and no route, by a test that walks every route; an admin adds and removes people and gives and takes the admin status in the room’s form, and the last admin can’t be removed; an @-mention and a need stay within its members; a local run is unchanged. The rules it changes are changed with it |
 | **Same-machine:** each row above marked for it | Each surface works on a host’s agent or says plainly that it doesn’t apply here |
 | **Several people:** whether a room is open and unread, per person, then the rest of its rows | A person who is away is told of a mention and a finished turn while another has the room open; each clears only their own unread marks |
 | **Cloud hosts and deployment:** the image, the recipe, a real start on AWS | The owner starts it, signs in, adds a host and runs a room; one writer is kept by the deployment, and the recipe says what a team shares |
 
-The address and sign-in slices change a security boundary and are reviewed as such. The deployment slice costs real money to prove and is the owner’s to start.
+The address, sign-in and membership slices change a security boundary and are reviewed as such. The deployment slice costs real money to prove and is the owner’s to start.
 
-**The rules the address and sign-in slices change,** each with its section in the same change (AGENTS.md: when a rule and its section disagree, fix both):
+**The rules the address, sign-in and membership slices change,** each with its section in the same change (AGENTS.md: when a rule and its section disagree, fix both):
 
 - AGENTS.md, “Security boundaries”: “Postbox listens on 127.0.0.1 only”.
-- [security-boundaries.md](security-boundaries.md), “This computer alone” and “Writes need the page’s token”.
+- [security-boundaries.md](security-boundaries.md), “This computer alone” and “Writes need the page’s token”, and for membership “What reaches the browser”, with AGENTS.md’s rule from it.
 - SECURITY.md: “for one person”.
 - [running.md](../running.md), “There’s no sign-in”.
 - [intent.md](../intent.md), “Several people, sign-in or presence” under what is not in scope.
@@ -197,14 +216,14 @@ The address and sign-in slices change a security boundary and are reviewed as su
 
 ## Open questions for the owner
 
-- **People added to a room.** The earlier direction on #1742 has people “added to the current postbox runtime’s room”. This document has everyone on the allow list in every room. Is a person in some rooms and not others wanted for the first hosted Postbox?
+- **What else follows membership.** This document keeps the agents, the projects, the hosts and people’s profiles shared by everyone signed in, and puts only rooms behind membership. A person who can’t reach a room can still see that its project exists and direct the same agents in a room of their own. What of that should follow a room’s membership, if anything?
 - **A name that changes at the provider.** A person’s record keeps the name it was first kept with. Hosted, should a changed claim change the name and the user name on their record, since the name is the provider’s?
 - **Postbox’s own browser.** Let it in over loopback with a secret made at each start, reading as no person, or build the view another way so nothing but a signed request is answered?
 - **Two backends don’t run on a host.** The Agent SDK runs in Postbox’s own process, and Antigravity isn’t tested on a host, so a hosted Postbox offers Claude Code, Kiro and Codex. Offer the Agent SDK hosted as the one agent in the server’s process, or leave both out until they run on a host? ([#1834](https://github.com/HJeon139/postbox/pull/1834), open as this is written, removes the Agent SDK backend, which would leave Antigravity alone.)
 
 ## Revisit when
 
-- A team needs rooms some members can’t see. That is membership, dropped for now in [#1733](https://github.com/HJeon139/postbox/issues/1733).
+- A room needs kinds of member beyond admin and not, such as one who reads and can’t write. Nothing here builds that.
 - A person’s own computer should run agents in a hosted room (“What keeps bring your own agents possible”).
 - Another cloud’s load balancer is wanted. It is another provider behind the same seam.
 - A deployment can’t keep the hop from the balancer inside a private network. Then Postbox serves TLS.
