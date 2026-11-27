@@ -1,10 +1,13 @@
 // Inlined after the kit in every app page: postbox.narrate and postbox.narration, moved out of kit.js as a concern of
 // their own. They reach Postbox only through postbox.query, and the kit’s resize observer sizes the frame to the player.
-(function () {
+// A block, not a function, keeps its names out of the app’s page, so each is a const: a function declared in a block
+// would still reach the page’s global names.
+
+{
   // Needs the narrate.speak permission (and its agent needs the tool). Audio is made on the host by a local
   // Kokoro voice, one passage at a time, and only when you press Play, so the pre-display check makes none.
   const clipCache = new Map();
-  async function narrate(text, opts = {}) {
+  const narrate = async (text, opts = {}) => {
     const key = `${opts.voice || ''}|${opts.speed || 1}|${text}`;
     if (!clipCache.has(key)) {
       clipCache.set(
@@ -17,9 +20,9 @@
       clipCache.get(key).catch(() => clipCache.delete(key));
     }
     return clipCache.get(key);
-  }
-  narrStyle();
-  function narrStyle() {
+  };
+  {
+    // The player’s styles, once a page.
     const st = document.createElement('style');
     st.textContent = `.pb-narr{display:flex;flex-direction:column;gap:10px}.pb-narr-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
       .pb-narr-status{font-size:12px;color:var(--dim)}.pb-narr ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
@@ -28,16 +31,14 @@
       .pb-narr li button[aria-current="true"]{color:var(--text);background:var(--sunk);border-left-color:var(--accent)}`;
     document.head.appendChild(st);
   }
-  function narration(el, passages, opts = {}) {
-    const list = (passages || []).map((p, i) =>
-      typeof p === 'string' ? { id: `p${i + 1}`, text: p } : { id: p.id || `p${i + 1}`, text: String(p.text || '') },
-    );
-    const make = (tag, cls, text) => {
-      const n = document.createElement(tag);
-      if (cls) n.className = cls;
-      if (text != null) n.textContent = text;
-      return n;
-    };
+  const make = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  /** The player’s bar (Play and its status) and its transcript, one button a passage, which plays from it. */
+  const playerView = (list, label, onPick) => {
     const root = make('div', 'pb-narr');
     const bar = make('div', 'pb-narr-bar');
     const btn = make('button', 'btn', 'Play');
@@ -46,34 +47,41 @@
     status.setAttribute('role', 'status');
     bar.append(btn, status);
     const ol = make('ol');
-    ol.setAttribute('aria-label', opts.label || 'Transcript');
+    ol.setAttribute('aria-label', label || 'Transcript');
     const items = list.map((p, i) => {
       const li = make('li');
       const b = make('button', null, p.text);
       b.type = 'button';
-      b.addEventListener('click', () => play(i));
+      b.addEventListener('click', () => onPick(i));
       li.append(b);
       ol.append(li);
       return b;
     });
     root.append(bar, ol);
-    el.replaceChildren(root);
-    const audio = new Audio();
-    let at = -1;
-    let playing = false;
     const mark = (i) => {
       items.forEach((b, j) => {
         if (j === i) b.setAttribute('aria-current', 'true');
         else b.removeAttribute('aria-current');
       });
-      opts.onPassage?.(i, list[i]);
     };
+    return { root, btn, status, mark };
+  };
+  const narration = (el, passages, opts = {}) => {
+    const list = (passages || []).map((p, i) =>
+      typeof p === 'string' ? { id: `p${i + 1}`, text: p } : { id: p.id || `p${i + 1}`, text: String(p.text || '') },
+    );
+    const { root, btn, status, mark } = playerView(list, opts.label, (i) => play(i));
+    el.replaceChildren(root);
+    const audio = new Audio();
+    let at = -1;
+    let playing = false;
     async function play(i = Math.max(at, 0)) {
       if (i >= list.length) return stop(true);
       at = i;
       playing = true;
       btn.textContent = 'Pause';
       mark(i);
+      opts.onPassage?.(i, list[i]);
       status.textContent = `Preparing passage ${i + 1} of ${list.length}…`;
       try {
         const clip = await narrate(list[i].text, opts);
@@ -104,7 +112,7 @@
         return at;
       },
     };
-  }
+  };
   window.postbox.narrate = narrate;
   window.postbox.narration = narration;
-})();
+}
