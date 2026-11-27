@@ -14,6 +14,7 @@
 // the `thread` event has always carried it, so the reducer, A2’s conversion and the page see no new shape.
 // tests/thread-write-guard.test.mjs places every thread write, so a new one goes through here.
 
+import { cutText } from '../shared/text-parts.mjs';
 import { carriedList } from '../shared/work.mjs';
 import { httpError } from './helpers.mjs';
 import { toggleReaction } from './reactions.mjs';
@@ -108,9 +109,7 @@ export class Threads {
   /** Names a thread, as an agent’s title or the person’s edit does. @param {string} id @param {unknown} title */
   rename(id, title) {
     this.toWrite(id);
-    const name = String(title ?? '')
-      .trim()
-      .slice(0, 120);
+    const name = cutText(String(title ?? '').trim(), 120);
     if (!name) throw httpError(422, 'A conversation needs a name.');
     return this.patch(id, { title: name });
   }

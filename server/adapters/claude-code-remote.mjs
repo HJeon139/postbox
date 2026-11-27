@@ -7,7 +7,8 @@
 //   the agent guide says they aren’t there. The session lives in the host’s ~/.claude/projects.
 // - The host’s claude must be 2.1.187 or later (C3), and 2.1.259 or later with the host’s denyPrompts on, which passes
 //   --permission-prompts none instead of --permission-prompt-tool (D2). A resume after an interrupted turn sets
-//   CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1, so the cut-off turn goes on (D2). No other variable crosses.
+//   CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1, so the cut-off turn goes on (D2). Every turn sets CLAUDE_CODE_TERMINAL_MCP_TOOLS
+//   to Postbox’s react, which the daemon adds to the host’s own list (#1712). No other variable crosses.
 // - Stop goes through the daemon (process-group.mjs’s remote branch). Background jobs aren’t kept and have no Stop of
 //   their own: the runtime doesn’t offer either for a remote turn, and a keep that reaches here anyway is reported stopped.
 // - After a Postbox restart, ctx.remote.attach names a turn already on the host: it’s read from the start into a fresh
@@ -15,17 +16,18 @@
 // server/adapters/claude-code.mjs runs the turn; this module holds what only a host needs.
 
 import { claudeMissing, claudeVersionProblem } from '../../shared/claude-version-check.mjs';
+import { TERMINAL_TOOLS_VAR } from '../../shared/terminal-tools.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
 import { hostShim, hostWaitMax, startAttachments } from './remote-turn.mjs';
-import { PERMISSION_WAIT_MARGIN_MS, shimServer } from './setup.mjs';
+import { PERMISSION_WAIT_MARGIN_MS, POSTBOX_REACT_TOOL, shimServer } from './setup.mjs';
 
 export { attachmentPaths } from './remote-turn.mjs';
 
 /**
  * What this backend can do, for the runtime and the UI (#117). Left out, it forks, reads rules and offers Claude’s
- * models. On a remote host (#120), the message goes in a file, the one variable it sets is the resume of an interrupted
- * turn (D2), Postbox’s server goes in --mcp-config, a quiet tool call still prints tool_progress, a wait on a background task lists it (#847), and a sign-in that ran
+ * models. On a remote host (#120), the message goes in a file, the variables it sets are the resume of an interrupted
+ * turn (D2) and the tools a turn may end on quietly (#1712), Postbox’s server goes in --mcp-config, a quiet tool call still prints tool_progress, a wait on a background task lists it (#847), and a sign-in that ran
  * out ends the turn with an authentication_failed result.
  */
 export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
@@ -33,7 +35,7 @@ export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
   skills: true,
   remote: Object.freeze({
     stdin: 'file',
-    env: Object.freeze(['CLAUDE_CODE_RESUME_INTERRUPTED_TURN']),
+    env: Object.freeze(['CLAUDE_CODE_RESUME_INTERRUPTED_TURN', TERMINAL_TOOLS_VAR]),
     server: 'mcp-config',
     work: 'events',
     backgroundTasks: 'background_tasks_changed',
@@ -99,7 +101,7 @@ export function remoteTurn(remote, folder, turn, resumeInterrupted, attach = fal
   const welcome = remote.welcome ?? remote.link?.welcome;
   const server = shimServer({ ...hostShim(remote, welcome, turn), timeout: hostWaitMax(remote) + PERMISSION_WAIT_MARGIN_MS });
   /** @type {Record<string, string>} */
-  const set = resumeInterrupted ? { CLAUDE_CODE_RESUME_INTERRUPTED_TURN: '1' } : {};
+  const set = { [TERMINAL_TOOLS_VAR]: POSTBOX_REACT_TOOL, ...(resumeInterrupted ? { CLAUDE_CODE_RESUME_INTERRUPTED_TURN: '1' } : {}) };
   // Only the names capabilities.remote lists: the laptop’s environment never crosses.
   const env = Object.fromEntries(Object.entries(set).filter(([k]) => CLAUDE_CODE_CAPABILITIES.remote.env.includes(k)));
   const spawnImpl = /** @type {typeof import('node:child_process').spawn} */ (

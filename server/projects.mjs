@@ -2,6 +2,7 @@
 // to. Creating one moved out of server/index.mjs.
 
 import { realpath, stat } from 'node:fs/promises';
+import { cutText } from '../shared/text-parts.mjs';
 import { fullPath } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { isPushUrl } from './push-on-request.mjs';
@@ -17,7 +18,7 @@ export async function createProject(store, body) {
   const folder = await realpath(written).catch(() => null);
   const st = folder ? await stat(folder).catch(() => null) : null;
   if (!folder || !st?.isDirectory()) throw httpError(422, 'That folder doesn’t exist. Pick an existing folder for the project.');
-  const p = { id: newId('pr'), name: String(body.name || 'New project').slice(0, 80), folder };
+  const p = { id: newId('pr'), name: cutText(String(body.name || 'New project'), 80), folder };
   store.emit('project', p);
   return p;
 }

@@ -24,9 +24,10 @@ document.addEventListener('keydown', (e) => {
     openJumpTo();
     return;
   }
-  // Alt+↑/↓ moves between turns and blocks; Alt+End returns to the composer.
+  // Alt+↑/↓ moves between turns and blocks; Alt+End returns to the composer. Not onto an item that draws nothing: it’s
+  // hidden and can’t take focus, so the press would seem to do nothing (#1911).
   if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-    const items = [...document.querySelectorAll('#main > .item')];
+    const items = [...document.querySelectorAll('#main > .item:not([hidden])')];
     if (!items.length) return;
     e.preventDefault();
     const at = items.findIndex((n) => n.contains(document.activeElement));

@@ -151,6 +151,12 @@ export const running = (rt, sessionId) => Boolean(rt.running.turnOf(sessionId));
 export const waitingEntries = (rt, sessionId) => rt.delivery.waiting(sessionId);
 
 /**
+ * Leaves a Postbox notice in an agent’s inbox, as an app’s or a host’s notice does: it wakes no one, and rides along
+ * with the agent’s next turn. @param {Runtime} rt @param {string} sessionId @param {string} threadId @param {string} text
+ */
+export const leaveNotice = (rt, sessionId, threadId, text) => rt.delivery.send({ sessionId, threadId, source: 'notice', text }, { wake: false });
+
+/**
  * Whether the agent’s running turn came only from replies that went back to it (server/reply-back.mjs, #1523): each
  * entry’s item went back to this agent (`wentBack`). A scripted agent ends such an exchange with a reaction, as the
  * room guide asks, since a reply would go back too, and on to the chain limit. @param {any} rt @param {string} sessionId
