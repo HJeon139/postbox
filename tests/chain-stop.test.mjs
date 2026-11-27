@@ -104,7 +104,10 @@ test('#1623 a wake-limit card from before, still open at startup, closes: its ne
   assert.equal(f.store.item(f.t.id, old.id).status, 'closed');
   assert.equal(f.store.state.sessions[f.alpha.id].needs, null);
   const told = (se) => (f.store.state.sessions[se.id]?.context ?? []).join(' | ');
-  assert.match(told(f.alpha), /Your request to wake @beta .*was closed: Postbox no longer asks the person to continue a chain of wakes/);
+  assert.match(
+    told(f.alpha),
+    /Your request to wake @beta .*was closed: Postbox no longer asks the person to continue a chain of wakes\. Send your message again if you still need it\./,
+  );
   assert.match(told(f.beta), /“And this\.”.*didn’t go: Postbox no longer asks/);
   const g = setup();
   g.rt.agentWake(g.alpha.id, 'gamma', 'Check the numbers.');

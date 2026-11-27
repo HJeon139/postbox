@@ -30,7 +30,7 @@ These come from designs/developing.md, “Agent backends”, and designs/enginee
 - Branch on structured stream fields, never on model text. A turn ends at its terminal event, which the code names.
 - Surface what the harness decides: permission prompts, refusals, compaction, subagents and errors all reach the person.
 - A change to what reaches a turn is confirmed by reading a real `init` event, and the pull request says what it showed.
-- Keep the agent guide, the MCP tool descriptions and the kit in agreement with every limit the server enforces (#50, #52). The one exception is the wake chain’s cap, a loop guard the guide leaves out so agents don’t count toward it: an agent learns of it from the refusal (#1623, designs/intent.md, principle 6).
+- Keep the agent guide, the MCP tool descriptions and the kit in agreement with every limit the server enforces (#50, #52). The one exception is the wake chain’s cap, a loop guard the guide leaves out so agents don’t plan around it: an agent learns of it from the refusal (#1623, designs/intent.md, principle 6).
 
 ## Security
 
