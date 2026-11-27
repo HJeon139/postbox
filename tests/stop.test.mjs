@@ -7,7 +7,6 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
@@ -364,73 +363,6 @@ test('#126: the Claude Code adapter ends a stopped turn only once the CLI’s wh
   assert.equal(ended, false, 'the launcher exited; the CLI under it hasn’t');
   groupUp = false;
   await done;
-});
-
-test('#61: an Agent SDK failure keeps the CLI’s own reason, from the stderr Postbox reads for a process it spawned', async () => {
-  const child = fakeChild({ pid: 920 });
-  const sdk = {
-    query({ options }) {
-      const c = options.spawnClaudeCodeProcess({ command: 'claude', args: [], cwd: '/w', env: {} });
-      return (async function* () {
-        c.stderr.write('Error: Invalid model name\n');
-        await new Promise((r) => setImmediate(r));
-        yield* [];
-        throw new Error('Claude Code process exited with code 1');
-      })();
-    },
-  };
-  const adapter = new AgentSdkAdapter({
-    sdk,
-    workRoot: '/tmp/pb-test-work',
-    spawnImpl: /** @type {any} */ (() => child),
-    kill: fakeKill().kill,
-    listProcesses: async () => [],
-  });
-  await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi' }, fakeCtx()), /exited with code 1: Error: Invalid model name/);
-});
-
-test('#126: the Agent SDK’s CLI is spawned by Postbox, in its own group; Stop signals the group, and the turn ends once it exits', async () => {
-  const child = fakeChild({ pid: 900 });
-  const k = fakeKill();
-  const spawned = [];
-  const sdk = {
-    query({ options }) {
-      const c = options.spawnClaudeCodeProcess({ command: 'claude', args: ['-p'], cwd: '/w', env: {}, signal: new AbortController().signal });
-      return (async function* () {
-        yield { type: 'system', subtype: 'init', session_id: 'sdk-1' };
-        await new Promise((_r, rej) =>
-          options.abortController.signal.addEventListener('abort', () => rej(Object.assign(new Error('aborted'), { name: 'AbortError' }))),
-        );
-        c.stdout.end();
-      })();
-    },
-  };
-  const adapter = new AgentSdkAdapter({
-    sdk,
-    workRoot: '/tmp/pb-test-work',
-    spawnImpl: /** @type {any} */ (
-      (_cmd, _args, opts) => {
-        spawned.push(opts);
-        return child;
-      }
-    ),
-    kill: k.kill,
-    listProcesses: async () => [],
-  });
-  const ctx = fakeCtx();
-  let ended = false;
-  const done = adapter.deliver({}, { kind: 'user', text: 'Go' }, ctx).then(() => {
-    ended = true;
-  });
-  await until(() => spawned.length, 'the spawn');
-  assert.equal(spawned[0].detached, true);
-  ctx.abort.abort();
-  await sleep(10);
-  assert.deepEqual(k.sent, [[-900, 'SIGINT']]);
-  assert.equal(ended, false, 'the turn waits for its CLI to exit');
-  child.exit();
-  await done;
-  assert.equal(ended, true);
 });
 
 // ── Background jobs in the stream ─────────────────────────────────────────────────

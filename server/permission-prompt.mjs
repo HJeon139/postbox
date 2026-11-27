@@ -65,7 +65,7 @@ export async function permission(rt, sessionId, args, closeOrSignal = null) {
 /**
  * Whether the session’s agent asks through permission_prompt, by the backend its running turn started on (else its
  * persona’s): the Claude Code CLI does (--permission-prompt-tool). A backend that declares capabilities.promptTool
- * false asks another way (the SDK’s canUseTool) or can’t ask at all (Kiro), so a call from one is the agent’s own, and
+ * false asks another way (Codex’s approvals) or can’t ask at all (Kiro), so a call from one is the agent’s own, and
  * would hold a card and the call open for up to POSTBOX_TIMEOUT_MS (#220).
  * @param {any} rt @param {string} sessionId
  */

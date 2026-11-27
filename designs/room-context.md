@@ -80,7 +80,7 @@ Changes in `intent.md`: the rows on `@name` and on agents talking in the convers
 The paragraph on sharing work is the same for every agent and every turn, and it is sent with every turn. Moving it to the system prompt looked like a move of one string with no new state. It isn’t:
 
 - **A resumed Claude Code session keeps the system prompt of its first request** until it compacts ([#515](https://github.com/HJeon139/postbox/issues/515), from Claude Code’s CLI reference). So every session already running would lose the paragraph: it would no longer come with the turn, and it isn’t in the prompt the session recorded. The room measured here compacted 34 times in six days across five sessions, so a session could run for days without the rule that keeps two agents from doing one task twice ([#121](https://github.com/HJeon139/postbox/issues/121)).
-- **Doing it safely needs state:** a mark on each session that its recorded prompt has the paragraph, set by each of the five adapters when it starts a backend session.
+- **Doing it safely needs state:** a mark on each session that its recorded prompt has the paragraph, set by each of the four adapters when it starts a backend session.
 - **The saving is small.** The paragraph is about 113 tokens a turn: 141,000 of the 13.5 million tokens that entered the sessions, about 1%.
 
 It waits for the person’s call: leave it, or accept the mark on the session.

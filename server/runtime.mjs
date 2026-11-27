@@ -49,6 +49,7 @@ import { Hosts } from './remote/host-service.mjs';
 import { hostTurnsPort } from './remote/host-turns-port.mjs';
 import { Placement } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
+import { retireBackends } from './retired-backends.mjs';
 import { Running } from './running.mjs';
 import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
 import { sendMessage } from './send-message.mjs';
@@ -253,6 +254,7 @@ export class Runtime {
     closeOldSendCards(this); // an app-send card from before #1488 closes, with nothing waiting on the person
     // Ask me and Accept edits are gone: a persona stored with one runs Auto (permission-modes.mjs).
     retireModes(this);
+    retireBackends(this); // and one stored on the Agent SDK runs on Claude Code (retired-backends.mjs)
     // A need from before needsAt gets its item's time, once, so ⌃J orders it without the page holding its items.
     this.sessions.stampNeeds();
   }
@@ -658,11 +660,13 @@ export class Runtime {
   deletePersona(id) {
     // Pending, the agent and its sessions: either may have been made behind a held commit.
     if (!this.store.pending.persona(id)) throw httpError(404, 'That agent doesn’t exist.');
-    for (const { id: sid } of Object.values(this.store.pending.sessions()).filter((se) => se.personaId === id)) {
+    const own = Object.values(this.store.pending.sessions()).filter((se) => se.personaId === id);
+    for (const { id: sid } of own) {
       // Read again each time: deleting one can erase others, as its conversation goes with it, side threads too.
       if (this.store.pending.session(sid)) this.deleteSession(sid);
     }
-    const removed = this.personas.remove(id);
+    // Its backends forget it once its stopped turns have exited (#1797).
+    const removed = this.personas.remove(id, Promise.all(own.map((se) => this.running.afterExit(se.id))));
     // Its memory on a host is that host’s to remove (#491).
     this.hostService.forgetPersona(id);
     return removed;

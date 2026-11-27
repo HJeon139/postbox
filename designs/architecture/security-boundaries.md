@@ -44,7 +44,7 @@ sequenceDiagram
 - **`/media/` stays open.** A sandboxed frame’s image request comes from an opaque origin, so it never carries the `SameSite=Strict` cookie, and requiring the token would break every app image. It serves only the media bundled with Postbox and the images agents copy into the data folder for apps to show, so a fetch of another Postbox’s `/media/` reads only image files. That is accepted: those images can be screenshots an agent copied in from another conversation, and an app that knows a file’s name can read it.
 - **`net.fetch` can’t get the token.** It never sends `Sec-Fetch-*` headers, so `/` hands it no cookie, and it never returns `Set-Cookie` to an app. Both hold today: it sends fixed headers (`server/net-fetch.mjs:68`) and returns only the status, type, location and text (`:86-90`); #1610 adds a test that keeps them.
 
-**Revisit when** Postbox listens beyond localhost, or serves more than one person. Then it needs real sign-in, not a page token, and `!` and an app’s links stay off.
+**Revisit when** Postbox listens beyond localhost, or serves more than one person. Then it needs real sign-in, not a page token, and `!` and an app’s links stay off. [hosted.md](hosted.md) proposes that change, and nothing of it is built.
 
 ## What leaves through net.fetch
 

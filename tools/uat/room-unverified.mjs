@@ -8,7 +8,6 @@ import { MIN_WHOLE, plain } from './room-delivery.mjs';
 /** The backends by their persona’s id (server/adapters/*.mjs’s name), as a report names them. */
 const BACKEND_NAMES = {
   'claude-code': 'Claude Code',
-  'agent-sdk': 'the Agent SDK',
   codex: 'Codex',
   'kiro-cli': 'Kiro',
   'antigravity-cli': 'Antigravity',

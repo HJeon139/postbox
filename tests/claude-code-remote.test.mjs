@@ -8,7 +8,6 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { test } from 'node:test';
 import { shimArgs } from '../server/adapters/adapter.mjs';
-import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { CLAUDE_CODE_CAPABILITIES, ClaudeCodeAdapter, claudeArgs, remoteClaudeProblem } from '../server/adapters/claude-code.mjs';
 import { MockAdapter } from '../server/adapters/mock.mjs';
 import { MESSAGE_FILE } from '../shared/remote-protocol.mjs';
@@ -202,7 +201,7 @@ test('#120: a turn the person started in a side or topic thread (ctx.remote.brin
   assert.deepEqual(shimArgs(/** @type {any} */ ({ asksByPrompt: true }), SHIM, 't1'), [SHIM, 't1']);
 });
 
-test('Claude Code says how it runs on a remote host; the Agent SDK and the mock can’t', () => {
+test('Claude Code says how it runs on a remote host; the mock can’t', () => {
   // The remote shape, and that its agent sees images (view_app, #95): left out, the rest reads as forking, reading
   // rules and Claude’s models (adapter.mjs).
   assert.deepEqual(CLAUDE_CODE_CAPABILITIES, {
@@ -221,7 +220,6 @@ test('Claude Code says how it runs on a remote host; the Agent SDK and the mock 
     },
   });
   assert.equal(new ClaudeCodeAdapter({ workRoot: '/tmp/pb-test-work' }).capabilities, CLAUDE_CODE_CAPABILITIES);
-  assert.equal(new AgentSdkAdapter({ sdk: {}, workRoot: '/tmp/pb-test-work' }).capabilities?.remote, undefined, 'it runs in Postbox’s process');
   assert.equal(new MockAdapter().capabilities?.remote, undefined);
   // It survives /api/state, which serves capabilities as JSON (server/index.mjs, config.backends).
   assert.deepEqual(JSON.parse(JSON.stringify(CLAUDE_CODE_CAPABILITIES)), CLAUDE_CODE_CAPABILITIES);
