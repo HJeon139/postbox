@@ -150,3 +150,13 @@ test('a screenshot text-layout can’t read, with neither problems nor an error,
   assert.match(found[0].evidence, /^At step 4: the check couldn’t read it: /);
   assert.equal(failsRun(found), false);
 });
+
+test('a screenshot text-layout can’t read partway adds none of its problems, only that it’s unverified', () => {
+  const read = { code: 'text-cut-off', message: 'At 375 px, “A label” (p) is cut off by p.' };
+  const found = runLayout([{ step: 5, width: 375, problems: [read, { code: 'text-overlap' }] }]);
+  assert.deepEqual(
+    found.map((x) => x.key),
+    ['text-layout:unverified:5'],
+  );
+  assert.equal(failsRun(found), false);
+});

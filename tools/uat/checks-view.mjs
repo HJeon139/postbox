@@ -50,8 +50,11 @@ export const TEXT_LAYOUT = 'text-layout';
 function textLayout(f) {
   const out = new Map();
   for (const s of f.probes?.layout ?? []) {
+    // A screenshot’s findings count only once it has been read whole, so one that throws partway adds none of them.
+    const mine = new Map();
     try {
-      sampleFindings(s, out);
+      sampleFindings(s, mine);
+      for (const [key, x] of mine) if (!out.has(key)) out.set(key, x);
     } catch (e) {
       out.set(`unverified:${s?.step}`, unverified(s?.step, `the check couldn’t read it: ${e.message}`));
     }
