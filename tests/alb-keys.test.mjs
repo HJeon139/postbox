@@ -154,3 +154,13 @@ test('an answer that isn’t a key is handed back once, so the check can say so,
   await k.keyOf(KID);
   assert.equal(k.asked.length, 2);
 });
+
+test('a key in use stays kept: other key ids the endpoint answers let go of the key used longest ago, not one in use', async () => {
+  const k = keys(async () => PEM, { kept: 2 });
+  await k.keyOf(KID);
+  await k.keyOf(other(1));
+  await k.keyOf(KID);
+  await k.keyOf(other(2));
+  await k.keyOf(KID);
+  assert.equal(k.asked.length, 3, 'the key in use was never looked up again');
+});

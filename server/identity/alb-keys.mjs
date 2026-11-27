@@ -78,7 +78,11 @@ export function albKeys({ region, get, now = Date.now, inFlight = IN_FLIGHT, per
 
   return async (kid) => {
     const key = keys.get(kid);
-    if (key) return key;
+    if (key) {
+      // In use, so it becomes the newest: other key ids the endpoint answers let go of the key used longest ago.
+      remember(keys, kid, key, kept);
+      return key;
+    }
     const failedAt = failed.get(kid);
     if (failedAt !== undefined && now() - failedAt < MINUTE_MS) return null;
     const shared = asking.get(kid);
