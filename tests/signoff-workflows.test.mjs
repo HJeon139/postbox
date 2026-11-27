@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { defaultDeps } from '../tools/signoff/deps.mjs';
 import { ciMajors, majorsIn } from '../tools/signoff/workflows.mjs';
 import { EXIT, signoff } from '../tools/signoff.mjs';
-import { gateLog, putLog, world } from './signoff-fake.mjs';
+import { world } from './signoff-fake.mjs';
 
 /** A job of a workflow, indented under jobs:, its lines given at the job’s own indent. @param {string} name @param {string[]} lines */
 const job = (name, lines) => [`  ${name}:`, ...lines.map((l) => `    ${l}`)].join('\n');
@@ -72,7 +72,6 @@ test('matrix.include entries in the job’s own matrix name their majors, and a 
 
 test('a workflow with a node-version this can’t read fails step 2, naming the workflow and the value', async () => {
   const w = world();
-  putLog(w, gateLog(w.head));
   w.files.set('/repo/.github/workflows/nightly.yml', workflow(job('t', setup('[22, lts/*]'))));
   assert.equal(await signoff(['840'], w.d), EXIT.toolchain);
   assert.match(w.lines.find((l) => l.startsWith('✖ 2.')) ?? '', /\.github\/workflows\/nightly\.yml: node-version: \[22, lts\/\*\] names lts\/\*/);

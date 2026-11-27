@@ -1,17 +1,15 @@
 // What tools/signoff.mjs does to the world, in one object, so its tests drive every path with fakes (#845): the
-// commands it runs, its reads from GitHub, the clock and timers, the machine’s load and free inodes, and files.
+// commands it runs, its reads from GitHub, the clock and timers, the machine’s load, and files.
 
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import { cpus, homedir, loadavg, tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { acquire } from '../heavy-lock.mjs';
 import { ghJson } from '../signoff-checks.mjs';
 import { SIGNALS } from './stop.mjs';
 
 /**
  * @typedef {{ code: number, out: string }} RunResult
- * @typedef {{ cwd?: string, env?: Record<string, string>, stream?: boolean, stop?: import('./stop.mjs').Stop,
+ * @typedef {{ cwd?: string, env?: Record<string, string>, stop?: import('./stop.mjs').Stop,
  *   started?: (kill: (signal: string) => void) => void }} RunOptions
  * @typedef {{
  *   run: (argv: string[], o?: RunOptions) => Promise<RunResult>,
@@ -20,9 +18,7 @@ import { SIGNALS } from './stop.mjs';
  *   every: (ms: number, fn: () => void) => () => void,
  *   loadavg: () => number[],
  *   cores: () => number,
- *   statfs: (path: string) => { ffree: number },
  *   readFile: (path: string) => string,
- *   writeFile: (path: string, text: string) => void,
  *   list: (dir: string) => string[],
  *   exists: (path: string) => boolean,
  *   mkdtemp: (prefix: string) => string,
@@ -32,7 +28,6 @@ import { SIGNALS } from './stop.mjs';
  *   home: string,
  *   execPath: string,
  *   nodeVersion: string,
- *   acquire: (o: { label: string, dir?: string, log: (m: string) => void }) => Promise<() => void>,
  *   log: (line: string) => void,
  *   onSignal: (fn: (signal: string) => void) => () => void,
  *   exit: (code: number) => void,
@@ -40,16 +35,14 @@ import { SIGNALS } from './stop.mjs';
  */
 
 /**
- * Runs argv, never through a shell. With stream, its output goes straight to this terminal and out is empty; else
- * out is its stdout and stderr together. A command that can’t start exits 127, as a shell reports it. o.started gets
- * the function that sends the running child a signal.
+ * Runs argv, never through a shell; out is its stdout and stderr together. A command that can’t start exits 127, as a
+ * shell reports it. o.started gets the function that sends the running child a signal.
  * @param {string[]} argv @param {RunOptions} [o]
  * @returns {Promise<RunResult>}
  */
 function run(argv, o = {}) {
   return new Promise((ok) => {
-    const stdio = o.stream ? 'inherit' : ['ignore', 'pipe', 'pipe'];
-    const child = spawn(argv[0], argv.slice(1), { cwd: o.cwd, env: { ...process.env, ...o.env }, stdio: /** @type {any} */ (stdio) });
+    const child = spawn(argv[0], argv.slice(1), { cwd: o.cwd, env: { ...process.env, ...o.env }, stdio: ['ignore', 'pipe', 'pipe'] });
     o.started?.((signal) => child.kill(/** @type {NodeJS.Signals} */ (signal)));
     let out = '';
     child.stdout?.on('data', (b) => (out += b));
@@ -71,12 +64,7 @@ export function defaultDeps() {
     },
     loadavg,
     cores: () => cpus().length,
-    statfs: (path) => fs.statfsSync(path),
     readFile: (path) => fs.readFileSync(path, 'utf8'),
-    writeFile: (path, text) => {
-      fs.mkdirSync(join(path, '..'), { recursive: true });
-      fs.writeFileSync(path, text);
-    },
     list: (dir) => fs.readdirSync(dir),
     exists: (path) => fs.existsSync(path),
     mkdtemp: (prefix) => fs.mkdtempSync(prefix),
@@ -86,7 +74,6 @@ export function defaultDeps() {
     home: homedir(),
     execPath: process.execPath,
     nodeVersion: process.version,
-    acquire,
     log: (line) => process.stdout.write(`${line}\n`),
     onSignal: (fn) => {
       for (const s of SIGNALS) process.on(s, fn);

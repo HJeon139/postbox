@@ -5,14 +5,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { EXIT, signoff } from '../tools/signoff.mjs';
-import { BASE_REPO, BASE_SHA, gateLog, MERGE_BASE, putLog, STALE_SHA, world } from './signoff-fake.mjs';
+import { BASE_REPO, BASE_SHA, MERGE_BASE, STALE_SHA, world } from './signoff-fake.mjs';
 
-/** A world whose head has a passing gate log. @param {Parameters<typeof world>[0]} [o] */
-const signed = (o) => {
-  const w = world(o);
-  putLog(w, gateLog(w.head));
-  return w;
-};
 const ran = (w, re) => w.calls.filter((c) => re.test(c.argv.join(' ')));
 /** Makes gh say the pull request is at url. @param {ReturnType<typeof world>} w @param {string} url */
 const prAt = (w, url) => {
@@ -21,7 +15,7 @@ const prAt = (w, url) => {
 };
 
 test('step 3’s range and step 4’s merge use the base fetched from the pull request’s repository, not a remote ref', async () => {
-  const w = signed();
+  const w = world();
   assert.equal(await signoff(['840'], w.d), EXIT.pass);
   assert.deepEqual(ran(w, /^git fetch /)[0].argv, ['git', 'fetch', '--quiet', '--no-tags', '--', BASE_REPO, 'refs/heads/main']);
   assert.deepEqual(ran(w, /^git merge-base /)[0].argv, ['git', 'merge-base', 'HEAD', BASE_SHA]);
@@ -33,7 +27,7 @@ test('step 3’s range and step 4’s merge use the base fetched from the pull r
 
 test('a fork’s clone fetches the base from the base repository the pull request names, whatever origin is', async () => {
   const upstream = 'https://github.com/upstream/postbox';
-  const w = signed({ answers: [[new RegExp(`^git fetch --quiet --no-tags -- ${upstream} refs/heads/main$`), { code: 0, out: '' }]] });
+  const w = world({ answers: [[new RegExp(`^git fetch --quiet --no-tags -- ${upstream} refs/heads/main$`), { code: 0, out: '' }]] });
   prAt(w, `${upstream}/pull/7`);
   await signoff(['7'], w.d);
   assert.deepEqual(
@@ -47,7 +41,7 @@ test('a fork’s clone fetches the base from the base repository the pull reques
 });
 
 test('a pull request URL that names no repository fails steps 3 and 4, fetching nothing', async () => {
-  const w = signed();
+  const w = world();
   prAt(w, 'not a pull request');
   assert.equal(await signoff(['840'], w.d), EXIT.commits);
   assert.match(w.lines.find((l) => l.startsWith('✖ 3.')) ?? '', /couldn’t fetch main: #840’s URL, not a pull request, names no repository/);
@@ -56,7 +50,7 @@ test('a pull request URL that names no repository fails steps 3 and 4, fetching 
 });
 
 test('a fetch that fails fails step 3, rather than falling back to what the clone last fetched', async () => {
-  const w = signed({ answers: [[/^git fetch /, { code: 128, out: 'fatal: could not read from remote repository' }]] });
+  const w = world({ answers: [[/^git fetch /, { code: 128, out: 'fatal: could not read from remote repository' }]] });
   assert.equal(await signoff(['840'], w.d), EXIT.commits);
   assert.match(w.lines.find((l) => l.startsWith('✖ 3.')) ?? '', /couldn’t fetch main: .*could not read from remote repository/);
   assert.equal(ran(w, /^git rev-parse (refs\/remotes|--verify FETCH_HEAD)/).length, 0);
