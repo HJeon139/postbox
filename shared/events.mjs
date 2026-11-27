@@ -122,7 +122,7 @@ const BUILDERS = {
     return { ok: false, error: 'A confirm only accepts “confirm” or “cancel”.' };
   },
 
-  review(_b, action, v) {
+  review(b, action, v) {
     if (action !== 'submit') return { ok: false, error: 'A review only accepts the “submit” action.' };
     const verdicts = { comment: 'Comment', approve: 'Approve', request_changes: 'Request changes' };
     if (!Object.hasOwn(verdicts, v.verdict)) return { ok: false, error: 'Pick a verdict: comment, approve or request changes.' };
@@ -136,6 +136,7 @@ const BUILDERS = {
     if (comments.length > 200) return { ok: false, error: 'A review takes up to 200 comments.' };
     const wrong = comments.flatMap((c, i) => commentErrors(c, `Comment ${i + 1}`))[0];
     if (wrong) return { ok: false, error: wrong };
+    if (b.format !== 'app' && comments.some((c) => c.region !== undefined)) return { ok: false, error: 'Only a comment on an app marks a region.' };
     if (v.verdict !== 'approve' && comments.length === 0) return { ok: false, error: 'Add a comment, or approve.' };
     const n = comments.length;
     return {

@@ -2,7 +2,8 @@
 // agent’s on another agent’s draft. Its anchor is a line, or a selection on lines and columns with the text it quotes,
 // as the W3C Web Annotation model pairs a position with a quote (www.w3.org/TR/annotation-model/#selectors): positions
 // go stale when the text changes, and the quote finds the place again. An app review’s comment names a part of the
-// app, and a reply names its thread. Pure, so the browser, the server and the tests share it.
+// app, or a region the person marked on it (#856), and a reply names its thread. Pure, so the browser, the server and
+// the tests share it.
 
 import { HANDLE, PERSON, REVIEW_THREADS_BYTES, REVIEW_THREADS_MAX, REVIEW_THREADS_OPEN } from './limits.mjs';
 import { described, id, int, obj, str } from './schema.mjs';
@@ -78,7 +79,49 @@ export const ANCHOR = {
   endCol: int({ min: 1, max: 100000 }),
   quote: str({ min: 1, max: QUOTE_MAX }),
 };
-const COMMENT = { ...ANCHOR, anchor: str({ min: 1, max: 80 }), threadId: id(), text: str({ min: 1, max: COMMENT_MAX }) };
+
+/** A fraction of the app’s width or height, from 0 to 1. @type {import('./schema.mjs').Rule} */
+const fraction = described(
+  (v, path, errs) => {
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) errs.push(`${path} must be a number from 0 to 1, a fraction of the app’s size.`);
+  },
+  { type: 'number', minimum: 0, maximum: 1 },
+);
+/**
+ * A region of an app the person marked in its review (#856): its left edge x, top y, width w and height h as fractions
+ * of the app’s width and height, so it holds at any window size, and the app version it was made on, since another
+ * version may draw something else there. w and h of 0 is a point.
+ */
+export const REGION = obj({ x: fraction, y: fraction, w: fraction, h: fraction, version: int({ min: 1, max: 1_000_000 }) }, ['x', 'y', 'w', 'h', 'version']);
+/** The anchor a region comment is grouped and threaded by, as a named part is: “region 1”, numbered in its review. */
+export const REGION_ANCHOR = /^region [1-9]\d*$/;
+
+/**
+ * Why a comment’s or thread’s region isn’t one, or null: it stays inside the app, and is named by its anchor, “region
+ * 1”. The fields themselves are checked by REGION.
+ * @param {Record<string, any>} c
+ */
+export function regionError(c) {
+  const r = c.region;
+  if (r === undefined || r === null || typeof r !== 'object') return null;
+  // Within a rounding error: 0.7 + 0.3 is 1.0000000000000002 in floating point.
+  if (r.x + r.w > 1 + 1e-9 || r.y + r.h > 1 + 1e-9) return 'a region stays inside the app: x + w and y + h are at most 1.';
+  if (typeof c.anchor !== 'string' || !REGION_ANCHOR.test(c.anchor)) return 'a comment on a region names it as anchor, such as “region 1”.';
+  return null;
+}
+
+/** A percentage as people read it: 12%, or 12.5% where the tenth matters. @param {number} f  a fraction */
+const pct = (f) => `${Math.round(f * 1000) / 10}%`;
+/**
+ * A region as text (#856): “x 12%, y 30%, 20% × 15%, on v3”, or “a point at x 12%, y 30%, on v3”. Every drawn region
+ * is also said this way, to the agent and on the page. @param {{ x: number, y: number, w: number, h: number, version: number }} r
+ */
+export function regionText(r) {
+  const at = `x ${pct(r.x)}, y ${pct(r.y)}`;
+  return r.w === 0 && r.h === 0 ? `a point at ${at}, on v${r.version}` : `${at}, ${pct(r.w)} × ${pct(r.h)}, on v${r.version}`;
+}
+
+const COMMENT = { ...ANCHOR, anchor: str({ min: 1, max: 80 }), region: REGION, threadId: id(), text: str({ min: 1, max: COMMENT_MAX }) };
 
 /**
  * Why a comment’s or thread’s selection isn’t one, or null: col, endLine, endCol and quote come together, on a line,
@@ -106,13 +149,13 @@ export function commentErrors(c, path) {
   const x = /** @type {Record<string, any>} */ (c);
   if (!x.text.trim()) return [`${path}.text is empty.`];
   if (x.line === undefined && x.anchor === undefined && x.threadId === undefined) return [`${path} needs a line, an anchor or a thread.`];
-  const why = anchorError(x);
+  const why = anchorError(x) ?? regionError(x);
   return why ? [`${path}: ${why}`] : [];
 }
 
 /**
- * Where a comment points, as an agent reads it: “line 12, col 5–23 “the quoted text””, a line, a part of an app, or
- * the thread it answers.
+ * Where a comment points, as an agent reads it: “line 12, col 5–23 “the quoted text””, a line, a part of an app, a
+ * region of it (“region 1” (x 12%, y 30%, 20% × 15%, on v3)), or the thread it answers.
  * @param {Record<string, any>} c
  */
 export function commentAt(c) {
@@ -120,6 +163,7 @@ export function commentAt(c) {
     const where = c.endLine === c.line ? `line ${c.line}, col ${c.col}–${c.endCol}` : `line ${c.line}, col ${c.col} to line ${c.endLine}, col ${c.endCol}`;
     return `${where} “${c.quote}”`;
   }
+  if (c.anchor != null && c.region != null) return `“${c.anchor}” (${regionText(c.region)})`;
   return c.line != null ? `line ${c.line}` : c.anchor != null ? `“${c.anchor}”` : c.threadId != null ? `thread ${c.threadId}` : 'the draft';
 }
 

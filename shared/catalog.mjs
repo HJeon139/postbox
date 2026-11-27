@@ -8,7 +8,7 @@
 import { appFontErrors } from './app-fonts.mjs';
 import { option, options } from './catalog-options.mjs';
 import { INTENT_CHARS, LIMITS, REVIEW_THREADS_MAX } from './limits.mjs';
-import { ANCHOR, anchorError, author, PERSON, threadsError } from './review-comments.mjs';
+import { ANCHOR, anchorError, author, PERSON, REGION, regionError, threadsError } from './review-comments.mjs';
 import { bool, described, id, int, jsonOf, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
 import { isSafeUrl, LOCAL_HTTP } from './urls.mjs';
 
@@ -229,6 +229,8 @@ export const SCHEMAS = {
             // A line, or a selection with its quote (#179), as a comment is (review-comments.mjs).
             ...ANCHOR,
             anchor: str({ min: 1, max: 80 }),
+            // A region the person marked on an app (#856), as a comment on it carries it.
+            region: REGION,
             status: oneOf('open', 'resolved'),
             // edited: the person’s correction of their last comment in the thread, after they submitted (#858,
             // review-correct.mjs); it goes at the thread’s end, after any reply to the comment it corrects.
@@ -245,8 +247,9 @@ export const SCHEMAS = {
       if (b.format === 'app' && !b.appId) errs.push('An app review needs appId.');
       if (b.format && b.format !== 'app' && typeof b.content !== 'string') errs.push(`A ${b.format} review needs content.`);
       for (const [i, t] of (b.threads ?? []).entries()) {
-        const why = anchorError(t);
+        const why = anchorError(t) ?? regionError(t);
         if (why) errs.push(`threads[${i}]: ${why}`);
+        if (t.region !== undefined && b.format !== 'app') errs.push(`threads[${i}]: only an app review’s thread is on a region.`);
         // Edited marks only the person’s correction, which Postbox writes (#858): an agent’s comment never carries it.
         const marked = (t.comments ?? []).findIndex((c) => c.edited && c.author !== PERSON);
         if (marked >= 0) errs.push(`threads[${i}].comments[${marked}]: only the person’s correction is marked edited; leave edited out.`);
