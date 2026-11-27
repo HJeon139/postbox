@@ -4,8 +4,8 @@
 
 /**
  * Ties the open card to the running turn and offers it as the need. A card already the running turn’s, one asked for
- * with no turn running, and one that still counts through a kept turn (another agent’s wake doesn’t move on, card-needs.mjs
- * keptTurns) are left as they are: re-tied, Stopping the wake would take a need that isn’t the wake’s.
+ * with no turn running, and one that still counts through a kept turn (another agent’s wake doesn’t move on,
+ * card-needs.mjs keptTurns) are left as they are: re-tied, stopping the wake would take a need that isn’t the wake’s.
  * @param {any} rt @param {any} se  the asking agent @param {any} open  the card @param {string} threadId  where it is
  */
 export function askAgain(rt, se, open, threadId) {

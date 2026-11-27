@@ -44,7 +44,7 @@ export function keepAnswer(dir, answer) {
 export function askToSee(rt, sessionId, threadId, endSegment) {
   const se = rt.session(sessionId);
   const open = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && x.status === 'open');
-  // One card per conversation, offered again only to the agent that asked: another agent's call finds it and gets no
+  // One card per conversation, offered again only to the agent that asked: another agent’s call finds it and gets no
   // need of its own, and the answer goes to the agent that asked.
   if (open?.sessionId === sessionId) askAgain(rt, se, open, threadId);
   if (!open) {
