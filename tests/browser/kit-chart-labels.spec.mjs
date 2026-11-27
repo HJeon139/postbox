@@ -1,28 +1,40 @@
 // The kit’s bar (stacked) chart and heatmap made room for their category labels with a fixed left margin, so a long
 // label, such as a note’s file name, ran off the page’s left edge (“s-from-the-coast.md”). The app check flagged it,
-// and the agent couldn’t fix it, since the chart is the kit’s. The margin now grows with the longest label, up to half
-// the chart’s width, and a label longer than that ends in “…” on a whole character, with its full name in a title
-// and in the table view. Both charts pass the app check, at 375 and 1280 px, with the labels readable from the start.
+// and the agent couldn’t fix it, since the chart is the kit’s. The margin now grows with the longest label, measured as
+// the chart draws it (tabular figures: dates measured on a canvas came out too narrow and were cut), up to half the
+// chart’s width, and a label longer than that ends in “…” on a whole character, with its full name in a title and in
+// the table view. Both charts pass the app check, at 375 and 1280 px, with every label inside its chart.
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
 import { failOnServerErrors, startPostbox, synced } from './postbox.mjs';
 
 const NOTES = ['notes/harbor-town.md', 'notes/letters-from-the-coast.md', 'notes/sayings.md'];
-// A label far longer than any chart could give room to, ending in an emoji, so a cut must end on a whole character.
-const LONG = `notes/${'a-very-long-folder-name/'.repeat(4)}field-notes-🧭.md`;
-const CHART = `<div id="bars" style="padding:8px"></div><div id="heat" style="padding:8px"></div><script>
-const cats = ${JSON.stringify([...NOTES, LONG])};
+// Digits, which the charts draw as tabular figures, wider than a canvas measures them.
+const DATES = ['2024-11-01', '2024-11-11', '2024-12-31', 'v1.10.11'];
+// A label far longer than any chart could give room to, whose cut lands among characters of several code points each.
+const FAMILY = '👨‍👩‍👧‍👦';
+const LONG = `x${FAMILY.repeat(60)}`;
+const LABELS = [...NOTES, ...DATES, LONG];
+// No padding around the charts: a label past its chart’s edge must show as past the page’s.
+// A chart of dates alone, where the digits’ width sets the margin.
+const CHART = `<div id="bars"></div><div id="heat"></div><div id="dates"></div><script>
+const cats = ${JSON.stringify(LABELS)};
 postbox.charts.stacked(document.getElementById('bars'), {
   label: 'Passages per asset',
   categories: cats,
-  series: [{ name: 'Passages', values: [12, 30, 7, 18] }],
+  series: [{ name: 'Passages', values: cats.map((_c, i) => 5 + i * 3) }],
 });
 postbox.charts.heatmap(document.getElementById('heat'), {
   label: 'Passages by week',
   rows: cats,
   cols: ['W1', 'W2', 'W3'],
-  values: [[1, 2, 3], [4, 5, 6], [7, 8, 9], [2, 4, 6]],
+  values: cats.map((_c, i) => [i, i + 1, i + 2]),
+});
+postbox.charts.stacked(document.getElementById('dates'), {
+  label: 'Passages by day',
+  categories: ${JSON.stringify(DATES)},
+  series: [{ name: 'Passages', values: [3, 9, 4, 6] }],
 });
 </script>`;
 
@@ -63,9 +75,11 @@ test('long category labels on the kit’s bar chart and heatmap stay inside the 
           frame
             .locator('svg')
             .evaluateAll((svgs) =>
-              svgs.flatMap((s) => [...s.querySelectorAll('text')].filter((t) => t.getBoundingClientRect().left < 0).map((t) => t.textContent)),
+              svgs.flatMap((s) =>
+                [...s.querySelectorAll('text')].filter((t) => t.getBoundingClientRect().left < s.getBoundingClientRect().left).map((t) => t.textContent),
+              ),
             ),
-        { message: `no label starts past the page’s left edge at ${width} px` },
+        { message: `no label starts past its chart’s left edge at ${width} px` },
       )
       .toEqual([]);
     for (const id of ['bars', 'heat']) await labelsNameEvery(frame, id, width);
@@ -80,19 +94,22 @@ test('long category labels on the kit’s bar chart and heatmap stay inside the 
 async function labelsNameEvery(frame, id, width) {
   const labels = await frame
     .locator(`#${id} svg text`)
-    .evaluateAll((ts) =>
-      ts
-        .map((t) => ({ shown: t.firstChild?.textContent ?? '', title: t.querySelector('title')?.textContent ?? null }))
-        .filter((l) => l.title || /\//.test(l.shown)),
+    .evaluateAll(
+      (ts, names) =>
+        ts
+          .map((t) => ({ shown: t.firstChild?.textContent ?? '', title: t.querySelector('title')?.textContent ?? null }))
+          .filter((l) => l.title || names.includes(l.shown)),
+      LABELS,
     );
   expect(
     labels.map((l) => l.title ?? l.shown),
     `#${id} at ${width} px names every asset`,
-  ).toEqual([...NOTES, LONG]);
+  ).toEqual(LABELS);
   for (const { shown, title } of labels.filter((l) => l.title)) {
     expect(shown, 'a cut label ends in “…”').toMatch(/…$/);
     expect(title.startsWith(shown.slice(0, -1)), `“${shown}” is the start of “${title}”`).toBe(true);
-    expect(shown, 'no half of a character').not.toMatch(/[\uD800-\uDBFF]…$/);
+    // The long label’s cut lands among the families: each one before the “…” is whole.
+    if (title === LONG) expect(shown.slice(1, -1).split(FAMILY).join(''), 'each family before the cut is whole').toBe('');
   }
   if (width === 1280)
     expect(

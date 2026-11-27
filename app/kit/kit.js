@@ -234,26 +234,50 @@
       : `<div class="pb-legend">${items.map(([n, c]) => `<span><i class="${key}" style="background:var(--${c})"></i>${esc(n)}</span>`).join('')}</div>`;
   const path = (pts) => 'M' + pts.map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('L');
   const svg = (w, h, inner, label) => `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">${inner}</svg>`;
-  // Room for a chart’s category labels, drawn right-aligned left of its marks: the longest label’s width, up to half of
-  // the chart’s width, so a long name (a note’s path) never runs off the page’s left edge, which an agent can’t fix in the
-  // kit. A label longer than that ends in “…” on a whole character, with its full name in a title; the table view
-  // names every one in full.
-  let measurer = null;
-  function labelRoom(labels, w) {
-    measurer ??= document.createElement('canvas').getContext('2d');
-    measurer.font = '12px system-ui,sans-serif';
-    const width = (t) => measurer.measureText(t).width;
-    const room = Math.floor(w / 2) - 10;
-    const chars = (t) => (window.Intl?.Segmenter ? [...new Intl.Segmenter().segment(t)].map((x) => x.segment) : Array.from(t));
-    const shown = labels.map((label) => {
+  // Labels measured as the charts draw them: an SVG <text> in a .pb-chart, so it has their font and tabular figures (a
+  // canvas can’t set those, and measured digits too narrow, so a date label was cut). The probe is in the page only
+  // while it measures. A label wider than its room ends in “…” on a whole character, with its full name in a title;
+  // the table view names every one in full.
+  function fitLabels(labels, room) {
+    const box = document.createElement('div');
+    box.className = 'pb-chart';
+    box.style.position = 'absolute';
+    box.style.visibility = 'hidden';
+    const probe = document.createElementNS(_NS, 'text');
+    box.appendChild(document.createElementNS(_NS, 'svg')).appendChild(probe);
+    document.body.appendChild(box);
+    const width = (t) => {
+      probe.textContent = t;
+      return probe.getComputedTextLength();
+    };
+    const dots = width('…');
+    const fitted = labels.map((label) => {
       const t = String(label);
-      if (width(t) <= room) return { text: esc(t), w: width(t) };
-      const cs = chars(t);
-      while (cs.length > 1 && width(cs.join('') + '…') > room) cs.pop();
-      const cut = cs.join('') + '…';
+      const full = width(t);
+      if (full <= room) return { text: esc(t), w: full };
+      // The longest run of whole characters that fits with its “…”, by a binary search over where each one ends.
+      const ends = [];
+      let at = 0;
+      for (const c of graphemes(t)) ends.push((at += c.length));
+      let lo = 0;
+      let hi = ends.length - 1;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (probe.getSubStringLength(0, ends[mid]) + dots <= room) lo = mid;
+        else hi = mid - 1;
+      }
+      const cut = t.slice(0, ends[lo]) + '…';
       return { text: `${esc(cut)}<title>${esc(t)}</title>`, w: width(cut) };
     });
-    return { left: Math.ceil(Math.max(0, ...shown.map((x) => x.w))) + 10, labels: shown.map((x) => x.text) };
+    box.remove();
+    return fitted;
+  }
+  const graphemes = (t) => (window.Intl?.Segmenter ? [...new Intl.Segmenter().segment(t)].map((x) => x.segment) : Array.from(t));
+  // Room for a chart’s category labels, drawn right-aligned left of its marks: the longest label’s width, up to half
+  // the chart’s, so a long name (a note’s path) never runs off the page’s left edge, which an agent can’t fix in the kit.
+  function labelRoom(labels, w) {
+    const fitted = fitLabels(labels, Math.floor(w / 2) - 10);
+    return { left: Math.ceil(Math.max(0, ...fitted.map((x) => x.w))) + 10, labels: fitted.map((x) => x.text) };
   }
   const gridY = (ticks, y, x0, x1, f) =>
     ticks
