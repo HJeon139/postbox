@@ -14,6 +14,7 @@
 import { expect, test } from '@playwright/test';
 import { escapeRegExp } from '../../shared/regex.mjs';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 import { heldBackend, openAt, row, sideLine, sideRoom, words } from './side-threads.mjs';
 
@@ -291,6 +292,6 @@ test.describe('at 375 px', () => {
     await open(page, `#/t/${r.room.id}`);
     await expect(page.locator('#main .pill', { hasText: 'is calling tools' }), 'the state on the line').toBeVisible();
     await settled(page);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth), 'no sideways scroll').toBeLessThanOrEqual(windowWidth(page));
+    expect(await pageWidth(page), 'no sideways scroll').toBeLessThanOrEqual(windowWidth(page));
   });
 });

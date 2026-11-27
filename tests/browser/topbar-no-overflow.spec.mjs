@@ -6,6 +6,7 @@
 // until the top bar’s own ResizeObserver runs, before the frame is painted.
 
 import { expect, test } from '@playwright/test';
+import { widestRight } from './page-width.mjs';
 import { failOnPageErrors, PHONE, settled } from './postbox.mjs';
 import { citationFixes } from './work-pane.mjs';
 
@@ -22,18 +23,21 @@ failOnPageErrors(test);
 test.use({ viewport: { width: 375, height: 812 }, ...PHONE });
 
 test('#866 at 375 px on a phone, opening a side thread beside Work never lays the page out wider than the window', async ({ page }) => {
+  // The page’s laid-out width, as page-width.mjs measures it: its scrollWidth reads the window’s through its clip.
+  await page.addInitScript({ content: `window.__pageWidth = ${widestRight.toString()};` });
   await page.addInitScript(() => {
+    const laidOut = /** @type {any} */ (window).__pageWidth;
     const widest = /** @type {any} */ ((window.__widest = { page: 0, bar: 0, frames: 0 }));
     const tick = () => {
       const bar = document.querySelector('header.topbar');
-      widest.page = Math.max(widest.page, document.documentElement.scrollWidth);
+      widest.page = Math.max(widest.page, laidOut());
       if (bar) widest.bar = Math.max(widest.bar, bar.scrollWidth - bar.clientWidth);
       if (++widest.frames < 240) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
     const start = () =>
       new MutationObserver(() => {
-        widest.page = Math.max(widest.page, document.documentElement.scrollWidth);
+        widest.page = Math.max(widest.page, laidOut());
       }).observe(document.body, { childList: true, subtree: true });
     if (document.body) start();
     else document.addEventListener('DOMContentLoaded', start);

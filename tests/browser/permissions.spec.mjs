@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { codexApproval } from '../../server/adapters/codex.mjs';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { allowPageError, failOnPageErrors, PHONE, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -429,7 +430,7 @@ test.describe('at 375 px', () => {
     const over = await page
       .locator('.dialog')
       .filter({ has: page.locator('.perm-panel') })
-      .evaluate((d, w) => [d.scrollWidth - d.clientWidth, document.documentElement.scrollWidth - w], windowWidth(page));
-    expect(over, 'nothing overflows sideways').toEqual([0, 0]);
+      .evaluate((d) => d.scrollWidth - d.clientWidth);
+    expect([over, (await pageWidth(page)) - windowWidth(page)], 'nothing overflows sideways').toEqual([0, 0]);
   });
 });

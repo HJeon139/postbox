@@ -2,6 +2,7 @@
 // page was 1,056 px wide in a 375 px window, and 1,410 px at 1280 px (UAT of 26 Nov, the same class as #1534).
 
 import { expect, test } from '@playwright/test';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -24,7 +25,7 @@ for (const width of [375, 1280])
     await synced(page, app);
     await expect(page.getByRole('heading', { name: 'UAT long' })).toBeVisible();
     await settled(page);
-    const wide = await page.evaluate(() => document.documentElement.scrollWidth);
+    const wide = await pageWidth(page);
     expect(wide, `the page is ${wide} px wide`).toBeLessThanOrEqual(windowWidth(page));
   });
 
@@ -36,7 +37,7 @@ for (const width of [375, 1280])
       await synced(page, app);
       await expect(page.locator('.ov-head h1')).toBeVisible();
       await settled(page);
-      const wide = await page.evaluate(() => document.documentElement.scrollWidth);
+      const wide = await pageWidth(page);
       expect.soft(wide, `${at} is ${wide} px wide`).toBeLessThanOrEqual(windowWidth(page));
     }
   });
