@@ -118,3 +118,17 @@ test('#1938 Kiro’s and Antigravity’s exit errors clean their stderr too', ()
   assert.equal(kiroExitError(1, stderr), 'Kiro exited with code 1: error: moorb the build failed.');
   assert.equal(agyExitError(2, stderr), 'Antigravity exited with code 2: error: moorb the build failed.');
 });
+
+test('#1938 a CLI’s exit error keeps the end of its last lines when they run long, where the newest words are', async () => {
+  const stderr = `${'x'.repeat(600)}\nError: the build failed\n`;
+  assert.match(kiroExitError(1, stderr), /: x+ Error: the build failed\.$/);
+  assert.match(agyExitError(1, stderr), /: x+ Error: the build failed\.$/);
+  const said = await failure(
+    new ClaudeCodeAdapter({ bin: 'claude', workRoot: tempDir('pb-stderr-claude-'), spawnImpl: exits(stderr) }).deliver(
+      {},
+      { kind: 'user', text: 'Hi.' },
+      ctx(),
+    ),
+  );
+  assert.match(said, /: x+ Error: the build failed\.$/);
+});

@@ -33,7 +33,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
-import { cleanSaid } from '../../shared/text-parts.mjs';
+import { cleanTail } from '../../shared/text-parts.mjs';
 import { withNetwork, withQuota, withTransient } from '../harness-failure.mjs';
 import { claudeModels } from '../remote/host/harness-models.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
@@ -275,8 +275,8 @@ export class ClaudeCodeAdapter {
         if ((resume || fork) && /No conversation found|session .* not found/i.test(said)) return resolve({ missingSession: true });
         const failure = resultError(mapper.result);
         if (failure) {
-          // Its last three lines, cleaned as a CLI’s words are (#1938).
-          const why = cleanSaid(stderr().trim().split('\n').slice(-3).join(' '), 400);
+          // Its last three lines, cleaned as a CLI’s words are, and their end, where the newest words are (#1938).
+          const why = cleanTail(stderr().trim().split('\n').slice(-3).join(' '), 400);
           const error = withQuota(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`), mapper.quota);
           // A provider error that passes, such as 529 Overloaded, by the result’s HTTP status (#1713); an API Claude
           // Code couldn’t reach, by the result’s own word for it, so a scheduled wake retries (#466).
