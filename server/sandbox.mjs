@@ -169,7 +169,7 @@ ${css()}
 <script>${inline('kit/links.js', '</script')}</script>
 <script>${inline('kit/publish.js', '</script')}</script>
 <script>${inline('kit/send.js', '</script')}</script>
-${check ? `<script>${inline('kit/check-layout.js', '</script')}</script>\n<script>${inline('kit/check-controls.js', '</script')}</script>\n<script>${inline('kit/check-text.js', '</script')}</script>\n<script>${inline('kit/check-view.js', '</script')}</script>\n<script>${inline('kit/check-boxes.js', '</script')}</script>\n<script>${inline('kit/check.js', '</script')}</script>\n` : ''}</head>
+${check ? `<script>${inline('kit/check-layout.js', '</script')}</script>\n<script>${inline('kit/check-controls.js', '</script')}</script>\n<script>${inline('kit/check-text.js', '</script')}</script>\n<script>${inline('kit/check-view.js', '</script')}</script>\n<script>${inline('kit/check-boxes.js', '</script')}</script>\n<script>${inline('kit/check-marks.js', '</script')}</script>\n<script>${inline('kit/check.js', '</script')}</script>\n` : ''}</head>
 <body>
 ${version.code}
 </body>

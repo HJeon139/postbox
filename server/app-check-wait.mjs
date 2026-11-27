@@ -90,6 +90,9 @@ export function waitForCheck(apps, appId, version, { ms = CHECK_WAIT_MS, gone = 
 /** The problems a check found, one line each. @param {any} check */
 const listed = (check) => (check.problems ?? []).map((/** @type {any} */ p) => `- ${p.code}: ${p.message}`).join('\n');
 
+/** What the check told only the agent (#952), after its line, or ''. @param {any} check */
+const told = (check) => (check.hints?.length ? `\nOnly you are told:\n${check.hints.map((p) => `- ${p.code}: ${p.message}`).join('\n')}` : '');
+
 /**
  * What the reply adds about the version’s check: its result, or that it’s still running. @param {number} version
  * @param {any} check  the check, or null when the wait gave up @param {string} [appId]
@@ -97,14 +100,14 @@ const listed = (check) => (check.problems ?? []).map((/** @type {any} */ p) => `
 export function checkLine(version, check, appId = 'the app') {
   const wait = `Don’t tell the person v${version} is fixed until its check passes.`;
   if (!check) return `v${version}’s check is still running; problems come to you as a message, and read_message { id: "${appId}" } reads the result. ${wait}`;
-  if (check.status === 'passed') return `v${version} passed its check, and the person sees it.`;
+  if (check.status === 'passed') return `v${version} passed its check, and the person sees it.${told(check)}`;
   if (check.status === 'fixing')
     return `v${version}’s check found problems, so the person doesn’t see it yet. Fix them in a new version. ${wait}\n${listed(check)}`;
   if (check.status === 'replaced') return `v${version} was replaced by a newer version before its check ran.`;
   if (check.status === 'retired') return `The app was retired before v${version}’s check ran.`;
-  if (check.status === 'crashed') return `v${version} still fails with a script error, so it shows as crashed:\n${listed(check)}`;
-  if (!check.notes) return `v${version} still has problems from its check, so it is shown with a note:\n${listed(check)}`;
-  return `v${version} is shown, with these notes from its check:\n${listed(check)}`;
+  if (check.status === 'crashed') return `v${version} still fails with a script error, so it shows as crashed:\n${listed(check)}${told(check)}`;
+  if (!check.notes) return `v${version} still has problems from its check, so it is shown with a note:\n${listed(check)}${told(check)}`;
+  return `v${version} is shown, with these notes from its check:\n${listed(check)}${told(check)}`;
 }
 
 /**
