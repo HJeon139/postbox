@@ -88,8 +88,8 @@ test('long category labels on the kit’s bar chart and heatmap stay inside the 
   const said = (check().problems ?? []).map((p) => `${p.code}: ${p.message}`).join('\n');
   expect(check().status, said || 'no problems').toBe('passed');
   const frame = page.frameLocator('iframe.app-iframe');
-  // The app’s check runs in a frame of its own: the conversation’s frame may load and draw after it has passed, and
-  // with the server’s events late it did, so nothing is read until every chart is drawn there, at the width checked.
+  // The check passes on the server first: the page shows the app’s frame only once it hears so, and with the server’s
+  // events late that came after this read. So nothing is read until every chart is drawn there, at the width checked.
   const charts = frame.locator('.pb-plot');
   for (const width of [1280, 375]) {
     await page.setViewportSize({ width, height: 900 });
