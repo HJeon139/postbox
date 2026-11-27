@@ -94,14 +94,27 @@ export function updateBlock(apps, sessionId, { block }, { turn, se, threadId, en
   // Both ways below write the patch, and with it the images, onto the item (#828).
   if (given.files) given.held = true;
   if (!followsConversation(v.block)) {
-    apps.threads.patchItem(where, existing.id, patch);
+    asked(apps, se, existing, patch, where, 'patchItem');
     return { ok: true, message: `Updated block ${v.block.id}.${note}` };
   }
   // It asks again, so it comes to the newest point, where the person will look for it (#92). Text the turn writes
   // next goes after it, when it’s in the turn’s own thread.
   if (where === threadId()) endSegment();
-  const moved = apps.threads.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
+  const moved = asked(apps, se, existing, patch, where, 'bringForward', { what: 'block', title: blockTitle(v.block) });
   return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.${note}` };
+}
+
+/**
+ * Writes an update with the threads' `method` (patchItem, or bringForward with its `how`), and when it asks again for
+ * the running turn, offers it as that turn's need from now, as a block the turn just showed is (#1748, card-needs.mjs
+ * offerShown): the agent read the answer mid-turn and asks something new. Returns what the write returned.
+ * @param {any} apps @param {() => any} se @param {any} existing @param {any} patch @param {string} where
+ * @param {'patchItem' | 'bringForward'} method @param {any[]} how
+ */
+function asked(apps, se, existing, patch, where, method, ...how) {
+  const done = apps.threads[method](where, existing.id, ...how, patch);
+  if (patch.turnId && ASKING.has(patch.block.type)) apps.bus.emit('block.asking', { se: se(), item: { ...existing, ...patch }, threadId: where });
+  return done;
 }
 
 /**

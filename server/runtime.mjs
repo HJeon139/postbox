@@ -14,7 +14,7 @@ import { asksPort } from './asks-port.mjs';
 import { Assets } from './asset-service.mjs';
 import { act } from './blocks.mjs';
 import { Bus } from './bus.mjs';
-import { releaseNeed } from './card-needs.mjs';
+import { blockNeeds } from './card-needs.mjs';
 import { Checks } from './check-service.mjs';
 import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, stopMirrorFor, stopMirrors } from './claude-mirror.mjs';
 import { Delivery } from './delivery.mjs';
@@ -216,7 +216,7 @@ export class Runtime {
       narrator: this.narrator,
       config,
     });
-    this.bus.on('block.withdrawn', ({ se, itemId }) => releaseNeed(this, se, itemId));
+    blockNeeds(this);
     // What an agent reads of its conversation (designs/architecture/services.md, “Memory”). The messages held for it on
     // a card waiting for the person come into its catch-up through the catchUpLines port (#693); the readers of an item
     // brought forward read on from its stub, before the call returns (#1041).
