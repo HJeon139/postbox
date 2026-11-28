@@ -2,7 +2,7 @@
 // (server/remote/turns-start.mjs), never in its sheet’s Folder, so a folder on this computer isn’t checked for it.
 // Its sheet re-sends Folder with every save, so one stored before #990, a relative one say, would otherwise refuse
 // every change to the agent until Folder was cleared. What reads its folder here (the permissions panel, the files it
-// names) reads one the check refuses as no folder of its own. Moved back to this computer, its folder is checked again.
+// names) reads none of its own, whatever it names. Moved back to this computer, its folder is checked again.
 
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';

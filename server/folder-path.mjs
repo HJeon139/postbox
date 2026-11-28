@@ -80,7 +80,7 @@ export const agentFolderPath = (folder) => (folder === undefined || folder === n
  * host its turn works in the project’s folder there, or one of its own there (server/remote/turns-start.mjs), never
  * this one, so it’s kept as written, unchecked, as text of at most MAX_FOLDER characters, and anything else is refused
  * as fullPath refuses it: the sheet re-sends Folder with every save, and one stored before #990 would refuse them all.
- * It’s checked again when the agent moves back here, and read here as none while the check refuses it (storedFolder).
+ * It’s checked again when the agent moves back here, and read here as none whatever it names (storedFolder).
  * @param {unknown} folder @param {{ hostId?: string } | null | undefined} remote  where the agent runs, after the change
  * @param {boolean} [hosted]  on a server for a team (designs/architecture/hosted.md): an agent placed on the server
  *   has no folder there, so one that names any is refused, the same for a path that exists and one that doesn’t
