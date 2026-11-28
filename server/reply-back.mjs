@@ -107,9 +107,51 @@ export function wroteOnlyTo(rt, se, threadId, turnId = null) {
  */
 export function endedByReaction(rt, se, took, handle, since) {
   const from = took.filter((e) => e.source !== 'notice' && e.from === handle);
+  return from.every((e) => e.source === 'mention' && e.bounce === true) && reactedTo(rt, se, took, handle, since);
+}
+
+/**
+ * Whether the agent reacted, since this turn began, to everything from that agent that woke this turn: a reply that
+ * came back, or one that @-mentioned it. endedByReaction asks it of replies that came back, and markReacted of any.
+ * @param {any} rt @param {any} se  the agent @param {any[]} took  the entries the turn took @param {string} handle
+ * @param {number} since  when this turn began
+ */
+function reactedTo(rt, se, took, handle, since) {
+  const from = took.filter((e) => e.source !== 'notice' && e.from === handle);
   const reacted = (/** @type {any} */ e) =>
     (rt.store.pending.item(e.threadId, e.itemId)?.reactions ?? []).some((/** @type {any} */ r) => r.by === se.id && r.at >= since);
-  return from.length > 0 && from.every((e) => e.source === 'mention' && e.bounce === true && reacted(e));
+  return from.length > 0 && from.every(reacted);
+}
+
+/**
+ * A turn that reacted to an agent’s reply, did no work, and still @-mentioned that agent (#1974): the mention wakes it,
+ * since an @-mention always wakes (#1591, the owner’s ruling on PR #1823), and its turn is told the waker only reacted
+ * (turn-input.mjs, reactedLine), so it can react and end with no words. Two agents that each reacted ✅ and then named
+ * the other in a closing line woke each other up to the chain’s cap in four UAT runs. The turn’s replies keep whom it
+ * reacted to (`reactedOnly`), marked as it ends and before the agents its replies mentioned are woken.
+ * @param {any} rt @param {any} turn @param {any} se @param {any[]} took  the entries the turn took
+ */
+export function markReacted(rt, turn, se, took) {
+  if (!turn.mentioned?.length || !didNoWork(turn)) return;
+  const to = turn.mentioned.filter((/** @type {string} */ h) => reactedTo(rt, se, took, h, turn.startedAt));
+  if (!to.length) return;
+  const mine = rt.store.pending.items(turn.threadId).filter((/** @type {any} */ x) => x.kind === 'agent' && x.turnId === turn.id && x.text?.trim());
+  for (const reply of mine) rt.threads.patchItem(turn.threadId, reply.id, { reactedOnly: to });
+}
+
+/**
+ * The agents that woke this one only by @-mentions from turns that reacted to its reply and did no work (markReacted):
+ * every entry from each is such a mention. A reply that came back is told how its exchange ends already (turn-input.mjs,
+ * replyGoes). Read by the turn’s input (turns.mjs).
+ * @param {{ source: string, from?: string, bounce?: boolean }[]} entries
+ * @param {(e: any) => string[] | undefined} marks  whom the entry’s item’s turn reacted to @param {string} handle  this agent
+ * @returns {string[]}  handles, without @
+ */
+export function reactedOnlyFrom(entries, marks, handle) {
+  const asked = entries.filter((e) => e.source !== 'notice');
+  const senders = [...new Set(asked.flatMap((e) => (e.from && e.from !== 'you' ? [e.from] : [])))];
+  const only = (/** @type {any} */ e) => e.source === 'mention' && !e.bounce && marks(e)?.includes(handle);
+  return senders.filter((h) => asked.filter((e) => e.from === h).every(only));
 }
 
 /**
@@ -124,7 +166,13 @@ export function endedByReaction(rt, se, took, handle, since) {
  * needed: the first was the person asking, and the second may have done its work before it was cut off.
  * @param {any} turn
  */
-export const endedExchange = (turn) => !turn.asked?.message?.retry && !turn.origin && !turn.backTo && onlyBounces(turn) && !tookStep(turn) && !turn.acted;
+export const endedExchange = (turn) => !turn.asked?.message?.retry && !turn.origin && !turn.backTo && onlyBounces(turn) && didNoWork(turn);
+
+/**
+ * Whether a turn did no work: it took no step, and acted through none of Postbox’s tools, a reaction aside. Read by
+ * endedExchange and markReacted. @param {any} turn
+ */
+const didNoWork = (turn) => !tookStep(turn) && !turn.acted;
 
 /** Whether the entries a turn took were replies going back and Postbox’s notices, with one reply at least. @param {any} turn */
 function onlyBounces(turn) {

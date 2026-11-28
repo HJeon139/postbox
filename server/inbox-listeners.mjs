@@ -7,7 +7,7 @@
 import { mentionEntries, wakeMentioned } from './mention-entries.mjs';
 import { takePending } from './message-queue.mjs';
 import { markAsks, readAsks } from './person-mentions.mjs';
-import { planBack, replyBack } from './reply-back.mjs';
+import { markReacted, planBack, replyBack } from './reply-back.mjs';
 import { entriesFirst } from './turns.mjs';
 
 /** Adds the inbox’s listeners to the runtime’s bus. @param {any} rt */
@@ -33,6 +33,8 @@ export function listenInbox(rt) {
     const took = delivery.takenBy(se.id, turn.id);
     // Decided, and marked on the reply, before the agent’s next turn can start and be told where its reply goes (#1591).
     const back = planBack(rt, turn, se, took);
+    // Marked before the agents its replies mentioned are woken, so their turns are told it only reacted (#1974).
+    markReacted(rt, turn, se, took);
     const first = entriesFirst(rt, se, turn);
     if (!first) takePending(rt, se, turn, true);
     delivery.turnEnded(settle(turn));

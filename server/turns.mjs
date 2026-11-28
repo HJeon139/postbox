@@ -8,7 +8,7 @@ import { aboutPeople, senderName } from '../shared/profile.mjs';
 import { partEnd } from '../shared/text-parts.mjs';
 import { lostEvent } from './app-entries.mjs';
 import { newerElsewhere } from './newer-waiting.mjs';
-import { wroteOnlyTo } from './reply-back.mjs';
+import { reactedOnlyFrom, wroteOnlyTo } from './reply-back.mjs';
 import { threadRefs } from './send-message.mjs';
 import { newId } from './store.mjs';
 import { combineMessages, plainMessage } from './turn-batch.mjs';
@@ -92,7 +92,10 @@ export function inputOf(rt, se, { entries, as }, where) {
   // An entry’s item as written: who sent it, named when there is more than one person (#1742), and its files.
   const itemOf = (/** @type {any} */ e) => (e.itemId ? rt.store.pending.item(e.threadId, e.itemId) : null);
   const person = (/** @type {any} */ e) => senderName(rt.s.people, itemOf(e)?.personId);
-  const text = turnInput({ entries, thread, read, person, tail, notes, root, waitingElsewhere: elsewhere, wroteOnly: wroteOnlyTo(rt, se, where), about });
+  // Whom it was woken by only from turns that reacted to its reply and did no work (#1974).
+  const reacted = reactedOnlyFrom(entries, (e) => itemOf(e)?.reactedOnly, se.handle);
+  const wroteOnly = wroteOnlyTo(rt, se, where);
+  const text = turnInput({ entries, thread, read, person, tail, notes, root, waitingElsewhere: elsewhere, wroteOnly, reacted, about });
   const attachments = entries.flatMap((e) => itemOf(e)?.attachments ?? []);
   // The threads the person’s messages link to, each with how to read it (threadRefs, #121), ride with it.
   const links = entries.flatMap((e) => (e.source === 'person' && e.itemId ? threadRefs(rt, e.threadId, read(e.itemId) ?? '') : []));

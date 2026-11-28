@@ -123,14 +123,25 @@ function replyGoes(entries, wroteOnly) {
   return `${first} ${second}: a second in a row to the same agent that only writes doesn’t wake it, so @-mention whoever must act on it or answer it. ${end}`;
 }
 
-/** The first part: the entries, with where the reply posts and goes, and what waits elsewhere. */
-function entriesPart({ entries, thread, read, person, waitingElsewhere, wroteOnly }) {
+/**
+ * That the agents in `reacted` woke this turn only by @-mentions from turns that reacted to its reply and did no work
+ * (#1974; reply-back.mjs, markReacted). The mention wakes it all the same, so it is told it may end the exchange.
+ * @param {string[]} reacted
+ */
+function reactedLine(reacted) {
+  if (!reacted.length) return '';
+  const names = reacted.map((h) => `@${h}`).join(' and ');
+  return ` ${names} reacted to your reply and did no work. If nothing is asked of you, react and end with no words.`;
+}
+
+/** The first part: the entries, with where the reply posts and goes, who only reacted, and what waits elsewhere. */
+function entriesPart({ entries, thread, read, person, waitingElsewhere, wroteOnly, reacted }) {
   const n = entries.length;
   const one = waitingElsewhere === 1;
   const more = waitingElsewhere
     ? ` ${count(waitingElsewhere)} more ${one ? 'waits in another thread, and starts' : 'wait in other threads, and start'} your next turn.`
     : '';
-  const head = `[Postbox] ${count(n)} ${n === 1 ? 'message' : 'messages'} for you ${place(thread)}. Your reply posts there${replyGoes(entries, wroteOnly)}${more}`;
+  const head = `[Postbox] ${count(n)} ${n === 1 ? 'message' : 'messages'} for you ${place(thread)}. Your reply posts there${replyGoes(entries, wroteOnly)}${reactedLine(reacted)}${more}`;
   return [head, ...entries.map((/** @type {Entry} */ e) => entryLine(e, read, person))].join('\n\n');
 }
 
@@ -166,6 +177,7 @@ function tailPart({ tail, notes, thread }) {
  * @param {number} [input.waitingElsewhere]  entries waiting in other threads
  * @param {string[]} [input.stopped]  ids of entries the person’s Stop kept from starting a turn
  * @param {string[]} [input.wroteOnly]  whom the agent’s last replies in the thread, which only wrote, were for (reply-back.mjs)
+ * @param {string[]} [input.reacted]  who woke it only from turns that reacted to its reply and did no work (reply-back.mjs)
  * @param {(e: Entry) => string} [input.person]  who a person’s entry is from; “The person” with none given
  * @param {string | null} [input.about]  who the people say they are, as shared/profile.mjs’s aboutPeople words it; none while no one has saved a profile
  */
@@ -180,6 +192,7 @@ export function turnInput({
   waitingElsewhere = 0,
   stopped = [],
   wroteOnly = [],
+  reacted = [],
   about = null,
 }) {
   const halted = stopped.length
@@ -188,7 +201,7 @@ export function turnInput({
   // Who the person says they are (#558), after what the turn is for and apart from the room’s tail, which is cut to its newest.
   return [
     root && `[Postbox] ${root}`,
-    entriesPart({ entries, thread, read, person, waitingElsewhere, wroteOnly }),
+    entriesPart({ entries, thread, read, person, waitingElsewhere, wroteOnly, reacted }),
     halted,
     about,
     tailPart({ tail, notes, thread }),
