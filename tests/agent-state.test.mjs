@@ -72,13 +72,6 @@ test('a job that is no longer running is not waited on', () => {
   assert.equal(of(s).state, 'idle');
 });
 
-// The room’s inboxes aren’t an input any more, so a post still waiting in one can’t change this: the browser spec
-// (tests/browser/agent-state.spec.mjs) shows it on the page.
-test('#1975 an agent’s state is read from its session alone: an idle one with no job is idle', () => {
-  const s = room();
-  assert.deepEqual(of(s), { state: 'idle', detail: '' });
-});
-
 test('an agent whose harness ran out of quota says until when', () => {
   const s = room();
   s.sessions.s1.quota = { until: 5000 };
