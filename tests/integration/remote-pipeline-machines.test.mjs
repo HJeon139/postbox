@@ -130,8 +130,9 @@ test('#2028 teardown signals no stand-in, shim, daemon or stray PID that can’t
     const shim = (/** @type {number} */ pid) => `${JSON.stringify({ ev: 'shim', pid })}\n`;
     for (const name of ['0', '1', '2147483648']) writeFileSync(`${m.trace}/${name}.jsonl`, start);
     // A stand-in’s trace gives one shim, its first, so each bad shim needs a valid stand-in of its own.
-    writeFileSync(`${m.trace}/${NEVER_TOO}.jsonl`, `${start}${shim(1)}`);
-    writeFileSync(`${m.trace}/${NEVER}.jsonl`, `${start}${shim(-2)}`);
+    // Values the stray list below doesn’t hold, so the shims are tested on their own.
+    writeFileSync(`${m.trace}/${NEVER_TOO}.jsonl`, `${start}${shim(-3)}`);
+    writeFileSync(`${m.trace}/${NEVER}.jsonl`, `${start}${shim(0x80000001)}`);
     writeFileSync(`${m.paths.code}/daemon.pid`, JSON.stringify({ pid: 1 }));
     for (const bad of [0, 1, -1, -2, 1.5, 0x80000000]) m.pids.set(bad, `bad ${bad}`);
     const { calls, kill } = fakeKill();
