@@ -156,8 +156,7 @@ async function commitFrom(git, place, index, { branch, handle, theirs, subs = ne
   // A repository made in the worktree after the status, which the add took as a gitlink (#1844).
   const after = await gitlinks(g);
   if (!after || after.some((l) => !links.some((k) => k.path === l.path))) return { why: 'it holds a repository of its own' };
-  const made = await record(g, handle);
-  return made.code === 0 ? { committed: true } : refused(made);
+  return record(g, handle, branch);
 }
 
 /** Why git’s command failed, for the log: its last line of errors. @param {{ code: number, stderr: string }} r */
@@ -177,16 +176,33 @@ async function stage(g, links, turned) {
 }
 
 /**
- * Commits what’s staged, as Postbox, for the agent. @param {(args: string[]) => ReturnType<Git>} g  git pinned to the
- * worktree @param {string} handle
+ * Makes the commit of what’s staged, as Postbox, for the agent, without moving its branch: land moves it, once the
+ * commit’s index is the worktree’s, as git orders a commit (agent-index-copy.mjs, #1932). From the old tip to the new
+ * one only, so a commit the agent made meanwhile is never overwritten.
+ * @param {(args: string[]) => ReturnType<Git>} g  git pinned to the worktree @param {string} handle @param {string} branch
+ * @returns {Promise<import('./agent-index-copy.mjs').Made>}
  */
-async function record(g, handle) {
+async function record(g, handle, branch) {
   // Unsigned: signing would run gpg.program, a program from the repository’s or the person’s config, and could wait
-  // on a passphrase. And no automatic maintenance, whose gc can prune the repository’s worktrees, the person’s own.
+  // on a passphrase. Plumbing runs no hooks and no automatic maintenance.
   const identity = ['-c', 'user.name=Postbox', '-c', 'user.email=postbox@postbox.invalid', '-c', 'commit.gpgSign=false'];
-  const quiet = ['-c', 'maintenance.auto=false', '-c', 'gc.auto=0'];
-  const author = `--author=@${handle} <${handle}@postbox.invalid>`;
-  return g([...identity, ...quiet, 'commit', '-q', author, '-m', `@${handle}’s work at the end of a turn`]);
+  const author = ['-c', `author.name=@${handle}`, '-c', `author.email=${handle}@postbox.invalid`];
+  const message = `@${handle}’s work at the end of a turn`;
+  const tree = await g(['write-tree']);
+  if (tree.code !== 0) return refused(tree);
+  const tip = (await g(['rev-parse', '--verify', '--quiet', 'HEAD'])).stdout.trim();
+  const parent = SHA.test(tip) ? ['-p', tip] : [];
+  const made = await g([...identity, ...author, 'commit-tree', tree.stdout.trim(), ...parent, '-m', message]);
+  const sha = made.stdout.trim();
+  if (made.code !== 0 || !SHA.test(sha)) return refused(made);
+  return {
+    committed: true,
+    land: async () => {
+      // An empty old value: the branch must not exist yet, for a first commit.
+      const moved = await g(['update-ref', '-m', message, `refs/heads/${branch}`, sha, SHA.test(tip) ? tip : '']);
+      return moved.code === 0 ? { committed: true } : refused(moved);
+    },
+  };
 }
 
 /**
