@@ -107,3 +107,50 @@ test('close() flushes what is queued and releases the lock, so the next store on
   assert.ok(b.state.threads.t1, 'what was queued at close() is in the log');
   await b.close();
 });
+
+test('a lock draft whose write fails after the open is removed, and the error is raised as is (#2027)', async () => {
+  const dir = await tmp();
+  const io = {
+    ...fs,
+    async writeFile(path, _data, opts) {
+      await fs.writeFile(path, '', opts); // the open made the file; the write then fails, as on a full disk
+      throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
+    },
+  };
+  await assert.rejects(lockStore(io, dir), { code: 'ENOSPC' });
+  assert.deepEqual(await fs.readdir(dir), [], 'no draft is left behind');
+});
+
+test('a disk without hard links refuses the store with what to do: --data on another disk (#2027)', async () => {
+  for (const code of ['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'ENOSYS']) {
+    const dir = await tmp();
+    const io = {
+      ...fs,
+      async link() {
+        throw Object.assign(new Error('operation not supported'), { code });
+      },
+    };
+    await assert.rejects(lockStore(io, dir), (e) => {
+      assert.match(e.message, /doesn’t support hard links.*Start it with --data <a folder on another disk>/);
+      assert.ok(e.message.includes(dir) && e.message.includes(code), `names the folder and the code: ${e.message}`);
+      return true;
+    });
+    assert.deepEqual(await fs.readdir(dir), [], `no draft or lock is left (${code})`);
+  }
+});
+
+test('a bare-pid lock is read by postbox.lock’s rule: a leading zero or a pid past the safe integers is unreadable, never a dead holder (#2027)', async () => {
+  for (const contents of ['0042', '99999999999999999999']) {
+    const dir = await tmp();
+    await writeFile(join(dir, LOCK), contents);
+    const asked = [];
+    const alive = (pid) => {
+      asked.push(pid); // a fake: nothing is signaled
+      return false;
+    };
+    const probe = { alive, started: async () => 1 };
+    await assert.rejects(lockStore(fs, dir, probe), /is unreadable/);
+    assert.deepEqual(asked, [], `no liveness check on what proves nothing (${contents})`);
+    assert.equal(await readFile(join(dir, LOCK), 'utf8'), contents, 'and the lock is left in place');
+  }
+});

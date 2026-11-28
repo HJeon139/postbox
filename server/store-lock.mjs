@@ -18,6 +18,7 @@ import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { sameToken } from './helpers.mjs';
+import { DRAFT_STALE_MS, linkError, readPid } from './lock-file.mjs';
 
 export const LOCK = 'store.lock';
 
@@ -84,12 +85,13 @@ export function psStart(pid) {
  * Publishes a record as a file that never exists half-written: the bytes go to a file of their own first, which is then
  * linked under `path` (atomic, and EEXIST when something is there), so a reader finds the whole record or no file
  * (gpt’s finding on 1a: a file created first and filled after read as an empty, “dead” holder meanwhile).
+ * publishWhole in server/lock-file.mjs is its sync twin, for postbox.lock: a fix to one is a fix to the other.
  */
 async function publish(io, path, record) {
   const draft = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.new`;
-  await io.writeFile(draft, JSON.stringify(record), { mode: 0o600 });
   try {
-    await io.link(draft, path);
+    await io.writeFile(draft, JSON.stringify(record), { mode: 0o600 }); // inside: a write that fails after the open leaves the file
+    await io.link(draft, path).catch((e) => Promise.reject(linkError(e, path)));
   } finally {
     await io.rm(draft, { force: true });
   }
@@ -110,8 +112,8 @@ async function readLock(io, path) {
   } catch {
     // not JSON: a lock written as a bare pid, below
   }
-  const pid = Number(text.trim());
-  return Number.isInteger(pid) && pid > 0 && /^\d+$/.test(text.trim()) ? { pid, started: null } : { ambiguous: true };
+  const pid = readPid(text);
+  return pid === null ? { ambiguous: true } : { pid, started: null };
 }
 
 const AMBIGUOUS_TRIES = 20; // reads of a lock that says nothing readable, 10 ms apart, before the start refuses
@@ -162,9 +164,10 @@ async function sameStart(holder, startOf) {
   return now === null || now === holder.started;
 }
 
-const DRAFT_STALE_MS = 10_000; // a `*.new` draft older than this was left by a start that died between its write and its link
-
-/** Removes stale drafts of a lock or takeover record; a fresh one may belong to a starter mid-publish and is left. */
+/**
+ * Removes stale drafts of a lock or takeover record; a fresh one may belong to a starter mid-publish and is left.
+ * sweepDrafts in server/lock-file.mjs is its sync twin, for postbox.lock: a fix to one is a fix to the other.
+ */
 async function sweepDrafts(io, dir) {
   for (const name of await io.readdir(dir).catch(() => [])) {
     if (!name.startsWith(LOCK) || !name.endsWith('.new')) continue;

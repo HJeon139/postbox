@@ -8,10 +8,11 @@
 // Every clone, worktree and installed copy now shares one default folder, so a run claims it with a lock: a second
 // Postbox on the same folder would append to the same log, and delete segments the first is still writing.
 
-import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { cp, mkdir, readdir, readlink, rename, rm, rmdir, symlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { publishWhole, readPid, sweepDrafts } from './lock-file.mjs';
 
 /** The person’s Postbox folder: POSTBOX_HOME, else ~/.postbox. */
 export const postboxHome = (env = process.env, home = homedir()) => (env.POSTBOX_HOME ? resolve(env.POSTBOX_HOME) : join(home, '.postbox'));
@@ -63,28 +64,86 @@ function alive(pid) {
   }
 }
 
+/** @typedef {{ writeFileSync: typeof writeFileSync, linkSync: typeof linkSync, readFileSync: typeof readFileSync, rmSync: typeof rmSync }} LockIo */
+const DEFAULT_LOCK_IO = { writeFileSync, linkSync, readFileSync, rmSync };
+
 /**
  * Claims a data folder for this process, or throws when another running Postbox holds it. A lock left by a run that
- * died is taken over.
+ * died is taken over (takeOver, below).
  * @param {string} dataDir
+ * @param {LockIo} [io]
  * @returns {() => void}  releases it
  */
-export function lockData(dataDir) {
+export function lockData(dataDir, io = DEFAULT_LOCK_IO) {
   mkdirSync(dataDir, { recursive: true });
   const lock = join(dataDir, LOCK);
-  for (let tries = 0; tries < 2; tries++) {
+  for (let tries = 0; tries < 3; tries++) {
     try {
-      writeFileSync(lock, String(process.pid), { flag: 'wx' });
-      return () => rmSync(lock, { force: true });
+      publishWhole(io, lock, String(process.pid));
+      sweepDrafts(dataDir, LOCK); // drafts a start that died left beside the lock
+      // Only this run’s lock: one another start took over meanwhile is left alone (#2027).
+      return () => {
+        let held = '';
+        try {
+          held = io.readFileSync(lock, 'utf8');
+        } catch {
+          // already gone
+        }
+        if (held.trim() === String(process.pid)) io.rmSync(lock, { force: true });
+      };
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      const other = Number(readFileSync(lock, 'utf8'));
+      const other = holderOf(io, lock, dataDir);
+      if (other === null) continue; // released between EEXIST and read: try again
       if (alive(other) && other !== process.pid)
         throw new Error(`Another Postbox (process ${other}) is using ${dataDir}. Stop it first, or start this one with --data <another folder>.`);
-      rmSync(lock, { force: true });
+      takeOver(io, lock, other);
     }
   }
   throw new Error(`Couldn’t claim ${dataDir}: ${lock} keeps coming back.`);
+}
+
+/**
+ * The pid a lock holds, or null when it’s gone. Throws when it holds anything else: that proves nothing about its
+ * holder, so it’s never taken for a dead one.
+ * @param {LockIo} io @param {string} lock @param {string} dataDir @returns {number | null}
+ */
+function holderOf(io, lock, dataDir) {
+  let text;
+  try {
+    text = io.readFileSync(lock, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+  const pid = readPid(text);
+  if (pid === null)
+    throw new Error(
+      `The lock at ${lock} is unreadable, so Postbox can’t tell whether another Postbox holds ${dataDir}. If none is running on it, remove the file and start again.`,
+    );
+  return pid;
+}
+
+/**
+ * Removes a lock found stale, under a takeover file linked beside it the same way. Two starters can read the same dead
+ * pid: the first to link `.taking` reads the lock again and removes it only while it still holds that pid, and the
+ * other refuses at once, since the lock it read may already be the first one’s live lock (#2027). There’s no wait:
+ * a `.taking` left by a start that died is the person’s to remove, as the message says.
+ * @param {LockIo} io @param {string} lock @param {number} stale
+ */
+function takeOver(io, lock, stale) {
+  const taking = `${lock}.taking`;
+  try {
+    publishWhole(io, taking, String(process.pid));
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+    throw new Error(`Another Postbox start is taking over ${lock}. Try again, or remove ${taking} if none is starting.`);
+  }
+  try {
+    if (holderOf(io, lock, dirname(lock)) === stale) io.rmSync(lock, { force: true });
+  } finally {
+    io.rmSync(taking, { force: true });
+  }
 }
 
 /**
