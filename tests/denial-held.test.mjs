@@ -50,3 +50,38 @@ test('#1896 two refusals allowed once behind one held commit each keep their rul
   await until(() => !rt.turns.get(se.id), 'the turn to end');
   await h.store.close();
 });
+
+test('#1896 allowing a refusal whose session was deleted behind a held commit says so, and leaving it still closes the card', async () => {
+  const h = await heldStore();
+  const { rt, t, se } = await setup(async () => {}, h.store);
+  const denial = (/** @type {string} */ command) =>
+    arrange.post(rt, t.id, {
+      kind: 'denial',
+      sessionId: se.id,
+      handle: se.handle,
+      turnId: 'turn_last',
+      summary: `run ${command}`,
+      status: 'open',
+      rules: { once: `Bash(${command})`, always: `Bash(${command})`, alwaysWords: command, why: null },
+    });
+  const cards = ['npm test', 'npm run lint', 'npm run build'].map(denial);
+  await h.store.flush();
+  h.hold();
+  const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync;
+  rt.deleteSession(se.id); // held behind the commit: the published session is still there
+  for (const [card, action] of [
+    [cards[0], 'once'],
+    [cards[1], 'always'],
+  ])
+    await assert.rejects(resolveDenial(rt, t.id, card.id, action), (e) => {
+      assert.equal(/** @type {any} */ (e).status, 409);
+      assert.match(String(/** @type {any} */ (e).message), /agent’s session is gone/);
+      return true;
+    });
+  assert.deepEqual(await resolveDenial(rt, t.id, cards[2].id, 'leave'), { ok: true }, 'leaving it refused still answers the card');
+  h.release();
+  await commit;
+  await h.store.flush();
+  await h.store.close();
+});
