@@ -5,8 +5,11 @@
 // apart, per host.
 
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { cutText } from '../shared/text-parts.mjs';
 import { httpError } from './helpers.mjs';
+import { ModelRuns } from './model-runs.mjs';
+import { hostModels } from './remote/hosts-models.mjs';
 
 /** How long a list is used before the harness is asked again. */
 const FRESH_MS = 60_000;
@@ -19,10 +22,13 @@ export class ModelLists {
   /**
    * @param {import('./adapters/adapter.mjs').AdapterRegistry} adapters
    * @param {{ file: string, now?: () => number, listOnHost?: (hostId: string, backend: string) => Promise<string[]>,
-   *   hostIds?: () => string[] }} opts  file: where the last lists are kept; listOnHost: what a host’s CLI lists
-   *   (server/remote/hosts-models.mjs); hostIds: the hosts Postbox has, so a deleted one’s lists are forgotten
+   *   hostIds?: () => string[], reasons?: boolean }} opts  file: where the last lists are kept; listOnHost: what a
+   *   host’s CLI lists (server/remote/hosts-models.mjs); hostIds: the hosts Postbox has, so a deleted one’s lists are
+   *   forgotten; reasons: whether an answer carries a failed model’s reason (server/model-runs.mjs), false when hosted
    */
-  constructor(adapters, { file, now = Date.now, listOnHost, hostIds }) {
+  constructor(adapters, { file, now = Date.now, listOnHost, hostIds, reasons }) {
+    // How each model’s last turn ended, kept beside the lists and answered with them (server/model-runs.mjs).
+    this.runs = new ModelRuns({ file: join(dirname(file), 'model-runs.json'), now, hostIds, reasons });
     this.adapters = adapters;
     this.file = file;
     this.now = now;
@@ -48,6 +54,7 @@ export class ModelLists {
    */
   close() {
     this.closed = true;
+    this.runs.close();
   }
 
   /** Offers each backend the last list its harness gave, as Postbox starts. Asks no harness. */
@@ -59,10 +66,23 @@ export class ModelLists {
   /**
    * A backend’s models, and whether its harness listed them just now (fresh) or they’re the last it listed. With a
    * hostId, the host’s, and why they’re not fresh when they aren’t.
+   * With them, how the last turn with each model ended there (`ran`, server/model-runs.mjs), which a harness’s list
+   * can’t say: it lists what it knows, not what this sign-in may run (#1977).
    * @param {string} backend @param {unknown} [hostId]
-   * @returns {Promise<{ models: string[], fresh: boolean, why?: NotListed }>}
+   * @returns {Promise<{ models: string[], fresh: boolean, why?: NotListed, ran?: Record<string, import('./model-runs.mjs').ModelRun> }>}
    */
   async list(backend, hostId = null) {
+    const listed = await this.#list(backend, hostId);
+    const ran = this.runs.of(backend, /** @type {string | null} */ (hostId));
+    // Left out while no turn has said anything, so an answer is as it was until one has.
+    return Object.keys(ran).length ? { ...listed, ran } : listed;
+  }
+
+  /**
+   * @param {string} backend @param {unknown} hostId
+   * @returns {Promise<{ models: string[], fresh: boolean, why?: NotListed }>}
+   */
+  async #list(backend, hostId) {
     if (!this.adapters.names().includes(backend)) throw httpError(404, `“${cutText(String(backend), 40)}” isn’t one Postbox runs.`);
     if (hostId !== null && (typeof hostId !== 'string' || !/^[\w-]{1,64}$/.test(hostId)))
       throw httpError(400, 'hostId must be a host’s ID, or null for this computer.');
@@ -175,4 +195,23 @@ export class ModelLists {
       return {}; // None kept yet, or a file that isn’t ours to read: every harness is asked again.
     }
   }
+}
+
+/**
+ * The lists of a Postbox whose data folder is dataDir, each backend offering the last list it gave: built as Postbox
+ * starts, before its runtime, which it reads only once a list is asked for. Moved from server/index.mjs’s start.
+ * @param {string} dataDir @param {import('./adapters/adapter.mjs').AdapterRegistry} adapters
+ * @param {any} hosts  the hosts’ links (server/remote/serve.mjs) @param {() => any} rt  the runtime, once there is one
+ * @param {boolean} [reasons]  whether an answer carries a failed model’s reason: not on a hosted Postbox, where it
+ *   would reach everyone signed in (server/model-runs.mjs)
+ */
+export function modelListsIn(dataDir, adapters, hosts, rt, reasons = true) {
+  const models = new ModelLists(adapters, {
+    file: join(dataDir, 'model-lists.json'),
+    listOnHost: (hostId, backend) => hostModels(hosts, hostId, backend),
+    hostIds: () => Object.keys(rt().s.hosts ?? {}),
+    reasons,
+  });
+  models.seed();
+  return models;
 }

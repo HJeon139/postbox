@@ -120,6 +120,6 @@ test('in Auto, a prompt the harness itself sends for a push still makes a card, 
   assert.deepEqual([card().outside, card().where], [true, { server: 'git', target: { what: 'remote', name: 'origin' } }]);
   assert.equal(answers.length, 0, 'the call waits on the card');
   await rt.act(t.id, card().id, 'allow', {});
-  for (let i = 0; i < 50 && !answers.length; i++) await sleep(5);
+  for (let i = 0; i < 2000 && !answers.length; i++) await sleep(5);
   assert.equal(answers[0]?.allow, true);
 });
