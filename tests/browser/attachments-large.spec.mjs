@@ -7,7 +7,7 @@ import { statSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { attachmentPath } from '../../server/message-attachments.mjs';
 import * as arrange from '../arrange.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -49,4 +49,24 @@ test('#870 a 30 MB screen recording dropped on the conversation attaches, and se
   expect(file, 'the message carries the upload').toMatchObject({ kind: 'file', name: 'Screen Recording.mov', size: SIZE });
   const path = attachmentPath(rt.assets, t.id, file);
   expect(path && statSync(path).size, 'the agent’s path holds the whole file').toBe(SIZE);
+});
+
+// Node answers 408 with no body when an upload outlasts the server’s request time, which a slow link to a hosted
+// Postbox can reach (#2022). The page said only “The upload failed.”; it now says what happened and what to try. The
+// 408 is Node’s own, so it’s given here through Playwright’s route, as the server sends it: a status and no body.
+test('#870 an upload the server stops for taking too long says so, and what to try', async ({ page }) => {
+  const { rt } = app;
+  const t = rt.createThread({ projectId: Object.values(rt.store.state.projects)[0].id, title: 'Slow link', personaIds: [arrange.persona(rt, 'librarian').id] });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await page.route('**/api/files', (route) => route.fulfill({ status: 408, body: '' }));
+  allowPageError(page, /status of 408/);
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['x'], 'Screen Recording.mov', { type: 'video/quicktime' }));
+    const target = /** @type {Element} */ (document.querySelector('.main .transcript'));
+    for (const type of ['dragover', 'drop']) target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+  });
+  await expect(page.getByText('The upload took too long, so Postbox stopped it. Try a smaller file or a faster connection.')).toBeVisible();
+  await expect(page.locator('.main .composer .attachments .att'), 'nothing left attached').toHaveCount(0);
 });

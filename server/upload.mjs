@@ -2,7 +2,7 @@
 //
 // No fixed size limit beyond free disk space (#870, the person’s choice of 6 November 2026): the body streams into
 // the blob store (Blobs.putStream), so memory stays at a chunk whatever the size. Only the page can upload, with its
-// token, so the disk used is the person’s own files. An upload that would leave less than DISK_RESERVE free is refused
+// token, so the disk used is the person’s own files, or their team’s on a hosted Postbox. An upload that would leave less than DISK_RESERVE free is refused
 // with that reason, before it’s written when the browser says its size, or as soon as the disk fills while it streams.
 
 import { statfs as fsStatfs } from 'node:fs/promises';
@@ -16,7 +16,11 @@ export const DISK_RESERVE = 1024 ** 3;
 /** How often free space is read again while an upload streams in, in bytes written. */
 const RECHECK_BYTES = 16 * 1024 * 1024;
 
-const NO_ROOM = () => httpError(507, 'There isn’t room on this computer’s disk for this file: Postbox keeps 1 GB free. Free some space, then attach it again.');
+const NO_ROOM = () =>
+  httpError(
+    507,
+    'There isn’t room on Postbox’s disk for this file: it keeps 1 GB free. Free some space, or ask whoever runs this Postbox to, then attach it again.',
+  );
 
 /**
  * POST /api/files: the person’s upload, streamed into the blob store, and its metadata emitted as a file.
