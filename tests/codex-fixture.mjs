@@ -1,7 +1,9 @@
 // A fake Codex app-server, for the Codex adapter’s tests (tests/codex.test.mjs, tests/codex-turn-model.test.mjs): it answers
-// each request Postbox writes as the app-server does, and records them in `seen`.
+// each request Postbox writes as the app-server does, and records them in `seen`. And app-servers that answer as a
+// recording in tests/fixtures/codex-app-server/ did (tests/codex-compact.test.mjs).
 
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -78,4 +80,52 @@ export function fakeAppServer(
     }
   });
   return child;
+}
+
+/**
+ * A recording’s answers by request id: each answer, then the notifications it had before its next answer.
+ * @param {string} name @returns {Map<number, any[]>}
+ */
+export function answersOf(name) {
+  const after = new Map();
+  let answered = /** @type {any[]} */ ([]);
+  for (const l of readFileSync(new URL(`fixtures/codex-app-server/${name}`, import.meta.url), 'utf8')
+    .trim()
+    .split('\n')) {
+    const line = JSON.parse(l);
+    if (line.id === undefined) answered.push(line);
+    else after.set(line.id, (answered = [line]));
+  }
+  return after;
+}
+
+/**
+ * App-servers that answer from recorded plays, one process each, as Postbox starts one per turn: each play maps a
+ * request’s method to its recorded answer and the notifications after it (answersOf), and a method it doesn’t name gets
+ * an empty page.
+ * @param {Record<string, any[] | undefined>[]} plays @param {any[]} seen what Postbox sent @param {any[]} answered what
+ *   each request got, beside it
+ */
+export function playedServers(plays, seen, answered) {
+  return () => {
+    const play = /** @type {Record<string, any[] | undefined>} */ (plays.shift() ?? {});
+    const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
+    child.kill = () => child.emit('close', 0);
+    const write = (/** @type {any} */ m) => child.stdout.write(`${JSON.stringify(m)}\n`);
+    child.stdin.on('data', (chunk) => {
+      for (const req of chunk
+        .toString()
+        .trim()
+        .split('\n')
+        .map((l) => JSON.parse(l))) {
+        seen.push(req);
+        if (req.id === undefined) continue;
+        const [answer = { result: { data: [], nextCursor: null } }, ...notes] = play[req.method] ?? [];
+        answered.push([req.method, answer]);
+        write({ ...answer, id: req.id });
+        setImmediate(() => notes.forEach(write));
+      }
+    });
+    return child;
+  };
 }

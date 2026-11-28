@@ -16,7 +16,7 @@ import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
-import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
+import { answersOf, CODEX_ROOT, fakeAppServer, playedServers } from './codex-fixture.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 const RECORDED = readFileSync(new URL('fixtures/codex-app-server/compact.jsonl', import.meta.url), 'utf8')
@@ -61,23 +61,6 @@ function recordedServer(seen, { compact } = {}) {
 }
 
 /**
- * A recording’s answers by request id: each answer, then the notifications it had before its next answer.
- * @param {string} name @returns {Map<number, any[]>}
- */
-function answersOf(name) {
-  const after = new Map();
-  let answered = /** @type {any[]} */ ([]);
-  for (const l of readFileSync(new URL(`fixtures/codex-app-server/${name}`, import.meta.url), 'utf8')
-    .trim()
-    .split('\n')) {
-    const line = JSON.parse(l);
-    if (line.id === undefined) answered.push(line);
-    else after.set(line.id, (answered = [line]));
-  }
-  return after;
-}
-
-/**
  * Spawns app-servers for three turns, one process each, as Postbox runs them: the first message, /compact, and the
  * next message. The first two answer from compact-continue.jsonl (thread/start and its turn, then the compaction); the
  * third from compact-resume.jsonl, a new process that resumed the compacted thread and ran one turn on it. Nothing
@@ -93,27 +76,7 @@ function compactedServers(seen, answered) {
     { initialize: first.get(1), 'thread/resume': resumed.get(2)?.slice(0, 1), 'thread/compact/start': first.get(4) },
     { initialize: resumed.get(1), 'thread/resume': resumed.get(2), 'turn/start': resumed.get(3) },
   ];
-  return () => {
-    const play = /** @type {Record<string, any[] | undefined>} */ (plays.shift() ?? {});
-    const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
-    child.kill = () => child.emit('close', 0);
-    const write = (/** @type {any} */ m) => child.stdout.write(`${JSON.stringify(m)}\n`);
-    child.stdin.on('data', (chunk) => {
-      for (const req of chunk
-        .toString()
-        .trim()
-        .split('\n')
-        .map((l) => JSON.parse(l))) {
-        seen.push(req);
-        if (req.id === undefined) continue;
-        const [answer = { result: { data: [], nextCursor: null } }, ...notes] = play[req.method] ?? [];
-        answered.push([req.method, answer]);
-        write({ ...answer, id: req.id });
-        setImmediate(() => notes.forEach(write));
-      }
-    });
-    return child;
-  };
+  return playedServers(plays, seen, answered);
 }
 
 /** A turn’s context, with what the harness events reached. */
