@@ -6,8 +6,9 @@
 
 /**
  * Hosted, clears every folder on the server that a record still names: an agent’s, when it isn’t on a host; a
- * conversation’s added folders; and a project’s. Only a record that has one is written, so a later start writes
- * nothing. An agent on a host keeps its folder, which is a path there. Nothing on your own computer.
+ * conversation’s added folders and the folders it may read; and a project’s. Only a record that has one is written,
+ * so a later start writes nothing. An agent on a host keeps its folder, which is a path there. Nothing on your own
+ * computer.
  * @param {any} rt
  */
 export function dropServerFolders(rt) {
@@ -15,7 +16,8 @@ export function dropServerFolders(rt) {
   for (const p of Object.values(rt.s.personas ?? {})) if (p.folder && !p.remote?.hostId) rt.store.emit('persona', { ...p, folder: '' });
   // Read pending, as every session write a read decides is (tests/session-decided-guard.test.mjs).
   for (const se of Object.values(rt.store.pending.sessions())) {
-    if (se.addDirs?.length) rt.store.emit('session.patch', { id: se.id, patch: { addDirs: [] } });
+    // The folders it works in, and the ones whose reads are answered without a card (server/read-folders.mjs).
+    if (se.addDirs?.length || se.readDirs?.length) rt.store.emit('session.patch', { id: se.id, patch: { addDirs: [], readDirs: [] } });
   }
   for (const { folder, ...project } of Object.values(rt.s.projects ?? {})) if (folder) rt.store.emit('project', project);
 }
