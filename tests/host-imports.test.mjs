@@ -6,8 +6,8 @@
 // shared/catalog.mjs imports ./urls.mjs, so checking only the first level would miss a file. It fails on a file outside
 // shared/ or server/remote/host/, on a bare package import, on anything under the folder that isn’t a regular file or a
 // folder (a symlink could lead anywhere), and on finding nothing to check, so it can’t pass while checking nothing.
-// Postbox’s agent plugin (agent-plugin/) ships too, as data, so a turn on a host loads its skills (#207): every regular
-// file, .claude-plugin/plugin.json the only dotted path allowed.
+// Postbox’s agent plugin (agent-plugin/) ships too, as data, so a turn on a host loads its skills (#207): its Markdown and
+// JSON files, .claude-plugin/plugin.json the only dotted path allowed.
 
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';

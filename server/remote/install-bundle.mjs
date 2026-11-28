@@ -1,5 +1,5 @@
 // What an install ships (install.mjs, whose header is the design): every file under server/remote/host/ and what it
-// imports, transitively, and every file of Postbox’s agent plugin (agent-plugin/, #207), with a package.json, each
+// imports, transitively, and the skill files of Postbox’s agent plugin (agent-plugin/, #207), with a package.json, each
 // file’s SHA-256 in the manifest, packed in a minimal ustar.
 
 import { createHash } from 'node:crypto';
