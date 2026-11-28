@@ -96,7 +96,8 @@ test('once the lock is held, drafts older than 10 s that a dead start left are s
     utimesSync(join(dir, name), old, old);
   }
   writeFileSync(join(dir, 'postbox.lock.4343.0e0f0a0b.new'), '4343'); // a starter mid-publish
-  writeFileSync(join(dir, 'notes.new'), 'not a lock’s'); // not a draft of the lock
+  writeFileSync(join(dir, 'notes.new'), 'not a lock’s'); // old too, but not a draft of the lock
+  utimesSync(join(dir, 'notes.new'), old, old);
   const release = lockData(dir);
   assert.deepEqual(readdirSync(dir).sort(), ['notes.new', 'postbox.lock', 'postbox.lock.4343.0e0f0a0b.new']);
   release();
