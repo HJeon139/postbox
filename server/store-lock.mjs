@@ -18,7 +18,7 @@ import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { sameToken } from './helpers.mjs';
-import { DRAFT_STALE_MS } from './lock-file.mjs';
+import { DRAFT_STALE_MS, linkError } from './lock-file.mjs';
 
 export const LOCK = 'store.lock';
 
@@ -90,7 +90,7 @@ async function publish(io, path, record) {
   const draft = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.new`;
   try {
     await io.writeFile(draft, JSON.stringify(record), { mode: 0o600 }); // inside: a write that fails after the open leaves the file
-    await io.link(draft, path);
+    await io.link(draft, path).catch((e) => Promise.reject(linkError(e, path)));
   } finally {
     await io.rm(draft, { force: true });
   }

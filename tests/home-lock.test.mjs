@@ -101,3 +101,25 @@ test('once the lock is held, drafts older than 10 s that a dead start left are s
   assert.deepEqual(readdirSync(dir).sort(), ['notes.new', 'postbox.lock', 'postbox.lock.4343.0e0f0a0b.new']);
   release();
 });
+
+test('a disk without hard links refuses the start with what to do: --data on another disk (#2027)', () => {
+  for (const code of ['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'ENOSYS']) {
+    const dir = tempDir('pb-home-lock-');
+    const io = {
+      ...realIo,
+      linkSync() {
+        throw Object.assign(new Error('operation not supported'), { code });
+      },
+    };
+    assert.throws(
+      () => lockData(dir, io),
+      (e) => {
+        assert.match(e.message, /doesn’t support hard links.*Start it with --data <a folder on another disk>/);
+        assert.ok(e.message.includes(dir) && e.message.includes(code), `names the folder and the code: ${e.message}`);
+        assert.equal(e.cause.code, code, 'keeps the original error');
+        return true;
+      },
+    );
+    assert.deepEqual(readdirSync(dir), [], `no draft or lock is left (${code})`);
+  }
+});

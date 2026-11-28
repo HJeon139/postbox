@@ -120,3 +120,21 @@ test('a lock draft whose write fails after the open is removed, and the error is
   await assert.rejects(lockStore(io, dir), { code: 'ENOSPC' });
   assert.deepEqual(await fs.readdir(dir), [], 'no draft is left behind');
 });
+
+test('a disk without hard links refuses the store with what to do: --data on another disk (#2027)', async () => {
+  for (const code of ['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'ENOSYS']) {
+    const dir = await tmp();
+    const io = {
+      ...fs,
+      async link() {
+        throw Object.assign(new Error('operation not supported'), { code });
+      },
+    };
+    await assert.rejects(lockStore(io, dir), (e) => {
+      assert.match(e.message, /doesn’t support hard links.*Start it with --data <a folder on another disk>/);
+      assert.ok(e.message.includes(dir) && e.message.includes(code), `names the folder and the code: ${e.message}`);
+      return true;
+    });
+    assert.deepEqual(await fs.readdir(dir), [], `no draft or lock is left (${code})`);
+  }
+});

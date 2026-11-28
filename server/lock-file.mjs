@@ -5,7 +5,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { readdirSync, rmSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 /**
  * Publishes `text` as a file that never exists half-written: the bytes go to a draft of their own first, which is
@@ -18,10 +18,31 @@ export function publishWhole(io, path, text) {
   const draft = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.new`;
   try {
     io.writeFileSync(draft, text, { flag: 'wx', mode: 0o600 }); // inside: a write that fails after the open leaves the file
-    io.linkSync(draft, path);
+    try {
+      io.linkSync(draft, path);
+    } catch (e) {
+      throw linkError(e, path);
+    }
   } finally {
     io.rmSync(draft, { force: true });
   }
+}
+
+/** What link(2) says on a disk with no hard links: a FAT or exFAT volume, some network and FUSE filesystems. */
+const NO_HARD_LINKS = new Set(['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'ENOSYS']);
+
+/**
+ * The error to raise for a failed link: a refusal for want of hard links becomes one that says what to do, and any
+ * other error is raised as is. Without hard links no lock can be published whole, so the start refuses rather than
+ * risk two servers on one folder.
+ * @param {any} e @param {string} path  the lock being published, in the data folder @returns {Error}
+ */
+export function linkError(e, path) {
+  if (!NO_HARD_LINKS.has(e?.code)) return e;
+  return new Error(
+    `${dirname(path)} is on a disk that doesn’t support hard links (link failed with ${e.code}), which Postbox needs to lock its data folder. Start it with --data <a folder on another disk>.`,
+    { cause: e },
+  );
 }
 
 /**
