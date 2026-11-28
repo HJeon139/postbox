@@ -119,3 +119,7 @@ test('a term doesn’t link inside a Vietnamese word, a decomposed accent, or a 
   // The Greek question mark and ano teleia are punctuation, so a term before one still links.
   assert.deepEqual(linked('R', 'Is it R; or R·'), ['R', 'R']);
 });
+
+test('a short term doesn’t link beside an accented or Cyrillic dotted letter (#102)', () => {
+  assert.deepEqual(linked('R', 'É.R, R.É and Ж.R'), []);
+});
