@@ -86,11 +86,13 @@ test('#1608 placing an agent on a host where its harness isn’t signed in says 
 });
 
 test('#1608 at 375 px the card’s and Runs on’s sign-in warnings are tidy: nothing over, cut off or broken mid-word', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 812 });
+  // A phone’s width; tall enough that no field of the long persona sheet sits across the window’s bottom edge, which
+  // the check reports as cut off by the page whatever the warning does (CI’s fonts put “Instructions” there at 812 px).
+  await page.setViewportSize({ width: 375, height: 1600 });
   const host = hostWith('narrow.example.com', { 'claude-code': 'signed-out', codex: 'signed-out', 'kiro-cli': 'signed-in' });
   const settings = await openSettings(page, () => import('/app/js/sheets.mjs').then((m) => m.openSettings('hosts')));
   // The list shows one card, the picked host’s: pick this one.
-  await settings.getByRole('option', { name: new RegExp(host.name.replace(/\./g, '\\.')) }).click();
+  await settings.getByRole('option').filter({ hasText: host.name }).click();
   const card = settings.getByRole('region', { name: host.name, exact: true });
   await expect(card.locator('.ho-signin')).toHaveCount(2);
   await card.locator('.ho-signin').last().scrollIntoViewIfNeeded();
