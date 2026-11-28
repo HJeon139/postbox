@@ -124,29 +124,45 @@ const NEVER_TOO = 0x7ffffffe;
 
 test('#2028 teardown signals no stand-in, shim, daemon or stray PID that can’t be a child: 0, 1, negative or too big', async () => {
   const m = machine({});
-  mkdirSync(m.paths.code, { recursive: true });
-  const start = `${JSON.stringify({ ev: 'start', at: 1 })}\n`;
-  for (const name of ['0', '1', '2147483648']) writeFileSync(`${m.trace}/${name}.jsonl`, start);
-  writeFileSync(`${m.trace}/${NEVER_TOO}.jsonl`, `${start}${JSON.stringify({ ev: 'shim', pid: 1 })}\n${JSON.stringify({ ev: 'shim', pid: -2 })}\n`);
-  writeFileSync(`${m.paths.code}/daemon.pid`, JSON.stringify({ pid: 1 }));
-  for (const bad of [0, 1, -1, -2, 1.5, 0x80000000]) m.pids.set(bad, `bad ${bad}`);
-  const { calls, kill } = fakeKill();
-  await teardown(m, [], { kill, waitMs: 0 });
-  assert.ok(calls.length > 0, 'the valid stand-in is looked at');
-  assert.deepEqual(new Set(calls.map(String)), new Set([String([NEVER_TOO, 0])]), 'only with signal 0, and nothing else is signaled');
+  try {
+    mkdirSync(m.paths.code, { recursive: true });
+    const start = `${JSON.stringify({ ev: 'start', at: 1 })}\n`;
+    const shim = (/** @type {number} */ pid) => `${JSON.stringify({ ev: 'shim', pid })}\n`;
+    for (const name of ['0', '1', '2147483648']) writeFileSync(`${m.trace}/${name}.jsonl`, start);
+    // A stand-in’s trace gives one shim, its first, so each bad shim needs a valid stand-in of its own.
+    writeFileSync(`${m.trace}/${NEVER_TOO}.jsonl`, `${start}${shim(1)}`);
+    writeFileSync(`${m.trace}/${NEVER}.jsonl`, `${start}${shim(-2)}`);
+    writeFileSync(`${m.paths.code}/daemon.pid`, JSON.stringify({ pid: 1 }));
+    for (const bad of [0, 1, -1, -2, 1.5, 0x80000000]) m.pids.set(bad, `bad ${bad}`);
+    const { calls, kill } = fakeKill();
+    await teardown(m, [], { kill, waitMs: 0 });
+    assert.deepEqual(
+      new Set(calls.map(String)),
+      new Set([String([NEVER, 0]), String([NEVER_TOO, 0])]),
+      'the two valid stand-ins are looked at with signal 0, and nothing else is signaled',
+    );
+  } finally {
+    delete process.env.POSTBOX_CLAUDE_RECORD;
+    rmSync(m.root, { recursive: true, force: true });
+  }
 });
 
 test('#2028 teardown sends its signals through the kill it’s given: SIGTERM to the daemon, SIGKILL to a stray’s group and itself', async () => {
   const m = machine({});
-  mkdirSync(m.paths.code, { recursive: true });
-  writeFileSync(`${m.paths.code}/daemon.pid`, JSON.stringify({ pid: NEVER }));
-  m.pids.set(NEVER_TOO, 'a stray');
-  const { calls, kill } = fakeKill();
-  const strays = await teardown(m, [], { kill, isGone: (pid) => pid !== NEVER_TOO, waitMs: 0 });
-  assert.deepEqual(strays, [`a stray (${NEVER_TOO})`]);
-  assert.deepEqual(calls, [
-    [NEVER, 'SIGTERM'],
-    [-NEVER_TOO, 'SIGKILL'],
-    [NEVER_TOO, 'SIGKILL'],
-  ]);
+  try {
+    mkdirSync(m.paths.code, { recursive: true });
+    writeFileSync(`${m.paths.code}/daemon.pid`, JSON.stringify({ pid: NEVER }));
+    m.pids.set(NEVER_TOO, 'a stray');
+    const { calls, kill } = fakeKill();
+    const strays = await teardown(m, [], { kill, isGone: (pid) => pid !== NEVER_TOO, waitMs: 0 });
+    assert.deepEqual(strays, [`a stray (${NEVER_TOO})`]);
+    assert.deepEqual(calls, [
+      [NEVER, 'SIGTERM'],
+      [-NEVER_TOO, 'SIGKILL'],
+      [NEVER_TOO, 'SIGKILL'],
+    ]);
+  } finally {
+    delete process.env.POSTBOX_CLAUDE_RECORD;
+    rmSync(m.root, { recursive: true, force: true });
+  }
 });
