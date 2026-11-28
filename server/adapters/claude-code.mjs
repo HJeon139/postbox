@@ -35,6 +35,7 @@ import { claudeModels } from '../remote/host/harness-models.mjs';
 import { findClaude } from './claude-bin.mjs';
 import { claudeEnv, runArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
+import { SIZE_LIMIT_START_TEXT, sessionTooLarge } from './claude-result.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
@@ -163,10 +164,10 @@ export class ClaudeCodeAdapter {
       turn = await hostTurn();
       first = await this.run({ ctx, cwd, addDirs, prompt: note + promptOn(turn), guide, resume: false, sessionId: null, fork: latest, turn });
     }
-    // A session Claude Code no longer has (its history was cleared) starts over, once.
-    if (first.missingSession) {
+    // A session Claude Code no longer has (its history was cleared), or one too large to go on (#674), starts over, once.
+    if (first.missingSession || first.tooLarge) {
       ctx.saveState({ claudeSessionId: null });
-      const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
+      const note = `[Postbox] ${first.tooLarge ? SIZE_LIMIT_START_TEXT : FRESH_START_TEXT}\n\n`;
       turn = await hostTurn();
       await this.run({ ctx, cwd, addDirs, prompt: note + promptOn(turn), guide, resume: false, sessionId: null, turn });
     }
@@ -244,6 +245,10 @@ export class ClaudeCodeAdapter {
         // A session to resume or fork that Claude Code no longer has. On a host, the result says it too (remoteSaid).
         const said = remote ? remoteSaid(stderr(), mapper.result) : stderr();
         if ((resume || fork) && /No conversation found|session .* not found/i.test(said)) return resolve({ missingSession: true });
+        // One too large to go on (#674): a resumed one starts over (deliver); any other, or a replay, isn’t kept to resume.
+        const tooLarge = sessionTooLarge(mapper.result, said);
+        if (tooLarge && resume && !attach) return resolve({ tooLarge: true });
+        if (tooLarge) ctx.saveState({ claudeSessionId: null });
         const failure = resultError(mapper.result);
         if (failure) {
           // Its last three lines, cleaned as a CLI’s words are, and their end, where the newest words are (#1938).
