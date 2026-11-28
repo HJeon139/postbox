@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.9.2 (2026-11-28)
+
+### Fixes
+
+- **view-app:** a thread with no known root finds its own card, and the pre-review's smaller fixes
+- **view-app:** one browser card per conversation, and the person's answer settles every one
+- **view-app:** one browser card at a time, and every agent carries on instead of waiting
+- **ui:** a repaint that keeps focus counts scroll-stop boxes in place, stop or not
+- **a11y:** five more scroll boxes take a tab stop only while they scroll
+- **view-app:** every agent told to wait on the browser card hears its answer
+
 ## 5.9.1 (2026-11-28)
 
 ### Fixes
