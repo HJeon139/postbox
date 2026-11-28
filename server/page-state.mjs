@@ -26,6 +26,9 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, hea
     live: publicLive(liveSnapshots(rt)),
     config: {
       origin,
+      // Whether this Postbox runs on a server for a team (designs/architecture/hosted.md): there, what is a folder
+      // on this computer for a local one is a folder on a host, so the page asks for none.
+      hosted: config.hosted === true,
       // Who is looking (#558), as the request gate resolved them: their record, or who their provider says they are
       // while they’ve saved nothing. Their own, so all of it.
       me,

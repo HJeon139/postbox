@@ -46,6 +46,7 @@ import { HOST_OPTIONS } from './uat/hosts-options.mjs';
 import { createHostRun, followStatuses, startHosts } from './uat/hosts-run.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { keyFrameOut, seededNote } from './uat/key-frame-run.mjs';
+import { recordLayout } from './uat/layout-probe.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
 import { openIssues } from './uat/open-issues.mjs';
 import { judgePictures } from './uat/picture-judges.mjs';
@@ -188,7 +189,8 @@ async function main() {
     await page.goto(`${origin}/`);
     const state0 = (await api('/api/state')).state;
     facts.startPersonas = Object.values(state0.personas).filter((p) => !p.retired);
-    const d = driver(page, { beforeStop: () => beforeStop(hr), input: recordInput(facts.probes, () => timeline.length, log) });
+    const stepNow = () => timeline.length;
+    const d = driver(page, { beforeStop: () => beforeStop(hr), input: recordInput(facts.probes, stepNow, log), layout: recordLayout(facts.probes, stepNow) });
     await d.newProject(scenario.project, paths.workspace);
     if (hr) await startHosts(hr, { postbox, api, kit: d.kit, dir, project: scenario.project });
     const hash = await d.newConversation(scenario.project, scenario.conversation, scenario.agents);
@@ -538,8 +540,9 @@ async function main() {
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
   (opt.recheck ? recheck(opt.recheck, { root: ROOT, opt, review: REVIEW }) : main())
     .then((findings) => {
-      // Postbox printed an error or a warning, or crashed: the run fails, so a script running it sees that without the
-      // report. A run stopped by a signal still exits 130 (tools/uat/stop.mjs).
+      // Postbox printed an error or a warning, or crashed, or a screenshot showed text over text, cut off or broken
+      // mid-word (#681): the run fails, so a script running it sees that without the report. A run stopped by a signal
+      // still exits 130 (tools/uat/stop.mjs).
       if (failsRun(findings)) process.exitCode ||= 1;
     })
     .catch((e) => {

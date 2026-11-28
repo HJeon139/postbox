@@ -11,6 +11,7 @@ import { expect, test } from '@playwright/test';
 import { turnLine } from '../../shared/work.mjs';
 import { turnRows } from '../../shared/work-list.mjs';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, frames, PHONE, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
@@ -165,7 +166,7 @@ async function fits(page, { width }) {
     cut.some((f) => f.name === 'notes.md'),
     'the note outside the project',
   ).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(windowWidth(page) + 1);
+  expect(await pageWidth(page), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(windowWidth(page) + 1);
   await axe(page, `[data-key="${last.id}"] .work-list-turn`, `${width} px`);
 }
 

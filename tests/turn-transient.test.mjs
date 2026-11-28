@@ -48,8 +48,8 @@ test('#1713 a turn its provider overloaded waits to go again on its own, says so
   const se = f.store.state.sessions[f.beta.id];
   assert.deepEqual(f.blocking(), [], 'nothing blocking: the person could do no more than Retry');
   assert.equal(needsYouNow(se), false);
-  assert.equal(agentState(se, f.store.state).state, 'retrying', 'its row says it’s retrying');
-  assert.equal(agentState(se, f.store.state).until, se.autoRetry.at);
+  assert.equal(agentState(se).state, 'retrying', 'its row says it’s retrying');
+  assert.equal(agentState(se).until, se.autoRetry.at);
   const [failed] = repliesOf(f);
   assert.equal(failed.status, 'failed', 'its reply keeps Retry meanwhile');
   assert.equal(failed.transient.status, 529);
@@ -78,7 +78,7 @@ test('#1713 at the end of the wait the turn goes again, and a turn that goes wel
   assert.equal(answer.text, 'ok');
   const se = f.store.state.sessions[f.beta.id];
   assert.equal(se.autoRetry ?? null, null, 'the count starts again at the next failure');
-  assert.equal(agentState(se, f.store.state).state, 'idle');
+  assert.equal(agentState(se).state, 'idle');
 });
 
 test('#1713 three tries in a row run out: the person is told, as of any failed turn, and the agent that waited hears it', async () => {
@@ -101,7 +101,7 @@ test('#1713 three tries in a row run out: the person is told, as of any failed t
   assert.equal(needsYouNow(se), true, 'it needs the person, who alone can start it again');
   assert.equal(f.blocking().length, 1, 'one blocking notice, at the run-out only');
   assert.equal(se.autoRetry ?? null, null);
-  assert.equal(agentState(se, f.store.state).state, 'failed', 'its row says failed, as any failed turn’s, no longer retrying');
+  assert.equal(agentState(se).state, 'failed', 'its row says failed, as any failed turn’s, no longer retrying');
   const last = repliesOf(f).at(-1);
   assert.match(last.note, /overloaded \(529\) on 4 tries in a row, so Postbox stopped trying/);
   assert.equal(last.transient, undefined, 'its callout is an alert again, as any failure’s');

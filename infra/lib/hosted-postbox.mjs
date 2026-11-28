@@ -1,12 +1,13 @@
 // A hosted Postbox on AWS (designs/architecture/hosted.md, “The test deployment on AWS”): a load balancer that signs
 // people in, one task of Postbox behind it, and the disk its data folder is on. infra/README.md draws it.
 //
-// It is four parts, each a construct you can use alone, and this one puts them together in one scope:
+// It is five parts, each a construct you can use alone, and this one puts them together in one scope:
 //
 //   PostboxNetwork  the VPC, and who may reach whom           (lib/network.mjs)
 //   PostboxData     the disk the data folder is on            (lib/data.mjs)
 //   PostboxEdge     the load balancer, its name, the sign-in  (lib/edge.mjs)
 //   PostboxServer   the one task, and the service around it   (lib/server.mjs)
+//   PostboxAgentHost  the machine agents work on              (lib/agent-host.mjs)
 //
 // Put each in a stack of its own, as app.mjs does, and one that fails rolls back alone. They bring what they aren’t
 // given and use what they are: a VPC, a name in a hosted zone or a certificate, and the identity provider a team
@@ -16,6 +17,7 @@
 
 import { Stack } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import { PostboxAgentHost } from './agent-host.mjs';
 import { PostboxData } from './data.mjs';
 import { PostboxEdge } from './edge.mjs';
 import { PostboxNetwork } from './network.mjs';
@@ -61,6 +63,8 @@ export function hostedSettings(scope, { edge, signIn, claims = { username: 'emai
  * @property {string} [openTo]  the addresses that reach the listener, as a CIDR; everywhere
  * @property {import('aws-cdk-lib').Duration} [sessionTimeout]  how long a sign-in at the load balancer lasts; 12 hours
  * @property {boolean} [deletionProtection]  whether the load balancer refuses to be deleted; true
+ * @property {false | Partial<import('./agent-host.mjs').PostboxAgentHostProps>} [agentHost]  the machine agents work
+ *   on, and what to change of it; false leaves it out, for hosts of your own added in Settings › Hosts
  */
 
 export class HostedPostbox extends Construct {
@@ -69,11 +73,14 @@ export class HostedPostbox extends Construct {
     super(scope, id);
     const { signIn, sessionTimeout, deletionProtection } = props;
     this.network = new PostboxNetwork(this, 'Network', props);
-    const { vpc, balancerGroup, serverGroup, diskGroup } = this.network;
+    const { vpc, balancerGroup, serverGroup, diskGroup, hostGroup } = this.network;
     this.data = new PostboxData(this, 'Data', { vpc, diskGroup });
     this.edge = new PostboxEdge(this, 'Edge', { vpc, balancerGroup, address: props.address, signIn, sessionTimeout, deletionProtection });
     const hosted = hostedSettings(this, { ...props, edge: this.edge });
-    this.server = new PostboxServer(this, 'Server', { vpc, serverGroup, ...this.data, targets: this.edge.targets, source: props.source, hosted });
+    const parameters = `/postbox/${this.node.addr}`;
+    this.host = props.agentHost === false ? undefined : new PostboxAgentHost(this, 'Host', { parameters, ...props.agentHost, vpc, hostGroup });
+    const { targets } = this.edge;
+    this.server = new PostboxServer(this, 'Server', { vpc, serverGroup, ...this.data, targets, source: props.source, hosted, host: this.host });
     this.origin = this.edge.origin;
   }
 }

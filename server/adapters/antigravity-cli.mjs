@@ -55,6 +55,7 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL, modelDefault } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
+import { cleanSaid } from '../../shared/text-parts.mjs';
 import { HarnessEvents } from '../harness-events.mjs';
 import { withQuota } from '../harness-failure.mjs';
 import { firstSentence } from '../harness-tools.mjs';
@@ -84,6 +85,7 @@ import { noCompaction } from './no-compaction.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceSpawned } from './prompt-sent.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
+import { stderrTail } from './stderr-tail.mjs';
 import { agyResult } from './work-calls.mjs';
 
 // Moved to agy-errors.mjs; kept here for those that import them from this module.
@@ -441,7 +443,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           // Only an error agy gave words to: a bare status such as ERROR says nothing that could repeat.
           const repeated = repeatsLastError(ctx, st.sessionId ?? resumed, r.status === 'SUCCESS' || !r.error ? null : String(r.error));
           if (error === null) return;
-          const why = clip(error, 400);
+          const why = cleanSaid(error, 400);
           // agy’s ERROR doesn’t say how the turn ended. Recorded in the Gemini room UAT: ERROR after a model call it
           // retried and went on from, once with the review written in full and once ending at a refused command;
           // and ERROR (“API error (attempt 2)”) on a turn with no failed call in its stream, which a refused read
@@ -632,7 +634,6 @@ export class AntigravityCliAdapter {
         return;
       }
       recordOnceSpawned(ctx, child, { guide, text: prompt });
-      let stderr = '';
       const c = child;
       const exited = new Promise((r) => {
         c.once('exit', r);
@@ -642,9 +643,7 @@ export class AntigravityCliAdapter {
       // SIGINT to the group, then SIGKILL after the grace period (process-group.mjs), as for the other CLIs.
       const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list, unkilled: ctx.unkilled }));
       child.on('error', (e) => reject(agyStartError(e, prompt, this.bin)));
-      child.stderr.on('data', (d) => {
-        stderr = (stderr + d).slice(-4000);
-      });
+      const stderr = stderrTail(child);
       const record = recorderFor(ctx, this.env.POSTBOX_AGY_RECORD);
       createInterface({ input: child.stdout }).on('line', (line) => {
         if (!line.trim()) return;
@@ -674,7 +673,7 @@ export class AntigravityCliAdapter {
         if (mapper.model) ctx.saveState({ model: mapper.model });
         if (ctx.signal.aborted) return resolve({});
         if (mapper.error) return reject(withQuota(new Error(mapper.error), mapper.quota));
-        if (code !== 0 || !mapper.finished) return reject(new Error(exitError(code, stderr)));
+        if (code !== 0 || !mapper.finished) return reject(new Error(exitError(code, stderr())));
         resolve({ endedOnRefusal: mapper.endedOnRefusal, wrote: mapper.wrote });
       };
       // A stopped turn ends once agy's whole group has exited, so the next turn can’t resume beside it (#126).

@@ -1,0 +1,9 @@
+{
+  "recorded": "2026-11-27",
+  "version": "codex-cli 0.167.0",
+  "command": ["codex", "login", "status"],
+  "config": "CODEX_HOME set to an empty folder",
+  "exit": 1,
+  "stdout": "",
+  "stderr": "Not logged in\n"
+}

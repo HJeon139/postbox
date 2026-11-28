@@ -1,4 +1,4 @@
-import { cutText } from '../../shared/text-parts.mjs';
+import { cleanSaid } from '../../shared/text-parts.mjs';
 import { agentSkills } from './agent-plugin.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 import { POSTBOX_SKILLS, postboxSkillsOn } from './skill-config.mjs';
@@ -53,7 +53,7 @@ export async function openCodexThread(ctx, request, { sourceThreadId, fork, cwd,
 // an entry of that list counts, at its start or after “; ”, not “postbox:” inside another server’s detail.
 // lint-allow regex: its only variable part is POSTBOX_SERVER, a constant (“postbox”).
 const REQUIRED_FAILED = new RegExp(`required MCP servers failed to initialize: (?:[^;]*; )*${POSTBOX_SERVER}:`);
-const SAID_MAX = 400; // of Codex’s error shown in the step, as for Kiro’s (#489): its transport detail runs long
+export const SAID_MAX = 400; // of Codex’s error shown to the person, as for Kiro’s (#489): its transport detail runs long
 
 /**
  * When Codex refused the thread because Postbox’s server didn’t start, a failed step and an error that says so;
@@ -62,14 +62,24 @@ const SAID_MAX = 400; // of Codex’s error shown in the step, as for Kiro’s (
  */
 export function codexRefusal(ctx, err) {
   if (!REQUIRED_FAILED.test(String(err?.message ?? ''))) return err;
-  const said = cutText(String(err.message), SAID_MAX);
+  const said = cleanSaid(String(err.message), SAID_MAX);
   toolsDown(ctx, `Codex couldn’t start Postbox’s tool server, which it needs, so it didn’t start the turn. Codex said: “${said}”`, { ran: false });
   return Object.assign(
     new Error('Postbox’s tools didn’t load: Codex couldn’t start Postbox’s tool server, so it didn’t start this turn. Retry to try again.'),
-    {
-      cause: err,
-    },
+    // It never reached the agent, though its step opened the turn’s reply (store-outage.mjs, neverReached; #1904).
+    { cause: err, notReached: true },
   );
+}
+
+/**
+ * Codex’s refusal of a request as the person reads it: its words cleaned and cut, as other harnesses’ errors are
+ * (#1905, #1938), keeping its JSON-RPC code and the error as Codex gave it in `cause`. Only at the turn’s edge, after
+ * the checks that read Codex’s exact words (openCodexThread’s missing rollout, codexRefusal). Anything else as it was.
+ * @param {any} err
+ */
+export function codexSaid(err) {
+  if (typeof err?.code !== 'number' || typeof err.message !== 'string') return err;
+  return Object.assign(new Error(cleanSaid(err.message, SAID_MAX)), { code: err.code, cause: err });
 }
 
 /**

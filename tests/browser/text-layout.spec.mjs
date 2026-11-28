@@ -1,0 +1,319 @@
+// The layout check of Postbox’s own screens (#681, tools/text-layout.mjs): on a page built to draw text over text and
+// over a button, cut text off and break words a few letters a line, both the browser specs’ helper
+// (tests/browser/text-layout.mjs) and the UAT runner’s check of each whole-window screenshot (tools/uat/layout-probe.mjs,
+// tools/uat/checks-view.mjs) fail, at 375 and 1280 px; on a clean page, and on Postbox’s own screens, both pass: its
+// first screen, a long room whose items off screen are skipped, a finished turn’s folded steps, a topic thread’s first
+// message faded out above Show all, Jump to latest over the transcript, and a running step’s long output, which
+// shows its last line (#1944).
+
+import { expect, test } from '@playwright/test';
+import { TEXT_LAYOUT } from '../../tools/text-layout.mjs';
+import { runChecks } from '../../tools/uat/checks.mjs';
+import { failsRun } from '../../tools/uat/checks-postbox.mjs';
+import { recordLayout, sampleLayout } from '../../tools/uat/layout-probe.mjs';
+import * as arrange from '../arrange.mjs';
+import { scriptedRoom } from './live-scripts.mjs';
+import { settled, synced } from './postbox.mjs';
+import { expectTidyText, textLayout } from './text-layout.mjs';
+
+// A Postbox with agents on a scripted backend, so a step can be held while its turn runs.
+const scripted = scriptedRoom(test, 'text-layout');
+
+// Sizes are in px and ch of a monospace face, so each page lays out the same at both widths.
+const STYLE = `<style>
+  body { margin: 0; padding: 16px; font: 16px/1.4 sans-serif; background: #fff; color: #111; }
+  .mono { font-family: monospace; }
+  section { margin: 0 0 24px; }
+  button { font: inherit; }
+</style>`;
+
+// One of each problem: text over text, an opaque button misplaced over text, over text with no box of its own
+// (display: contents), and over its own sticky box’s title, text cut off by its box (twice: the second inside a faded
+// box that clips, whose fade isn’t what cuts it), and a word broken three letters a line.
+const BAD = `${STYLE}
+<section style="position: relative; height: 40px">
+  <span>Overlapping words here</span>
+  <span style="position: absolute; left: 0; top: 0">Drawn over the first</span>
+</section>
+<section style="position: relative; height: 40px">
+  <span style="display: contents">Words with no box of their own</span>
+  <button style="position: absolute; left: 40px; top: 0">Go</button>
+</section>
+<section style="position: relative; height: 40px">
+  <span>A sentence a button sits on</span>
+  <button style="position: absolute; left: 40px; top: 0">Send now</button>
+</section>
+<section style="width: 120px; overflow: hidden; white-space: nowrap">This label is far too long for its box</section>
+<section style="position: sticky; top: 0; height: 40px; background: Canvas">
+  <h2 style="margin: 0; font-size: 16px">A dialog’s own title</h2>
+  <button style="position: absolute; left: 40px; top: 0">Close</button>
+</section>
+<section style="overflow: hidden; mask-image: linear-gradient(#000, #000); -webkit-mask-image: linear-gradient(#000, #000)">
+  <div style="width: 120px; overflow: hidden; white-space: nowrap">A faded section, its label still cut</div>
+</section>
+<section class="mono" style="width: 3ch; overflow-wrap: anywhere">Configuration</section>`;
+
+// The same kinds of text, laid out well: cut short with an ellipsis, a word broken four letters a line with its last
+// part shorter, a word broken at soft hyphens, a word set to break anywhere that fills the line before it breaks, a
+// button beside its text, a checkbox in its label, a button under a dialog that text in the dialog crosses, a hidden
+// button under text, an opaque button floating with the window over a paragraph and over part of another button, as
+// Jump to latest does over the transcript, folded steps, and text sitting right in a closed details, over the paragraph
+// under each, a word set to hyphenate and break anywhere, and text hidden for screen readers in a 1 px box, which
+// breaks a letter a line.
+const CLEAN = `${STYLE}
+<section style="width: 120px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">This label is far too long for its box</section>
+<section class="mono" style="width: 4ch; overflow-wrap: anywhere">Configuration</section>
+<section class="mono" style="width: 3ch">ab&shy;cd&shy;ef&shy;gh</section>
+<section class="mono" style="width: 8ch; word-break: break-all">Open xyzabcdefghijklmnop</section>
+<section><span>A sentence and its button</span> <button>Send now</button></section>
+<section><label><input type="checkbox"> Keep it updated</label></section>
+<section style="position: relative; height: 80px">
+  <button style="position: absolute; left: 0; top: 8px">Hidden under the dialog</button>
+  <div role="dialog" style="position: absolute; inset: 0; background: #eee; padding: 8px">Dialog text over the page</div>
+</section>
+<section style="position: relative">
+  <span>Text over a hidden button</span>
+  <button style="position: absolute; left: 0; top: 0; visibility: hidden">Hidden</button>
+</section>
+<section>
+  <div style="position: sticky; top: 0; height: 0"><button style="position: absolute; left: 40px; background: Canvas">Jump</button></div>
+  <p style="margin: 0">A paragraph with an opaque button floating over its words</p>
+</section>
+<section>
+  <div style="position: sticky; top: 0; height: 0"><button style="position: absolute; left: 30px; background: Canvas">Jump to latest</button></div>
+  <button>Good: react</button>
+</section>
+<section><details><summary>Notes</summary>Plain notes sitting right in the details</details><p style="margin: 0">The paragraph under the closed notes.</p></section>
+<section><details><summary>3 steps</summary><div>read books/manifest.json</div><a href="#">Open this turn in Work</a></details><p style="margin: 0">The reply’s first paragraph, right under the folded steps.</p></section>
+<section lang="en" class="mono" style="width: 3ch; hyphens: auto; overflow-wrap: anywhere">Configuration</section>
+<section class="mono" style="overflow-wrap: anywhere">Read aloud:
+  <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Configuration</span>
+</section>`;
+
+const CODES = ['mid-word-break', 'text-cut-off', 'text-on-control', 'text-overlap'];
+/** @param {import('@playwright/test').Page} page  @param {string} html  @param {number} width */
+async function open(page, html, width) {
+  await page.setViewportSize({ width, height: 800 });
+  await page.setContent(html);
+}
+
+for (const width of [375, 1280]) {
+  test(`#681 at ${width} px a page that draws text over text and a button, cuts it off and breaks words fails the check`, async ({ page }) => {
+    await open(page, BAD, width);
+    const found = await textLayout(page);
+    expect.soft([...new Set(found.map((p) => p.code))].sort(), 'one of each problem the page was built with').toEqual(CODES);
+    expect.soft(found.filter((p) => p.code === 'text-cut-off').length, 'both labels cut off, the faded section’s too').toBe(2);
+    const title = found.filter((p) => p.code === 'text-on-control' && p.message.includes('A dialog’s own title'));
+    expect.soft(title.length, 'a close button over its own sticky box’s title').toBe(1);
+    const boxless = found.filter((p) => p.code === 'text-on-control' && p.message.includes('Words with no box'));
+    expect.soft(boxless.length, 'text in a display: contents box under a button').toBe(1);
+    for (const p of found) {
+      // Each names its element by a selector path, and quotes no more than 40 characters of its text and an ellipsis.
+      expect.soft(p.message, 'names where it is').toMatch(/\([\w.#:() >-]+\)/);
+      for (const [, quote] of p.message.matchAll(/“([^”]*)”/g)) expect.soft(quote.length, `“${quote}” is short`).toBeLessThanOrEqual(41);
+    }
+    await expect(expectTidyText(page, 'the bad page'), 'the specs’ helper fails it').rejects.toThrow(/text-overlap|text-on-control|cut off|mid-word/);
+  });
+
+  test(`#681 at ${width} px the UAT check of a whole-window screenshot fails the run on the bad page, and passes a clean one`, async ({ page }) => {
+    const ev = (/** @type {string} */ expr) => page.evaluate(expr);
+    const probes = {};
+    const record = recordLayout(probes, () => 1);
+    await open(page, BAD, width);
+    record(await sampleLayout(ev));
+    const bad = runChecks({ probes }, { only: ['text-layout'] });
+    expect.soft(bad.length, 'a finding for each problem').toBeGreaterThanOrEqual(CODES.length);
+    expect.soft(failsRun(bad), 'the findings fail the run').toBe(true);
+    const clean = { layout: [] };
+    await open(page, CLEAN, width);
+    recordLayout(clean, () => 2)(await sampleLayout(ev));
+    expect.soft(runChecks({ probes: clean }, { only: ['text-layout'] }), 'nothing on the clean page').toEqual([]);
+  });
+
+  test(`#681 at ${width} px a clean page passes the check`, async ({ page }) => {
+    await open(page, CLEAN, width);
+    await expectTidyText(page, 'the clean page');
+  });
+
+  // A fresh page opens the project’s most recently active conversation (app/js/last-place.mjs): one this case makes and
+  // writes in last, so it opens the same room run alone or after the others.
+  test(`#681 at ${width} px Postbox’s first screen passes the check`, async ({ page }) => {
+    const t = scripted.room(`First screen at ${width}`, [`first${width}`]);
+    arrange.post(scripted.app.rt, t.id, { kind: 'user', text: 'Where did we leave the reading notes?' });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/`);
+    await synced(page, scripted.app);
+    await expect(page.locator('#main'), 'the room this case made opens').toContainText('Where did we leave the reading notes?');
+    await expectTidyText(page, 'Postbox’s first screen');
+  });
+
+  // A long room: the transcript lets the browser skip the items off screen (#712), and the check draws them while it
+  // measures, then leaves the view following the end, as it was.
+  test(`#681 at ${width} px a long room at its end passes the check`, async ({ page }) => {
+    const { rt } = scripted.app;
+    const t = scripted.room(`Long room at ${width}`, [`long${width}`]);
+    for (let i = 1; i <= 80; i++) arrange.post(rt, t.id, { kind: 'user', text: LONG(i) });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+    await synced(page, scripted.app);
+    await settled(page);
+    const skipped = await page.evaluate(
+      () =>
+        [...document.querySelectorAll('.transcript > .item')].filter((e) => e.firstElementChild?.checkVisibility({ contentVisibilityAuto: true }) === false)
+          .length,
+    );
+    expect(skipped, 'items off screen are skipped').toBeGreaterThan(20);
+    await expectTidyText(page, 'a long room at its end');
+    // Once the page has had its frames after the check: its view publishes what it is on a scroll.
+    await settled(page);
+    await expect(page.locator('#main.transcript'), 'the view still follows the end').toHaveAttribute('data-view-mode', 'following');
+    const gap = await page.evaluate(() => {
+      const s = document.scrollingElement;
+      return s.scrollHeight - s.scrollTop - s.clientHeight;
+    });
+    expect(gap, 'at the end, within the view’s 2 px').toBeLessThanOrEqual(2);
+  });
+
+  // A finished turn folds its steps into a closed details above its reply: laid out, but not drawn.
+  test(`#681 at ${width} px a finished turn’s folded steps over its reply pass the check`, async ({ page }) => {
+    const who = `folder${width}`;
+    const t = scripted.room(`Folded steps at ${width}`, [who]);
+    scripted.scripts.set(who, async ({ emit }) => {
+      emit({ kind: 'tool_call', id: 'r1', name: 'Bash', input: { command: 'ls books' }, final: true });
+      emit({ kind: 'tool_result', id: 'r1', text: 'manifest.json' });
+      emit({ kind: 'text', text: 'I found 11 papers on agent memory, and the manifest lists each one with its year.' });
+    });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+    await synced(page, scripted.app);
+    scripted.app.rt.sendMessage(t.id, { text: 'List the books.' });
+    await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
+    const folded = page.locator('details.activity:not([open])');
+    await expect(folded, 'the turn’s steps fold').toHaveCount(1);
+    await settled(page);
+    await expectTidyText(page, 'a finished turn’s folded steps');
+  });
+
+  // The step keeps the end of what the call returned (stepOutput, server/step-text.mjs), and its box shows that end: it
+  // scrolls, anchored to its last line, so the newest lines are the ones in view (#1944).
+  test(`#681 at ${width} px a running step’s long output shows its last line and passes the check`, async ({ page }) => {
+    const who = `runner${width}`;
+    const t = scripted.room(`Long output at ${width}`, [who]);
+    scripted.scripts.set(who, async ({ emit }) => {
+      emit({ kind: 'tool_call', id: 'b1', name: 'Bash', input: { command: 'npm test' }, final: true });
+      emit({ kind: 'tool_result', id: 'b1', text: OUTPUT });
+      await scripted.hold(who, 1);
+    });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+    await synced(page, scripted.app);
+    scripted.app.rt.sendMessage(t.id, { text: 'Run the tests.' });
+    await expect.poll(() => scripted.at(who)).toBe(1);
+    const output = page.locator('.live-steps .step-output');
+    await expect(output).toContainText('test 30 passed');
+    expect(await output.evaluate((el) => el.scrollHeight > el.clientHeight + 10), 'the output is longer than its box').toBe(true);
+    expect(await output.evaluate(lastLineShows), 'its last line is in view').toBe(true);
+    await expect(output, 'a keyboard reaches it, by name').toHaveAttribute('aria-label', /^Output of /);
+    await expect(output).toHaveAttribute('tabindex', '0');
+    await expectTidyText(page, 'a running step’s long output');
+    scripted.go(who);
+    await expect.poll(() => arrange.liveTurns(scripted.app.rt)).toBe(0);
+  });
+
+  test(`#681 at ${width} px a topic thread’s long first message, clamped with Show all, passes the check`, async ({ page }) => {
+    const { rt } = scripted.app;
+    const t = scripted.room(`Clamped root at ${width}`, [`reader${width}`]);
+    const root = arrange.post(rt, t.id, { kind: 'user', text: ROOT });
+    const side = rt.startTopic(t.id, root.id).threadId;
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/#/t/${t.id}/side/${side}`);
+    await synced(page, scripted.app);
+    await expect(page.locator('.thread-root .md.clamped')).toContainText('The first paragraph');
+    await expect(page.locator('.thread-root').getByRole('button', { name: 'Show all' })).toBeVisible();
+    const md = page.locator('.thread-root .md.clamped');
+    expect(await md.evaluate((el) => el.scrollHeight > el.clientHeight + 10), 'the first message is clamped').toBe(true);
+    await expectTidyText(page, 'a topic thread’s clamped first message');
+  });
+
+  test(`#681 at ${width} px Jump to latest over the transcript’s text passes the check`, async ({ page }) => {
+    const { rt } = scripted.app;
+    const t = scripted.room(`Jump at ${width}`, [`talker${width}`]);
+    for (let i = 1; i <= 10; i++) arrange.post(rt, t.id, { kind: 'user', text: LONG(i) });
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+    await synced(page, scripted.app);
+    await settled(page);
+    await page.mouse.move(width / 2, 300);
+    await page.mouse.wheel(0, -600);
+    await settled(page);
+    for (let i = 1; i <= 3; i++) arrange.post(rt, t.id, { kind: 'user', text: `Arrived while you read ${i}` });
+    const pill = page.getByRole('button', { name: /^Jump to latest/ });
+    await expect(pill).toBeVisible();
+    // The pill floats over the transcript, opaque: scrolled until a line of its text is under it.
+    expect(await page.evaluate(lineUnderPill), 'a line of text under the pill').toBe(true);
+    await settled(page);
+    expect(await page.evaluate(lineUnderPill, 0), 'the line is still under the pill once the page settles').toBe(true);
+    await expect(pill).toBeVisible();
+    await expectTidyText(page, 'Jump to latest over the transcript');
+  });
+}
+
+// The page isn’t a hidden frame: while the check measures, the page’s own animation frames run, so an id one of its
+// modules asked for is one it can cancel.
+test('#681 the check leaves the page’s animation frames its own while it measures', async ({ page }) => {
+  await page.goto(`${scripted.app.origin}/`);
+  await synced(page, scripted.app);
+  const own = await page.evaluate(`(async () => {
+    const raf = window.requestAnimationFrame;
+    const measuring = ${TEXT_LAYOUT};
+    const same = window.requestAnimationFrame === raf;
+    await measuring;
+    return same && window.requestAnimationFrame === raf;
+  })()`);
+  expect(own, 'requestAnimationFrame is the page’s own while the check runs, and after').toBe(true);
+});
+
+/** Whether the last line of a box’s text is inside what the box shows. @param {Element} el */
+function lastLineShows(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const lines = [...range.getClientRects()];
+  const last = lines[lines.length - 1];
+  const box = el.getBoundingClientRect();
+  return Boolean(last) && last.top >= box.top - 1 && last.bottom <= box.bottom + 1;
+}
+
+const OUTPUT = Array.from({ length: 30 }, (_, i) => `test ${i + 1} passed in 0.${i} s`).join('\n');
+const ROOT = [
+  'The first paragraph says what the thread is about, at some length, so that the message runs past the few lines a topic thread shows of it.',
+  'The second paragraph goes on with the details of the plan, which the thread’s replies are about, and adds a few more words.',
+  'The third paragraph adds what was tried before, and why it didn’t work, so the thread doesn’t try it again.',
+  'The fourth paragraph lists who is working on which part, and what each of them needs from the others.',
+  'The fifth paragraph is the end of it, which the panel shows only once you choose Show all.',
+].join('\n\n');
+const LONG = (n) => `Message ${n}. The loop alternates a thought, an action and an observation, so the plan stays grounded in what the agent saw.`;
+
+/**
+ * Whether a line of the transcript’s text is under Jump to latest, scrolled down a few pixels at a time until one is,
+ * up to tries times, as far as a message and its actions are tall. With no tries, it only measures.
+ */
+function lineUnderPill(tries = 50) {
+  const range = document.createRange();
+  const crosses = (/** @type {DOMRect} */ pill) => {
+    const walk = document.createTreeWalker(document.querySelector('.transcript') ?? document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      range.selectNodeContents(n);
+      for (const r of range.getClientRects()) {
+        const y = Math.min(r.bottom, pill.bottom) - Math.max(r.top, pill.top);
+        if (Math.min(r.right, pill.right) - Math.max(r.left, pill.left) > 2 && y >= r.height * 0.8) return true;
+      }
+    }
+    return false;
+  };
+  const under = () => {
+    const pill = document.querySelector('.jump button')?.getBoundingClientRect();
+    return Boolean(pill && crosses(pill));
+  };
+  for (let i = 0; i < tries && !under(); i++) scrollBy({ top: 4, behavior: 'instant' });
+  return under();
+}

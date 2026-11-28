@@ -179,7 +179,6 @@ flowchart LR
   T -->|take| D
   T -->|turn.ended| D
   T -->|progress, not stored| PG[The page’s stream]
-  D -->|stateOf| ST[Agent state]
   R[Running] --> ST
   ST --> PG
 ```
@@ -208,10 +207,11 @@ flowchart LR
     - `waiting(sessionId)`;
     - `take(sessionId, turnId, budget)`, which returns the waiting entries of one thread, that of the oldest waiting entry, up to the budget, and leaves the rest waiting for the next turn;
     - `entriesFrom(itemId)`.
-  - `stateOf(sessionId)`: a sender’s view of each entry, and an agent’s “waiting behind @x since”.
+  - `stateOf(sessionId)`: each entry’s own state, for its message if delivery status is ever shown there; an entry still waiting is never an agent state of its sender’s (#1975).
   - **Scheduled wakes:**
     - `schedule` and `cancelSchedule` add and remove them.
     - A due wake is an entry with the source “scheduled”, so `noteScheduledTurn` becomes its take, `prepareScheduledRetry` becomes the failed-start rule, and the tools a wake recorded (`recordScheduledTool`, `recordedTools`) are its note.
+    - A wake whose own turn is on a host stays that turn’s while it waits to be attached again, after a restart or a lost link: it stays running with no timer, and isn’t settled as done. The turn attached again keeps the wake’s id through its origin record (`se.remoteTurn.origin`, `continueAs`), notes itself as the wake’s turn, and settles it as the first turn would have: done when it ends, retried with the bounded backoff on a network failure. A host that’s only offline at a restart leaves the wake waiting with its turn until the host is back. When Postbox gives up attaching it (`restore`, when the host was removed or Postbox isn’t set up to reach hosts; `reattach`, when the agent moved; `cancel`, when the host is removed or the conversation deleted), the wake never says “done”: an agent moved off that host has the wake retried where it runs now, as from a network failure and as a recovery when a tool had started, and one still placed on a host Postbox can’t reach any more has it stopped, since a retry could only fail there (#466; `tests/scheduled-wake-host-restart.test.mjs`).
   - **The person’s own actions:**
     - `edit(entryId)`, `cancel(entryId)` and `stopped(sessionId)`;
     - `retry(sessionId)`: the facade’s Retry on a failed turn. The entries that turn took go back to waiting, marked as a resend, and the session is no longer failed, so `entry.waiting` starts the turn. As built (#1429) it takes the failed turn’s id and whom its failed reply already woke (`woken`, #485), which rides on each reopened entry, so whichever turn takes them, Send now’s included, is the retry and no other turn is. What an app event’s entry carries in memory stays while a Retry can reopen it. A failed turn that took no entries, such as a host turn’s replay, sends its request again instead.
@@ -289,10 +289,9 @@ flowchart LR
 
   Step E is Delivery’s `turn.settled` listener, and step R its `turn.ended` listener.
 
-**Agent state** is read, never stored, and is built in the live-state step from what this step records. It comes from Running (a live turn, exiting, awaiting attach), Turns’ current step and its last turn’s end, Work’s jobs, Delivery’s `stateOf`, and asks once they exist. Each agent shows one of:
+**Agent state** is read, never stored, and is built in the live-state step from what this step records. It comes from Running (a live turn, exiting, awaiting attach), Turns’ current step and its last turn’s end, Work’s jobs, and asks once they exist. A post still waiting in another agent’s inbox isn’t one of them: a hand-off never shows its sender as waiting (#1975). Each agent shows one of:
 - running, with its current step;
 - waiting on a job;
-- waiting behind @x;
 - waiting on you;
 - failed;
 - idle.

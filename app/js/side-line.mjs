@@ -4,7 +4,7 @@ import { liveSessions } from './client.mjs';
 import { h, icon, plural } from './dom.mjs';
 import { failedActions } from './failed-actions.mjs';
 import { reach } from './open-threads.mjs';
-import { ringFor, stateWord, stateWordOf } from './ring.mjs';
+import { ringFor, stateWordOf } from './ring.mjs';
 import { jumpTo } from './view-jump.mjs';
 import { mountFor } from './window-live.mjs';
 
@@ -63,9 +63,9 @@ export function sideActive(sideId) {
   const here = liveSessions().filter((se) => rank[se.state] && ((se.sideTurn?.threadId ?? se.threadId) === sideId || waiting(se)));
   return here.sort((a, b) => rank[b.state] - rank[a.state])[0] ?? null;
 }
-export const sideSig = (se) => (se ? `${se.id}:${se.state}` : '');
+export const sideSig = (se) => (se ? `${se.id}:${se.state}:${se.background === true}` : '');
 /** “is calling tools”, “needs you”: what an agent is doing, after its name. */
 export const doing = (se) => {
   if (se.state === 'needs') return stateWordOf(se).toLowerCase();
-  return se.state === 'failed' ? 'failed' : `is ${stateWord(se.state).toLowerCase()}`;
+  return se.state === 'failed' ? 'failed' : `is ${stateWordOf(se).toLowerCase()}`;
 };

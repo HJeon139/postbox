@@ -9,15 +9,15 @@ import { offersBring } from '../bring.mjs';
 import { hostRulesOf } from '../host-rules.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
 import { backTo } from '../reply-back.mjs';
-import { noteScheduledTurn } from '../scheduled-wakes.mjs';
+import { noteScheduledTurn, retryHostWake } from '../scheduled-wakes.mjs';
 import { wokeOf } from '../turn-marks.mjs';
 import { carryAttachments } from './attachments.mjs';
 import { listen, needHost, releaseHost } from './turns-need.mjs';
 import { continueAs, keepOrigin } from './turns-origin.mjs';
 import { claimShown, endOrphanCards } from './turns-prompts.mjs';
 import { replaying } from './turns-replay.mjs';
-import { signInCheck } from './turns-resume.mjs';
 import { abortError, OFFSET_SAVE_MS, remoteOf, updateRemote, whyLine } from './turns-shared.mjs';
+import { warnSignIn } from './turns-signin.mjs';
 import { sendSnapshot } from './turns-snapshot.mjs';
 import { askStop } from './turns-stops.mjs';
 
@@ -161,24 +161,6 @@ function startable(rts, se, persona, host) {
 }
 
 /**
- * A sign-in that’s run out shows before the turn, not at its first model request (the design, “Sign-in stays the
- * host’s”). It’s a warning: the check may be wrong, and the person decides.
- * @param {RemoteTurns} rts @param {any} turn @param {any} ctx @param {any} se @param {any} host
- */
-async function warnSignIn(rts, turn, ctx, se, host) {
-  const check = await signInCheck(rts, turn.remote.hostId);
-  if (ctx.signal.aborted) throw abortError();
-  if (check && !check.ok)
-    rts.rt.threads.notify(
-      'blocking',
-      se,
-      `Sign-in on ${host.name} may have run out`,
-      `The host’s sign-in check failed${check.code === null ? '' : ` (exit code ${check.code})`}, so @${se.handle}’s turn there may stop with “Sign-in needed”. Sign in on the host, then carry on.`,
-      turn.threadId,
-    );
-}
-
-/**
  * A turn attached again after a restart: it goes on as the host turn it was, and hears what came for it meanwhile.
  * @param {RemoteTurns} rts @param {Live} live @param {any} se @param {any} turn @param {string} attach @param {any} remote
  */
@@ -192,6 +174,8 @@ function attachTo(rts, live, se, turn, attach, remote) {
   if (rts.restoring.delete(attach)) releaseHost(rts, live.hostId);
   rts.noteAttach(se.id);
   updateRemote(rts, se.id, { state: 'running', rtTurn: turn.id, at: rts.now() });
+  // The wake it continues names it as its own now, so a second restart leaves the wake to it too (rearmWakes, #466).
+  noteScheduledTurn(rts.rt, turn);
   // Before the prompts that came meanwhile: a card shown before the restart still holds its call.
   claimShown(rts, live, attach);
   for (const m of rts.early.get(attach) ?? []) rts.onHostMessage(live.hostId, m);
@@ -220,7 +204,11 @@ function renamedBusy(rts, e, hostId, se) {
  */
 export function leaveMoved(rts, sessionId, hostId) {
   const r = remoteOf(rts, sessionId)?.remoteTurn; // as written (#623)
-  if (!r?.turn || r.hostId === hostId || rts.restoring.get(r.turn) !== sessionId) return;
+  if (!r?.turn || r.hostId === hostId) return;
+  // A wake that turn was, waiting to be attached or resumed, retries where its agent runs now, as reattach’s give-up
+  // does (#466).
+  retryHostWake(rts.rt, sessionId);
+  if (rts.restoring.get(r.turn) !== sessionId) return;
   rts.restoring.delete(r.turn);
   rts.noteAttach(sessionId);
   rts.early.delete(r.turn);
@@ -237,6 +225,9 @@ function allocate(rts, live, folder) {
   const id = randomUUID();
   adopt(rts, live, id);
   leaveMoved(rts, live.sessionId, live.hostId);
+  // A turn that doesn’t continue the last one there ends the resume that carried a wake (#466). Not this turn’s own
+  // second host turn (nextTurn, a fresh start after a missing session), whose wake is its own and still runs.
+  if (!live.rt.origin && remoteOf(rts, live.sessionId)?.remoteTurn?.rtTurn !== live.rt.id) retryHostWake(rts.rt, live.sessionId);
   // Built from the session as written, so a resume’s count, a kept reply or a stop held behind a commit carries over (#623).
   rts.rt.sessions.update(live.sessionId, (se) => {
     const prior = se.remoteTurn ?? {};

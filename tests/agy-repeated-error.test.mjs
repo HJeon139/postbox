@@ -146,3 +146,8 @@ test('#335: turns that end with no error text are each reported', () => {
     'a bare status isn’t an error that could repeat',
   );
 });
+
+test('#1905 agy’s words reach the step cleaned, as Codex’s and Kiro’s do: no bidi or zero-width characters, no line breaks, no controls', () => {
+  const { ended } = agent()('error-after-refusal', 'Quota ‮reached‬​\nretry\u0007 later');
+  assert.equal(ended[0].detail, 'Quota reached retry later');
+});

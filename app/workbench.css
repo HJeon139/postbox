@@ -131,6 +131,14 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; }
+/* overflow-x: clip on both, not hidden: nothing laid out wider than the window widens the page. On a phone the viewport
+   grows to fit overflowing content, so even a box measured and removed in one task laid the page out wider, the
+   transcript rewrapped, and the clamp read as you scrolling up (#966). Neither alone holds: the root’s clip is the
+   viewport’s, and the body’s is its own box. clip makes no scroll container, so sticky bars and inner scrolling stay.
+   Postbox’s page only: an agent app’s sandboxed page (pb-sandbox) lays itself out as its author wrote it. So the page’s
+   scrollWidth is the window’s even when something lays out past it: a check for sideways overflow reads the widest
+   element’s rect instead (tests/browser/page-width.mjs). */
+html:not(.pb-sandbox), html:not(.pb-sandbox) > body { overflow-x: clip; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -355,7 +363,7 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .me-card { max-width: 82%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
 .turn.me .who { justify-content: flex-end; }
 
-.md { display: flex; flex-direction: column; gap: 10px; }
+.md { display: flex; flex-direction: column; gap: 10px; overflow-wrap: break-word; }
 .md p, .md li { max-width: 72ch; }
 .md ul, .md ol { padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 .md h3 { font-size: 14px; font-weight: 650; margin-top: 4px; }
@@ -400,7 +408,9 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .steps .step-note { flex-basis: 100%; color: var(--dim); }
 /* A call’s input and the end of what it returned (app/js/activity-steps.mjs). */
 .steps .step-input, .steps .step-output { flex-basis: 100%; color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
-.steps .step-output { white-space: pre-wrap; max-height: 6.5em; overflow: hidden; }
+/* The end of what a call returned, which is what the server keeps: the box scrolls, anchored to its last line, so the
+   newest lines are the ones in view (#1944). A short output doesn’t scroll, and looks as it always has. */
+.steps .step-output { white-space: pre-wrap; max-height: 6.5em; overflow-y: auto; display: flex; flex-direction: column-reverse; }
 .steps li.denied .step-note { color: var(--alert); }
 .steps li.thought details > summary { cursor: pointer; color: var(--dim); font-style: italic; }
 .steps li.thought details > p { margin: 4px 0 0; color: var(--dim); white-space: pre-wrap; }
@@ -528,6 +538,8 @@ details.activity > .work-record-link { display: inline-block; margin: 4px 0 0 22
 .held-help { display: grid; }
 .held-help > span { grid-area: 1 / 1; }
 .held-help > [aria-hidden='true'] { visibility: hidden; }
+/* What a model’s last turn did (#1977): a line of its own height whether it says anything, so typing moves nothing. */
+.ran-line { min-height: 1lh; overflow-wrap: anywhere; }
 .err { font-size: 12px; color: var(--alert-ink); display: flex; align-items: center; gap: 5px; }
 .err .i { width: 12px; height: 12px; }
 /* New conversation’s error row keeps a line of the error’s size, shown or not, so the dialog never re-centers (#550). */
@@ -550,7 +562,9 @@ details.activity > .work-record-link { display: inline-block; margin: 4px 0 0 22
 
 .block { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .block-head { display: flex; flex-wrap: wrap; row-gap: 4px; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); min-height: 44px; }
-.block-head .title { font-size: 14px; }
+/* The title keeps its longest word whole, so a narrow head wraps the kind under it before it squeezes the title under
+   the kind (#681, a review’s “schema.md” at 375 px). */
+.block-head .title { font-size: 14px; min-width: min-content; }
 .block-head .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
 /* A tool’s name is an identifier: it keeps its case on permission and refusal cards (#150). */
 .block-head .kind .tool-name { text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }

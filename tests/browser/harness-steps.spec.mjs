@@ -70,6 +70,15 @@ test('a running turn’s newest step shows what it was given and what it returne
     await expect(failed.locator('[aria-label="failed"]')).toBeVisible();
     await expect(failed.locator('.step-input')).toContainText('command: ls nope-missing');
     await expect(failed.locator('.step-output')).toContainText('No such file or directory');
+    // A short output fits its box: nothing scrolls, and it stands as tall as its own lines, as before #1944.
+    const fits = await failed.locator('.step-output').evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const text = range.getBoundingClientRect();
+      return { scrolls: el.scrollHeight > el.clientHeight, extra: el.getBoundingClientRect().height - text.height };
+    });
+    expect(fits.scrolls, 'a short output doesn’t scroll').toBe(false);
+    expect(fits.extra, 'its box is as tall as its lines, and their leading').toBeLessThanOrEqual(4);
     await expect(failed.locator('.step-note'), 'why it failed shows once, in its output').toHaveCount(0);
     await expect(live.locator('li.step-line', { hasText: 'Read notes.txt' }), 'an older step is a line').toHaveCount(1);
   });

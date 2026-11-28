@@ -19,6 +19,8 @@
 //   (#531, tools/uat/view-probe.mjs), for view-moved and window-paged-back
 // - skipped, once the page shows a conversation: how many of its items the browser skipped (#712a,
 //   tools/uat/skip-probe.mjs); a run from before it has none, and rows-skipped stays silent
+// - layout, once the runner takes a whole-window screenshot: what the layout check found on the page right after it, by
+//   step and width (#681, tools/uat/layout-probe.mjs), for text-layout; a run from before it has none
 
 export const newProbes = () => ({
   fullScreen: [],

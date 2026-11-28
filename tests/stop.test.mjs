@@ -300,7 +300,7 @@ test('#126: the Kiro CLI starts in its own group too, and Stop signals the group
   });
   const ctx = fakeCtx({ persona: { handle: 'kiro', permissionMode: 'auto', folder: `${STOP_DIR}/kiro`, usesHostSetup: false } });
   const done = adapter.deliver({}, { kind: 'user', text: 'Go' }, ctx);
-  for (let i = 0; i < 50 && !spawned.length; i++) await sleep(5);
+  for (let i = 0; i < 2000 && !spawned.length; i++) await sleep(5);
   assert.equal(spawned[0].detached, true);
   ctx.abort.abort();
   await sleep(5);

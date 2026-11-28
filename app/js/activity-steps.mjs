@@ -2,6 +2,7 @@
 // under the step that started it (#73).
 
 import { h, plural } from './dom.mjs';
+import { scrollStop } from './scroll-stop.mjs';
 
 export function activityLabel(all) {
   const steps = all.filter((s) => s.kind !== 'thought' && s.kind !== 'said');
@@ -100,7 +101,8 @@ export function stepRow(s) {
       // What the call was given and the end of what it returned, as its harness reported them (server/harness-tools.mjs),
       // each only where the step doesn’t already say it (its label names the command; its output carries why it failed).
       s.input && !saidBy(s.label, s.input) ? h('span.step-input.mono', s.input) : null,
-      s.output ? h('span.step-output.mono', s.output) : null,
+      // A tab stop only while it scrolls (#1964).
+      s.output ? scrollStop(h('span.step-output.mono', { 'aria-label': `Output of ${s.label}` }, s.output)) : null,
     ),
     dur,
   );

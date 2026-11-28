@@ -33,8 +33,8 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
-import { cutText } from '../../shared/text-parts.mjs';
-import { withQuota, withTransient } from '../harness-failure.mjs';
+import { cleanTail } from '../../shared/text-parts.mjs';
+import { withNetwork, withQuota, withTransient } from '../harness-failure.mjs';
 import { claudeModels } from '../remote/host/harness-models.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
 import { claudeArgs, claudeEnv } from './claude-code-args.mjs';
@@ -46,6 +46,7 @@ import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-gr
 import { recordOnceWritten } from './prompt-sent.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
+import { stderrTail } from './stderr-tail.mjs';
 import { checkoutSteering } from './steering.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
@@ -225,7 +226,6 @@ export class ClaudeCodeAdapter {
         reject(new Error(remote ? `Couldn’t start Claude Code on the host: ${e.message}` : `Couldn’t start Claude Code (${this.bin}): ${e.message}`));
         return;
       }
-      let stderr = '';
       let finished = false;
       const exited = new Promise((r) => {
         child.once('exit', r);
@@ -258,29 +258,29 @@ export class ClaudeCodeAdapter {
           ),
         ),
       );
-      child.stderr.on('data', (d) => {
-        stderr = (stderr + d).slice(-4000);
-      });
+      const stderr = stderrTail(child);
       readStream(ctx, child, mapper);
       const done = (code) => {
         if (finished) return;
         finished = true;
         stop.off();
         // A fork whose branch point is gone keeps nothing from this run: no session id, no checkpoint.
-        if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, stderr)) return resolve({ missingForkPoint: true });
+        if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, stderr())) return resolve({ missingForkPoint: true });
         ctx.saveState({ ...mapper.endState, ...(mapper.sessionId ? { fork: null } : {}) });
         const current = mapper.sessionId ?? ctx.state.claudeSessionId;
         if (mapper.lastUuid && current) ctx.checkpoint?.({ claudeSessionId: current, uuid: mapper.lastUuid });
         if (ctx.signal.aborted) return resolve({});
         // A session to resume or fork that Claude Code no longer has. On a host, the result says it too (remoteSaid).
-        const said = remote ? remoteSaid(stderr, mapper.result) : stderr;
+        const said = remote ? remoteSaid(stderr(), mapper.result) : stderr();
         if ((resume || fork) && /No conversation found|session .* not found/i.test(said)) return resolve({ missingSession: true });
         const failure = resultError(mapper.result);
         if (failure) {
-          const why = cutText(stderr.trim().split('\n').slice(-3).join(' '), 400);
+          // Its last three lines, cleaned as a CLI’s words are, and their end, where the newest words are (#1938).
+          const why = cleanTail(stderr().trim().split('\n').slice(-3).join(' '), 400);
           const error = withQuota(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`), mapper.quota);
-          // A provider error that passes, such as 529 Overloaded, by the result’s HTTP status (#1713).
-          return reject(withTransient(error, mapper.result?.api_error_status));
+          // A provider error that passes, such as 529 Overloaded, by the result’s HTTP status (#1713); an API Claude
+          // Code couldn’t reach, by the result’s own word for it, so a scheduled wake retries (#466).
+          return reject(withNetwork(withTransient(error, mapper.result?.api_error_status), mapper.result?.api_error === 'connection_failed'));
         }
         resolve({});
       };

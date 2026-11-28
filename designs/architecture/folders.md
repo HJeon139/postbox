@@ -121,7 +121,7 @@ flowchart LR
 | `app/js/pane/` | 6 | The right pane beside a conversation: its views, focus, route, split and width. | `pane`, `pane-focus` → `focus`, `pane-late-thread` → `late-thread`, `pane-route` → `route`, `pane-split` → `split`, `pane-width` → `width` |
 | `app/js/agents/` | 6 | The agents list: rows, rings, queues, the agent tree and the add card. | `agents`, `agent-facts`, `agent-queue`, `agent-tree`, `ring`, `hop-card` |
 | `app/js/permissions/` | 7 | Permission cards, refusals, and the permissions panel. | `permissions`, `permission-cards` → `cards`, `permission-hooks` → `hooks`, `permission-mcp` → `mcp`, `run-choice`, `denial-card`, `allowed-call` |
-| `app/js/hosts/` | 11 | Remote hosts in Settings, and an agent on a host. | `hosts`, `hosts-confirm` → `confirm`, `hosts-editor` → `editor`, `hosts-fields` → `fields`, `hosts-parts` → `parts`, `hosts-settings` → `settings`, `hosts-short` → `short`, `hosts-status` → `status`, `keep-updated`, `agent-host`, `remote` |
+| `app/js/hosts/` | 12 | Remote hosts in Settings, and an agent on a host. | `hosts`, `host-signins` → `signins`, `hosts-confirm` → `confirm`, `hosts-editor` → `editor`, `hosts-fields` → `fields`, `hosts-parts` → `parts`, `hosts-settings` → `settings`, `hosts-short` → `short`, `hosts-status` → `status`, `keep-updated`, `agent-host`, `remote` |
 | `app/js/sheets/` | 7 | Dialogs: new agent, new conversation, persona and Settings tabs. | `sheets`, `sheets-place` → `place`, `sheets-settings` → `settings`, `check-field`, `skills-field`, `persona-delete`, `projects-tab` |
 
 ### `shared/`

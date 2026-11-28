@@ -16,8 +16,8 @@ function hostManager(hosts) {
  * A host’s connection as the page shows it: the link’s state, its failure in words with the next step, what the
  * daemon’s welcome said about the host (its home, Node, harnesses and problems, not its turns), and when Postbox last
  * heard from it, and whether Postbox keeps it up to date by itself, with its newest automatic install (its version,
- * when, how it ended, and why the record couldn’t be read or written, never a token or a path). Null before the host
- * manager knows of it.
+ * when, how it ended, and why the record couldn’t be read or written, never a token or a path), and whether each
+ * harness there is signed in (signIns, #1608). Null before the host manager knows of it.
  * @param {import('./host-service.mjs').Hosts} hosts @param {string} id
  */
 export function hostStatus(hosts, id) {
@@ -41,7 +41,25 @@ export function hostStatus(hosts, id) {
     lastHeard: st.lastHeard ?? null,
     keepUpdated: st.keepUpdated === true,
     update: updateFields(st.update),
+    signIns: signInFields(st.signIns),
   };
+}
+
+/**
+ * What the host last said of each harness’s sign-in (#1608), for its card and the “Runs on” warning: when it first
+ * gave that answer, and per harness its state, with the method and when it runs out when signed in, and nothing else.
+ * null before it said.
+ * @param {import('./hosts-status.mjs').SignIns | null | undefined} s
+ */
+function signInFields(s) {
+  if (!s) return null;
+  const harnesses = s.harnesses.map((h) => ({
+    name: h.name,
+    state: h.state,
+    ...(h.method === undefined ? {} : { method: h.method }),
+    ...(h.expiresAt === undefined ? {} : { expiresAt: h.expiresAt }),
+  }));
+  return { at: s.at, harnesses };
 }
 
 /**

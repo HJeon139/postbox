@@ -1,10 +1,11 @@
 // A host’s status on its card in the Hosts tab (app/js/hosts.mjs): its connection in words, when Postbox last heard
 // from it, what to do about a failure (the command to run in a terminal, Reconnect, Install, Take over), how its
-// newest automatic install stands (#464-b2b), what its daemon found there, with its warnings, and the deleted agents’
-// memory it still has to remove (#491).
+// newest automatic install stands (#464-b2b), what its daemon found there, with its warnings and whether each harness
+// is signed in (#1608), and the deleted agents’ memory it still has to remove (#491).
 
 import { api, client } from './client.mjs';
 import { ago, fill, h, icon } from './dom.mjs';
+import { loginCommand, signInOf } from './host-signins.mjs';
 import { confirmInstall, confirmTakeover } from './hosts-confirm.mjs';
 import { openEditor } from './hosts-editor.mjs';
 import { command, commandsIn, withCode } from './hosts-parts.mjs';
@@ -28,6 +29,9 @@ const HARNESSES = {
   'kiro-cli': ['Kiro CLI', 'kiroPath'],
   codex: ['Codex', 'codexPath'],
 };
+
+/** What a harness’s card line adds of its sign-in (#1608): nothing when the host couldn’t tell, or hasn’t said. */
+const SIGN_IN_WORDS = /** @type {Record<string, string>} */ ({ 'signed-in': '. Signed in', 'signed-out': '. Not signed in' });
 
 /** The failures whose own action is Install… or Reinstall…, which a failed automatic install’s Install… stands for. */
 const INSTALL_KINDS = new Set(['not-installed', 'version', 'bad-token']);
@@ -195,27 +199,57 @@ const failureView = (p, host, f) => {
   );
 };
 
-/** What the host’s daemon found there, and what it warns about. @param {any} host @param {any} w */
+/**
+ * What the host’s daemon found there, whether each harness found is signed in (#1608), and what it warns about.
+ * @param {any} host @param {any} w
+ */
 const welcomeView = (host, w) => {
   const facts = [h('dt', 'Node'), h('dd', w.node ? `${w.node.version} at ${w.node.path}` : 'Not reported')];
+  const signedOut = [];
   for (const [name, [label]] of Object.entries(HARNESSES)) {
     const x = (w.harnesses ?? []).find((/** @type {any} */ y) => y.name === name);
+    const signIn = x?.path ? signInOf(host.id, name) : null;
+    if (signIn === 'signed-out') signedOut.push([name, label]);
     facts.push(
       h('dt', label),
       h(
         'dd',
         { style: { overflowWrap: 'anywhere' } },
         x?.path
-          ? `${x.version ?? 'Version unknown'} at ${x.path}`
+          ? `${x.version ?? 'Version unknown'} at ${x.path}${SIGN_IN_WORDS[signIn ?? ''] ?? ''}`
           : `Not found${x?.looked?.length ? `. The daemon looked in ${x.looked.join(', ')}` : ''}. Install it there, or set its path in this host’s settings.`,
       ),
     );
   }
   return [
     h('dl.facts.ho-found', { 'aria-label': `What Postbox found on ${host.name}` }, facts),
+    signedOut.map(([name, label]) => signedOutView(host, name, label)),
     (w.problems ?? []).map((/** @type {{ code: string, message: string }} */ p) => problemView(host, p)),
   ];
 };
+
+/**
+ * A harness the host says isn’t signed in (#1608), with the command that signs it in there: found here, before an
+ * agent’s turn there stops on it.
+ * @param {any} host @param {string} name @param {string} label
+ */
+const signedOutView = (host, name, label) =>
+  h(
+    'div.callout.warn.ho-signin',
+    { dataset: { harness: name } },
+    icon('warn'),
+    h(
+      'div.grow',
+      { style: { display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 } },
+      h('b', `${label} isn’t signed in on ${host.name}`),
+      h(
+        'p',
+        { style: { margin: 0 } },
+        `An agent’s turn there would stop until it is. Run this on ${host.name}; Postbox asks again when it next connects or a turn starts there.`,
+      ),
+      command(/** @type {string} */ (loginCommand(name))),
+    ),
+  );
 
 /** @param {any} host @param {{ code: string, message: string }} p */
 const problemView = (host, p) =>

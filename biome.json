@@ -9,6 +9,7 @@
       "app/kit/check-text.js",
       "app/kit/check-view.js",
       "app/kit/check-boxes.js",
+      "app/kit/check-breaks.js",
       "app/kit/check.js",
       "app/kit/kit.js",
       "app/kit/narration.js",

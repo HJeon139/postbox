@@ -29,12 +29,11 @@ import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
 import { liveStreams } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
-import { ModelLists } from './model-lists.mjs';
+import { modelListsIn } from './model-lists.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { pageState } from './page-state.mjs';
 import { createPersonaFor } from './persona-create.mjs';
 import { projectsRoute } from './project-routes.mjs';
-import { hostModels } from './remote/hosts-models.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { requestGate } from './request-gate.mjs';
 import { settleInterrupted, stopStreaming } from './restart-sweep.mjs';
@@ -126,6 +125,7 @@ export async function start({
   const { real, claude, kiro, agy, codex, usage } = await registerBackends(adapters, { dataDir, demo, probes });
   const config = {
     origin,
+    hosted: Boolean(signIn), // on a server for a team: people sign in, and agents work on hosts (hosted.md)
     // Which build this is, shown under Personas in the sidebar.
     build: buildInfo({ root: ROOT }),
     imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'],
@@ -140,13 +140,9 @@ export async function start({
   // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
   // Each backend’s models, from its harness here or on a host, each offering the last list it gave (#1302, #1304).
-  const models = new ModelLists(adapters, {
-    file: join(dataDir, 'model-lists.json'),
-    listOnHost: (hostId, backend) => hostModels(hosts, hostId, backend),
-    hostIds: () => Object.keys(rt.s.hosts ?? {}),
-  });
-  models.seed();
+  const models = modelListsIn(dataDir, adapters, hosts, () => rt, !signIn);
   const rt = new Runtime({ store, adapters, config, blobs, narrator, spawnShell, hosts });
+  models.runs.listen(rt); // how each model’s turns end, for the Model field (#1977)
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture/view-app.md, “Agents see their app”).
   startViewApp(rt, { dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` });
   const firstReal = ['claude-code', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
@@ -383,7 +379,7 @@ export async function start({
     const hostsDid = await hostsRoute(rt, path, req.method, body);
     if (hostsDid) return send(res, hostsDid.status, hostsDid.body);
     // Projects: making one, its push repository, its folder and deleting one (server/project-routes.mjs).
-    const projectsDid = await projectsRoute(rt, path, req.method, body, url.searchParams);
+    const projectsDid = await projectsRoute(rt, path, req.method, body, url.searchParams, config.hosted);
     if (projectsDid) return send(res, projectsDid.status, projectsDid.body);
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
     const stored = await storedFileRoute(store, blobs, path, req.method);

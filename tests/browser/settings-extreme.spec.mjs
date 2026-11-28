@@ -4,6 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -55,7 +56,7 @@ for (const width of [320, 375, 800, 1280, 1920])
         expect(cut, `“${words.slice(0, 30)}…” is whole`).toBe(false);
       }
     }
-    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), 'the page doesn’t scroll sideways').toBe(false);
+    expect(await pageWidth(page), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
 
     await dialog.locator('li.persona-row', { has: page.getByText('builder', { exact: true }) }).click();
     await dialog.getByRole('button', { name: 'Edit builder', exact: true }).click();

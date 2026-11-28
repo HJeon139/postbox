@@ -2,6 +2,198 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.8.0 (2026-11-28)
+
+### Features
+
+- **hosts:** show a host's harness that isn't signed in on its card and under Runs on
+- **lint:** flag citation shorthands
+
+### Fixes
+
+- **glossary:** keep the matchers of the last 8 glossaries, not only the last one
+- **hosts:** Runs on's sign-in warning names the login command in its sentence
+- **glossary:** count polytonic Greek, Cyrillic's supplement and a combining accent as letters
+- **agents:** a hand-off never shows its sender as waiting behind another agent
+- **glossary:** keep a term out of Vietnamese words, decomposed accents and accented possessives
+- **glossary:** check an entity's start in each branch's one lookbehind
+- **glossary:** keep a term out of accented words, contractions and dash-joined ranges
+- **glossary:** redraw an earlier reply when a dash or quote variant is defined
+- **glossary:** build a room's matcher once, in one pass per term
+- **glossary:** the minus sign and the figure dash link like a hyphen
+- **lint:** a dash variant of a defined term isn't flagged
+- **markdown:** a glossary term doesn't link inside an HTML entity
+- **markdown:** dash and quote variants link the same term
+- **markdown:** a short term doesn't link inside another word
+
+## 5.7.2 (2026-11-28)
+
+### Fixes
+
+- **hosted:** a hosted conversation's plus menu offers no project folder to add from
+- **hosted:** a project on a hosted Postbox is its name, with no folder on the server
+- **steps:** an output box starts with its tab stop, until it's laid out and fits
+- **steps:** a step's or a command's output takes a tab stop only while it scrolls
+
+## 5.7.1 (2026-11-28)
+
+### Fixes
+
+- **codex:** a Codex error that isn't text fails its turn instead of hanging it
+- **adapters:** clean and cut a request Codex refuses before the person reads it
+- **adapters:** clean and cut what Codex says of a failed turn before the person reads it
+- **adapters:** give a failed Codex turn's reason from turn/completed
+
+## 5.7.0 (2026-11-27)
+
+### Features
+
+- **uat:** a scroll interrupt pages the conversation while a reply streams
+- **remote:** ask each harness on a host whether it's signed in, at each connect
+
+### Fixes
+
+- **uat:** a scroll move tells the tester only the view its own sample read
+- **codex:** build the local app-server's arguments only for a local turn
+- **codex:** build the project_root_markers marker from the data folder lock's own name
+- **remote:** tell a sign-out again when its notice failed, and word it for after the turn
+- **remote:** type the login command a turn's sign-in notice names
+- **remote:** tell a host's signed-out answer once, and test each harness's login command
+- **remote:** a turn's start asks the host's sign-ins without waiting for the answer
+- **remote:** keep a host's unchanged sign-in answer, and only known method names
+- **uat:** sample the view twice a move, so view-moved compares a pair while the reply streams
+- **uat:** key view-moved's findings by sample, so two moves in one step are both kept
+- **uat:** say whether the agent still worked at each scroll, and back the scroll wait with a timer
+- **adapters:** a Codex agent in the data folder inside a clone stops its AGENTS.md walk there
+- **remote:** a turn's start asks the host now whether its harness is signed in
+
+## 5.6.0 (2026-11-27)
+
+### Features
+
+- **uat:** fail a run whose screenshot shows text over text, cut off or broken
+- **kit:** check text run into a control and words broken mid-word
+
+### Fixes
+
+- **kit:** skip text sitting right in a closed details, not only its child elements
+- **app:** a block's title keeps its longest word whole in a narrow head
+- **app:** a step's long output shows its newest lines
+- **kit:** count a closed details' content as hidden
+- **kit:** only a control missing at the point counts as not showing
+- **uat:** put a view that was at the end back at the end, and draw inside try
+- **kit:** a control not drawn at the point where it meets text doesn't show there
+- **uat:** leave a view that followed the end following it after the layout check
+- **uat:** draw every item while Postbox's layout check measures
+- **kit:** undo the skipped-content and floating-pair changes to the shared checks
+- **kit:** one floating over the other isn't text running into a control
+- **kit:** don't measure content the browser skips off screen
+- **kit:** exempt a cut-off label only when the box that cuts it fades it
+- **kit:** a control floats over text only when its fixed box doesn't hold the text
+- **uat:** add a screenshot's layout findings only once it's read whole
+- **kit:** count only a gradient fade on the box that cuts as shortened
+- **kit:** hide text under a control only when the control floats with the window
+- **uat:** list a screenshot text-layout can't read as unverified
+- **uat:** keep the page's own animation frames while the layout check runs
+- **kit:** let an opaque control over text hide it, and skip breaks asked for
+- **kit:** count text faded out with a mask as shortened on purpose
+
+## 5.5.2 (2026-11-27)
+
+### Fixes
+
+- **remote:** clean the daemon's refusal, git's remote lines and the browser install's error
+- **remote:** clean what ssh or a host said before a host's error quotes it
+- **steps:** a running call's output on its step never starts with half a character
+- **text:** cleanSaid is cleanLines with line breaks as spaces, so both drop lone halves
+- **adapters:** Claude Code's, Kiro's and Antigravity's exit errors keep their stderr's end
+- **adapters:** decode a CLI's stderr as one stream, so a split character stays whole
+- **adapters:** CLI stderr in exit errors is cleaned, and never starts mid-character
+
+## 5.5.1 (2026-11-27)
+
+### Fixes
+
+- **thread:** wrap a long word, path or inline code in an agent's words
+- **app:** the page clips sideways overflow, so a widening only a layout sees can't rewrap the thread
+
+## 5.5.0 (2026-11-27)
+
+### Features
+
+- **deploy:** an agent host, a machine the hosted server reaches over ssh
+
+### Fixes
+
+- **deploy:** the agent host's start log names which value was refused, and the test holds the space
+
+## 5.4.12 (2026-11-27)
+
+### Fixes
+
+- **kiro:** skip the marker scan when nothing is held and a chunk can't start one
+- **kiro:** match a possible marker only where a run of space starts, so a long run is linear
+- **kiro:** hold back what could become DeepSeek's tool-call marker, so a split one never shows
+
+## 5.4.11 (2026-11-27)
+
+### Fixes
+
+- **ring:** a permission card during a background wait keeps the ring's waiting word
+- **agents:** an agent's side-thread entry redraws as it starts or stops a background wait
+- **ring:** an agent that waits only on its background work says so, and holds still
+- **server:** mark a session that waits only on background work
+
+## 5.4.10 (2026-11-27)
+
+### Fixes
+
+- **permissions:** clean a card's and a refusal's tool and summary as well as cutting them
+- **codex:** only Postbox's server by its exact name skips the card, not a look-alike cleaned to it
+- **codex:** keep a request for input's lines on its card, and clean the tool's name
+- **codex:** an MCP server's words on an approval card are cleaned and bounded
+
+## 5.4.9 (2026-11-27)
+
+### Fixes
+
+- **turns:** only this turn's own host link giving up keeps what it took
+- **turns:** one rule for a turn that never reached its agent, keeping a host turn that runs on there
+- **claude:** Claude Code's API-error line isn't reply text, so its turn reads as never reached
+- **turns:** a turn that never reaches its agent gives back its waiting notices and folded lint
+
+## 5.4.8 (2026-11-27)
+
+### Fixes
+
+- **remote:** a wake left to its host turn's resume retries when its agent moves here
+- **wakes:** keep a wake with its own second host turn, and with a resume that couldn't start
+- **wakes:** settle a wake at every exit from waiting on its host turn, and run it once
+- **wakes:** a wake whose agent moved retries, and one still placed on a lost host stops
+- **adapters:** a Claude Code turn that couldn't reach the API fails as a network failure
+- **wakes:** a wake's host turn attached again keeps the wake, and one Postbox gives up on retries
+
+## 5.4.7 (2026-11-27)
+
+### Fixes
+
+- **agy:** clean Antigravity's error words before they reach a step
+- **kiro:** keep a DeepSeek marker quoted in inline code at a chunk's end
+- **codex:** clean Codex's words before its tools-down step shows them, as Kiro's are
+- **kiro:** drop the marker with its closing bracket too, and say split markers aren't caught
+- **kiro:** drop DeepSeek's tool-call marker from the end of a reply chunk
+
+## 5.4.6 (2026-11-27)
+
+### Fixes
+
+- **adapters:** give the installed index the time git gave it, and test the copy around the lock
+- **adapters:** stream the commit's index into the worktree's lock
+- **adapters:** hold the worktree's index lock while committing, and install the commit's index
+- **adapters:** set an agent's index to its turn-end commit with read-tree --reset
+- **adapters:** copy an agent's index only from a regular file, and keep what git knew of each file
+- **adapters:** build an agent's turn-end commit from Postbox's own copy of its index
+
 ## 5.4.5 (2026-11-27)
 
 ### Fixes

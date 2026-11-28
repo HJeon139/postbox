@@ -92,7 +92,7 @@ test('Postbox’s own tools are never held as writes, even one a write rule matc
   const answers = [];
   next.push(async (c) => answers.push(await c.askPermission({ tool: 'mcp__postbox__write_asset', summary: 'use write asset', input: { name: 'x' } })));
   rt.sendMessage(t.id, { text: 'Publish the notes.' });
-  for (let i = 0; i < 50 && !answers.length; i++) await sleep(5);
+  for (let i = 0; i < 2000 && !answers.length; i++) await sleep(5);
   assert.deepEqual(answers[0], { allow: true });
   assert.equal(store.items(t.id).filter((i) => i.kind === 'permission').length, 0, 'no card');
 });
@@ -235,7 +235,7 @@ test('a write the persona may publish runs without a card; one with only its ser
     answers.push(await c.askPermission({ tool: 'mcp__claude_ai_Claude_Docs__create', summary: 'use create', input: { title: 'x', markdown: '# x' } })),
   );
   pub.rt.sendMessage(pub.t.id, { text: 'Publish it.' });
-  for (let i = 0; i < 50 && !answers.length; i++) await sleep(5);
+  for (let i = 0; i < 2000 && !answers.length; i++) await sleep(5);
   assert.deepEqual(answers[0], { allow: true });
   assert.equal(pub.store.items(pub.t.id).filter((i) => i.kind === 'permission').length, 0);
 

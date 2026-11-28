@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { HEARD_EVERY_MS, IDLE_GRACE_MS } from '../server/remote/hosts.mjs';
 import { SshFailure } from '../server/remote/ssh.mjs';
+import { createFakeDaemon } from './fake-daemon.mjs';
 import { fakeSsh } from './fake-ssh.mjs';
 import { SIGN_IN, setup, sleep, until } from './remote-hosts-fixtures.mjs';
 
@@ -18,7 +19,15 @@ test('hosts: one link per host, made with its token; a host without one is not-i
     const a = s.mgr.link('h1');
     assert.equal(s.mgr.link('h1'), a, 'the same link on every call');
     assert.equal(s.ssh.calls.length, 0, 'made, not connected: nothing needs it yet');
-    assert.deepEqual(s.mgr.status('h1'), { state: 'disconnected', failure: null, welcome: null, lastHeard: null, keepUpdated: true, update: null });
+    assert.deepEqual(s.mgr.status('h1'), {
+      state: 'disconnected',
+      failure: null,
+      welcome: null,
+      lastHeard: null,
+      keepUpdated: true,
+      update: null,
+      signIns: null,
+    });
     assert.throws(
       () => s.mgr.link('h2'),
       (e) => e instanceof SshFailure && e.code === 'not-installed' && e.kind === 'not-installed' && /Install Postbox on other\.example\.com/.test(e.next),
@@ -46,7 +55,8 @@ test('hosts: a bad token file is no token', () => {
 });
 
 test('hosts: status goes connected with the welcome, reconnecting after a drop while needed, and connected again', async () => {
-  const s = setup();
+  // A daemon that doesn’t answer `signins`, whose answer would be a change of its own (#1608).
+  const s = setup({ daemon: createFakeDaemon({ autoEnd: false, signins: 'silent' }) });
   try {
     s.mgr.need('h1', 'turn:t1');
     await until(() => s.mgr.status('h1').state === 'connected', 'connected');

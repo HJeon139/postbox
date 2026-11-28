@@ -1,6 +1,8 @@
 // Kiro’s tools in Claude Code’s names. Moved from server/adapters/kiro-cli.mjs, which is at its size ceiling
 // (designs/architecture/code-size.md, “Module and function size”).
 
+import { clip } from '../harness-tools.mjs';
+
 // Labels for Kiro’s tool kinds (ACP’s ToolKind), until a title arrives.
 export const KINDS = {
   read: 'Reading a file',
@@ -46,4 +48,17 @@ function asClaude(kind, i) {
     return { name: 'Bash', input: { command: i.command, ...(i.description ? { description: i.description } : {}) } };
   if (kind === 'fetch' && typeof i.url === 'string' && i.url) return { name: 'WebFetch', input: { url: i.url } };
   return { name: null, input: i };
+}
+
+/**
+ * A tool call’s update, as Postbox’s tool_call event. Moved from kiro-cli.mjs’s createKiroMapper.
+ * @param {(e: any) => void} emit @param {Map<string, string>} kinds  toolCallId → its ACP kind @param {any} u
+ */
+export function toolCall(emit, kinds, u) {
+  // Only a call’s first update names its kind.
+  if (u.kind) kinds.set(u.toolCallId, u.kind);
+  const { name, input } = toolOf({ ...u, kind: kinds.get(u.toolCallId) });
+  // v3 loads tool definitions on demand (“Tool Load”), as Claude Code’s ToolSearch does.
+  const native = u.title === 'Tool Load' ? 'ToolSearch' : clip(u.title || KINDS[/** @type {keyof typeof KINDS} */ (u.kind)] || 'Using a tool', 80);
+  emit({ kind: 'tool_call', id: u.toolCallId, name: name ?? native, input, final: true, ...(native === 'ToolSearch' ? { work: false } : {}) });
 }

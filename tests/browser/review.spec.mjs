@@ -13,6 +13,7 @@
 
 import { expect, test } from '@playwright/test';
 import * as arrange from '../arrange.mjs';
+import { pageWidth } from './page-width.mjs';
 import { failOnPageErrors, focused, frames, PHONE, settled, synced, windowWidth } from './postbox.mjs';
 import { commentOn, drawn, review, reviewRoom, shown, viewRadio } from './review.mjs';
 
@@ -80,7 +81,7 @@ test('#486 Preview fills a wide review while conversation prose keeps its readin
   expect(narrow.paragraph, 'the paragraph still fits at 375 px').toBeLessThanOrEqual(narrow.available + 1);
   expect(narrow.thread, 'the thread still fits at 375 px').toBeLessThanOrEqual(narrow.available + 1);
   const viewport = windowWidth(page);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth), 'nothing widens the narrow page').toBeLessThanOrEqual(viewport);
+  expect(await pageWidth(page), 'nothing widens the narrow page').toBeLessThanOrEqual(viewport);
 });
 
 test('#179 Lines opens from the keyboard, focus stays on it, draws the diagram and math whole, shows the comment on its line, and the choice holds across a reload', async ({

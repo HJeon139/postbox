@@ -17,7 +17,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { splitCommand } from '../shared/permission-match.mjs';
-import { cutText } from '../shared/text-parts.mjs';
+import { cleanSaid } from '../shared/text-parts.mjs';
 import { shellWords, tokensOf } from './request-words.mjs';
 
 const run = promisify(execFile);
@@ -184,7 +184,7 @@ export async function runPush({ url, branch, sha, objects }) {
       .filter((l) => l.trim() && !/^(?:To |Done)/.test(l))
       .slice(-2)
       .join(' ');
-    return { ok: false, error: cutText(said, 300) || 'git failed' };
+    return { ok: false, error: cleanSaid(said, 300) || 'git failed' };
   }
 }
 

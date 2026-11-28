@@ -14,7 +14,8 @@ export function treeOf(se) {
   const here = se.sideTurn && S().threads[se.sideTurn.threadId];
   return here ? [{ se, thread: here, by: se.sideTurn.by }] : [];
 }
-export const treeSig = (list) => JSON.stringify(list.map((x) => [x.se.id, x.se.state, x.thread.id, x.thread.title, x.by]));
+// Its line reads stateWordOf, so the sig keeps what it reads: a wait on background work keeps the state “tool” (#189).
+export const treeSig = (list) => JSON.stringify(list.map((x) => [x.se.id, x.se.state, x.se.background === true, x.thread.id, x.thread.title, x.by]));
 
 /**
  * The subagents at work in an agent’s turn (#73), each after the one that started it, with how deep it is. One whose

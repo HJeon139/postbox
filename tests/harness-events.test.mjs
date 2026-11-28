@@ -89,3 +89,13 @@ test('a step’s input leaves out what its label already says, such as a command
   event({ kind: 'tool_call', id: 't2', name: 'Bash', input: { command: 'head *', description: long }, final: true });
   assert.equal(activity.at(-1).input, 'command: head *', 'also when the label is the description cut short');
 });
+
+test('#1938 a running call’s output on its step never starts with half a character', () => {
+  const { ctx, activity } = fakeCtx();
+  const { event } = new HarnessEvents(ctx, { now: () => 0 });
+  event({ kind: 'tool_call', id: 't1', name: 'Bash', input: { command: 'make' }, final: true });
+  // 501 code units: the last 500 start with the emoji’s second half.
+  event({ kind: 'tool_output', id: 't1', text: `😀${'b'.repeat(499)}` });
+  const { detail } = activity.at(-1);
+  assert.equal(detail, 'b'.repeat(499));
+});
