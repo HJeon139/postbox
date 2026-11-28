@@ -145,7 +145,7 @@ export const personaMemory = (root, persona) => `${root}/${memoryFolderName(pers
 /**
  * What both Claude adapters pass from a turn’s context: the rules the person allowed once or for this conversation
  * (#66), with reading the files attached to the turn’s message (#1307), or always for this persona on its host (#120), the persona’s own memory folder under `memoryRoot` (#208), and
- * Postbox’s plugin, with its skills, for a turn on this computer: a host doesn’t have its folder (agent-plugin.mjs).
+ * Postbox’s plugin, with its skills: this computer’s, or on a host the copy its install ships (agent-plugin.mjs, #207).
  * @param {any} ctx @param {string} memoryRoot
  */
 export const fromContext = (ctx, memoryRoot) => ({
@@ -156,7 +156,7 @@ export const fromContext = (ctx, memoryRoot) => ({
   hostAllow: ctx.remote?.allow ?? [],
   memoryDir: memoryFolder(memoryRoot, ctx.persona, ctx.project),
   // Left out when the persona turned off every one of its skills, so the agent isn’t told of them (skill-config.mjs).
-  plugins: ctx.remote || !postboxSkillsOn(ctx.persona).length ? [] : agentPlugins(),
+  plugins: postboxSkillsOn(ctx.persona).length ? agentPlugins(process.env, ctx.remote) : [],
 });
 
 /**

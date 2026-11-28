@@ -40,6 +40,8 @@ test('#120: a remote turn runs on the host: the stdio shim for Postbox’s serve
   assert.ok(start.argv.includes('--permission-prompt-tool') && !start.argv.includes('--permission-prompts'));
   assert.ok(start.argv.includes('--session-id'));
   assert.equal(start.argv[0], '-p', 'argv has no program: the daemon runs the claude it found');
+  // #207: Postbox’s plugin, from the copy the host install ships beside the shim.
+  assert.equal(argOf(start.argv, '--plugin-dir'), `${HOME}/.postbox-remote/${ctx.remote.version}/agent-plugin`);
   assert.equal(ctx.calls.saved.claudeSessionId, fixtureLines('block').map((l) => JSON.parse(l))[0].session_id);
   assert.deepEqual(f.calls, []);
   assert.equal(existsSync(ctx.persona.folder), false, 'no folder is made on this computer');

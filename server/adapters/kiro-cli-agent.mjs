@@ -133,12 +133,25 @@ export const kiroSystemPrompt = (persona, guide) =>
 
 /**
  * The custom agent for one turn. Pure, so the tests can check it.
- * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[], reads?: string[], kiroHome?: string|null, skills?: string | null }} turn
+ * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, remote?: any, guide: string, folders: string[], reads?: string[], kiroHome?: string|null, skills?: string | null }} turn
  *   shim: on a remote host, Postbox’s server is the host’s stdio shim, run as this command, in place of mcpUrl; the
- *   folders are then the host’s. skills: the folder of Postbox’s skills (agentSkills in agent-plugin.mjs), or null for
- *   none; a turn on a host has none, since the folder is on this computer. kiroHome: the Kiro home the turn runs with
+ *   folders are then the host’s. remote: that turn’s ctx.remote. skills: the folder of Postbox’s skills (agentSkills in
+ *   agent-plugin.mjs), or null for none: by default this computer’s, or with remote the copy the host install ships
+ *   there (#207); a shim without remote gets none, so this computer’s path never goes to a host. kiroHome: the Kiro
+ *   home the turn runs with
  */
-export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, reads = [], kiroHome = null, skills = shim ? null : agentSkills() }) {
+export function kiroAgent({
+  name,
+  persona,
+  mcpUrl = '',
+  shim,
+  remote = null,
+  guide,
+  folders,
+  reads = [],
+  kiroHome = null,
+  skills = shim && !remote ? null : agentSkills(process.env, remote),
+}) {
   const { usesHostSetup } = setupOf(persona);
   return {
     name,
