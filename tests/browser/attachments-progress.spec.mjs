@@ -28,19 +28,24 @@ test('#870 a large upload shows how much has gone, then the file’s size once i
   await cdp.send('Network.enable');
   // About 2 MB a second up: the 6 MB file takes a few seconds, long enough to read its progress.
   await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: 2 * 1024 * 1024 });
-  /** Every text the chip shows while it uploads, in order. */
+  /** Every text the chip shows while it uploads, in order, and where focus was at each step of its progress. */
   const seen = page.evaluate(
     () =>
       new Promise((done) => {
         /** @type {string[]} */
         const texts = [];
+        /** @type {string[]} */
+        const focus = [];
         const watch = new MutationObserver(() => {
           const chip = document.querySelector('.main .composer .attachments .att');
           const text = chip?.textContent ?? '';
-          if (text && texts.at(-1) !== text) texts.push(text);
+          if (text && texts.at(-1) !== text) {
+            texts.push(text);
+            if (/uploading… \d+%/.test(text)) focus.push(document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.tagName ?? '');
+          }
           if (chip && !/uploading/.test(text)) {
             watch.disconnect();
-            done(texts);
+            done({ texts, focus });
           }
         });
         watch.observe(document.body, { subtree: true, childList: true, characterData: true });
@@ -54,15 +59,21 @@ test('#870 a large upload shows how much has gone, then the file’s size once i
       const dt = new DataTransfer();
       dt.items.add(file);
       for (const type of ['dragover', 'drop']) target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+      // A keyboard user on the chip’s Remove button while it uploads.
+      /** @type {HTMLElement} */ (document.querySelector('.main .composer .attachments .att button')).focus();
     },
     { size: SIZE },
   );
-  const texts = /** @type {string[]} */ (await seen);
+  const { texts, focus } = /** @type {{ texts: string[], focus: string[] }} */ (await seen);
+  expect(new Set(focus), 'focus stays on the Remove button through the progress').toEqual(new Set(['Remove Screen Recording.mov']));
   const percents = texts.map((x) => Number(x.match(/uploading… (\d+)%/)?.[1] ?? Number.NaN)).filter((n) => !Number.isNaN(n));
   expect(percents.length, `the chip showed its progress: ${JSON.stringify(texts)}`).toBeGreaterThan(1);
   expect(percents, 'the progress only goes up').toEqual([...percents].sort((a, b) => a - b));
   expect(percents.every((n) => n >= 0 && n <= 100)).toBe(true);
   await expect(page.locator('.main .composer .attachments .att'), 'once attached, its size').toContainText(/Screen Recording\.mov · \d+(\.\d)? MB/);
+  const kept = await page.evaluate((id) => localStorage.getItem(`pb-draft-files-${id}`), t.id);
+  expect(kept, 'the draft keeps the upload (draft-attachments.mjs)').toContain('Screen Recording.mov');
+  expect(kept, 'a finished upload keeps no progress in the saved draft').not.toContain('percent');
 });
 
 test('#870 an upload with a stale page token gets a fresh one and goes through, as the API’s writes do', async ({ page, context }) => {
@@ -93,7 +104,4 @@ test('#870 an upload with a stale page token gets a fresh one and goes through, 
   });
   await expect(page.locator('.main .composer .attachments .att', { hasText: 'pairs.csv' }), 'attached').not.toContainText('uploading');
   expect(answers, 'refused once for the token, then stored').toEqual([403, 201]);
-  const kept = await page.evaluate((id) => localStorage.getItem(`pb-draft-files-${id}`), t.id);
-  expect(kept, 'the draft keeps the upload (draft-attachments.mjs)').toContain('pairs.csv');
-  expect(kept, 'a finished upload keeps no progress in the saved draft').not.toContain('percent');
 });

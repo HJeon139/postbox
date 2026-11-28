@@ -38,6 +38,7 @@ function sendFile(file, onProgress) {
       resolve({ status: xhr.status, data });
     };
     xhr.onerror = () => reject(new Error('The upload didn’t reach Postbox. Check that it’s still running, then attach the file again.'));
+    xhr.onabort = xhr.onerror;
     xhr.send(file);
   });
 }

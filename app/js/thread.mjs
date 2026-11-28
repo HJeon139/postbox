@@ -724,6 +724,14 @@ function projectFileItems(t, add) {
   return [{ label: 'From the project folder', desc: folder, icon: 'folder', run: () => openFolderPicker(t.projectId, add) }];
 }
 
+/** Each attachment chip’s note, as last painted, so an upload’s progress changes its text alone (#870). */
+const chipNotes = new WeakMap();
+/** An attachment chip’s note, kept in chipNotes. */
+function chipNote(a) {
+  const note = h('span.dim', attNote(a));
+  chipNotes.set(a, note);
+  return note;
+}
 /** What a composer’s attachment chip says after its name: how much of its upload has gone, where it’s from, or its size. */
 function attNote(a) {
   if (a.uploading) return a.percent === undefined ? ' · uploading…' : ` · uploading… ${a.percent}%`;
@@ -810,10 +818,12 @@ export function mountComposer(threadId, { side = false } = {}) {
       draft.add(chip);
       try {
         // The name the upload kept (#991): a character that would hide or reorder it is “_” there.
-        // How much has gone, as a whole percent, so the chip repaints at most a hundred times (#870).
+        // How much has gone, as a whole percent, in the chip’s note alone: a repaint of the chips would take focus
+        // from a Remove button at every step (#870).
         const { id, name, size, type } = await uploadFile(f, (sent, total) => {
-          const percent = Math.floor((sent / total) * 100);
-          if (percent !== chip.percent) draft.update(chip, { percent });
+          chip.percent = Math.floor((sent / total) * 100);
+          const note = chipNotes.get(chip);
+          if (note) note.textContent = attNote(chip);
         });
         draft.update(chip, { fileId: id, name, size, type, uploading: false, percent: undefined });
       } catch (e) {
@@ -829,7 +839,7 @@ export function mountComposer(threadId, { side = false } = {}) {
           'span.att',
           h('span.thumb', icon(a.kind === 'project-file' ? 'folder' : /^image\//.test(a.type ?? '') ? 'image' : 'file', 'i-sm')),
           a.kind === 'project-file' ? a.path : a.name,
-          h('span.dim', attNote(a)),
+          chipNote(a),
           h(
             'button.btn.icon.sm.ghost',
             {
