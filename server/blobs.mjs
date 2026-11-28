@@ -82,9 +82,9 @@ export class Blobs {
   /**
    * Stores a stream’s bytes as put does, without holding them whole (#870): each chunk is hashed as it’s written to a
    * draft in the store’s folder, synced, and renamed under its hash once the stream ends, so memory stays at a chunk
-   * whatever the size. check(size) runs before each chunk is written, with the size the draft would reach, and throws
-   * to refuse it. Any failure removes the draft, so a refused or cut-off upload leaves nothing behind.
-   * @param {AsyncIterable<Buffer>} source @param {{ check?: (size: number) => Promise<void> | void }} [opts]
+   * whatever the size. check(written) runs before each chunk is written, with the bytes already on disk (critic’s review
+   * of #2015: the chunk about to be written isn’t, so free space still counts it), and throws to refuse it. Any failure removes the draft, so a refused or cut-off upload leaves nothing behind.
+   * @param {AsyncIterable<Buffer>} source @param {{ check?: (written: number) => Promise<void> | void }} [opts]
    */
   async putStream(source, { check = () => {} } = {}) {
     await mkdir(this.dir, { recursive: true, mode: 0o700 });
@@ -95,7 +95,7 @@ export class Blobs {
       const fh = await this.open(draft, 'wx', 0o600);
       try {
         for await (const chunk of source) {
-          await check(size + chunk.length);
+          await check(size);
           hash.update(chunk);
           await writeAll(fh, chunk, 'The upload');
           size += chunk.length;

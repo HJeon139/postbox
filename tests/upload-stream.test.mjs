@@ -131,6 +131,20 @@ test('#870 an upload that would leave the disk nearly full is refused before itâ
   assert.deepEqual(emitted, [], 'no file recorded');
 });
 
+// Criticâ€™s review of #2015: the check counted the chunk about to be written as already on disk, while free space still
+// counted it as free. Exactly 16 MiB above the reserve, a declared 16 MiB + 32 KiB upload went through.
+test('#870 an upload one chunk too large for the space above the reserve is refused, at the exact boundary', async () => {
+  const { result, dir, emitted } = await uploadTo(16 * MB + 32 * 1024, disk(DISK_RESERVE + 16 * MB));
+  assert.equal(result.status, 507, String(result));
+  assert.deepEqual(filesIn(dir), []);
+  assert.deepEqual(emitted, []);
+});
+
+test('#870 an upload that exactly fills the space above the reserve is taken', async () => {
+  const { result } = await uploadTo(16 * MB, disk(DISK_RESERVE + 16 * MB));
+  assert.equal(result.size, 16 * MB, String(result?.message ?? ''));
+});
+
 test('#870 a disk that fills while an upload streams in refuses the rest, and the draft is removed', async () => {
   const size = 48 * MB;
   const { result, dir, emitted } = await uploadTo(size, disk(10 * DISK_RESERVE, { after: 1, later: DISK_RESERVE + MB }));
