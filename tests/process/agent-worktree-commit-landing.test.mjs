@@ -101,3 +101,29 @@ test('#1932 a file the status listed but that’s gone by the add makes no empty
   assert.equal(await commitTurn(dir, agent, p, workRoot, { git: wrapped, log: () => {} }), false);
   assert.equal(git(dir, ['rev-parse', 'HEAD']).trim(), before, 'no commit was made');
 });
+
+// The integrator’s review of #2026: commit-tree took the author from `-c author.name`, which git ranks below
+// GIT_AUTHOR_NAME in the environment, so a person whose shell exports one got every turn under their own name. A
+// GIT_COMMITTER_NAME already beat `-c user.name=Postbox` before #1932. Git’s environment, which Postbox now sets for the
+// commit, outranks both.
+test('#1932 the agent is the author and Postbox the committer, whatever GIT_AUTHOR_* and GIT_COMMITTER_* Postbox runs with', async (t) => {
+  const saved = Object.fromEntries(['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL'].map((k) => [k, process.env[k]]));
+  t.after(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+  const { project: p, workRoot } = await project('landing-identity');
+  const dir = await agentWorktree(agent, p, workRoot);
+  await writeFile(join(dir, 'agent.txt'), 'the agent’s work\n');
+  Object.assign(process.env, {
+    GIT_AUTHOR_NAME: 'The Person',
+    GIT_AUTHOR_EMAIL: 'person@example.invalid',
+    GIT_COMMITTER_NAME: 'The Person',
+    GIT_COMMITTER_EMAIL: 'person@example.invalid',
+  });
+  assert.equal(await commitTurn(dir, agent, p, workRoot, { log: () => {} }), true);
+  for (const k of Object.keys(saved)) delete process.env[k];
+  assert.equal(git(dir, ['log', '-1', '--format=%an <%ae> / %cn <%ce>']).trim(), '@gem <gem@postbox.invalid> / Postbox <postbox@postbox.invalid>');
+});

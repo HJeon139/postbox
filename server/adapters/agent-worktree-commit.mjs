@@ -29,11 +29,18 @@ const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 /**
  * git pinned to a worktree: run in its record, with that record and the worktree named outright, so nothing in the
- * agent’s folders decides where git works. With index, on that index file in place of the worktree’s own (#1844).
+ * agent’s folders decides where git works. With index, on that index file in place of the worktree’s own (#1844); with
+ * env, under that environment for one command (#1932).
  * @param {Git} git @param {Place} place @param {string} [index]
  */
-const pin = (git, place, index) => (/** @type {string[]} */ args) =>
-  git(place.admin, ['--git-dir', place.admin, '--work-tree', place.top, ...args], index ? { index } : undefined);
+const pin =
+  (git, place, index) =>
+  (/** @type {string[]} */ args, /** @type {Record<string, string> | undefined} */ env = undefined) =>
+    git(
+      place.admin,
+      ['--git-dir', place.admin, '--work-tree', place.top, ...args],
+      index || env ? { ...(index ? { index } : {}), ...(env ? { env } : {}) } : undefined,
+    );
 
 /**
  * Commits what a turn left in an agent’s own worktree, on its branch, so its work reaches the person and the other
@@ -179,14 +186,21 @@ async function stage(g, links, turned) {
  * Makes the commit of what’s staged, as Postbox, for the agent, without moving its branch: land moves it, once the
  * commit’s index is the worktree’s (agent-index-copy.mjs, #1932). From the old tip to the new
  * one only, so a commit the agent made meanwhile is never overwritten.
- * @param {(args: string[]) => ReturnType<Git>} g  git pinned to the worktree @param {string} handle @param {string} branch
+ * @param {(args: string[], env?: Record<string, string>) => ReturnType<Git>} g  git pinned to the worktree
+ * @param {string} handle @param {string} branch
  * @returns {Promise<import('./agent-index-copy.mjs').Made>}
  */
 async function record(g, handle, branch) {
-  // Unsigned: signing would run gpg.program, a program from the repository’s or the person’s config, and could wait
-  // on a passphrase. Plumbing runs no hooks and no automatic maintenance.
-  const identity = ['-c', 'user.name=Postbox', '-c', 'user.email=postbox@postbox.invalid', '-c', 'commit.gpgSign=false'];
-  const author = ['-c', `author.name=@${handle}`, '-c', `author.email=${handle}@postbox.invalid`];
+  // The agent as author and Postbox as committer, through git’s environment, which outranks the repository’s config and
+  // any GIT_AUTHOR_* or GIT_COMMITTER_* Postbox itself runs with (the integrator’s review of #2026). Unsigned: signing
+  // would run gpg.program, a program from the repository’s or the person’s config, and could wait on a passphrase.
+  // Plumbing runs no hooks and no automatic maintenance.
+  const identity = {
+    GIT_AUTHOR_NAME: `@${handle}`,
+    GIT_AUTHOR_EMAIL: `${handle}@postbox.invalid`,
+    GIT_COMMITTER_NAME: 'Postbox',
+    GIT_COMMITTER_EMAIL: 'postbox@postbox.invalid',
+  };
   const message = `@${handle}’s work at the end of a turn`;
   const tree = await g(['write-tree']);
   if (tree.code !== 0) return refused(tree);
@@ -195,7 +209,7 @@ async function record(g, handle, branch) {
   const headTree = SHA.test(tip) ? (await g(['rev-parse', '--verify', '--quiet', `${tip}^{tree}`])).stdout.trim() : '';
   if (headTree && headTree === tree.stdout.trim()) return { committed: false };
   const parent = SHA.test(tip) ? ['-p', tip] : [];
-  const made = await g([...identity, ...author, 'commit-tree', tree.stdout.trim(), ...parent, '-m', message]);
+  const made = await g(['-c', 'commit.gpgSign=false', 'commit-tree', tree.stdout.trim(), ...parent, '-m', message], identity);
   const sha = made.stdout.trim();
   if (made.code !== 0 || !SHA.test(sha)) return refused(made);
   return {
