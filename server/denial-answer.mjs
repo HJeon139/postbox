@@ -31,7 +31,8 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   // still behind a commit (#623, #1896).
   const se = rt.store.pending.session(it.sessionId);
   // Allowing needs the agent’s next turn: with its session gone, even behind a held commit, say so, not another reason.
-  if (!se && action !== 'leave') throw httpError(409, 'That agent’s session is gone, so there’s no next turn to allow this in. Leave it refused.');
+  if (!se && action !== 'leave')
+    throw httpError(409, 'That agent’s session is gone, so there’s no next turn to allow this in. The call stays refused, and nothing else is needed.');
   const asked = it.who ? `${it.who} (your subagent)` : 'you';
   /** @type {string | null} */
   let note = null;
