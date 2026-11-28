@@ -179,7 +179,6 @@ flowchart LR
   T -->|take| D
   T -->|turn.ended| D
   T -->|progress, not stored| PG[The page’s stream]
-  D -->|stateOf| ST[Agent state]
   R[Running] --> ST
   ST --> PG
 ```
@@ -208,7 +207,7 @@ flowchart LR
     - `waiting(sessionId)`;
     - `take(sessionId, turnId, budget)`, which returns the waiting entries of one thread, that of the oldest waiting entry, up to the budget, and leaves the rest waiting for the next turn;
     - `entriesFrom(itemId)`.
-  - `stateOf(sessionId)`: a sender’s view of each entry, and an agent’s “waiting behind @x since”.
+  - `stateOf(sessionId)`: a sender’s view of each entry. An entry still waiting is never an agent state of its sender’s (#1975).
   - **Scheduled wakes:**
     - `schedule` and `cancelSchedule` add and remove them.
     - A due wake is an entry with the source “scheduled”, so `noteScheduledTurn` becomes its take, `prepareScheduledRetry` becomes the failed-start rule, and the tools a wake recorded (`recordScheduledTool`, `recordedTools`) are its note.
@@ -290,10 +289,9 @@ flowchart LR
 
   Step E is Delivery’s `turn.settled` listener, and step R its `turn.ended` listener.
 
-**Agent state** is read, never stored, and is built in the live-state step from what this step records. It comes from Running (a live turn, exiting, awaiting attach), Turns’ current step and its last turn’s end, Work’s jobs, Delivery’s `stateOf`, and asks once they exist. Each agent shows one of:
+**Agent state** is read, never stored, and is built in the live-state step from what this step records. It comes from Running (a live turn, exiting, awaiting attach), Turns’ current step and its last turn’s end, Work’s jobs, and asks once they exist. A post still waiting in another agent’s inbox isn’t one of them: a hand-off never shows its sender as waiting (#1975). Each agent shows one of:
 - running, with its current step;
 - waiting on a job;
-- waiting behind @x;
 - waiting on you;
 - failed;
 - idle.
