@@ -31,7 +31,8 @@ const THREAD_READS = {
   'items-routes.mjs': ['itemsRoute'], // an HTTP answer
   'message-attachments.mjs': ['attachmentPath'], // a project file attached to the person’s message, read for the turn
   'newer-waiting.mjs': ['waitingFor'], // a prompt for a later turn: the title of the thread a message waits in
-  'permission-cards.mjs': ['allowAlways', 'resolveDenial'], // the person’s action on an item they see
+  'denial-answer.mjs': ['resolveDenial'], // the person’s action on an item they see
+  'permission-cards.mjs': ['allowAlways'], // the person’s action on an item they see
   'permissions-panel.mjs': ['panelTarget', 'latestProject', 'changePermissionFolder'], // an HTTP answer, and the person’s action in it
   // A host turn’s record and its continuation, checked against the threads at a resume: what reaches the host
   'remote/turns-origin.mjs': ['readOrigin', 'readWoke', 'continuing'],
@@ -51,7 +52,9 @@ const THREAD_READS = {
   'threads.mjs': ['get', 'bringForward', 'conversationThreads'],
   'turn-context.mjs': ['whatTheTurnIs'], // a prompt: the turn’s thread for its guide
   'turn-run.mjs': ['deliver'], // the project folder the turn’s process runs in, set when the conversation is made
-  'view-app/consent.mjs': ['settleDownloads'], // at startup, before any write is held
+  // settleDownloads: at startup, before any write is held. liveCards and cardIn: the threads to scan for live view
+  // cards, and each one’s conversation; each thread’s items are read pending (#1927).
+  'view-app/consent.mjs': ['liveCards', 'liveCards', 'cardIn', 'settleDownloads'],
   'view-app/view-app.mjs': ['conversationOf', 'conversationOf'], // the picture of an app: it leaves the process
   'wake-cards.mjs': ['closeOrphanCards'], // at startup, before any write is held
   // gather’s threads, as the store-held guard places gather: the pass picks from published, and the commit gathers

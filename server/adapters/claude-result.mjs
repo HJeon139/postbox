@@ -1,5 +1,6 @@
-// How a finished Claude Code stream ended, read from its result line: why it failed, in words for the person, and
-// whether a fork failed for want of the message it was asked to start at. Moved from claude-stream.mjs.
+// How a finished Claude Code stream ended, read from its result line: why it failed, in words for the person,
+// whether a fork failed for want of the message it was asked to start at, and whether the session is too large to go
+// on. Moved from claude-stream.mjs.
 
 import { clip } from '../harness-tools.mjs';
 
@@ -30,3 +31,22 @@ export function forkPointMissing(result, also = '') {
   const said = [...(Array.isArray(result?.errors) ? result.errors : []), also].map(String).join('\n');
   return /No message found with message\.uuid/.test(said);
 }
+
+// A session whose request is too large to cut down fails every turn that resumes it, Retry included (#674). Claude
+// Code 2.1.318 says so, in its binary’s words for a request still over the byte limit without its media: “Reduce the
+// input (large tool results or pasted content) or start a new session; this conversation cannot continue as is.” Read
+// from the binary, not recorded: no turn has been recorded hitting it.
+export const overSizeLimit = (/** @type {unknown} */ text) => /this conversation cannot continue as is/.test(String(text ?? ''));
+
+/**
+ * Whether a failed run says its session is too large to go on: in its result’s words whole (resultError clips them),
+ * or in `also`, such as stderr. A turn that succeeded never counts, even if its reply quotes the words.
+ */
+export function sessionTooLarge(result, also = '') {
+  if (result && !result.is_error) return false;
+  return overSizeLimit([result?.result, ...(Array.isArray(result?.errors) ? result.errors : []), also].join('\n'));
+}
+
+/** What a session started over for being too large tells the agent, as Kiro’s SIZE_LIMIT_START_TEXT does (#544). */
+export const SIZE_LIMIT_START_TEXT =
+  'Your earlier conversation in this thread grew too large for Claude Code to send, so this is a fresh start. Read large files, images and tool results a few at a time.';

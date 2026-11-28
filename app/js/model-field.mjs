@@ -1,11 +1,14 @@
 // The Model field of the agent and persona sheets: a text field, with the backend’s models as suggestions. The
 // suggestions are asked of the backend’s own harness when the field opens (POST /api/backends/:id/models, see
 // server/model-lists.mjs): this computer’s, or, for an agent that runs on a host, the host’s (#1304). Whatever the
-// person types goes to the harness as its --model.
+// person types goes to the harness as its --model. A harness lists the models it knows, not the ones this sign-in may
+// run, so the suggestions are ordered by how each one’s last turn there ended, and the field says so for the model in
+// it (#1977, shared/model-ran.mjs).
 
 import { BACKENDS, codexDefault, effortNamedBy, modelDefault, modelName } from '/shared/agent-facts.mjs';
+import { byRan, ranDefault, ranWords } from '/shared/model-ran.mjs';
 import { api, client } from './client.mjs';
-import { h } from './dom.mjs';
+import { ago, h } from './dom.mjs';
 
 /** What a backend can do (server/adapters/adapter.mjs, capabilities), as /api/state serves it (#117). */
 export const capsOf = (backend) => client.config.backends?.[backend] ?? {};
@@ -15,7 +18,9 @@ export const modelsFor = (backend) => capsOf(backend).models ?? (capsOf(backend)
 /** Where the suggestions come from: the backend here, or on the host the agent runs on (st.remote). */
 const sourceOf = (st) => (st.remote ? `${st.backend}@${st.remote}` : st.backend);
 /** The models to suggest: the host’s for an agent that runs on one, else this computer’s. */
-const suggested = (st) => (st.remote ? (st.modelLists?.[sourceOf(st)]?.models ?? []) : modelsFor(st.backend));
+const suggested = (st) => byRan(st.remote ? (st.modelLists?.[sourceOf(st)]?.models ?? []) : modelsFor(st.backend), ranOf(st));
+/** How each model’s last turn ended there, as the list’s answer gave it; nothing until it has answered. */
+const ranOf = (st) => st.modelLists?.[sourceOf(st)]?.ran ?? null;
 
 /**
  * Asks the backend’s harness for its models, here or on the agent’s host, once per source while the sheet is open,
@@ -33,13 +38,10 @@ function askModels(st, paint) {
   api(`/api/backends/${encodeURIComponent(backend)}/models`, { hostId }).then(
     (r) => {
       const models = Array.isArray(r?.models) ? r.models : [];
-      st.modelLists[source] = { models, fresh: r?.fresh === true, why: r?.why ?? null };
+      st.modelLists[source] = { models, fresh: r?.fresh === true, why: r?.why ?? null, ran: r?.ran ?? null };
       const caps = client.config.backends?.[backend];
       if (!hostId && caps && models.length) caps.models = models;
-      if (sourceOf(st) === source && st.modelDefaulted && models.length && !models.includes(st.model)) {
-        st.model = modelDefault(backend, client.config, models);
-        st.effort = effortNamedBy(backend, st.model) ?? st.effort;
-      }
+      pickModel(st);
       paint();
     },
     () => {
@@ -47,6 +49,22 @@ function askModels(st, paint) {
       paint();
     },
   );
+}
+
+/**
+ * The model Postbox picks while the person hasn’t (st.modelDefaulted): one that answered there last, since the
+ * harness’s first may be one this sign-in can’t run (#1977); else its default among the list. Run on each paint, so
+ * moving the agent to another host or backend and back picks for where it is now. Effort follows a model that changed.
+ * @param {any} st
+ */
+function pickModel(st) {
+  const list = st.modelLists?.[sourceOf(st)];
+  if (!st.modelDefaulted || !list) return;
+  const was = st.model;
+  const ranHere = ranDefault(list.ran);
+  if (ranHere && list.ran[st.model]?.ended !== 'answered') st.model = ranHere;
+  else if (!ranHere && list.models.length && !list.models.includes(st.model)) st.model = modelDefault(st.backend, client.config, list.models);
+  if (st.model !== was) st.effort = effortNamedBy(st.backend, st.model) ?? st.effort;
 }
 
 /**
@@ -116,13 +134,27 @@ function withHost(text, host) {
 }
 
 /**
+ * What a suggestion says beside its name: how its last turn there ended and when, for one a turn has tried; else
+ * Codex’s name for its own default; else nothing.
+ * @param {any} st @param {string} m @param {Record<string, { ended: string, at: number }> | null} ran
+ */
+function markOf(st, m, ran) {
+  if (ran?.[m]) return `${ran[m].ended} ${ago(ran[m].at)}`;
+  return codexDefault(st.backend, m) ? modelName(st.backend, m) : null;
+}
+
+/**
  * The field for st.model. idp prefixes element ids.
  * @param {any} st @param {() => void} paint @param {{ idp: string }} opts
  */
 export function modelField(st, paint, { idp }) {
   askModels(st, paint);
+  pickModel(st);
   const help = listHelp(st);
   const real = capsOf(st.backend).local || st.remote;
+  const ran = ranOf(st);
+  const where = st.remote ? `on ${client.state.hosts?.[st.remote]?.name ?? 'the host'}` : 'here';
+  const said = (/** @type {string} */ model) => ranWords(ran?.[model], { where, when: ran?.[model] ? ago(ran[model].at) : '' }) ?? '';
   return h(
     'div.field',
     h('label.label', { for: `${idp}-m` }, 'Model'),
@@ -130,11 +162,16 @@ export function modelField(st, paint, { idp }) {
       id: `${idp}-m`,
       value: st.model,
       list: `${idp}-models`,
+      // How many lists this sheet has asked for and not yet heard: 0 once every answer is in, whatever it held.
+      'data-models-asking': Object.values(st.modelLists ?? {}).filter((l) => l === null).length,
       spellcheck: 'false',
-      'aria-describedby': help.shown ? `${idp}-m-help` : null,
+      'aria-describedby': [help.shown ? `${idp}-m-help` : null, ran ? `${idp}-m-ran` : null].filter(Boolean).join(' ') || null,
       oninput: (e) => {
         st.model = e.target.value.trim();
         st.modelDefaulted = false;
+        // Written in place: a repaint would take the caret from the field they are typing in.
+        const line = document.getElementById(`${idp}-m-ran`);
+        if (line) line.textContent = said(st.model);
       },
       // A model that names its effort runs at it, so Effort follows (the Gemini room UAT: Medium beside
       // gemini-3.8-flash-high read as a contradiction).
@@ -149,8 +186,12 @@ export function modelField(st, paint, { idp }) {
     h(
       'datalist',
       { id: `${idp}-models` },
-      suggested(st).map((m) => h('option', { value: m, label: codexDefault(st.backend, m) ? modelName(st.backend, m) : null })),
+      // Each suggestion a turn has tried says so beside its name, so the groups are told apart by more than their place.
+      suggested(st).map((m) => h('option', { value: m, label: markOf(st, m, ran) })),
     ),
+    // Only once a turn there has said something, and then with its line kept whether the model in the field has a
+    // record or not, so typing moves nothing below it.
+    ran ? h('span.help.ran-line', { id: `${idp}-m-ran`, 'data-model-ran': '' }, said(st.model)) : null,
     real ? helpSlot(help, idp) : null,
     // Codex picks its own model for `auto`: it isn’t one of Claude’s.
     st.backend === 'codex' ? h('span.help', 'auto is Codex’s default: the model your Codex configuration picks.') : null,

@@ -49,6 +49,9 @@ test.afterAll(async () => {
 failOnPageErrors(test);
 
 const region = (page, title) => page.getByRole('region', { name: `${title}, scrolls` });
+/** A table’s region whether or not it scrolls: one that fits is named for the table alone (#1968). */
+const anyRegion = (page, title) =>
+  page.getByRole('region', { name: `${title}, scrolls`, exact: true }).or(page.getByRole('region', { name: title, exact: true }));
 
 /**
  * Which edges of a table’s scroll region show the fade: its frame (`.tbl-scroll`) draws the left one as ::before and
@@ -70,7 +73,7 @@ const cue = (scroller) =>
 async function open(page, title) {
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
-  const scroller = region(page, title);
+  const scroller = anyRegion(page, title);
   await scroller.scrollIntoViewIfNeeded();
   await settled(page);
   return scroller;
@@ -107,6 +110,9 @@ async function narrowTableShowsNone(page) {
   // The wide table’s fade shows, so no fade here is this table fitting, not a missing frame.
   await expect.poll(() => cue(region(page, 'Works'))).toEqual({ left: false, right: true });
   expect(await cue(pair)).toEqual({ left: false, right: false });
+  // It doesn’t scroll, so it isn’t said to, and it’s no tab stop (#1968).
+  await expect(pair).toHaveAttribute('aria-label', 'Pair');
+  await expect(pair).not.toHaveAttribute('tabindex');
 }
 
 async function keyboardScrollsTheRegion(page) {

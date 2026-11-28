@@ -213,23 +213,46 @@
     return /gradient\(/.test(`${cs.maskImage} ${cs.webkitMaskImage}`);
   };
   // What cuts a label short: the element, an SVG’s edge, or another ancestor whose overflow is hidden, or the page’s
-  // top or left edge, where no one can scroll. A box that scrolls doesn’t cut: you scroll to the rest. A label cut away
-  // whole is hidden on purpose (a carousel’s other slides, a closed accordion). The first box that cuts it decides: one
-  // that fades it out there cuts it on purpose, and the label isn’t reported (an empty string).
+  // top or left edge, where no one can scroll. A box that scrolls doesn’t cut: you scroll to the rest. It still clips
+  // what it holds, so only the part of the label it shows goes on to the boxes around it and to the page’s edge: a
+  // label it scrolled past the window’s edge isn’t cut by the page (#1985). A label cut away whole is hidden on purpose
+  // (a carousel’s other slides, a closed accordion). The first box that cuts it decides:
+  // one that fades it out there cuts it on purpose, and the label isn’t reported (an empty string).
   function cutBy(el, r) {
     let { left, top, right, bottom } = r;
     let by = null;
-    const cut = (l, t, rt, b, who, box = null) => {
-      if (by === null && (l > left + 2 || t > top + r.height / 3 || rt < right - 2 || b < bottom - r.height / 3)) by = box && faded(box) ? '' : who;
+    const clip = (l, t, rt, b) => {
       [left, top, right, bottom] = [Math.max(left, l), Math.max(top, t), Math.min(right, rt), Math.min(bottom, b)];
     };
+    const cut = (l, t, rt, b, who, box = null) => {
+      if (by === null && (l > left + 2 || t > top + r.height / 3 || rt < right - 2 || b < bottom - r.height / 3)) by = box && faded(box) ? '' : who;
+      clip(l, t, rt, b);
+    };
+    let fixed = false;
     for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
       const cs = getComputedStyle(a);
       const x = /hidden|clip/.test(cs.overflowX);
       const y = /hidden|clip/.test(cs.overflowY);
-      if (!x && !y) continue;
+      // A fixed box below isn’t clipped by the boxes that scroll around it: the window holds it.
+      const sx = !fixed && /auto|scroll/.test(cs.overflowX);
+      const sy = !fixed && /auto|scroll/.test(cs.overflowY);
+      if (cs.position === 'fixed') fixed = true;
+      if (!x && !y && !sx && !sy) continue;
       const b = a.getBoundingClientRect();
-      cut(x ? b.left : -Infinity, y ? b.top : -Infinity, x ? b.right : Infinity, y ? b.bottom : Infinity, where(a), a);
+      // Its hidden axis cuts first: a box can’t hide and scroll the same axis, and a sidebar that scrolls down and hides
+      // its overflow across still cuts a label too wide for it, in view or not (#1985).
+      if (x || y) cut(x ? b.left : -Infinity, y ? b.top : -Infinity, x ? b.right : Infinity, y ? b.bottom : Infinity, where(a), a);
+      // A box that scrolls on an axis clips there without cutting: what it shows is what the rest is measured from. Not
+      // the body when the window owns its overflow (the root’s is visible), as it scrolls nothing then. A cut found
+      // inside it stands, even in a row it shows none of, which the checks still read.
+      const root = a === document.body && getComputedStyle(document.documentElement);
+      const owner = Boolean(root) && root.overflowX === 'visible' && root.overflowY === 'visible';
+      if (!owner && (sx || sy)) {
+        // Only when it’s this box that hides the rest of the label: one a box inside cut away whole stays hidden.
+        const shown = right > left && bottom > top;
+        clip(sx ? b.left : -Infinity, sy ? b.top : -Infinity, sx ? b.right : Infinity, sy ? b.bottom : Infinity);
+        if (shown && (right <= left || bottom <= top)) return by;
+      }
     }
     cut(-scrollX, -scrollY, Infinity, Infinity, 'the page’s edge');
     return right - left > 0 && bottom - top > 0 ? by : null;

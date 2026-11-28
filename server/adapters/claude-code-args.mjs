@@ -1,10 +1,14 @@
 // The claude CLI’s arguments for one turn (server/adapters/claude-code.mjs runs it; the header there lists them).
 
+import { dirname } from 'node:path';
 import { terminalToolsEnv } from '../../shared/terminal-tools.mjs';
 import { withAllowRules, withAskRules } from '../permission-rules.mjs';
+import { memoryRootFor } from './folder.mjs';
+import { hostMemoryRoot } from './remote-turn.mjs';
 import {
   deniedTools,
   effortOf,
+  fromContext,
   HOST_SOURCES,
   ISOLATED_SOURCES,
   modelOf,
@@ -14,7 +18,7 @@ import {
   setupOf,
   writeRules,
 } from './setup.mjs';
-import { withSteering } from './steering.mjs';
+import { checkoutSteering, withSteering } from './steering.mjs';
 
 /**
  * The environment a local claude runs in: this process’s own, with Postbox’s react added to the tools after which
@@ -123,4 +127,25 @@ export function claudeArgs({
     ...plugins.flatMap((p) => ['--plugin-dir', p]),
     ...(mode === 'bypass' ? [] : denyPrompts ? ['--permission-prompts', 'none'] : ['--permission-prompt-tool', 'mcp__postbox__permission_prompt']),
   ];
+}
+
+/**
+ * A run’s command line (claudeArgs, above), from its turn’s context: on a host, its memory folder
+ * and its shim as Postbox’s server there.
+ * A turn here, not on a host, keeps the checkout’s steering from an agent in the data folder (steering.mjs).
+ * @param {string} workRoot @param {{ ctx: any, cwd: string, id: string, resume: boolean, guide: string, addDirs: string[], fork: any, remote: any }} o
+ */
+export function runArgs(workRoot, { ctx, cwd, id, resume, guide, addDirs, fork, remote }) {
+  return claudeArgs({
+    persona: ctx.persona,
+    sessionId: id,
+    resume,
+    mcpUrl: ctx.mcpUrl,
+    guide,
+    addDirs,
+    fork,
+    ...fromContext(ctx, ctx.remote ? hostMemoryRoot(ctx.remote) : memoryRootFor(workRoot)),
+    ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : {}),
+    claudeMdExcludes: ctx.remote ? [] : checkoutSteering(cwd, dirname(workRoot)),
+  });
 }

@@ -179,7 +179,6 @@ flowchart LR
   T -->|take| D
   T -->|turn.ended| D
   T -->|progress, not stored| PG[The page’s stream]
-  D -->|stateOf| ST[Agent state]
   R[Running] --> ST
   ST --> PG
 ```
@@ -208,7 +207,7 @@ flowchart LR
     - `waiting(sessionId)`;
     - `take(sessionId, turnId, budget)`, which returns the waiting entries of one thread, that of the oldest waiting entry, up to the budget, and leaves the rest waiting for the next turn;
     - `entriesFrom(itemId)`.
-  - `stateOf(sessionId)`: a sender’s view of each entry, and an agent’s “waiting behind @x since”.
+  - `stateOf(sessionId)`: each entry’s own state, for its message if delivery status is ever shown there; an entry still waiting is never an agent state of its sender’s (#1975).
   - **Scheduled wakes:**
     - `schedule` and `cancelSchedule` add and remove them.
     - A due wake is an entry with the source “scheduled”, so `noteScheduledTurn` becomes its take, `prepareScheduledRetry` becomes the failed-start rule, and the tools a wake recorded (`recordScheduledTool`, `recordedTools`) are its note.
@@ -290,10 +289,9 @@ flowchart LR
 
   Step E is Delivery’s `turn.settled` listener, and step R its `turn.ended` listener.
 
-**Agent state** is read, never stored, and is built in the live-state step from what this step records. It comes from Running (a live turn, exiting, awaiting attach), Turns’ current step and its last turn’s end, Work’s jobs, Delivery’s `stateOf`, and asks once they exist. Each agent shows one of:
+**Agent state** is read, never stored, and is built in the live-state step from what this step records. It comes from Running (a live turn, exiting, awaiting attach), Turns’ current step and its last turn’s end, Work’s jobs, and asks once they exist. A post still waiting in another agent’s inbox isn’t one of them: a hand-off never shows its sender as waiting (#1975). Each agent shows one of:
 - running, with its current step;
 - waiting on a job;
-- waiting behind @x;
 - waiting on you;
 - failed;
 - idle.
@@ -670,7 +668,7 @@ Each step is its own pull request, and is done when:
     - The add-agent card stands in front of Delivery until Asks replaces it, so `chainHeld` stays unbound. Nothing is held at the chain cap since #1623: the wake past it is refused.
     - A host turn’s replay keys its mentions by the host turn and their order, as the retry id (#1138’s class).
     - Entries carry an arrival number, so they sort with the queue’s messages in the same millisecond (#733).
-    - Stop closes a turn without `endTurn`, so it raises `turn.stopping`, and Delivery marks what the turn took as delivered. A shutdown’s stop doesn’t: the restart reopens those entries once, as a resend. A reply the person stopped hands its mentions to no one, as before.
+    - Stop closes a turn without `endTurn`, so it raises `turn.stopping` with `{ turn, by }`, and Delivery marks what the turn took as delivered. A stop you make (`by: 'you'`: Stop, Send now, ending a run clock, deleting a session or conversation, removing a host) drops the need the turn’s own card made and marks the session’s `stoppedTurnId`, so that turn’s cards stay quiet after other answers and restarts. A run clock’s pause or budget (`'pause'`, `'clock'`) or a hung host turn (`'hung'`) leaves the card’s need, so it counts throughout instead of going quiet and ringing again. A store outage’s stop raises no `turn.stopping`, so it keeps the need too. Whatever need is left, the session settles to its state when the turn exits (`turnExited`), as at any turn’s end and at a restart, so the ring says what the top bar counts from the stop (#1928). A shutdown’s stop raises no `turn.stopping`, so Delivery doesn’t mark its entries: the restart reopens them once, as a resend. A reply the person stopped hands its mentions to no one, as before.
   - **`wake_agent` is gone** (#481):
     - It left the tool list. A call to it by name gets `GONE_TOOLS`’ answer, “wake_agent is gone. Post a message that @-mentions the agent; that wakes it.”, from Postbox’s MCP server and from a host’s calls, whose route table keeps the name for that.
     - `open_topic` lost `mentions`: its first message’s own @-mentions wake, as prose, as a reply’s do.

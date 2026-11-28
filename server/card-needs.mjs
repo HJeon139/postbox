@@ -88,8 +88,17 @@ function turnsOf(rt, se, released = null) {
   // it is closing (endTurn): its end decides them then, so a failed turn's block doesn't flash before its failure.
   const turn = rt.turns.get(se.id);
   if (turn) return turn.closed ? kept : [turn.id, ...kept];
-  const last = se.lastTurnId ?? released?.turnId ?? null;
+  const last = se.lastTurnId ? lastCounted(se) : (released?.turnId ?? null);
   return last ? [last, ...kept] : kept;
+}
+
+/**
+ * The session's last turn, whose cards count, or null when it is a turn you stopped (`se.stoppedTurnId`, stoppedNeed):
+ * a stopped turn's cards wait quietly until answered or asked again, after another card's answer, a restart or another
+ * agent's wake too (#1928). The one rule turnsOf and keptTurns read. @param {any} se @returns {string | null}
+ */
+function lastCounted(se) {
+  return se.lastTurnId && se.lastTurnId !== se.stoppedTurnId ? se.lastTurnId : null;
 }
 
 /**
@@ -115,7 +124,7 @@ export function keptBlock(rt, se) {
  * @param {any} rt @param {any} se  the session as it was before the turn started @returns {string[]}
  */
 export function keptTurns(rt, se) {
-  const counting = new Set([se.lastTurnId, ...(se.keptTurnIds ?? [])].filter(Boolean));
+  const counting = new Set([lastCounted(se), ...(se.keptTurnIds ?? [])].filter(Boolean));
   const asking = new Set();
   for (const threadId of threadsOf(rt, se))
     for (const it of rt.store.pending.items(threadId)) {
@@ -180,19 +189,23 @@ function offerShown(rt, caller, it, threadId) {
 }
 
 /**
- * A turn you stopped (turn-stop.mjs): a need its own asking block, tool request or view request made mid-turn goes with
- * it (#1748, #1868), so the card waits quietly, as a stopped turn's form did before #1748, and the count agrees with the
- * idle agent. Stop closes the turn without its end (endTurn), which otherwise decides the turn's cards.
- * @param {any} rt @param {any} turn
+ * A stopped turn (turn-stop.mjs): when you stop it (`by` 'you', Send now's too), a need its own asking block, tool
+ * request or view request made mid-turn goes (#1748, #1868), and the turn is recorded, so its cards stay quiet after
+ * another answer and a restart (#1928, lastCounted). Any other stop (a run clock's pause or budget, a hung host turn)
+ * leaves the need its card made, so the card counts throughout rather than going quiet at the stop and ringing again
+ * on an unrelated click. A shutdown raises no turn.stopping.
+ * @param {any} rt @param {any} turn @param {string} by  who stopped it, as stop's `by`
  */
-function stoppedNeed(rt, turn) {
+function stoppedNeed(rt, turn, by) {
+  if (by !== 'you') return;
+  rt.sessions.update(turn.sessionId, { stoppedTurnId: turn.id });
   // The session as written, as the stop's own write may be held behind a commit (#623).
   const se = rt.store.pending.session(turn.sessionId);
   const need = se?.needs;
   // A need names its thread only when it's away from the agent's own (awayFrom).
   if (!OFFERED_MID_TURN.has(need?.kind) || rt.store.pending.item(need.threadId ?? se.threadId, need.itemId)?.turnId !== turn.id) return;
-  // What's left is what waited before it: the kept turns' cards and the block the turn kept. Not turnsOf's, whose last
-  // turn is this one by now, nor runningKeep's, as the turn has left rt.turns.
+  // What's left is what waited before it: the kept turns' cards and the block the turn kept. turnsOf would give the same,
+  // as only your Stop reaches here and it marked the turn above; not runningKeep's, as the turn has left rt.turns.
   rt.sessions.update(se.id, { needs: nextNeed(rt, se, { turnIds: se.keptTurnIds ?? [], keep: se.keptId ?? null }) });
 }
 
@@ -205,7 +218,7 @@ function stoppedNeed(rt, turn) {
 export function blockNeeds(rt) {
   rt.bus.on('block.withdrawn', ({ se, itemId }) => releaseNeed(rt, se, itemId));
   rt.bus.on('block.asking', ({ se, item, threadId }) => offerShown(rt, se, item, threadId));
-  rt.bus.on('turn.stopping', ({ turn }) => stoppedNeed(rt, turn));
+  rt.bus.on('turn.stopping', ({ turn, by }) => stoppedNeed(rt, turn, by));
 }
 
 /**

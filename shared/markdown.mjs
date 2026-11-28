@@ -14,8 +14,9 @@
 // answer). The tags must be exactly these, with no attributes; anything else, or an unclosed tag, is text.
 
 import { mapCodeSpans } from './code-spans.mjs';
+import { glossaryRegex } from './glossary-match.mjs';
 import { closesFence, FENCE, HEADING, LIST_ITEM, QUOTE, RULE, TABLE_SEP } from './markdown-blocks.mjs';
-import { escapeHtml, glossaryRegex, inline, mentionRegex } from './markdown-inline.mjs';
+import { escapeHtml, inline, mentionRegex } from './markdown-inline.mjs';
 import { displayMath } from './math.mjs';
 
 export { escapeHtml };

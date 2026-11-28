@@ -4,8 +4,9 @@
 // shell, and a shell beside the server would hold every room’s data.
 //
 // What is the machine’s alone, and why:
-//   - its role may call Anthropic’s models on Amazon Bedrock, and nothing else. An agent can use that role, since
-//     it runs on the machine, so the role holds nothing an agent shouldn’t have;
+//   - its role may call Anthropic’s models on Amazon Bedrock, and have Bedrock turn one on for the account at its
+//     first call, and nothing else. An agent can use that role, since it runs on the machine, so the role holds
+//     nothing an agent shouldn’t have;
 //   - its work disk is a volume of its own, kept when the machine is replaced, with the agents’ folders, the
 //     daemon’s records and the host’s SSH identity on it;
 //   - SSH is admitted from the server’s security group alone (lib/network.mjs), for one key, made here, whose
@@ -151,8 +152,8 @@ export class PostboxAgentHost extends Construct {
   }
 
   /**
-   * The machine’s role, which an agent on it can use: Anthropic’s models, and nothing else. Nothing of the server’s,
-   * and no parameter.
+   * The machine’s role, which an agent on it can use: Anthropic’s models, and what Bedrock needs to turn one on for
+   * the account at its first call. Nothing of the server’s, and no parameter.
    * @param {PostboxAgentHostProps} props
    */
   allow({ models, sessionManager = false }) {
@@ -169,6 +170,18 @@ export class PostboxAgentHost extends Construct {
       }),
     );
     role.addToPrincipalPolicy(new PolicyStatement({ actions: ['bedrock:ListInferenceProfiles', 'bedrock:ListFoundationModels'], resources: ['*'] }));
+    // Bedrock turns a model on for the account at its first call, by subscribing to it in AWS Marketplace as the
+    // caller, and refuses the model until that has happened: “not authorized to perform the required AWS Marketplace
+    // actions”. Without these the first model a person picks answers for a few minutes and then never again (seen
+    // on the test deployment, 27 November 2026). Only when Bedrock makes the call for the role, so an agent with the
+    // role’s credentials can’t subscribe the account to anything else there.
+    role.addToPrincipalPolicy(
+      new PolicyStatement({
+        actions: ['aws-marketplace:ViewSubscriptions', 'aws-marketplace:Subscribe'],
+        resources: ['*'],
+        conditions: { StringEquals: { 'aws:CalledViaLast': 'bedrock.amazonaws.com' } },
+      }),
+    );
     // A shell for an operator, through Systems Manager, with no port opened. Only what a session needs: the managed
     // policy for this also reads every parameter in the account, which an agent on the machine would then read too.
     if (sessionManager)

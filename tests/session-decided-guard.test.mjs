@@ -14,9 +14,7 @@ import { BIND, GETTER, PUBLISHED_SESSION } from './session-read-forms.mjs';
  * The writes whose condition still reads a published session, each a follow-up of #796's class in sessions: behind a
  * held commit, the read decides on a session that misses what is held.
  */
-const DECIDED_PUBLISHED = {
-  'permission-cards.mjs': ['resolveDenial'], // allowOnce, also built from the published session (session-write-guard’s FROM_PUBLISHED)
-};
+const DECIDED_PUBLISHED = {};
 
 /** A published read of one session or of a thread's: what a deciding read reads. */
 const PUBLISHED_READ = new RegExp(`${PUBLISHED_SESSION.source}|\\bsessions\\.in\\(`);

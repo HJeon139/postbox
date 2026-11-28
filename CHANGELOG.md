@@ -2,6 +2,109 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.9.6 (2026-11-28)
+
+### Fixes
+
+- **permissions:** a gone agent's refusal error says nothing else is needed
+- **permissions:** allowing a refusal whose session is gone says so
+- **permissions:** Allow once on a refusal reads the session as written, held writes included
+
+## 5.9.5 (2026-11-28)
+
+### Fixes
+
+- **claude-code:** start a forked session too large to go on over, and keep no branch point in it
+- **claude-code:** start a session too large to go on over once, as Kiro's is
+
+## 5.9.4 (2026-11-28)
+
+### Fixes
+
+- **check:** a fixed label cut by the page is still reported, at no more cost per label
+- **check:** a box's hidden axis cuts before its scroll clip, and spec cases for each rule
+- **check:** text a scroll box scrolled past the window's edge isn't cut off by the page
+
+## 5.9.3 (2026-11-28)
+
+### Fixes
+
+- **needs:** every stopped turn settles to the state of the need it leaves
+- **needs:** a clock-stopped or hung turn's agent needs you from the stop
+- **needs:** a run clock's or hung turn's stop leaves its card counting
+- **remote:** a host turn marked interrupted clears the stopped mark
+- **needs:** only the person's stop keeps a turn's cards quiet
+- **needs:** keep a stopped turn's cards quiet after another answer or a restart
+
+## 5.9.2 (2026-11-28)
+
+### Fixes
+
+- **view-app:** a thread with no known root finds its own card, and the pre-review's smaller fixes
+- **view-app:** one browser card per conversation, and the person's answer settles every one
+- **view-app:** one browser card at a time, and every agent carries on instead of waiting
+- **ui:** a repaint that keeps focus counts scroll-stop boxes in place, stop or not
+- **a11y:** five more scroll boxes take a tab stop only while they scroll
+- **view-app:** every agent told to wait on the browser card hears its answer
+
+## 5.9.1 (2026-11-28)
+
+### Fixes
+
+- **hosted:** no folder on the server for an agent or a conversation
+
+## 5.9.0 (2026-11-28)
+
+### Features
+
+- **models:** the Model field orders, marks and picks by how each model's last turn ended
+
+### Fixes
+
+- **deploy:** the agent host's role may have Bedrock turn a model on at its first call
+
+## 5.8.0 (2026-11-28)
+
+### Features
+
+- **hosts:** show a host's harness that isn't signed in on its card and under Runs on
+- **lint:** flag citation shorthands
+
+### Fixes
+
+- **glossary:** keep the matchers of the last 8 glossaries, not only the last one
+- **hosts:** Runs on's sign-in warning names the login command in its sentence
+- **glossary:** count polytonic Greek, Cyrillic's supplement and a combining accent as letters
+- **agents:** a hand-off never shows its sender as waiting behind another agent
+- **glossary:** keep a term out of Vietnamese words, decomposed accents and accented possessives
+- **glossary:** check an entity's start in each branch's one lookbehind
+- **glossary:** keep a term out of accented words, contractions and dash-joined ranges
+- **glossary:** redraw an earlier reply when a dash or quote variant is defined
+- **glossary:** build a room's matcher once, in one pass per term
+- **glossary:** the minus sign and the figure dash link like a hyphen
+- **lint:** a dash variant of a defined term isn't flagged
+- **markdown:** a glossary term doesn't link inside an HTML entity
+- **markdown:** dash and quote variants link the same term
+- **markdown:** a short term doesn't link inside another word
+
+## 5.7.2 (2026-11-28)
+
+### Fixes
+
+- **hosted:** a hosted conversation's plus menu offers no project folder to add from
+- **hosted:** a project on a hosted Postbox is its name, with no folder on the server
+- **steps:** an output box starts with its tab stop, until it's laid out and fits
+- **steps:** a step's or a command's output takes a tab stop only while it scrolls
+
+## 5.7.1 (2026-11-28)
+
+### Fixes
+
+- **codex:** a Codex error that isn't text fails its turn instead of hanging it
+- **adapters:** clean and cut a request Codex refuses before the person reads it
+- **adapters:** clean and cut what Codex says of a failed turn before the person reads it
+- **adapters:** give a failed Codex turn's reason from turn/completed
+
 ## 5.7.0 (2026-11-27)
 
 ### Features

@@ -4,6 +4,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { spokenSentences } from '/shared/text.mjs';
 import { $, $$, h, icon, trusted } from './dom.mjs';
+import { fitStop } from './scroll-stop.mjs';
 import { addToast, removeToast } from './toast-stack.mjs';
 import { rememberWork } from './work-memory.mjs';
 
@@ -178,7 +179,9 @@ export function keepFocus(root, paint) {
   const was = document.activeElement;
   if (!root || !was || !root.contains(was)) return paint();
   // A control that comes back disabled can’t hold focus, so it goes to the next one that can (#105: Stop, once stopped).
-  const enabled = () => $$(FOCUSABLE, root).filter((x) => !(/** @type {any} */ (x).disabled));
+  // A box that has a stop only while it scrolls (scroll-stop.mjs) counts in its place either way: one that fits has none
+  // now, and the one drawn in its place starts with one, so counting stops alone would move focus back a place (#1968).
+  const enabled = () => $$(`${FOCUSABLE}, [data-scroll-stop]`, root).filter((x) => !(/** @type {any} */ (x).disabled));
   const at = enabled().indexOf(was);
   const result = paint();
   if (!was.isConnected) {
@@ -218,10 +221,7 @@ export function refind(el) {
  * @param {HTMLElement} body @returns {() => void}
  */
 function scrollFocus(body) {
-  const fit = () => {
-    if (body.scrollHeight > body.clientHeight || body.scrollWidth > body.clientWidth) body.setAttribute('tabindex', '0');
-    else body.removeAttribute('tabindex');
-  };
+  const fit = () => fitStop(body);
   fit();
   const watch = new ResizeObserver(fit);
   watch.observe(body);

@@ -71,12 +71,12 @@ test('#1214 #1442 a turn left on the host an agent moved off to this computer is
   // The old turn may still run on the host until it confirms the stop: its row says so, and the agent reads as
   // stopping there, not as running (#1442).
   assert.equal(se().remoteTurn?.state, 'stopping', 'the old host turn shows as stopping');
-  assert.equal(agentState(se(), r.store.state).state, 'stopping', 'it reads as stopping, not running');
+  assert.equal(agentState(se()).state, 'stopping', 'it reads as stopping, not running');
   release();
   holdStops = false;
   for (const m of heldStops.splice(0)) send(m);
   await until(() => d.received.some((m) => m.type === 'stop' && m.turn === 'host-turn-1'), 'the old host asked to stop it');
   await until(() => se().remoteTurn?.state === 'done', 'the host to confirm the stop');
-  assert.equal(agentState(se(), r.store.state).state, 'idle', 'once the host confirms, it reads as idle');
+  assert.equal(agentState(se()).state, 'idle', 'once the host confirms, it reads as idle');
   await settled(r);
 });

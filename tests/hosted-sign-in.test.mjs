@@ -3,7 +3,8 @@
 // computer asks nothing. Through the router with fake requests, as tests/profile.test.mjs calls it. Nothing listens.
 
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+import { readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { start } from '../server/index.mjs';
@@ -35,6 +36,9 @@ test('a signed-in person on the allow list gets the app, and the page is told wh
   const state = await ask(hosted, PORT, { path: '/api/state', headers: signed() });
   assert.equal(state.status, 200);
   assert.deepEqual([state.json.config.me.name, state.json.config.me.username], ['Robin Example', 'robin']);
+  // The page is told it is hosted, so it asks for no folder on the server; a local one is told it isn’t.
+  assert.equal(state.json.config.hosted, true);
+  assert.equal((await ask(local, PORT + 1, { path: '/api/state' })).json.config.hosted, false);
   assert.equal((await ask(hosted, PORT, { path: '/', headers: { ...NAVIGATION, ...signed() } })).status, 200);
 });
 
@@ -170,4 +174,82 @@ test('a public address is never answered without sign-in settings: such a start 
     /A hosted Postbox needs its sign-in settings\./,
   );
   assert.deepEqual(readdirSync(dir), [], 'nothing was opened');
+});
+
+test('hosted, no one names a folder on the server for an agent or a conversation, and the answer never says whether one is there', async () => {
+  const cookie = (await ask(hosted, PORT, { path: '/', headers: { ...NAVIGATION, ...signed() } })).headers['set-cookie'].split(';')[0];
+  const headers = { cookie, ...signed() };
+  const refusal = 'This Postbox runs on a server, so nothing is given a folder here. Put the agent on a host under Runs on, and name a folder there.';
+  const persona = Object.values(hosted.rt.s.personas)[0];
+  const session = Object.values(hosted.rt.s.sessions)[0];
+  // A folder that exists, one that doesn’t, and one that isn’t a path at all are answered alike.
+  for (const folder of [tempDir('pb-hosted-there-'), '/no/such/folder/anywhere', 'relative']) {
+    const agent = await ask(hosted, PORT, { method: 'PATCH', path: `/api/personas/${persona.id}`, body: { folder }, headers });
+    assert.deepEqual([agent.status, agent.json.error], [422, refusal], `an agent’s folder ${folder}`);
+    const added = await ask(hosted, PORT, { method: 'POST', path: '/api/permissions/folders', body: { sessionId: session.id, path: folder }, headers });
+    assert.deepEqual([added.status, added.json.error], [422, refusal], `a conversation’s folder ${folder}`);
+    const made = await ask(hosted, PORT, { method: 'POST', path: '/api/personas', body: { handle: 'newcomer', folder }, headers });
+    assert.deepEqual([made.status, made.json.error], [422, refusal], `a new agent’s folder ${folder}`);
+  }
+  assert.equal(hosted.rt.s.personas[persona.id].folder ?? '', persona.folder ?? '', 'nothing was kept for the agent');
+  assert.deepEqual(hosted.rt.s.sessions[session.id].addDirs ?? [], [], 'nor for the conversation');
+  // An agent with no folder still saves, as the sheet sends an empty Folder with every save, and null is none too.
+  for (const folder of ['', null])
+    assert.equal((await ask(hosted, PORT, { method: 'PATCH', path: `/api/personas/${persona.id}`, body: { folder }, headers })).status, 200, String(folder));
+});
+
+test('on your own computer an agent and a conversation are still given an existing folder, and told when one isn’t there', async () => {
+  const cookie = (await ask(local, PORT + 1, { path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
+  const there = tempDir('pb-local-there-');
+  const persona = Object.values(local.rt.s.personas)[0];
+  const session = Object.values(local.rt.s.sessions)[0];
+  const patch = (/** @type {string} */ folder) =>
+    ask(local, PORT + 1, { method: 'PATCH', path: `/api/personas/${persona.id}`, body: { folder }, headers: { cookie } });
+  const add = (/** @type {string} */ path) =>
+    ask(local, PORT + 1, { method: 'POST', path: '/api/permissions/folders', body: { sessionId: session.id, path }, headers: { cookie } });
+  assert.equal((await patch(there)).status, 200);
+  assert.equal((await add(there)).status, 200);
+  const missing = await add('/no/such/folder/anywhere');
+  assert.deepEqual([missing.status, missing.json.error], [422, '/no/such/folder/anywhere isn’t a folder on this computer.']);
+});
+
+test('hosted, an agent on a host keeps its folder there, and a conversation’s added folder can still be removed', async () => {
+  const cookie = (await ask(hosted, PORT, { path: '/', headers: { ...NAVIGATION, ...signed() } })).headers['set-cookie'].split(';')[0];
+  const headers = { cookie, ...signed() };
+  hosted.store.emit('host', { id: 'h-far', name: 'agents', settings: {}, createdAt: 1 });
+  hosted.store.emit('persona', { ...Object.values(hosted.rt.s.personas)[0], id: 'pe-far', handle: 'far', remote: { hostId: 'h-far' }, folder: '' });
+  const kept = await ask(hosted, PORT, { method: 'PATCH', path: '/api/personas/pe-far', body: { folder: '/srv/on-the-host' }, headers });
+  assert.deepEqual([kept.status, kept.json.folder], [200, '/srv/on-the-host']);
+  const session = Object.values(hosted.rt.s.sessions)[0];
+  hosted.rt.sessions.update(session.id, { addDirs: ['/added/before'] });
+  const removed = await ask(hosted, PORT, {
+    method: 'POST',
+    path: '/api/permissions/folders',
+    body: { sessionId: session.id, path: '/added/before', remove: true },
+    headers,
+  });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(hosted.rt.s.sessions[session.id].addDirs, []);
+});
+
+// #1977: the models answer reaches everyone signed in to a hosted Postbox, not only a room’s members, and a
+// provider’s error can name the account’s resources (server/model-runs.mjs). Hosted, a failure is answered without it.
+test('hosted, the models answer says a model failed and when, and never the harness’s words; on your own computer it says them', async () => {
+  const why = 'arn:aws:bedrock:us-west-2:123456789012:inference-profile/m-1 is not available for this account';
+  for (const [port, signIn, headers, expected] of /** @type {const} */ ([
+    [PORT + 2, { settings: SETTINGS, get: async () => publicPem, now: () => NOW }, signed(), { ended: 'failed', at: 1 }],
+    [PORT + 3, undefined, {}, { ended: 'failed', at: 1, why }],
+  ])) {
+    const dir = tempDir('pb-hosted-models-');
+    const app = await start({ port, dataDir: dir, fresh: true, demo: true, quiet: true, claudeHome: dir, listen: false, signIn });
+    try {
+      // Read once, at the first answer, so it is written before one.
+      writeFileSync(join(dir, 'model-runs.json'), JSON.stringify({ mock: { 'm-1': { ended: 'failed', at: 1, why } } }));
+      const cookie = (await ask(app, port, { path: '/', headers: { ...NAVIGATION, ...headers } })).headers['set-cookie'].split(';')[0];
+      const answer = await ask(app, port, { method: 'POST', path: '/api/backends/mock/models', body: {}, headers: { cookie, ...headers } });
+      assert.deepEqual([answer.status, answer.json.ran?.['m-1']], [200, expected], `signed in: ${!!signIn}`);
+    } finally {
+      await app.close();
+    }
+  }
 });
