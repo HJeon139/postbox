@@ -137,7 +137,7 @@ export const wholeLines = (text) =>
 /** The stand-in’s runs so far, oldest first: their events and the lines each wrote. @param {ReturnType<typeof machine>} m */
 export function standins(m) {
   return readdirSync(m.trace)
-    .filter((f) => /^\d+\.jsonl$/.test(f))
+    .filter((f) => /^[1-9]\d*\.jsonl$/.test(f))
     .map((f) => {
       const events = wholeLines(readFileSync(join(m.trace, f), 'utf8'));
       const pid = Number(f.split('.')[0]);
@@ -157,7 +157,8 @@ export const appliedRuns = (m) =>
 /** The daemon’s PID, from daemon.pid, or null. @param {ReturnType<typeof machine>} m */
 export function daemonPid(m) {
   try {
-    return JSON.parse(readFileSync(join(m.paths.code, 'daemon.pid'), 'utf8')).pid;
+    const { pid } = JSON.parse(readFileSync(join(m.paths.code, 'daemon.pid'), 'utf8'));
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch {
     return null;
   }
