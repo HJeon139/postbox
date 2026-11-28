@@ -127,8 +127,8 @@ function watchExit(rt, sessionId, turn, se) {
 
 /**
  * The state a stopped turn settles to once it has exited: its need's, as at any turn's end and at a restart. A need left
- * after the stop waits on the person (your Stop dropped the turn's own, card-needs.mjs stoppedNeed; a run clock's, a hung
- * or a store outage's stop keeps it), so the agent needs you from the stop, rather than sitting idle until something
+ * after the stop waits on the person (your Stop dropped the turn's own, card-needs.mjs stoppedNeed; a run clock's stop, a hung
+ * host turn's or a store outage's keeps it), so the agent needs you from the stop, rather than sitting idle until something
  * unrelated settles its state (#1928).
  * @param {any} rt @param {any} se
  */
