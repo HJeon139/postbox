@@ -97,6 +97,10 @@ export function placedFolder(folder, remote, hosted = false) {
 export const NO_SERVER_FOLDER =
   'This Postbox runs on a server, so nothing is given a folder here. Put the agent on a host under Runs on, and name a folder there.';
 
+/** What a hosted Postbox says of a folder a conversation would add, when its agent is on a host: where its folder is set. */
+export const NO_ADDED_FOLDER =
+  'This Postbox runs on a server, so a conversation adds no folder here. Its agent works on its host: set the project’s folder there in Settings › Hosts.';
+
 // The longest a folder is shown in a message, before it’s cut: a refused one can be any length.
 const SHOWN = 200;
 

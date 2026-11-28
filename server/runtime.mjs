@@ -20,6 +20,7 @@ import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, 
 import { Delivery } from './delivery.mjs';
 import { cancelEntry, editEntry, sendEntryNow } from './entry-queue.mjs';
 import { httpError } from './helpers.mjs';
+import { dropServerFolders } from './hosted-saved-folders.mjs';
 import { listenInbox } from './inbox-listeners.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
@@ -255,6 +256,7 @@ export class Runtime {
     // Ask me and Accept edits are gone: a persona stored with one runs Auto (permission-modes.mjs).
     retireModes(this);
     retireBackends(this); // and one stored on the Agent SDK runs on Claude Code (retired-backends.mjs)
+    dropServerFolders(this); // hosted, a folder on the server saved before is ignored (hosted-saved-folders.mjs)
     // A need from before needsAt gets its item's time, once, so ⌃J orders it without the page holding its items.
     this.sessions.stampNeeds();
   }

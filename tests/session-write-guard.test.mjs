@@ -26,6 +26,8 @@ const SESSION_WRITES = {
   'sessions.mjs': ['ensure', 'update', 'remove', 'stampNeeds'],
   // a session an older Postbox stored on the Agent SDK, moved to Claude Code as the store loads, before any write is held
   'retired-backends.mjs': ['retireBackends'],
+  // a conversation’s folders on the server, saved before a hosted Postbox refused them, cleared as the store loads
+  'hosted-saved-folders.mjs': ['dropServerFolders'],
 };
 const SESSION_WRITE = /\bsessions\.put\(|\bemit\(\s*['"`]session(?:\.patch)?['"`]|\bemit\(\s*['"`]remove['"`]\s*,\s*\{\s*kind:\s*['"`]session['"`]/;
 
