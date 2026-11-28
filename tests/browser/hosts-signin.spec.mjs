@@ -72,7 +72,9 @@ test('#1608 placing an agent on a host where its harness isn’t signed in says 
   await page.evaluate((id) => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', id)), persona.id);
   const where = sheet.locator('#pe-where');
   const warning = sheet.locator('#pe-where-signin');
-  await expect(warning).toHaveText(`Codex isn’t signed in on ${host.name}, so this agent’s turns there would stop until it is. Run this on ${host.name}:`);
+  await expect(warning).toHaveText(
+    `Codex isn’t signed in on ${host.name}, so this agent’s turns there would stop until it is. Run codex login on ${host.name}:`,
+  );
   await expect(sheet.locator('.pe-signin code'), 'the command, to copy').toHaveText('codex login');
   await expect(where).toHaveAttribute('aria-describedby', /pe-where-signin/);
   await expect(where, 'a warning, not a refusal: the host’s status can be wrong').not.toHaveAttribute('aria-invalid', 'true');

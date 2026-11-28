@@ -95,7 +95,7 @@ const signInNote = (idp, name, host, login) =>
       h(
         'p',
         { id: `${idp}-where-signin`, style: { margin: 0 } },
-        `${name} isn’t signed in on ${host.name}, so this agent’s turns there would stop until it is. Run this on ${host.name}:`,
+        `${name} isn’t signed in on ${host.name}, so this agent’s turns there would stop until it is. Run ${login} on ${host.name}:`,
       ),
       command(login),
     ),
