@@ -138,3 +138,19 @@ test('a disk without hard links refuses the store with what to do: --data on ano
     assert.deepEqual(await fs.readdir(dir), [], `no draft or lock is left (${code})`);
   }
 });
+
+test('a bare-pid lock is read by postbox.lock’s rule: a leading zero or a pid past the safe integers is unreadable, never a dead holder (#2027)', async () => {
+  for (const contents of ['0042', '99999999999999999999']) {
+    const dir = await tmp();
+    await writeFile(join(dir, LOCK), contents);
+    const asked = [];
+    const alive = (pid) => {
+      asked.push(pid); // a fake: nothing is signaled
+      return false;
+    };
+    const probe = { alive, started: async () => 1 };
+    await assert.rejects(lockStore(fs, dir, probe), /is unreadable/);
+    assert.deepEqual(asked, [], `no liveness check on what proves nothing (${contents})`);
+    assert.equal(await readFile(join(dir, LOCK), 'utf8'), contents, 'and the lock is left in place');
+  }
+});
