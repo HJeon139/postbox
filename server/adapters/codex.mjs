@@ -151,7 +151,6 @@ async function openAndStart(ctx, request, send, cwd, session, message) {
   send({ method: 'initialized', params: {} });
   const permissions = codexPermissions(ctx.persona, cwd);
   const mcpConfig = await codexMcpApprovalConfig(request, ctx.persona?.permissionMode);
-  // The guide belongs on thread start/resume/fork; turn/start has no top-level settings field.
   const { guide, message: turnMessage } = turnGuide(message, { ...ctx, session, brief: session?.brief, toolRules: CODEX_TOOL_RULES });
   const openConfig = codexOpenConfig(guide, mcpConfig);
   const model = codexModelOf(ctx.persona);
