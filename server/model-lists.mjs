@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { cutText } from '../shared/text-parts.mjs';
 import { httpError } from './helpers.mjs';
 import { ModelRuns } from './model-runs.mjs';
+import { hostModels } from './remote/hosts-models.mjs';
 
 /** How long a list is used before the harness is asked again. */
 const FRESH_MS = 60_000;
@@ -194,4 +195,20 @@ export class ModelLists {
       return {}; // None kept yet, or a file that isn’t ours to read: every harness is asked again.
     }
   }
+}
+
+/**
+ * The lists of a Postbox whose data folder is dataDir, each backend offering the last list it gave: built as Postbox
+ * starts, before its runtime, which it reads only once a list is asked for. Moved from server/index.mjs’s start.
+ * @param {string} dataDir @param {import('./adapters/adapter.mjs').AdapterRegistry} adapters
+ * @param {any} hosts  the hosts’ links (server/remote/serve.mjs) @param {() => any} rt  the runtime, once there is one
+ */
+export function modelListsIn(dataDir, adapters, hosts, rt) {
+  const models = new ModelLists(adapters, {
+    file: join(dataDir, 'model-lists.json'),
+    listOnHost: (hostId, backend) => hostModels(hosts, hostId, backend),
+    hostIds: () => Object.keys(rt().s.hosts ?? {}),
+  });
+  models.seed();
+  return models;
 }

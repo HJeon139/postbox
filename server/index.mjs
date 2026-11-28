@@ -29,12 +29,11 @@ import { itemsRoute } from './items-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
 import { liveStreams } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
-import { ModelLists } from './model-lists.mjs';
+import { modelListsIn } from './model-lists.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { pageState } from './page-state.mjs';
 import { createPersonaFor } from './persona-create.mjs';
 import { projectsRoute } from './project-routes.mjs';
-import { hostModels } from './remote/hosts-models.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { requestGate } from './request-gate.mjs';
 import { settleInterrupted, stopStreaming } from './restart-sweep.mjs';
@@ -140,12 +139,7 @@ export async function start({
   // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
   // Each backend’s models, from its harness here or on a host, each offering the last list it gave (#1302, #1304).
-  const models = new ModelLists(adapters, {
-    file: join(dataDir, 'model-lists.json'),
-    listOnHost: (hostId, backend) => hostModels(hosts, hostId, backend),
-    hostIds: () => Object.keys(rt.s.hosts ?? {}),
-  });
-  models.seed();
+  const models = modelListsIn(dataDir, adapters, hosts, () => rt);
   const rt = new Runtime({ store, adapters, config, blobs, narrator, spawnShell, hosts });
   models.runs.listen(rt); // how each model’s turns end, for the Model field (#1977)
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture/view-app.md, “Agents see their app”).
