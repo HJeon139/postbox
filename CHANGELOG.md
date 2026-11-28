@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.7.1 (2026-11-28)
+
+### Fixes
+
+- **codex:** a Codex error that isn't text fails its turn instead of hanging it
+- **adapters:** clean and cut a request Codex refuses before the person reads it
+- **adapters:** clean and cut what Codex says of a failed turn before the person reads it
+- **adapters:** give a failed Codex turn's reason from turn/completed
+
 ## 5.7.0 (2026-11-27)
 
 ### Features
