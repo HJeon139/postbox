@@ -3,7 +3,7 @@
 // owns, so Postbox turns memory off there before each turn (#479), keeping the home’s other settings: on this computer
 // the one every Isolated persona shares (kiro-cli.mjs), and on a host the persona’s own, which the daemon writes
 // (daemon-start.mjs). Here, so the host’s daemon runs the same code (install-bundle.mjs ships only shared/ and
-// server/remote/host/). The person’s own Kiro home is never written: a persona with your setup shares your memory.
+// server/remote/host/). Postbox leaves your own Kiro settings alone, so a persona with your setup shares your memory.
 
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';

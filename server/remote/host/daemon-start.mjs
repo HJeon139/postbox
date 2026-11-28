@@ -196,8 +196,8 @@ async function launch(d, m, { node, dir, agents, record }, failStart) {
     // The turn’s own token for its shims, so one turn’s shim can’t speak for another’s (broker-shim.mjs’s hello).
     await fsp.writeFile(`${dir}/${TURN_FILES.shimToken}`, randomBytes(32).toString('hex'), { mode: FILE_MODE, flag: 'wx' });
     await d.brk.starting?.(m.turn);
-    // An Isolated persona’s own Kiro home keeps no memory, as the one Postbox owns on the laptop (#479). The host’s own
-    // Kiro home, used with your setup, is never written.
+    // An Isolated persona’s own Kiro home keeps no memory, as the one Postbox owns on the laptop (#479). Postbox
+    // leaves the host account’s Kiro settings alone.
     if (agents?.isolated) await kiroMemoryOff(agents.isolated);
     // Outside the turn folder (a Kiro home’s agents folder), recorded in it, so it goes when the turn ends.
     if (m.agentFile && agents && 'dir' in agents) await d.cleanup.writeAgentFile(m.turn, { dir: agents.dir, name: m.agentFile.name, text: m.agentFile.text });
