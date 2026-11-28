@@ -21,7 +21,7 @@ const REVIEW_FILES = { type: 'array', items: FILE_SCHEMA };
 const REVIEW_BLOCK_DEF = {
   name: 'review_block',
   // lint-allow thread: a review block’s comment threads, not a topic or side thread.
-  description: `Comment on another agent’s review block in this conversation, as its reviewer. Each comment becomes an open comment thread on the draft, with your handle, where the person sees it, and the block’s agent hears about it, so it can revise and resolve it. It doesn’t answer the block: that stays the person’s to approve. An answered review takes comments too, without reopening it. blockId: the review’s id, or its item id if two agents use the same one. comments (1–${MAX_COMMENTS}, each up to ${COMMENT_MAX.toLocaleString('en-US')} characters): { line, text } on a line; { line, col, endLine, endCol, quote, text } on a selection, with columns from 1, endCol the column of its last character, and quote the exact text there (up to ${QUOTE_MAX.toLocaleString('en-US')} characters); { anchor, text } on an app’s part; { anchor: “region 1”, region: { x, y, w, h, width, height, version }, text } on a box (w = h = 0: a point) of the app, in whole CSS px of its page, in a frame width × height px, on that app version (the person sees it drawn only in a frame that wide, since the app may lay out another way at another width); or { threadId, text } to reply in its comment thread. verdict?: “comment”, “approve” or “request_changes”, shown on a waiting block.`,
+  description: `Comment on another agent’s review block in this conversation, as its reviewer. Each comment opens a thread with your handle where the person sees it and the block’s agent hears about it; it doesn’t answer the block (an answered review takes comments too). blockId: the review’s id, or its item id. comments (1–${MAX_COMMENTS}, each up to ${COMMENT_MAX.toLocaleString('en-US')} chars): { line, text }; { line, col, endLine, endCol, quote, text } (1-based columns, exact quote up to ${QUOTE_MAX.toLocaleString('en-US')} chars); { anchor, text } on an app part; { anchor: “region 1”, region: { x, y, w, h, width, height, version }, text } (CSS px of a width × height review frame; w = h = 0 for a point); or { threadId, text } to reply. verdict?: “comment”, “approve” or “request_changes”.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -105,25 +105,12 @@ export const TOOL_DEFS = [
   {
     name: 'view_app',
     description:
-      'See an app in this conversation as the person first sees it: inline, at their window size (1000 × 680 if no tab is open), in their theme, at its current version. Pass a review comment’s region to see it at the review width, uncapped in height, with the region outlined. Returns a picture and saves it under .postbox/view. Look before calling an app done. First use asks the person to download the browser; end your turn to wait.',
+      'See an app in this conversation as the person sees it: inline at their window size (1000 × 680 if none open), theme, and current version. Pass a review region to render at its review width, uncapped in height, with the region outlined. Returns a picture and saves it under .postbox/view. First use asks to download the browser; end your turn to wait.',
     inputSchema: {
       type: 'object',
       properties: {
         appId: { type: 'string', description: 'The appId show_app or update_app returned.' },
-        region: {
-          type: 'object',
-          description: 'Review region { x, y, w, h, width, height, version? } to outline.',
-          properties: {
-            x: { type: 'number' },
-            y: { type: 'number' },
-            w: { type: 'number' },
-            h: { type: 'number' },
-            width: { type: 'number' },
-            height: { type: 'number' },
-            version: { type: 'number' },
-          },
-          required: ['x', 'y', 'w', 'h', 'width', 'height'],
-        },
+        region: { type: 'object', description: 'Optional review region { x, y, w, h, width, height, version? } to outline.' },
       },
       required: ['appId'],
     },
