@@ -42,7 +42,7 @@ for (;;) {
 /** How many stages the racer counted: one character each. @param {string} count */
 const staged = (count) => (existsSync(count) ? statSync(count).size : 0);
 
-test('#2008 a racer killed between opening its count file and writing to it still shows what it counted', async () => {
+test('#2008 a racer killed between opening its count file and writing to it still shows what it counted', async (t) => {
   const count = join(home, 'racer-gap', 'staged');
   mkdirSync(dirname(count), { recursive: true });
   writeFileSync(count, '+++', { flag: COUNT_FLAG });
@@ -54,6 +54,7 @@ test('#2008 a racer killed between opening its count file and writing to it stil
       stdio: ['ignore', 'pipe', 'ignore'],
     },
   );
+  t.after(() => opener.kill('SIGKILL')); // whatever fails, the opener doesn’t outlive the test
   // An opener that dies before it opens the file (say, refused it) ends the wait too, and fails here: it never
   // reached the gap, so the count it left proves nothing.
   const exited = once(opener, 'exit');
