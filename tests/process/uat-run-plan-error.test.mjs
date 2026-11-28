@@ -1,4 +1,4 @@
-// #482: the runner’s plan (its scenario and options) is made before main() starts, so the run's folder is known for
+// #482: the runner’s plan (its scenario and options) is made before main() starts, so the run’s folder is known for
 // run.json’s exit code. A plan that throws must still fail as a run does, said and exiting 1, not crash with a stack
 // and no word from the runner. It stops before any Postbox or agent starts.
 
