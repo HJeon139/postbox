@@ -83,7 +83,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   recordStopped(rt, turn, ended, { by, why: by === 'clock' || by === 'pause' ? STOP_WHY[by] : STOP_WHY.you });
   // What the turn took was given to the agent, so it isn't handed over again (designs/architecture/services.md, “The
   // end of a turn”). A shutdown's isn't settled: the restart reopens it once, as a resend.
-  if (by !== 'shutdown') rt.bus.emit('turn.stopping', { turn });
+  if (by !== 'shutdown') rt.bus.emit('turn.stopping', { turn, by });
   rt.sessions.update(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
   // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
   if (keep.length) rt.sessions.update(sessionId, { heldSteps: { threadId: turn.threadId, keys: runningProgress(rt, turn.threadId, sessionId) } });
@@ -92,18 +92,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   const se = rt.store.pending.session(sessionId);
   if (se) rt.checks.stallLeftRunning(turn, se, by === 'shutdown' || by === 'hung' ? by : 'stopped');
   if (turn.remote) rt.remote.stopped(turn, { by, why });
-  // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
-  // Kept in rt.watchdogs, so close() clears it (server/runtime-close.mjs).
-  const watchdog = setTimeout(() => {
-    rt.watchdogs.delete(watchdog);
-    if (rt.exiting.get(sessionId)?.turn !== turn) return;
-    console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
-    // Its CLI may still work: a run clock voids its run (clockStopConfirmed).
-    if (rt.runClock) turn.mayRunOn ??= 'watchdog';
-    turnExited(rt, turn);
-  }, STOP_WATCHDOG_MS);
-  watchdog.unref?.();
-  rt.watchdogs.add(watchdog);
+  watchExit(rt, sessionId, turn, se);
   // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93), in a topic thread too.
   // A message from another agent, waiting behind the turn, goes with it: it hears at its next turn what it said.
   rt.clearSummaryPending(turn.threadId);
@@ -116,6 +105,35 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).
   if (!silent && se) dropWakes(rt, se);
   return true;
+}
+
+/**
+ * A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
+ * Kept in rt.watchdogs, so close() clears it (server/runtime-close.mjs).
+ * @param {any} rt @param {string} sessionId @param {any} turn  the stopped turn @param {any} se  its session, pending
+ */
+function watchExit(rt, sessionId, turn, se) {
+  const watchdog = setTimeout(() => {
+    rt.watchdogs.delete(watchdog);
+    if (rt.exiting.get(sessionId)?.turn !== turn) return;
+    console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
+    // Its CLI may still work: a run clock voids its run (clockStopConfirmed).
+    if (rt.runClock) turn.mayRunOn ??= 'watchdog';
+    turnExited(rt, turn);
+  }, STOP_WATCHDOG_MS);
+  watchdog.unref?.();
+  rt.watchdogs.add(watchdog);
+}
+
+/**
+ * The state a stopped turn settles to once it has exited: its need's, as at any turn's end and at a restart. A need left
+ * after the stop waits on the person (your Stop dropped the turn's own, card-needs.mjs stoppedNeed; a run clock's stop, a hung
+ * host turn's or a store outage's keeps it), so the agent needs you from the stop, rather than sitting idle until something
+ * unrelated settles its state (#1928).
+ * @param {any} rt @param {any} se
+ */
+function settledState(rt, se) {
+  return rt.turnService.asks.stateFor(se.needs);
 }
 
 /**
@@ -145,7 +163,7 @@ export function turnExited(rt, turn) {
   forgetWait(rt, se.id);
   if (se.state === 'stopping' || se.currentStep === 'Stopping')
     rt.sessions.update(se.id, {
-      state: se.state === 'stopping' ? 'idle' : se.state,
+      state: se.state === 'stopping' ? settledState(rt, se) : se.state,
       currentStep: stoppedBy,
       finishedAt: Date.now(),
       sideTurn: null,

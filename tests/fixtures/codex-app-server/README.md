@@ -64,6 +64,44 @@ The file keeps 16 of the 21 lines the server sent.
 
 `checkFilePrivacy` finds nothing in the file as committed, and in a copy it caught each planted string: a macOS home path, a Linux home path and an email address.
 
+## `auto-compact.jsonl`
+
+One `codex app-server` session, codex-cli 0.167.0, recorded on 28 November 2026 (UTC) for #674, in a fresh temp folder with a read-only sandbox and approvals set to `never`. It shows what Codex does when a thread grows past its limit: it compacts by itself, inside an ordinary turn, before it answers, and goes on. `tests/codex-auto-compact.test.mjs` replays it.
+
+### The limit was forced
+
+Codex’s limits are far above what a short test reaches, so this session ran with `-c model_auto_compact_token_limit=1000`, set by hand: Codex compacts once a thread passes 1,000 tokens, which every turn after the first does. The compaction is Codex’s own; only the threshold was moved.
+
+A second session, recorded the same day and not committed, ran with `-c model_context_window=21000` instead, and a first message of about 24,600 input tokens, over that window. Codex answered it, and the two turns after it each started with a compaction and answered, with no error and no `contextWindowExceeded`. Its stream also had three `warning` notifications that the skills’ part of the context was over its budget, which Postbox doesn’t read. No test needs that session, so it isn’t here.
+
+### What the driver did
+
+A small Node script started the app-server, spoke to it over stdio, and stopped the process it started at the end. The model was pinned to `gpt-6.2-sol` in `thread/start` and in each `turn/start`. In order, it sent:
+1. `initialize`, then `thread/start`.
+2. A turn, “Remember the word heron. Reply with just OK.” Codex answered “OK”.
+3. A turn, “Reply with just OK.” Codex ran a `contextCompaction` item, then answered “OK”.
+4. A turn, “What word did I ask you to remember? Reply with just the word.” Codex ran a `contextCompaction` item, then answered “heron”.
+
+### How MCP servers were kept off
+
+The app-server ran with `--disable plugins --disable apps`, and for each `[mcp_servers.<name>]` header in Codex’s `config.toml` the driver added `-c mcp_servers.<name>.enabled=false`, reading the names from the headers alone and copying no other setting. After `thread/start` it waited 4 seconds, counting `mcpServer/startupStatus/updated` notices, and would have stopped before any model call had it seen one. It saw 0, and the whole session had none.
+
+### What was dropped and replaced
+
+The file keeps 43 of the 50 lines the server sent.
+- **Dropped:** `account/updated` (the sign-in mode and plan), every `account/rateLimits/updated` (the account’s usage), and `remoteControl/status/changed` (the computer’s name and an installation id). No test reads them.
+- **Replaced:**
+  - the thread id with `thr-1`, the three turns’ ids with `turn-1` to `turn-3`, and the item ids (the user messages, the agent messages and the two compactions) with `id-1` to `id-8`, each the same wherever it appears;
+  - the temp folder with `/work`, and the home folder with `/home`;
+  - `instructionSources` with an empty list;
+  - the user agent’s operating system version and terminal, as `(Mac OS; arm64) unknown`;
+  - the local time in the rollout file’s name, as below.
+- **Kept:** the three user messages, the agent’s words (“OK”, “OK”, and “heron” in two deltas), the model’s name, the timestamps and the token counts.
+
+`checkFilePrivacy` in `tools/privacy-check.mjs` finds nothing in the file as committed, and in a copy it caught each planted string: a macOS home path, a Linux home path and an email address.
+
+Its entry in `tests/single-stream-reply-golden.json` is what the mapper wrote for it when it was added, since the golden holds every recorded turn.
+
 ## The rollout file’s name
 
-Codex names a thread’s rollout file for the local time it started, as in `rollout-<date>T<hh-mm-ss>-<thread id>.jsonl`, while every other time in a recording, such as `createdAt`, is in UTC. In every Codex fixture (this folder and `tests/fixtures/delivery-routes/codex-turn-steer.jsonl`), the time in that name is `00-00-00`, as in `/home/.codex/sessions/2026/11/27/rollout-2026-11-27T00-00-00-thr-1.jsonl`, so no fixture carries a local clock time. The date is left as recorded: in the three `compact` recordings it’s also the UTC date of `createdAt`, and in some older ones it’s the local date, a day off. This keeps no secret a commit’s own date doesn’t already show (git records each with its time-zone offset), and older commits still hold the full names. No other field in the three `compact` recordings holds a local time: the rest are Unix times.
+Codex names a thread’s rollout file for the local time it started, as in `rollout-<date>T<hh-mm-ss>-<thread id>.jsonl`, while every other time in a recording, such as `createdAt`, is in UTC. In every Codex fixture (this folder and `tests/fixtures/delivery-routes/codex-turn-steer.jsonl`), the time in that name is `00-00-00`, as in `/home/.codex/sessions/2026/11/27/rollout-2026-11-27T00-00-00-thr-1.jsonl`, so no fixture carries a local clock time. The date is left as recorded: in the three `compact` recordings and `auto-compact.jsonl` it’s also the UTC date of `createdAt`, and in some older ones it’s the local date, a day off. This keeps no secret a commit’s own date doesn’t already show (git records each with its time-zone offset), and older commits still hold the full names. No other field in those four recordings holds a local time: the rest are Unix times.

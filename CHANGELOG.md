@@ -2,6 +2,36 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.9.4 (2026-11-28)
+
+### Fixes
+
+- **check:** a fixed label cut by the page is still reported, at no more cost per label
+- **check:** a box's hidden axis cuts before its scroll clip, and spec cases for each rule
+- **check:** text a scroll box scrolled past the window's edge isn't cut off by the page
+
+## 5.9.3 (2026-11-28)
+
+### Fixes
+
+- **needs:** every stopped turn settles to the state of the need it leaves
+- **needs:** a clock-stopped or hung turn's agent needs you from the stop
+- **needs:** a run clock's or hung turn's stop leaves its card counting
+- **remote:** a host turn marked interrupted clears the stopped mark
+- **needs:** only the person's stop keeps a turn's cards quiet
+- **needs:** keep a stopped turn's cards quiet after another answer or a restart
+
+## 5.9.2 (2026-11-28)
+
+### Fixes
+
+- **view-app:** a thread with no known root finds its own card, and the pre-review's smaller fixes
+- **view-app:** one browser card per conversation, and the person's answer settles every one
+- **view-app:** one browser card at a time, and every agent carries on instead of waiting
+- **ui:** a repaint that keeps focus counts scroll-stop boxes in place, stop or not
+- **a11y:** five more scroll boxes take a tab stop only while they scroll
+- **view-app:** every agent told to wait on the browser card hears its answer
+
 ## 5.9.1 (2026-11-28)
 
 ### Fixes
