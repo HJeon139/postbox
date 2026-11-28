@@ -5,10 +5,10 @@
 // fake runners (tests/remote-cleanup-setup.mjs).
 
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { daemonSetup, startMsg } from './remote-cleanup-setup.mjs';
+import { daemonSetup, startMsg, until } from './remote-cleanup-setup.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const kiro = (turn, env = {}) => startMsg(turn, { harness: 'kiro-cli', stdin: 'none', files: [], env, agentFile: { name: `pb-${turn}.json`, text: '{}' } });
@@ -94,3 +94,34 @@ test('#479 daemon: a KIRO_HOME outside ~/.postbox-remote is refused, and nothing
     await s.done();
   }
 });
+
+for (const linked of ['directory', 'file']) {
+  test(`#479 daemon: linked Kiro settings ${linked} is refused before launch`, async () => {
+    const s = daemonSetup();
+    try {
+      const c = await s.connect();
+      const home = join(s.p.root, 'kiro-home', 'coder');
+      const own = join(s.home, '.kiro');
+      const baseline = '{"memory.mode":"read_write"}';
+      mkdirSync(join(own, 'settings'), { recursive: true });
+      writeFileSync(cliJson(own), baseline);
+      mkdirSync(home, { recursive: true });
+      if (linked === 'directory') symlinkSync(join(own, 'settings'), join(home, 'settings'), 'dir');
+      else {
+        mkdirSync(join(home, 'settings'));
+        symlinkSync(cliJson(own), cliJson(home), 'file');
+      }
+      c.send('start', kiro('t1', { KIRO_HOME: home }));
+      const reply = () => c.msgs.messages.find(({ type }) => type === 'error' || type === 'started');
+      await until(reply, 'the Kiro start reply');
+      assert.equal(readFileSync(cliJson(own), 'utf8'), baseline);
+      assert.equal(reply().type, 'error');
+      assert.equal(reply().code, 'start-failed');
+      assert.match(reply().message, /symbolic link/);
+      assert.ok(!existsSync(s.p.turn('t1')));
+      assert.ok(!existsSync(join(home, 'agents')));
+    } finally {
+      await s.done();
+    }
+  });
+}

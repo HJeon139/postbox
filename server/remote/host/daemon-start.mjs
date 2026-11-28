@@ -198,7 +198,7 @@ async function launch(d, m, { node, dir, agents, record }, failStart) {
     await d.brk.starting?.(m.turn);
     // An Isolated persona’s own Kiro home keeps no memory, as the one Postbox owns on the laptop (#479). Postbox
     // leaves the host account’s Kiro settings alone.
-    if (agents?.isolated) await kiroMemoryOff(agents.isolated);
+    if (agents?.isolated) await kiroMemoryOff(agents.isolated, { refuseLinks: true });
     // Outside the turn folder (a Kiro home’s agents folder), recorded in it, so it goes when the turn ends.
     if (m.agentFile && agents && 'dir' in agents) await d.cleanup.writeAgentFile(m.turn, { dir: agents.dir, name: m.agentFile.name, text: m.agentFile.text });
     await writeAtomic(d, `${dir}/${TURN_FILES.start}`, JSON.stringify(record));
