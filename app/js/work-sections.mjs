@@ -7,6 +7,7 @@ import { ledgerIndex } from '/shared/work-index.mjs';
 import { retiredApp } from '/shared/work-list.mjs';
 import { client } from './client.mjs';
 import { h, icon, plural, timeOf } from './dom.mjs';
+import { scrollStop } from './scroll-stop.mjs';
 import { openWork, paneHref, route } from './ui.mjs';
 import { showItem } from './work-show-item.mjs';
 
@@ -157,30 +158,32 @@ export function effortSection(s, entries, threadId, win) {
     'Effort',
     0,
     s.turns.length
-      ? h(
-          'div.tbl-wrap.work-tbl',
-          { tabindex: '0', role: 'region', 'aria-label': 'Effort by agent' },
+      ? scrollStop(
           h(
-            'table.tbl',
+            'div.tbl-wrap.work-tbl',
+            { role: 'region', 'aria-label': 'Effort by agent' },
             h(
-              'thead',
+              'table.tbl',
               h(
-                'tr',
-                ['Agent', 'Turns', 'Time', 'Tool calls', 'Tokens', 'Spend', 'Written', 'Kept'].map((x, i) =>
-                  h('th', { scope: 'col', class: i ? 'num' : '' }, x),
+                'thead',
+                h(
+                  'tr',
+                  ['Agent', 'Turns', 'Time', 'Tool calls', 'Tokens', 'Spend', 'Written', 'Kept'].map((x, i) =>
+                    h('th', { scope: 'col', class: i ? 'num' : '' }, x),
+                  ),
                 ),
               ),
+              h(
+                'tbody',
+                s.byAgent.map((a) => row(a)),
+              ),
+              s.byAgent.length > 1
+                ? h(
+                    'tfoot',
+                    row({ handle: '', ...s.effort, tokens: s.effort.tokens, written: s.effort.written, added: s.total.added, deleted: s.total.deleted }, true),
+                  )
+                : null,
             ),
-            h(
-              'tbody',
-              s.byAgent.map((a) => row(a)),
-            ),
-            s.byAgent.length > 1
-              ? h(
-                  'tfoot',
-                  row({ handle: '', ...s.effort, tokens: s.effort.tokens, written: s.effort.written, added: s.total.added, deleted: s.total.deleted }, true),
-                )
-              : null,
           ),
         )
       : h('p.empty-note', 'No turns yet.'),
