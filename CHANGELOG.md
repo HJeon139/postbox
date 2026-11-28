@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.10.1 (2026-11-28)
+
+### Fixes
+
+- **hosted:** clear saved conversation folders by reading pending sessions
+- **hosted:** a folder on the server saved before is ignored, for agents, conversations and projects
+- **hosted:** a conversation's folder refusal says what is so for where its agent runs
+- **hosted:** agents.json that gives an agent a folder starts a hosted Postbox
+
 ## 5.10.0 (2026-11-28)
 
 ### Features
