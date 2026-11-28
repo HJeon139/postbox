@@ -34,7 +34,7 @@ export function deleteProjectButton(p, paint) {
 export function confirmDeleteProject(p, paint) {
   const dlg = openDialog({
     title: `Delete the project “${p.name}”?`,
-    sub: p.folder,
+    sub: p.folder ?? '',
     role: 'alertdialog',
     body: whatGoes(p),
     foot: [
@@ -95,7 +95,15 @@ function whatGoes(p) {
         li(false, 'The agents’ sessions in them, and their context'),
       ),
     ),
-    h('div.field', h('span.label', 'This stays'), h('ul.what-goes', li(true, 'The personas and their other sessions'), li(true, `Files in ${p.folder}`))),
+    h(
+      'div.field',
+      h('span.label', 'This stays'),
+      h(
+        'ul.what-goes',
+        li(true, 'The personas and their other sessions'),
+        li(true, p.folder ? `Files in ${p.folder}` : 'Files on the hosts its agents worked on'),
+      ),
+    ),
     h('p.small.dim', 'It goes at once. This can’t be undone.'),
   ];
 }

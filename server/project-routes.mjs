@@ -12,12 +12,13 @@ const done = (status, body) => ({ status, body });
  * The response for a projects route, or null when the path isn’t one.
  * @param {any} rt @param {string} path @param {string} method @param {any} body  null for a GET
  * @param {URLSearchParams} query
+ * @param {boolean} [hosted]  whether this Postbox runs on a server, where a project has no folder of the server’s
  * @returns {Promise<{ status: number, body: any } | null>}
  */
-export async function projectsRoute(rt, path, method, body, query) {
+export async function projectsRoute(rt, path, method, body, query, hosted = false) {
   const { store } = rt;
   let m;
-  if (path === '/api/projects' && method === 'POST') return done(201, await createProject(store, body));
+  if (path === '/api/projects' && method === 'POST') return done(201, await createProject(store, body, hosted));
   if ((m = path.match(/^\/api\/projects\/([^/]+)\/push-url$/)) && method === 'PUT') return done(200, setPushUrl(store, m[1], body.url));
   if ((m = path.match(/^\/api\/projects\/([^/]+)\/files$/)) && method === 'GET')
     return done(200, await listFolder(store.state.projects[m[1]], query.get('path') ?? ''));
