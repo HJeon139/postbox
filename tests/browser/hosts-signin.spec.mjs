@@ -86,8 +86,9 @@ test('#1608 placing an agent on a host where its harness isn’t signed in says 
 });
 
 test('#1608 at 375 px the card’s and Runs on’s sign-in warnings are tidy: nothing over, cut off or broken mid-word', async ({ page }) => {
-  // A phone’s width; tall enough that no field of the long persona sheet sits across the window’s bottom edge, which
-  // the check reports as cut off by the page whatever the warning does (CI’s fonts put “Instructions” there at 812 px).
+  // A phone’s width, and tall enough that the persona sheet’s scroll box holds every field. At 812 px, on CI’s fonts,
+  // the box scrolled “Instructions” past the window’s top, and the check reported it as cut off by the page’s edge,
+  // though scrolling reaches it: a false positive in the check, #1985. Back to 812 px once that’s fixed.
   await page.setViewportSize({ width: 375, height: 1600 });
   const host = hostWith('narrow.example.com', { 'claude-code': 'signed-out', codex: 'signed-out', 'kiro-cli': 'signed-in' });
   const settings = await openSettings(page, () => import('/app/js/sheets.mjs').then((m) => m.openSettings('hosts')));
