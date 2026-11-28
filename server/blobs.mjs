@@ -77,6 +77,64 @@ export class Blobs {
     }
   }
 
+  /**
+   * Stores a stream’s bytes as put does, without holding them whole (#870): each chunk is hashed as it’s written to a
+   * draft in the store’s folder, synced, and renamed under its hash once the stream ends, so memory stays at a chunk
+   * whatever the size. check(size) runs before each chunk is written, with the size the draft would reach, and throws
+   * to refuse it. Any failure removes the draft, so a refused or cut-off upload leaves nothing behind.
+   * @param {AsyncIterable<Buffer>} source @param {{ check?: (size: number) => Promise<void> | void }} [opts]
+   */
+  async putStream(source, { check = () => {} } = {}) {
+    await mkdir(this.dir, { recursive: true, mode: 0o700 });
+    const draft = join(this.dir, `stream.${process.pid}.${randomBytes(4).toString('hex')}.draft`);
+    const hash = createHash('sha256');
+    let size = 0;
+    try {
+      const fh = await this.open(draft, 'wx', 0o600);
+      try {
+        for await (const chunk of source) {
+          await check(size + chunk.length);
+          hash.update(chunk);
+          await fh.write(chunk);
+          size += chunk.length;
+        }
+        await fh.sync();
+      } finally {
+        await fh.close();
+      }
+    } catch (e) {
+      await unlink(draft).catch(() => {});
+      throw e;
+    }
+    const sha256 = hash.digest('hex');
+    this.writing.set(sha256, (this.writing.get(sha256) ?? 0) + 1);
+    try {
+      return await this.place(sha256, draft, size);
+    } finally {
+      this.wrote(sha256);
+    }
+  }
+
+  /** putStream’s rename of a whole, synced draft under its hash; a blob already whole there is kept, and the draft removed. */
+  async place(sha256, draft, size) {
+    await this.dropping.get(sha256);
+    const path = this.pathOf(sha256);
+    const folder = join(this.dir, sha256.slice(0, 2));
+    const have = await stat(path).catch(() => null);
+    try {
+      if (have?.size === size) await unlink(draft);
+      else {
+        await mkdir(folder, { recursive: true, mode: 0o700 });
+        await rename(draft, path);
+      }
+    } catch (e) {
+      await unlink(draft).catch(() => {});
+      throw e;
+    }
+    await this.syncFolder(folder);
+    return { sha256, size, path, fresh: !have };
+  }
+
   /** An ordinary put is done: a staged call holding the same bytes now keeps them whatever it settles. @param {string} sha256 */
   wrote(sha256) {
     const left = (this.writing.get(sha256) ?? 1) - 1;
