@@ -1,7 +1,8 @@
 // A box that scrolls takes a tab stop, so a keyboard can reach and scroll it, and one that fits is no extra stop for
 // Tab (#1964), as a dialog’s body does (scrollFocus in ui.mjs): a step’s output and a command’s output, and a code block,
 // a table block, the Work view’s effort table, a file’s diff and a permission card’s draft (#1968). Its label stays
-// either way, for when it does scroll. One observer serves every box, and lets go of a box once it leaves the page.
+// either way, for when it does scroll, except where it says so (a table block’s “…, scrolls”). One observer serves
+// every box, and lets go of a box once it leaves the page.
 
 const boxes = new ResizeObserver((entries) => {
   for (const { target } of entries) {
