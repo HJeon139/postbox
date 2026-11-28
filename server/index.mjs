@@ -147,6 +147,7 @@ export async function start({
   });
   models.seed();
   const rt = new Runtime({ store, adapters, config, blobs, narrator, spawnShell, hosts });
+  models.runs.listen(rt); // how each model’s turns end, for the Model field (#1977)
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture/view-app.md, “Agents see their app”).
   startViewApp(rt, { dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` });
   const firstReal = ['claude-code', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';

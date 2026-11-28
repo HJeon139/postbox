@@ -5,8 +5,10 @@
 // apart, per host.
 
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { cutText } from '../shared/text-parts.mjs';
 import { httpError } from './helpers.mjs';
+import { ModelRuns } from './model-runs.mjs';
 
 /** How long a list is used before the harness is asked again. */
 const FRESH_MS = 60_000;
@@ -23,6 +25,8 @@ export class ModelLists {
    *   (server/remote/hosts-models.mjs); hostIds: the hosts Postbox has, so a deleted one’s lists are forgotten
    */
   constructor(adapters, { file, now = Date.now, listOnHost, hostIds }) {
+    // How each model’s last turn ended, kept beside the lists and answered with them (server/model-runs.mjs).
+    this.runs = new ModelRuns({ file: join(dirname(file), 'model-runs.json'), now, hostIds });
     this.adapters = adapters;
     this.file = file;
     this.now = now;
@@ -48,6 +52,7 @@ export class ModelLists {
    */
   close() {
     this.closed = true;
+    this.runs.close();
   }
 
   /** Offers each backend the last list its harness gave, as Postbox starts. Asks no harness. */
@@ -59,10 +64,23 @@ export class ModelLists {
   /**
    * A backend’s models, and whether its harness listed them just now (fresh) or they’re the last it listed. With a
    * hostId, the host’s, and why they’re not fresh when they aren’t.
+   * With them, how the last turn with each model ended there (`ran`, server/model-runs.mjs), which a harness’s list
+   * can’t say: it lists what it knows, not what this sign-in may run (#1977).
    * @param {string} backend @param {unknown} [hostId]
-   * @returns {Promise<{ models: string[], fresh: boolean, why?: NotListed }>}
+   * @returns {Promise<{ models: string[], fresh: boolean, why?: NotListed, ran?: Record<string, import('./model-runs.mjs').ModelRun> }>}
    */
   async list(backend, hostId = null) {
+    const listed = await this.#list(backend, hostId);
+    const ran = this.runs.of(backend, /** @type {string | null} */ (hostId));
+    // Left out while no turn has said anything, so an answer is as it was until one has.
+    return Object.keys(ran).length ? { ...listed, ran } : listed;
+  }
+
+  /**
+   * @param {string} backend @param {unknown} hostId
+   * @returns {Promise<{ models: string[], fresh: boolean, why?: NotListed }>}
+   */
+  async #list(backend, hostId) {
     if (!this.adapters.names().includes(backend)) throw httpError(404, `“${cutText(String(backend), 40)}” isn’t one Postbox runs.`);
     if (hostId !== null && (typeof hostId !== 'string' || !/^[\w-]{1,64}$/.test(hostId)))
       throw httpError(400, 'hostId must be a host’s ID, or null for this computer.');

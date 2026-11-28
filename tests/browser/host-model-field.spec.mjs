@@ -1,7 +1,8 @@
 // The Model field of an agent that runs on a host suggests what the host’s own CLI lists (#1304): the persona sheet
 // asks the host’s daemon (`models`, answered by `listed`), not this computer. With a fake host manager
 // (tests/browser/remote-hosts.mjs) whose link answers as a daemon does; Codex is only on the host here.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, synced } from './postbox.mjs';
 import { startRemote } from './remote-hosts.mjs';
@@ -100,4 +101,66 @@ test('a host without the CLI says it wasn’t found there, not that Postbox ther
     'Codex wasn’t found on nocli.example.com, so it couldn’t list its models. Type the model you want: it goes to Codex there as --model.',
   );
   await expect.soft(help).not.toContainText('install');
+});
+
+// #1977: a harness lists the models it knows, not the ones the sign-in may run. On the owner’s host the first listed
+// was refused, and so was the next they picked. The field orders its suggestions by how each one’s last turn there
+// ended, and says so for the model in it.
+test('suggestions are ordered by how each model’s last turn on the host ended, and the field says so for the model in it', async ({ page }) => {
+  const { host, persona } = hostWith('bedrock.example.com', (harness) => ({ type: 'listed', harness, models: ['gpt-9-new', 'gpt-6.1-sol', 'gpt-5.6-terra'] }));
+  const at = Date.now() - 5 * 60_000;
+  writeFileSync(
+    join(started.app.root, 'data', 'model-runs.json'),
+    JSON.stringify({
+      [`codex@${host.id}`]: {
+        'gpt-9-new': { ended: 'failed', at, why: '403 gpt-9-new is not available for this account' },
+        'gpt-5.6-terra': { ended: 'answered', at },
+        'typed-by-hand': { ended: 'answered', at: at - 1000 },
+      },
+    }),
+  );
+  const sheet = await openPersona(page, persona);
+  // Answered first, a typed one among them; then the untried, Codex’s auto with them; the failed one last, not hidden.
+  await expect.poll(() => suggested(sheet)).toEqual(['gpt-5.6-terra', 'typed-by-hand', 'gpt-6.1-sol', 'auto', 'gpt-9-new']);
+
+  const field = sheet.getByLabel('Model');
+  const line = sheet.locator('[data-model-ran]');
+  const box = await sheet.getByRole('button', { name: 'Save' }).boundingBox();
+  await field.fill('gpt-9-new');
+  await expect(line).toHaveText(
+    'This model’s last turn on bedrock.example.com failed before its first step, 5 min ago: 403 gpt-9-new is not available for this account. It may run now: Postbox doesn’t know until a turn tries.',
+  );
+  await field.fill('gpt-5.6-terra');
+  await expect(line).toHaveText('This model’s last turn on bedrock.example.com answered, 5 min ago.');
+  await expect(field).toHaveAccessibleDescription(/last turn on bedrock\.example\.com answered/);
+  // A model no turn has tried says nothing, and its line is kept, so typing moves nothing below the field.
+  await field.fill('gpt-6.1-sol');
+  await expect(line).toHaveText('');
+  expect.soft((await sheet.getByRole('button', { name: 'Save' }).boundingBox())?.y).toBe(box?.y);
+});
+
+test('with nothing kept for a host the field is as it was: the harness’s order, and no line', async ({ page }) => {
+  const { persona } = hostWith('fresh.example.com', (harness) => ({ type: 'listed', harness, models: ['gpt-6.1-sol', 'gpt-5.6-terra'] }));
+  const sheet = await openPersona(page, persona);
+  await expect.poll(() => suggested(sheet)).toEqual(['gpt-6.1-sol', 'gpt-5.6-terra', 'auto']);
+  await expect(sheet.locator('[data-model-ran]')).toHaveCount(0);
+});
+
+test('the model Postbox fills in for a new agent on a host is one that answered there, not the first its CLI lists', async ({ page }) => {
+  const { host } = hostWith('picks.example.com', (harness) => ({ type: 'listed', harness, models: ['gpt-9-new', 'gpt-5.6-terra'] }));
+  writeFileSync(
+    join(started.app.root, 'data', 'model-runs.json'),
+    JSON.stringify({
+      [`codex@${host.id}`]: { 'gpt-9-new': { ended: 'failed', at: Date.now(), why: 'refused' }, 'gpt-5.6-terra': { ended: 'answered', at: Date.now() } },
+    }),
+  );
+  await page.goto(`${started.app.origin}/`);
+  await synced(page, started.app);
+  await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas')));
+  const sheet = page.getByRole('dialog');
+  await sheet.getByRole('button', { name: 'New agent' }).click();
+  await sheet.getByLabel('Backend').selectOption('codex');
+  await sheet.getByLabel('Runs on').selectOption(host.id);
+  await expect(sheet.getByLabel('Model')).toHaveValue('gpt-5.6-terra');
+  await expect(sheet.locator('[data-model-ran]')).toHaveText(/last turn on picks\.example\.com answered/);
 });
