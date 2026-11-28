@@ -234,7 +234,8 @@ function textRun(raw, ctx) {
             p.startsWith('<')
               ? p
               : p.replace(ctx.glossaryRe.re, (m) => {
-                  const key = ctx.glossaryRe.keys.get(m.toLowerCase());
+                  const key = ctx.glossaryRe.keyOf(m);
+                  if (!key) return m;
                   return `<span class="term" tabindex="0" data-term="${escapeHtml(key)}">${m}</span>`;
                 }),
           )
@@ -243,15 +244,6 @@ function textRun(raw, ctx) {
       return part;
     })
     .join('');
-}
-
-export function glossaryRegex(glossary) {
-  const entries = (glossary ?? []).filter((g) => g?.term && g?.key);
-  if (!entries.length) return null;
-  const keys = new Map(entries.map((g) => [escapeHtml(g.term).toLowerCase(), g.key]));
-  const alts = [...keys.keys()].sort((a, b) => b.length - a.length).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  // lint-allow regex: glossary terms, each escaped just above.
-  return { re: new RegExp(`(?<![\\w-])(?:${alts.join('|')})(?![\\w-])`, 'gi'), keys };
 }
 
 export function mentionRegex(handles) {

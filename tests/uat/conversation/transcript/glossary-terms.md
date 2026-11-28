@@ -11,7 +11,9 @@ Terms an agent coins in a session (“observation budget”) must stay understan
 ## Expected functionality
 
 - Defined terms link everywhere in the conversation and show their definition in a card on hover or focus.
-- Undefined coined terms are flagged to the agent, which defines them.
+- Undefined coined terms are flagged to the agent, which defines them: numbered ones such as “Phase 2”, and citation shorthands such as “R:31”, “§4.2” or a “#A” placeholder (#102). “L2”, “Table 3” and issue numbers such as “#208” aren’t flagged.
+- A term matches as a whole word. A term of one or two characters matches only in its own case, and never inside an abbreviation: a term “R” links “R” and “R:31” but not “R&D” or a lowercase “r” (#102).
+- Dash and quote variants link the same term: “U:45–52” defined links “U:45-52”, and the reverse (#102).
 - A topic thread uses its conversation’s terms too. A term defined in the conversation while the topic thread is open links there at once, without reopening it (#564).
 - Terms inside a definition link too, all but the term itself (#103). Hovering one opens its card over the first, up to three deep. Leaving the top card for the one under it closes only the top one, and a term whose card is already open (U → U:13 → U) opens nothing.
 - By keyboard, Enter or Space pins a term’s card and moves focus into it, Tab reaches the terms inside, and Escape closes the top card and returns focus to its term.

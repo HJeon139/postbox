@@ -2,6 +2,7 @@
 // defined yet. A term’s glossary is its thread’s, over the conversation’s it branched from.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { foldTerm } from '/shared/term-key.mjs';
 import { textFrom } from './activity-live.mjs';
 import { client } from './client.mjs';
 import { h } from './dom.mjs';
@@ -76,6 +77,7 @@ export function paintAgentMarkdown(box, it, threadId) {
  */
 export function usesTerm(it, entry, node) {
   if (node?.querySelector(`.term[data-term="${CSS.escape(entry.key)}"]`)) return true;
-  const text = `${it.text ?? ''}\n${it.question ?? ''}`.toLowerCase();
-  return text.includes(String(entry.term).toLowerCase()) || text.includes(`term:${entry.key}`.toLowerCase());
+  // Folded as the page links a term: a dash or quote written either way is the same term (#102).
+  const text = foldTerm(`${it.text ?? ''}\n${it.question ?? ''}`).toLowerCase();
+  return text.includes(foldTerm(entry.term).toLowerCase()) || text.includes(`term:${entry.key}`.toLowerCase());
 }
