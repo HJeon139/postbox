@@ -285,7 +285,9 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   // A chained command, or one with a *, has no rule that can allow just it (permission-rules.mjs), so neither is
   // offered (#238, #281).
   if (action !== 'leave' && !it.rules[action]) throw httpError(409, noRuleWhy(it.rules.why));
-  const se = rt.s.sessions[it.sessionId];
+  // As written, held writes included: what it decides (the need released, the note sent, allowOnce) can follow a write
+  // still behind a commit (#623, #1896).
+  const se = rt.store.pending.session(it.sessionId);
   const asked = it.who ? `${it.who} (your subagent)` : 'you';
   /** @type {string | null} */
   let note = null;
@@ -298,7 +300,8 @@ export async function resolveDenial(rt, threadId, itemId, action) {
     // Without the settings file’s path: the note is an inbox entry, which reaches the page, and the path is this computer’s.
     note = `[Postbox] The person now always allows \`${it.rules.always}\` (saved in your project’s permission rules). The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
   } else if (action === 'once') {
-    if (se) rt.sessions.update(se.id, { allowOnce: [...(se.allowOnce ?? []), it.rules.once] });
+    // Built from the session update passes, so a rule added behind a held commit is kept (#1896).
+    if (se) rt.sessions.update(se.id, (cur) => ({ allowOnce: [...(cur.allowOnce ?? []), it.rules.once] }));
     note = `[Postbox] The person allowed \`${it.rules.once}\` for your next turn only. The step ${asked} tried, ${it.summary}, was refused before: try it again exactly as before, since the allow covers only that exact call, then carry on.`;
   }
   const status = { once: 'allowed-once', always: 'allowed-always', leave: 'left' }[action];

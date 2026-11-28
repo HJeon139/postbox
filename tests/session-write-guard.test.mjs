@@ -37,7 +37,6 @@ const SESSION_WRITE = /\bsessions\.put\(|\bemit\(\s*['"`]session(?:\.patch)?['"`
  */
 const FROM_PUBLISHED = {
   'kept-jobs.mjs': ['stopJob'], // jobs: a job's stopping mark
-  'permission-cards.mjs': ['resolveDenial'], // allowOnce: Allow once on a denial card
   // rules: a conversation's rule, copied whole from the session (found once the guard read copies given whole, #623);
   // addDirs: a folder removed, or added
   'permissions-panel.mjs': ['changePermissionRule', 'changePermissionFolder', 'changePermissionFolder'],
