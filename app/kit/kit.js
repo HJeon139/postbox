@@ -66,6 +66,8 @@
     } else if (m.type === 'review') {
       reviewing = !!m.on;
       paintAnchors();
+    } else if (m.type === 'probe') {
+      probe(m);
     } else if (m.type === 'measure') {
       // Back from full screen. The last size sent was the window’s, so measure again, once the frame is back to
       // its column height (it resizes a moment after this message).
@@ -133,6 +135,22 @@
     }
   }
 
+  // What’s under a region the person marked in a review, in px of the page (#856): the named parts it overlaps, and the
+  // innermost element at its center. The page cuts and checks the answer (shared/review-regions.mjs, underOf).
+  function probe(m) {
+    const [x, y] = [m.x - scrollX, m.y - scrollY];
+    const over = (r) => r.left <= x + m.w && x <= r.right && r.top <= y + m.h && y <= r.bottom;
+    const parts = namedParts().filter((k) => anchorMap[k].isConnected && over(anchorMap[k].getBoundingClientRect()));
+    const hit = document.elementFromPoint(x + m.w / 2, y + m.h / 2);
+    const el = hit?.closest('.pb-anchor-tag')?.parentElement ?? hit;
+    // Without the class the kit itself gives a part in review mode; innerText skips hidden text the person can’t see (#856).
+    const cls = el ? [...el.classList].filter((c) => c !== 'anchor').join(' ') : '';
+    // biome-ignore lint/performance/useDomNodeTextContent: innerText skips hidden text the person can’t see (#856).
+    const text = el instanceof HTMLElement ? el.innerText : '';
+    const element = el && { tag: el.tagName, id: el.id, class: cls, text: (text || '').slice(0, 400) };
+    post({ type: 'probed', id: m.id, parts, element });
+  }
+
   // In review mode a click anywhere in a highlighted part pins a comment on it, as the review’s hint says, not only a
   // click on its name tag. A click on one of the app’s own controls in the part still works the app. In nested parts,
   // the innermost takes it.
@@ -181,9 +199,10 @@
     },
     restoreState: () => ready.then((r) => r.state),
     anchors(map) {
-      // “the whole app” is a review’s comment on the app as a whole, so no part can take that name (#855).
-      const { 'the whole app': _whole, ...parts } = map || {};
-      anchorMap = parts;
+      // “the whole app” is a review’s comment on the app as a whole, so no part can take that name (#855), and “region 1”,
+      // “region 2” and so on (REGION_ANCHOR in shared/review-regions.mjs) are the regions the person marks on it (#856).
+      const { 'the whole app': _whole, ...named } = map || {};
+      anchorMap = Object.fromEntries(Object.entries(named).filter(([name]) => !/^region [1-9]\d*$/.test(name)));
       post({ type: 'anchors', names: namedParts() });
       if (reviewing) paintAnchors();
     },

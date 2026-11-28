@@ -103,8 +103,12 @@ export function sample(schema, r, state = { n: 0 }) {
     }
     case 'integer':
       return between(Math.max(schema.minimum ?? -50, -50), Math.min(schema.maximum ?? 50, 50));
-    case 'number':
-      return Math.round(r() * 1000) / 10;
+    case 'number': {
+      // Within its bounds, such as a region’s fractions from 0 to 1 (#856), by tenths.
+      const lo = schema.minimum ?? 0;
+      const hi = schema.maximum ?? 100;
+      return Math.min(hi, lo + Math.round(r() * (hi - lo) * 10) / 10);
+    }
     case 'boolean':
       return r() < 0.5;
     case 'null':

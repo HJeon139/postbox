@@ -1,6 +1,7 @@
 // Postbox’s skills on the backends that don’t read Claude Code plugins (server/adapters/agent-plugin.mjs): Antigravity
 // gets a copy in the turn’s workspace plugin, Kiro a skill:// resource in the turn’s agent file, and Codex an extra
-// skills root on its app-server. A turn on a host gets none, and POSTBOX_AGENT_SKILLS=off leaves them out.
+// skills root on its app-server. A turn on a host gets the copy the host install ships there, under
+// ~/.postbox-remote/<version>/agent-plugin (#207), and POSTBOX_AGENT_SKILLS=off leaves them out.
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -20,6 +21,9 @@ import { tempDir } from './temp-dirs.mjs';
 
 const SKILLS = join(AGENT_PLUGIN, 'skills');
 const OFF = { POSTBOX_AGENT_SKILLS: 'off' };
+/** A turn’s ctx.remote, as far as the skills’ paths need it: the daemon’s welcome names the host’s home. */
+const REMOTE = { version: '0.99.1', welcome: { home: '/home/user' } };
+const HOST_SKILLS = '/home/user/.postbox-remote/0.99.1/agent-plugin/skills';
 
 test('the skills folder and its files, and none when POSTBOX_AGENT_SKILLS=off', async () => {
   assert.equal(agentSkills({}), SKILLS);
@@ -80,13 +84,17 @@ test('Antigravity: the skills are in the plugin while agy runs, and gone with it
   assert.ok(!existsSync(join(seen[0].cwd, PLUGIN_DIR)), 'the plugin, skills and all, is removed');
 });
 
-test('Kiro: the agent file names the skills as a resource here, and not with a host’s shim or when they’re off', () => {
+test('Kiro: the agent file names the skills as a resource here, and the host’s copy on a host; none when they’re off', () => {
   const turn = { name: 'x', persona: { handle: 'kiro' }, guide: 'g', folders: [] };
+  const shim = { command: 'node', args: [] };
   assert.deepEqual(kiroAgent({ ...turn, mcpUrl: 'u' }).resources, [`skill://${SKILLS}/visual-explainer/SKILL.md`]);
-  assert.equal(kiroAgent({ ...turn, shim: { command: 'node', args: [] } }).resources, undefined, 'the folder isn’t on the host');
+  assert.deepEqual(kiroAgent({ ...turn, shim, remote: REMOTE }).resources, [`skill://${HOST_SKILLS}/visual-explainer/SKILL.md`], 'the host’s copy (#207)');
+  assert.equal(kiroAgent({ ...turn, shim }).resources, undefined, 'a shim without its remote never gets this computer’s path');
   assert.equal(kiroAgent({ ...turn, mcpUrl: 'u', skills: agentSkills(OFF) }).resources, undefined);
+  assert.equal(kiroAgent({ ...turn, shim, remote: REMOTE, skills: agentSkills(OFF, REMOTE) }).resources, undefined, 'off on a host too');
   const unticked = { ...turn, persona: { handle: 'kiro', skillsOff: ['postbox:visual-explainer'] }, mcpUrl: 'u' };
   assert.equal(kiroAgent(unticked).resources, undefined, 'a persona that turned it off (#207)');
+  assert.equal(kiroAgent({ ...unticked, shim, remote: REMOTE }).resources, undefined, 'on a host too');
 });
 
 test('Kiro: a turn’s agent file loads the skills', async () => {
@@ -98,7 +106,7 @@ test('Kiro: a turn’s agent file loads the skills', async () => {
   assert.deepEqual(seen[0].agentFile.resources, [`skill://${SKILLS}/visual-explainer/SKILL.md`]);
 });
 
-test('Codex: the skills root is set here, not on a host or when off, and an older Codex goes on without it', async () => {
+test('Codex: the skills root is set here, the host’s copy on a host, none when off, and an older Codex goes on without it', async () => {
   const calls = [];
   const request = async (method, params) => {
     calls.push({ method, params });
@@ -106,11 +114,14 @@ test('Codex: the skills root is set here, not on a host or when off, and an olde
   };
   assert.equal(await addPostboxSkills(request, { env: {} }), true);
   assert.deepEqual(calls, [{ method: 'skills/extraRoots/set', params: { extraRoots: [SKILLS] } }]);
-  assert.equal(await addPostboxSkills(request, { remote: true, env: {} }), false);
+  assert.equal(await addPostboxSkills(request, { remote: REMOTE, env: {} }), true);
+  assert.deepEqual(calls[1], { method: 'skills/extraRoots/set', params: { extraRoots: [HOST_SKILLS] } }, 'the host’s copy (#207)');
   assert.equal(await addPostboxSkills(request, { env: OFF }), false);
+  assert.equal(await addPostboxSkills(request, { remote: REMOTE, env: OFF }), false, 'off on a host too');
   const unticked = { skillsOff: ['postbox:visual-explainer'] };
   assert.equal(await addPostboxSkills(request, { env: {}, persona: unticked }), false, 'a persona that turned it off (#207)');
-  assert.equal(calls.length, 1);
+  assert.equal(await addPostboxSkills(request, { remote: REMOTE, env: {}, persona: unticked }), false, 'on a host too');
+  assert.equal(calls.length, 2);
   const unknown = () => Promise.reject(Object.assign(new Error('unknown method'), { code: -32601 }));
   assert.equal(await addPostboxSkills(unknown, { env: {} }), false);
 });

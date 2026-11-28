@@ -32,7 +32,6 @@ import { parseArgs } from 'node:util';
 import { launch, sleep } from './browser.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { lastCheckPass, MID_TURN, runChecks } from './uat/checks.mjs';
-import { failsRun } from './uat/checks-postbox.mjs';
 import { dollarFolders, streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
@@ -61,18 +60,20 @@ import { exportTrajectories } from './uat/run-atif.mjs';
 import { overdueStop, runBound, watchRun } from './uat/run-bound.mjs';
 import { endFailedRun, endRun } from './uat/run-end.mjs';
 import { runEnv } from './uat/run-env.mjs';
+import { exitWhenSettled } from './uat/run-exit.mjs';
 import { runFacts } from './uat/run-facts.mjs';
 import { keeper, readReceived, readSpend, readStore, readStreams, readTranscripts, readUi } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, mainCheckout, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
+import { sendStep } from './uat/send-step.mjs';
 import { midTurnAnswerer, staleNoter } from './uat/stale-notes.mjs';
 import { stalledFinding } from './uat/stall.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
 import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
-import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
+import { createTester, systemPrompt } from './uat/tester.mjs';
 import { runTiming } from './uat/timing.mjs';
 import { phaseGoals } from './uat/triggers.mjs';
 import { namedWait, sendThenStop, settle as settleTurns, stopThroughPage, testerWait } from './uat/turns.mjs';
@@ -125,13 +126,18 @@ const REVIEW = { root: ROOT, testerModel: opt['tester-model'] };
 
 // ── Run ────────────────────────────────────────────────────────────────────────────────────
 
-async function main() {
-  const { name, hosts, placement, scenario, phases, gate } = runScenario(opt, ROOT);
+/** The run’s scenario and its folder, decided before it starts, so its exit code is recorded there (#482). */
+function planRun() {
+  const plan = runScenario(opt, ROOT);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  return { ...plan, stamp, dir: join(runsRoot({ root: ROOT }), `${stamp}-${plan.name}`) };
+}
+
+/** @param {ReturnType<typeof planRun>} plan */
+async function main({ name, hosts, placement, scenario, phases, gate, stamp, dir }) {
   const steps = stepCap(scenario, opt.steps);
   const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
   const bound = runBound({ turns: opt['max-turns'], minutes: opt['max-minutes'] });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
   const paths = await runPaths(dir, { root: ROOT, main: mainCheckout({ root: ROOT }) });
   keepOnExit(paths);
   makeWorkspace(scenario, paths, dir);
@@ -214,7 +220,7 @@ async function main() {
     const goals = phaseGoals(scenario, { cap: phaseCap, start: phase, log });
     const noteStale = staleNoter({ d, facts, timeline, log }); // the page’s refused stale answers (#123)
     const answerMidTurn = midTurnAnswerer({ d, api, keys, facts, noteStale }); // an answer while the agent works (#123)
-    const holdFor = stepHolds({ goals, log });
+    const holdFor = stepHolds({ goals, log, timeline });
     // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
     const hostFault = (spec) => (hr ? fault(hr, spec, page, d.input) : localRestart({ postbox, page, log, input: d.input }, spec));
     let lastAction = null;
@@ -395,22 +401,8 @@ async function main() {
         const key = a.item ? keys.get(a.item) : null;
         if (a.item && !key) throw new Error(`There’s no item ${a.item}.`);
         if (Object.hasOwn(STEPS, a.type)) actionResult = await STEPS[a.type]({ d, page, api, keys, facts, step }, a);
-        else if (a.type === 'send') {
-          await d.send(a.text ?? '');
-          // A message that addresses an agent by name without its @ goes to the last speaker, not to that agent: say
-          // so, so the tester knows where it went. The first mixed-room run wrote “critic: …” and “researcher: …”.
-          const st = facts.state;
-          // Who Postbox sends it to: the last speaker, or before anyone has spoken, the conversation’s first agent.
-          const t = st?.threads?.[mainThread];
-          const last = st?.sessions?.[t?.lastSpeaker ?? t?.members?.[0]]?.handle ?? null;
-          const named = unaddressed(
-            a.text ?? '',
-            Object.values(st?.personas ?? {}).map((p) => p.handle),
-            { lastSpeaker: last },
-          );
-          if (named.length)
-            actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
-        } else if (a.type === 'send_then_stop')
+        else if (a.type === 'send') actionResult = await sendStep(d, a, { state: facts.state, mainThread });
+        else if (a.type === 'send_then_stop')
           actionResult = await timing.time('waits', () => sendThenStop(d, a, { step, probes: facts.probes, log, onWait: () => midTurnChecks() }));
         else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'thread_reply') await d.replyInOpenThread(a.text ?? '');
@@ -537,16 +529,13 @@ async function main() {
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
-  (opt.recheck ? recheck(opt.recheck, { root: ROOT, opt, review: REVIEW }) : main())
-    .then((findings) => {
-      // Postbox printed an error or a warning, or crashed, or a screenshot showed text over text, cut off or broken
-      // mid-word (#681): the run fails, so a script running it sees that without the report. A run stopped by a signal
-      // still exits 130 (tools/uat/stop.mjs).
-      if (failsRun(findings)) process.exitCode ||= 1;
-    })
-    .catch((e) => {
-      console.error(`UAT run failed: ${e.stack ?? e.message}`);
-      // A run stopped by a signal exits as stopped (130, tools/uat/stop.mjs), whatever it failed with meanwhile.
-      process.exit(process.exitCode || 1);
-    });
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  // Postbox printed an error or a warning, or crashed, or a screenshot showed text over text, cut off or broken
+  // mid-word (#681): the run fails, so a script running it sees that without the report. run.json records the code
+  // (#482); a recheck’s run recorded its own. A plan that throws (an unknown scenario, a missing option) fails as a
+  // run does: it’s said, and exits 1.
+  /** @type {ReturnType<typeof planRun> | null} */
+  let plan = null;
+  const run = opt.recheck ? recheck(opt.recheck, { root: ROOT, opt, review: REVIEW }) : Promise.resolve().then(() => main((plan = planRun())));
+  exitWhenSettled(run, () => plan?.dir ?? null);
+}

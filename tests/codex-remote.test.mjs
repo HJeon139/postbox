@@ -75,13 +75,15 @@ test('#120: a remote Codex turn starts on the host with a held stdin, the shim a
   const writes = d.turns.get(start.turn).writes.map((l) => JSON.parse(l));
   assert.deepEqual(
     writes.map((w) => w.method),
-    ['initialize', 'initialized', 'mcpServerStatus/list', 'thread/start', 'turn/start'],
+    ['initialize', 'initialized', 'mcpServerStatus/list', 'skills/extraRoots/set', 'thread/start', 'turn/start'],
   );
-  assert.equal(writes[3].params.cwd, FOLDER, 'the thread works in the host’s folder');
-  assert.match(writes[3].params.developerInstructions, /Remote pinned instructions\./);
-  assert.match(writes[3].params.developerInstructions, /## How you write here/);
-  assert.equal('settings' in writes[4].params, false);
-  assert.equal(writes[4].params.sandboxPolicy.type, 'readOnly');
+  // #207: Postbox’s skills, from the copy the host install ships, before the thread opens.
+  assert.deepEqual(writes[3].params, { extraRoots: [`${hostPaths('/home/user', '0.10.0').code}/agent-plugin/skills`] });
+  assert.equal(writes[4].params.cwd, FOLDER, 'the thread works in the host’s folder');
+  assert.match(writes[4].params.developerInstructions, /Remote pinned instructions\./);
+  assert.match(writes[4].params.developerInstructions, /## How you write here/);
+  assert.equal('settings' in writes[5].params, false);
+  assert.equal(writes[5].params.sandboxPolicy.type, 'readOnly');
   assert.equal(calls.text, 'Hello from Codex.');
   assert.equal(calls.saved.codexThreadId, 'thr_postbox_1');
   assert.deepEqual(d.stops, [start.turn], 'the app-server on the host is stopped as the turn ends');
@@ -162,7 +164,7 @@ test('#120: Stop on a remote Codex turn sends turn/interrupt first, then the dae
   const i = d.received.findIndex((m) => m.type === 'write' && JSON.parse(m.line).method === 'turn/interrupt');
   const s = d.received.findIndex((m) => m.type === 'stop');
   assert.ok(i >= 0, 'Stop interrupts the Codex turn');
-  assert.deepEqual(JSON.parse(d.received[i].line), { id: 5, method: 'turn/interrupt', params: { threadId: 'thr_postbox_1', turnId: 'turn_postbox_1' } });
+  assert.deepEqual(JSON.parse(d.received[i].line), { id: 6, method: 'turn/interrupt', params: { threadId: 'thr_postbox_1', turnId: 'turn_postbox_1' } });
   assert.ok(s > i, 'then the daemon stops the app-server');
   assert.deepEqual(f.calls, []);
 });

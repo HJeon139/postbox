@@ -35,6 +35,18 @@ function within(promise, ms, what) {
 /** The window a capture uses when no Postbox tab has reported its own: a 14-inch laptop’s browser (#95’s ruling). */
 export const DEFAULT_WINDOW = Object.freeze({ width: 1000, height: 680 });
 
+/**
+ * Vertical slice of a tall review frame to capture around a region (#856): one window height (or the region plus
+ * context, capped at 4,000 px) centered on the region so a 20,000 px app doesn’t scale the mark to a sliver.
+ * @param {{ y: number, h: number }} region @param {number} totalHeight @param {number} winHeight
+ */
+export function clipWindow(region, totalHeight, winHeight) {
+  const total = Math.max(1, Math.round(totalHeight));
+  const clipH = Math.min(total, Math.max(winHeight, Math.min(region.h + 160, 4000)));
+  const top = Math.max(0, Math.min(total - clipH, Math.round(region.y + region.h / 2 - clipH / 2)));
+  return { top, height: clipH, total };
+}
+
 /** Where playwright-core is installed (an optional dependency), or null. */
 function packageDir() {
   try {
@@ -195,7 +207,7 @@ export class AppBrowser {
    * theme, in a conversation `column` px wide, or beside the rail when that’s null. The context aborts every request
    * that isn’t a GET to `origin`. The whole capture has CAPTURE_MS: past that, the browser is closed, as a hung one
    * would hang every later call too, and the next call starts a new one.
-   * @param {{ origin: string, threadId: string, itemId: string, width: number, height: number, column?: number|null, theme: 'light'|'dark' }} at
+   * @param {{ origin: string, threadId: string, itemId: string, width: number, height: number, column?: number|null, theme: 'light'|'dark', region?: { x: number, y: number, w: number, h: number, width: number, height: number } | null, onSlice?: (s: { top: number, height: number, total: number }) => void }} at
    * @returns {Promise<Buffer>}
    */
   async capture(at) {
@@ -208,9 +220,11 @@ export class AppBrowser {
   }
 
   /** The capture itself. @param {Parameters<AppBrowser['capture']>[0]} at @returns {Promise<Buffer>} */
-  async render({ origin, threadId, itemId, width, height, column = null, theme }) {
+  async render({ origin, threadId, itemId, width, height, column = null, theme, region = null, onSlice }) {
     const browser = await this.browser();
-    const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion: 'reduce', deviceScaleFactor: 1 });
+    const viewW = region ? Math.max(width, region.width + 32) : width;
+    const viewH = region ? Math.max(height, Math.min(region.height + 32, 4000)) : height;
+    const context = await browser.newContext({ viewport: { width: viewW, height: viewH }, colorScheme: theme, reducedMotion: 'reduce', deviceScaleFactor: 1 });
     try {
       const own = new URL(origin).origin;
       await context.route('**/*', (route) => {
@@ -218,11 +232,27 @@ export class AppBrowser {
         return r.method() === 'GET' && new URL(r.url()).origin === own ? route.continue() : route.abort();
       });
       const page = await context.newPage();
-      const q = new URLSearchParams({ capture: itemId, thread: threadId, ...(column ? { column: String(column) } : {}) });
+      const q = new URLSearchParams({ capture: itemId, thread: threadId });
+      if (column && !region) q.set('column', String(column));
+      if (region) q.set('region', `${region.x},${region.y},${region.w},${region.h},${region.width},${region.height}`);
       await page.goto(`${own}/?nocheck&${q}`, { timeout: CAPTURE_MS });
       await page.waitForSelector('[data-capture="ready"], [data-capture="missing"]', { timeout: CAPTURE_MS });
       if (await page.$('[data-capture="missing"]')) throw new Error('The page couldn’t find that app to show.');
-      const png = await page.locator('[data-capture-item]').screenshot({ timeout: CAPTURE_MS, animations: 'disabled' });
+      let png;
+      if (region) {
+        const box = await page.locator('[data-capture-item]').boundingBox();
+        if (!box) throw new Error('The page drew an empty app.');
+        const slice = clipWindow(region, box.height, height);
+        onSlice?.(slice);
+        png = await page.screenshot({
+          fullPage: true,
+          clip: { x: box.x, y: box.y + slice.top, width: box.width, height: slice.height },
+          timeout: CAPTURE_MS,
+          animations: 'disabled',
+        });
+      } else {
+        png = await page.locator('[data-capture-item]').screenshot({ timeout: CAPTURE_MS, animations: 'disabled' });
+      }
       this.touch();
       return png;
     } finally {

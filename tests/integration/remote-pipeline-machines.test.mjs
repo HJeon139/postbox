@@ -44,9 +44,12 @@ test('#899 a teardown that can’t read the trace still ends the daemon and remo
     assert.equal(existsSync(root), false, 'the machine’s folder is removed');
   } finally {
     // Assert first, then clean up, so a regression doesn’t leave the stand-in or the folder behind (#899’s own leak).
-    try {
-      process.kill(daemon.pid ?? 0, 'SIGKILL');
-    } catch {}
+    // Only a started stand-in: a pid of 0 would SIGKILL this test’s own process group (#2012).
+    if (daemon.pid) {
+      try {
+        process.kill(daemon.pid, 'SIGKILL');
+      } catch {}
+    }
     if (root) rmSync(root, { recursive: true, force: true });
   }
 });

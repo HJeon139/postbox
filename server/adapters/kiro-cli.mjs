@@ -319,7 +319,7 @@ export class KiroCliAdapter {
     let env;
     if (ctx.remote) {
       const kiroHome = remoteKiroHome(persona, ctx.remote.welcome?.home);
-      const agentText = (shim) => JSON.stringify(kiroAgent({ name: agent, persona, shim, guide, folders, kiroHome }), null, 2);
+      const agentText = (shim) => JSON.stringify(kiroAgent({ name: agent, persona, shim, remote: ctx.remote, guide, folders, kiroHome }), null, 2);
       spawnFn = /** @type {any} */ (kiroRemoteSpawn(ctx, { agent, cwd, turn, attach, agentText }));
       env = {};
     } else {
