@@ -81,8 +81,9 @@ test('what agents read about the app check says narrow and wide windows, not pho
 
 test('the guide stays short: agents follow defaults more than prose', () => {
   // About 8,300 characters before M1 core, which added the limits, palettes and outcome. Cut before adding. 9,250
-  // until #382’s line on topic threads and their outcome, which replaced a shorter one.
-  assert.ok(guideText().length <= 9450, `The guide is ${guideText().length} characters. Keep it under 9,450.`);
+  // until #382’s line on topic threads and their outcome: the guide was at 9,248, and the cuts beside it (the asset
+  // tools’ own descriptions say rename, delete and restore) left it 37 over.
+  assert.ok(guideText().length <= 9300, `The guide is ${guideText().length} characters. Keep it under 9,300.`);
   // It’s the same text on every turn.
   const who = { persona: { handle: 'a' }, handles: ['a', 'b'] };
   assert.equal(agentGuide(who), agentGuide(who));
@@ -191,9 +192,9 @@ test('#382 the guide says when to open a topic thread, what stays in the convers
     .split('\n')
     .find((l) => l.includes('open_topic') && l.includes('bring_to_conversation'));
   assert.ok(line, 'the guide has one line on topic threads and their outcome');
-  assert.match(line, /a PR review or a design check/);
-  assert.match(line, /hand-offs and anything the person must decide in the conversation/);
-  assert.match(line, /post its outcome there with bring_to_conversation/);
+  assert.match(line, /a PR review or design check to a topic/);
+  assert.match(line, /hand-offs and the person’s decisions stay here/);
+  assert.match(line, /post its outcome with bring_to_conversation/);
   assert.doesNotMatch(guideText(), /bring_to_conversation only when the person asks/);
 });
 

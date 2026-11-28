@@ -212,8 +212,8 @@ Don’t autofocus: Postbox stops apps that keep taking focus. Stop loops when no
 - define_term a term the first time you use it, so later mentions link to it.
 - Writing @handle wakes that agent; to name one, omit @.
 - Keep your notes out of AGENTS.md and CLAUDE.md: every agent in the folder reads them.
-- Files and data the conversation keeps are its assets: list_assets, read_asset, search_assets, and write_asset from the base version you read (rename, delete and restore too).
-- Open a topic (open_topic) for work the room needn’t follow step by step, such as a PR review or a design check; keep hand-offs and anything the person must decide in the conversation. When done, post its outcome there with bring_to_conversation.
+- Files and data the conversation keeps are its assets: list_assets, read_asset, search_assets, and write_asset from the base version you read.
+- Take a PR review or design check to a topic (open_topic), and post its outcome with bring_to_conversation; hand-offs and the person’s decisions stay here.
 
 ## Recipes
 
