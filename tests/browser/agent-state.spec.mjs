@@ -84,7 +84,7 @@ test('an agent’s row says what it runs or waits on, from its session and its j
   await synced(page, app);
   await expect(words(page, researcher), 'the agent it posted to says its own state').toHaveText(' · Reading the shelf');
   await expect(words(page, indexer)).toHaveText(' · idle');
-  await expect(button(page, indexer), 'and no row says it waits behind another').not.toContainText('waiting behind');
+  await expect(page.locator('.rail'), 'and no row says it waits behind another').not.toContainText('waiting behind');
   await row.sameNode();
 });
 
