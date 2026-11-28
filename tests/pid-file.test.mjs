@@ -41,3 +41,9 @@ test('a pid never written fails the wait, saying where it looked and what it fou
   await assert.rejects(pidWithin(file, 50, 10), /it holds "0"\./);
   await assert.rejects(pidWithin(join(file, '..', 'missing'), 50, 10), /missing within 50 ms: it doesn’t exist\./);
 });
+
+test('a pid already written is found by the last look, even with no time to wait', async () => {
+  const file = join(tempDir('pid-file-'), 'pid');
+  writeFileSync(file, '4242');
+  assert.equal(await pidWithin(file, 0), 4242);
+});
