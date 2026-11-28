@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
@@ -112,8 +113,9 @@ const disk = (free, { after = Infinity, later = free } = {}) => {
 };
 
 /** The route’s upload over a store of its own, so a refusal’s leftovers can be counted. */
-async function uploadTo(size, statfs, io) {
+async function uploadTo(size, statfs, io, onDir = (/** @type {string} */ _dir) => {}) {
   const dir = tempDir('pb-upload-disk-');
+  onDir(dir);
   const blobs = new Blobs(dir, io);
   const emitted = [];
   const req = Object.assign(chunks(size), { headers: { 'x-filename': 'big.mov', 'content-length': String(size) } });
@@ -143,6 +145,23 @@ test('#870 an upload one chunk too large for the space above the reserve is refu
 test('#870 an upload that exactly fills the space above the reserve is taken', async () => {
   const { result } = await uploadTo(16 * MB, disk(DISK_RESERVE + 16 * MB));
   assert.equal(result.size, 16 * MB, String(result?.message ?? ''));
+});
+
+// A pre-review of #870: in a declared upload’s last 16 MB, the recheck still asked for 16 MB more, so one that fit was
+// refused after 32 MB had been written.
+test('#870 a declared upload that fits is taken to its end, its last stretch asking only for what’s left', async () => {
+  const size = 32 * MB + 32 * 1024;
+  // A disk whose free space goes down as the draft grows, as a real one does: 33 MB above the reserve to start.
+  /** @type {string} */
+  let store = '';
+  const shrinking = async () => {
+    const used = filesIn(store).reduce((n, e) => n + statSync(join(e.parentPath ?? e.path, e.name)).size, 0);
+    return { bsize: 1, bavail: DISK_RESERVE + 33 * MB - used };
+  };
+  const { result } = await uploadTo(size, shrinking, undefined, (dir) => {
+    store = dir;
+  });
+  assert.equal(result.size, size, String(result?.message ?? ''));
 });
 
 test('#870 a disk that fills while an upload streams in refuses the rest, and the draft is removed', async () => {

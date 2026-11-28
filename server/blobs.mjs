@@ -82,8 +82,9 @@ export class Blobs {
   /**
    * Stores a stream’s bytes as put does, without holding them whole (#870): each chunk is hashed as it’s written to a
    * draft in the store’s folder, synced, and renamed under its hash once the stream ends, so memory stays at a chunk
-   * whatever the size. check(written) runs before each chunk is written, with the bytes already on disk (critic’s review
-   * of #2015: the chunk about to be written isn’t, so free space still counts it), and throws to refuse it. Any failure removes the draft, so a refused or cut-off upload leaves nothing behind.
+   * whatever the size. check(written) runs before each chunk is written, with the bytes already on disk, since free
+   * space still counts the chunk about to be written (#870), and throws to refuse it. Any failure removes the draft, so a
+   * refused or cut-off upload leaves nothing behind.
    * @param {AsyncIterable<Buffer>} source @param {{ check?: (written: number) => Promise<void> | void }} [opts]
    */
   async putStream(source, { check = () => {} } = {}) {

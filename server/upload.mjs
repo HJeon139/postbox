@@ -33,12 +33,12 @@ export async function upload(req, { blobs, store, statfs = fsStatfs }) {
   const declared = Number(req.headers['content-length']) || 0;
   let checkedAt = -Infinity;
   // Before the first chunk, the whole declared size must fit; after it, what’s still to come, the next chunk included,
-  // since free space is read with only what’s already written taken from it.
+  // since free space is read with only what’s already written taken from it. With no declared size, the next 16 MB.
   const check = async (/** @type {number} */ written) => {
     if (written - checkedAt < RECHECK_BYTES) return;
     checkedAt = written;
     const { bsize, bavail } = await statfs(blobs.dir);
-    if (bsize * bavail - Math.max(declared - written, RECHECK_BYTES) < DISK_RESERVE) throw NO_ROOM();
+    if (bsize * bavail - (declared ? declared - written : RECHECK_BYTES) < DISK_RESERVE) throw NO_ROOM();
   };
   // A refusal must still reach the page: ending the loop destroys the request by default, and the browser, still
   // sending, never read the answer (a 413 on a 30 MB file left “uploading…” showing). So the loop leaves the request
