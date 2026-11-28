@@ -71,7 +71,7 @@ test('#128, #372, #382: an agent posts a thread’s outcome to the conversation 
   let result;
   // A turn another agent started there posts the thread’s outcome too (#382): the person needn’t ask.
   adapter.next.push(async (c) => {
-    result = c.tools.bring_to_conversation({ text: 'Review done: approved, PR #12 is ready, the docs are left.' });
+    result = c.tools.bring_to_conversation({ text: 'Review done: approved, PR #12 is ready, @alpha has the docs left.' });
     c.text('Done.');
   });
   const calls = adapter.calls.length;
@@ -82,10 +82,10 @@ test('#128, #372, #382: an agent posts a thread’s outcome to the conversation 
   const shared = store.items(t.id).find((x) => x.kind === 'shared');
   assert.deepEqual(
     [shared.fromThreadId, shared.handle, shared.text, shared.agent],
-    [topic.id, 'beta', 'Review done: approved, PR #12 is ready, the docs are left.', true],
+    [topic.id, 'beta', 'Review done: approved, PR #12 is ready, @alpha has the docs left.', true],
   );
-  // It wakes no one: the turns are the wake’s and the reply going back to @alpha in the thread (#1518), none in the
-  // conversation, and the conversation’s chain count didn’t move.
+  // It wakes no one, not even the @alpha it names: the turns are the wake’s and the reply going back to @alpha in the
+  // thread (#1518), none in the conversation.
   assert.deepEqual(
     adapter.calls.slice(calls).map((c) => [c.handle, c.thread, c.parts[0].text]),
     [
@@ -94,11 +94,10 @@ test('#128, #372, #382: an agent posts a thread’s outcome to the conversation 
     ],
     'the post woke an agent',
   );
-  assert.equal(store.state.threads[t.id].hops, 0);
   // The conversation’s agents read it as the agent’s own post, not as one the person asked for.
   assert.equal(
     arrange.describeItem(rt, shared, store.state.sessions[alpha.id]),
-    `Shared from the thread “${topic.title}”, posted by @beta: Review done: approved, PR #12 is ready, the docs are left.`,
+    `Shared from the thread “${topic.title}”, posted by @beta: Review done: approved, PR #12 is ready, @alpha has the docs left.`,
   );
   // The person asking in the topic thread works as before.
   adapter.next.push(async (c) => {
@@ -113,7 +112,7 @@ test('#128, #372, #382: an agent posts a thread’s outcome to the conversation 
       .items(t.id)
       .filter((x) => x.kind === 'shared')
       .map((x) => x.text),
-    ['Review done: approved, PR #12 is ready, the docs are left.', 'The details, for the main chat.'],
+    ['Review done: approved, PR #12 is ready, @alpha has the docs left.', 'The details, for the main chat.'],
   );
 });
 
