@@ -93,6 +93,8 @@ test('#1927 while the download allowed in one conversation runs, the other conve
     assert.equal(o.cardThere().status, 'downloading', 'the person answered once, for both');
     assert.equal(s.rt.s.sessions[o.se.id].needs, null, 'so the other agent no longer needs them');
     browser.finish();
+    // Settled before the test’s folder goes.
+    for (let i = 0; i < 50 && o.cardThere().status === 'downloading'; i++) await sleep(5);
   } finally {
     s.done();
   }

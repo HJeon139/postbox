@@ -52,7 +52,7 @@ const LIVE = new Set(['open', 'downloading']);
 function liveCards(rt, conversation = null) {
   const cards = [];
   for (const threadId of Object.keys(rt.s.threads)) {
-    if (conversation && conversationRoot(rt.s.threads, threadId) !== conversation) continue;
+    if (conversation && (conversationRoot(rt.s.threads, threadId) ?? threadId) !== conversation) continue;
     const it = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && LIVE.has(x.status));
     if (it) cards.push({ threadId, it });
   }
@@ -193,7 +193,7 @@ function settle(rt, threadId, it, status, notice, reason = null) {
   rt.threads.patchItem(threadId, it.id, { status, ...(reason ? { reason: cutText(String(reason), 400) } : {}), settledAt: Date.now() });
   const asker = rt.s.sessions[it.sessionId];
   if (asker) releaseNeed(rt, asker, it.id);
-  // Read pending, as the card stands now: an agent can be noted on it while the download runs (waitForDownload).
+  // Read pending, as the card stands with any write a held commit hasn’t published yet, as each session is below.
   const waiting = rt.store.pending.item(threadId, it.id)?.waiting ?? [];
   for (const id of new Set([it.sessionId, ...waiting])) {
     // Read as delivery reads it, so a session it would refuse (deleted or retired) is skipped, not thrown on.

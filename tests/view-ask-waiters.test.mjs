@@ -1,7 +1,7 @@
-// #1927: a view request is one card at a time, wherever the agent’s turn runs, since the answer and the download are
-// Postbox’s. A second agent whose view_app call found another agent’s open card was told to end its turn and wait for the
-// answer, but only the agent that asked heard it. Now every agent the card was offered to carries on without the
-// picture, and each hears how the card ends (#1975: no agent waits behind another).
+// #1927: a view request is one card per conversation, in whichever of its threads the agent’s turn runs; the answer
+// and the download are Postbox’s. A second agent whose view_app call found another agent’s open card was told to end
+// its turn and wait for the answer, but only the agent that asked heard it. Now every agent the card was offered to
+// carries on without the picture, and each hears how the card ends (#1975: no agent waits behind another).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
