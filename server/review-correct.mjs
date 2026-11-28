@@ -38,7 +38,9 @@ export function correctComment(rt, threadId, itemId, values) {
   );
   rt.threads.patchItem(threadId, itemId, { block });
   const se = rt.s.sessions[it.sessionId];
-  const where = Object.fromEntries(['line', 'col', 'endLine', 'endCol', 'quote', 'anchor'].filter((k) => thread[k] !== undefined).map((k) => [k, thread[k]]));
+  const where = Object.fromEntries(
+    ['line', 'col', 'endLine', 'endCol', 'quote', 'anchor', 'region'].filter((k) => thread[k] !== undefined).map((k) => [k, thread[k]]),
+  );
   const event = {
     blockId: it.block.id,
     revision: it.revision ?? 1,

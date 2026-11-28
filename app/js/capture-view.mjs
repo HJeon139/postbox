@@ -7,16 +7,28 @@
 // It marks itself ready once the app’s frame has loaded and sized, and missing when there’s no such app. The page’s
 // state holds no conversation’s items (#1155), so it asks the server for the app’s item first.
 
-import { renderAppItem } from './apps.mjs';
+import { mountApp, renderAppItem } from './apps.mjs';
 import { client } from './client.mjs';
 import { h } from './dom.mjs';
 import { fetchRange } from './item-ranges.mjs';
+import { regionBox } from './review-marks.mjs';
 
 const params = new URLSearchParams(location.search);
 /** The item to capture, or null on every ordinary page load. */
 export const CAPTURE = params.get('capture');
 /** How long the app may take to load and size before the page says it’s ready anyway: view_app has its own limit. */
 const SETTLE_MS = 12000;
+
+/** Parses ?region=x,y,w,h,width,height into a bounded region, or null (#856). */
+function captureRegion() {
+  const raw = params.get('region');
+  if (!raw) return null;
+  const nums = raw.split(',').map(Number);
+  if (nums.length !== 6 || !nums.every((n) => Number.isInteger(n) && n >= 0)) return null;
+  const [x, y, w, h0, width, height] = nums;
+  if (width < 1 || height < 1 || x + w > width || y + h0 > height) return null;
+  return { x, y, w, h: h0, width, height };
+}
 
 /** The item to capture, from the server, or null when there’s no such item. @param {string} threadId @param {string} id */
 async function captured(threadId, id) {
@@ -37,18 +49,29 @@ export async function mountCapture(root) {
   // its own copy of the state, with no stream, so this changes nothing for the person.
   const app = client.state.apps[item.block.id];
   if (app.check?.status === 'pending' || app.check?.status === 'fixing') app.check = { ...app.check, status: 'passed' };
-  // As thread.mjs wraps an app in the transcript: wider than the text column, as wide as the conversation.
-  const holder = h('div.wide.item', { dataset: { key: item.id, captureItem: '' } });
-  const paint = () => holder.replaceChildren(renderAppItem(item, { threadId, rerender: paint }));
-  paint();
-  const transcript = h('div.transcript', holder);
-  const column = Number(params.get('column'));
-  root.replaceChildren(
-    column > 0
-      ? h('div.main', { style: { width: `${column}px` } }, transcript)
-      : // An empty rail takes the rail’s room, so the shell’s own grid sets the conversation’s width.
-        h('div.app', h('nav.rail', { 'aria-hidden': 'true' }), h('div.main', transcript)),
-  );
+  const region = captureRegion();
+  let holder;
+  if (region) {
+    // A region from a review (#856): render the app at the review frame’s width, uncapped in height, with the region outlined.
+    const appEl = h('div.rv-app', { style: { width: `${region.width}px` } });
+    holder = h('div', { dataset: { key: item.id, captureItem: '' }, style: { width: `${region.width}px` } }, appEl);
+    mountApp(appEl, app.id, { review: true });
+    appEl.querySelector(':scope > .app-body')?.append(h('div.rv-marks', regionBox(region, '')));
+    root.replaceChildren(holder);
+  } else {
+    // As thread.mjs wraps an app in the transcript: wider than the text column, as wide as the conversation.
+    holder = h('div.wide.item', { dataset: { key: item.id, captureItem: '' } });
+    const paint = () => holder.replaceChildren(renderAppItem(item, { threadId, rerender: paint }));
+    paint();
+    const transcript = h('div.transcript', holder);
+    const column = Number(params.get('column'));
+    root.replaceChildren(
+      column > 0
+        ? h('div.main', { style: { width: `${column}px` } }, transcript)
+        : // An empty rail takes the rail’s room, so the shell’s own grid sets the conversation’s width.
+          h('div.app', h('nav.rail', { 'aria-hidden': 'true' }), h('div.main', transcript)),
+    );
+  }
   const started = Date.now();
   const settle = () => {
     const frame = holder.querySelector('iframe.app-iframe');

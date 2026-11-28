@@ -1,17 +1,21 @@
 // An app in a review: the app in review mode, where its registered anchors carry name tags, and the comments on each
 // anchor beside it (designs/agent-apps.md, the review block). An app that names no parts says so, and the person
-// comments on the whole app instead (#855).
+// comments on the whole app instead (#855), or marks a point or a box anywhere on it (#856, review-marks.mjs).
 
+import { REGION_ANCHOR } from '/shared/review-regions.mjs';
 import { mountApp } from './apps.mjs';
 import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
+import { attachMarks, markControls, paintMarks, regionNote, versionOf } from './review-marks.mjs';
+import { regionsOf, renumberDraft } from './review-region-numbers.mjs';
 
 /** The anchor of a comment on the app as a whole: what the agent reads in the answer. */
 export const WHOLE_APP = 'the whole app';
 
 /** The review being rebuilt around its live app (rerenderAround): its item, and which app and mode that app shows. */
 let keeping = null;
-/** An item’s block on the page, when a rerender kept the one that was there: a newer render’s handlers find it here. */
+/** An item’s block on the page, when a rerender kept the one that was there: a newer render’s handlers find it here.
+ * Held weakly so leaving a room lets its detached block and layer go. @type {Map<string, WeakRef<HTMLElement>>} */
 const onPage = new Map();
 /**
  * Each review’s latest hint, by its item, so a block rebuilt around the app shows it: a kept app doesn’t report its parts
@@ -28,8 +32,9 @@ const hints = new Map();
  */
 export function rerenderAround(itemId, node, build) {
   // A block the page let go of (a server update re-rendered it, or the conversation changed) is let go of here too.
-  for (const [id, el] of onPage) if (!el.isConnected) onPage.delete(id);
-  const cur = node.isConnected ? node : (onPage.get(itemId) ?? node);
+  for (const [id, ref] of onPage) if (!ref.deref()?.isConnected) onPage.delete(id);
+  const keptEl = onPage.get(itemId)?.deref();
+  const cur = node.isConnected ? node : (keptEl ?? node);
   // Only a mounted app is kept: one that said it isn’t available mounts afresh, in case it is now.
   const app = cur.querySelector('.app-review-wrap > .rv-app:has(> .app-body)');
   keeping = app ? { itemId, key: app.dataset.app } : null;
@@ -46,7 +51,7 @@ export function rerenderAround(itemId, node, build) {
     return n;
   }
   graft(cur, n, app, slot);
-  onPage.set(itemId, cur);
+  onPage.set(itemId, new WeakRef(cur));
   return cur;
 }
 
@@ -74,7 +79,7 @@ function graft(old, next, keep, slot) {
 /**
  * The app and its comments, by anchor.
  * @param {any} b  the review block
- * @param {{ itemId: string, d: any, done: boolean, rerender: () => void, threadBox: (key: any) => HTMLElement }} env
+ * @param {{ itemId: string, d: any, done: boolean, rerender: () => HTMLElement, threadBox: (key: any) => HTMLElement }} env
  */
 export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
   const key = `${b.appId}:${done ? 'answered' : 'review'}`;
@@ -82,10 +87,17 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
   const kept = keeping?.itemId === itemId && keeping.key === key;
   const appEl = h('div.rv-app', { 'data-app': key, ...(kept ? { 'data-kept': '' } : {}) });
   const pins = h('div.rv-pins');
+  if (!done) renumberDraft(b, d);
   const anchors = new Set(
     [...(b.threads ?? []).map((t) => t.anchor), ...d.comments.map((c) => c.anchor), ...(d.composing ? [d.composing] : [])].filter(Boolean),
   );
-  for (const a of anchors) pins.append(h('div', h('span.small.dim', 'On ', h('b', a)), threadBox(a)));
+  const version = versionOf(b, done);
+  const regions = regionsOf(b, d);
+  for (const a of anchors) {
+    // Whether the region is drawn at the frame’s width is said once the frame is laid out (paintMarks).
+    const note = regions.has(a) ? h('span', { 'data-region-note': a }, regionNote(regions.get(a), version, null)) : null;
+    pins.append(h('div', h('span.small.dim', 'On ', h('b', a), note), threadBox(a)));
+  }
   if (done && !anchors.size) pins.append(h('p.small.dim', 'No comments.'));
   // Open, the review always takes a comment on the whole app, the only way to comment on one that names no parts. The
   // button comes first, so the hint under it changes without moving it.
@@ -96,10 +108,17 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
     startComment(d, WHOLE_APP);
     rerender();
   };
-  if (!done) pins.append(h('div', h('button.btn.sm', { type: 'button', onclick: onWhole }, 'Comment on the whole app')), hint);
+  const marks = { b, d, done, version, rerender };
+  if (!done) {
+    const mark = markControls(itemId, marks);
+    pins.append(h('div.rv-app-actions', h('button.btn.sm', { type: 'button', onclick: onWhole }, 'Comment on the whole app'), mark.button), hint);
+    if (mark.help) pins.append(mark.help, mark.status);
+  }
   if (!kept)
     mountApp(appEl, b.appId, {
       review: !done,
+      // Answered reviews stay uncapped in height too, so regions marked near the bottom stay over what was marked (#856).
+      fullHeight: true,
       // The app reports the parts it names once its page has loaded, and again each time it names them, after an await
       // say. The hint follows the latest: every one for this review on the page, since a block rebuilt around the app
       // (rerenderAround) has a new hint, and the next build starts from the latest.
@@ -109,11 +128,15 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
         for (const el of document.querySelectorAll(`[data-app-hint="${CSS.escape(itemId)}"]`)) if (el.textContent !== text) el.textContent = text;
       },
       onPin: (anchor) => {
-        if (!done) {
+        // A region is marked on Postbox’s layer, never named by the app (#856).
+        if (!done && !REGION_ANCHOR.test(anchor)) {
           startComment(d, anchor);
           rerender();
         }
       },
     });
+  // Over the app’s frame, a layer of Postbox’s own draws the regions marked on it, and takes the marking (#856).
+  if (!kept) attachMarks(itemId, appEl);
+  paintMarks(itemId, { ...marks, pins });
   return h('div.app-review-wrap', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' } }, appEl, pins);
 }

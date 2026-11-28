@@ -180,13 +180,14 @@ function find(apps, se, key) {
 
 /**
  * Why a comment doesn’t fit this block: a line it doesn’t have, a quote that isn’t the text there, an app review
- * without an anchor, or a thread it doesn’t have.
+ * without an anchor, a region on a review that isn’t of an app, or a thread it doesn’t have.
  * @param {any} b @param {any} c @param {number} i
  */
 function placeError(b, c, i) {
   if (!c || typeof c !== 'object') return [];
   if (c.threadId !== undefined) return (b.threads ?? []).some((t) => t.id === c.threadId) ? [] : [`comments[${i}]: there’s no thread ${c.threadId} on it.`];
   if (b.format === 'app') return c.anchor === undefined ? [`comments[${i}]: an app review’s comment names a part of the app as anchor.`] : [];
+  if (c.region !== undefined) return [`comments[${i}]: only a comment on an app marks a region; a ${b.format} review’s comment is on a line.`];
   const lines = splitLines(b.content);
   if (c.line === undefined) return [`comments[${i}]: a ${b.format} review’s comment is on a line.`];
   if (c.line > lines.length || (c.endLine ?? c.line) > lines.length) return [`comments[${i}]: the draft has ${lines.length} lines.`];

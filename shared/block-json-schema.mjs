@@ -25,9 +25,24 @@ const DESCRIPTION =
 
 /**
  * A review carries its images as files, which Postbox reads from the agent’s folder and takes off the block before
- * the catalog checks it (server/review-files.mjs, #780). @param {Record<string, any>} json @param {Record<string, any>} files
+ * the catalog checks it (server/review-files.mjs, #780). It also omits region.under from the advertised schema: the
+ * page fills under from the kit, so agents never write it (#856). @param {Record<string, any>} json @param {Record<string, any>} files
  */
-const withFiles = (json, files) => (json.properties.type.enum[0] === 'review' ? { ...json, properties: { ...json.properties, files } } : json);
+function forReview(json, files) {
+  if (json.properties.type.enum[0] !== 'review') return json;
+  const threads = json.properties.threads;
+  const region = threads?.items?.properties?.region;
+  const nextThreads = region?.properties?.under
+    ? (() => {
+        const { under: _, ...regionProps } = region.properties;
+        return {
+          ...threads,
+          items: { ...threads.items, properties: { ...threads.items.properties, region: { ...region, properties: regionProps } } },
+        };
+      })()
+    : threads;
+  return { ...json, properties: { ...json.properties, files, ...(nextThreads ? { threads: nextThreads } : {}) } };
+}
 
 /**
  * show_block’s block. An outcome comes later, by update_block, once the person has answered (#94).
@@ -36,7 +51,7 @@ const withFiles = (json, files) => (json.properties.type.enum[0] === 'review' ? 
 export function shownBlock(files) {
   const types = TYPES.map((t) => {
     const { outcome: _, ...properties } = typeSchema(t).properties;
-    return withFiles({ ...typeSchema(t), properties }, files);
+    return forReview({ ...typeSchema(t), properties }, files);
   });
   return { type: 'object', description: DESCRIPTION, anyOf: types };
 }
@@ -51,7 +66,7 @@ export function updatedBlock(files) {
     type: 'object',
     description: `${DESCRIPTION} Or { id, outcome } to report a result under the person’s answer, or { id, withdraw } to close it.`,
     anyOf: [
-      ...TYPES.map((t) => withFiles(typeSchema(t), files)),
+      ...TYPES.map((t) => forReview(typeSchema(t), files)),
       { type: 'object', properties: { id, outcome }, required: ['id', 'outcome'] },
       { type: 'object', properties: { id, withdraw: outcome }, required: ['id', 'withdraw'] },
     ],
