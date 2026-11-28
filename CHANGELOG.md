@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.7.2 (2026-11-28)
+
+### Fixes
+
+- **hosted:** a hosted conversation's plus menu offers no project folder to add from
+- **hosted:** a project on a hosted Postbox is its name, with no folder on the server
+- **steps:** an output box starts with its tab stop, until it's laid out and fits
+- **steps:** a step's or a command's output takes a tab stop only while it scrolls
+
 ## 5.7.1 (2026-11-28)
 
 ### Fixes
