@@ -222,3 +222,20 @@ test('#338 on a disk that ignores case, a path written in another case is judged
   none(join(shout(dirname(home)), 'x.md'));
   assert.equal(readFolderOffer({ ...agy, input: { file_path: shout(join(notes, 'a.md')) }, home })?.readDir, notes, 'saved in its true case');
 });
+
+test('hosted, a read outside an Antigravity agent’s folders offers no Always allow, so no folder on the server is saved', () => {
+  const { home, notes } = aHome();
+  const offerWhen = (/** @type {boolean} */ hosted) => {
+    const store = new Store(null);
+    store.emit('persona', { id: 'pe_a', handle: 'gem', backend: 'antigravity-cli', folder: '', remote: null, version: 1 });
+    store.emit('thread', { id: 'th_a', title: 'Room' });
+    store.emit('session', { id: 'se_a', threadId: 'th_a', personaId: 'pe_a', handle: 'gem', addDirs: [], readDirs: [] });
+    const rt = new Runtime({ store, adapters: new AdapterRegistry(), config: { origin: 'http://127.0.0.1:1', imageOrigins: [], hosted, home } });
+    return (
+      rt.alwaysFor(store.state.sessions.se_a, { tool: 'Read', input: { file_path: join(notes, 'a.md') }, suggestions: null, suppressAlways: false })?.readDir ??
+      null
+    );
+  };
+  assert.equal(offerWhen(false), notes, 'on your own computer the folder is offered');
+  assert.equal(offerWhen(true), null);
+});
