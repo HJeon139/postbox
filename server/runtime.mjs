@@ -155,7 +155,7 @@ export class Runtime {
       hosts: this.hosts,
     });
     // The personas, which signal persona.updated after a change (designs/architecture/services.md, “Personas”).
-    this.personas = new Personas({ store, bus: this.bus, placement: this.placement, adapters });
+    this.personas = new Personas({ store, bus: this.bus, placement: this.placement, adapters, hosted: /** @type {any} */ (config).hosted === true });
     // Sessions, one per agent per conversation; an agent the person adds lifts a decline of adding it there (#789).
     this.sessions = new Sessions({ store, bus: this.bus, threads: this.threads, personas: this.personas });
     this.bus.on('session.joined', ({ threadId, persona }) => liftDecline(this, threadId, persona.handle));

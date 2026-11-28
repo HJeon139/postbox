@@ -82,13 +82,20 @@ export const agentFolderPath = (folder) => (folder === undefined || folder === n
  * as fullPath refuses it: the sheet re-sends Folder with every save, and one stored before #990 would refuse them all.
  * It’s checked again when the agent moves back here, and read here as none while the check refuses it (storedFolder).
  * @param {unknown} folder @param {{ hostId?: string } | null | undefined} remote  where the agent runs, after the change
+ * @param {boolean} [hosted]  on a server for a team (designs/architecture/hosted.md): an agent placed on the server
+ *   has no folder there, so one that names any is refused, the same for a path that exists and one that doesn’t
  * @returns {string}
  */
-export function placedFolder(folder, remote) {
+export function placedFolder(folder, remote, hosted = false) {
+  if (hosted && !remote?.hostId && folder !== undefined && folder !== null && folder !== '') throw httpError(422, NO_SERVER_FOLDER);
   if (!remote?.hostId || folder === undefined || folder === null) return agentFolderPath(folder);
   if (typeof folder === 'string' && folder.length <= MAX_FOLDER) return folder;
   return fullPath(folder, 'An agent’s');
 }
+
+/** What a hosted Postbox says of a folder named on the server, whatever is at that path. */
+export const NO_SERVER_FOLDER =
+  'This Postbox runs on a server, so nothing is given a folder here. Put the agent on a host under Runs on, and name a folder there.';
 
 // The longest a folder is shown in a message, before it’s cut: a refused one can be any length.
 const SHOWN = 200;

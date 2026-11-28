@@ -174,3 +174,39 @@ test('a public address is never answered without sign-in settings: such a start 
   );
   assert.deepEqual(readdirSync(dir), [], 'nothing was opened');
 });
+
+test('hosted, no one names a folder on the server for an agent or a conversation, and the answer never says whether one is there', async () => {
+  const cookie = (await ask(hosted, PORT, { path: '/', headers: { ...NAVIGATION, ...signed() } })).headers['set-cookie'].split(';')[0];
+  const headers = { cookie, ...signed() };
+  const refusal = 'This Postbox runs on a server, so nothing is given a folder here. Put the agent on a host under Runs on, and name a folder there.';
+  const persona = Object.values(hosted.rt.s.personas)[0];
+  const session = Object.values(hosted.rt.s.sessions)[0];
+  // A folder that exists, one that doesn’t, and one that isn’t a path at all are answered alike.
+  for (const folder of [tempDir('pb-hosted-there-'), '/no/such/folder/anywhere', 'relative']) {
+    const agent = await ask(hosted, PORT, { method: 'PATCH', path: `/api/personas/${persona.id}`, body: { folder }, headers });
+    assert.deepEqual([agent.status, agent.json.error], [422, refusal], `an agent’s folder ${folder}`);
+    const added = await ask(hosted, PORT, { method: 'POST', path: '/api/permissions/folders', body: { sessionId: session.id, path: folder }, headers });
+    assert.deepEqual([added.status, added.json.error], [422, refusal], `a conversation’s folder ${folder}`);
+    const made = await ask(hosted, PORT, { method: 'POST', path: '/api/personas', body: { handle: 'newcomer', folder }, headers });
+    assert.deepEqual([made.status, made.json.error], [422, refusal], `a new agent’s folder ${folder}`);
+  }
+  assert.equal(hosted.rt.s.personas[persona.id].folder ?? '', persona.folder ?? '', 'nothing was kept for the agent');
+  assert.deepEqual(hosted.rt.s.sessions[session.id].addDirs ?? [], [], 'nor for the conversation');
+  // An agent with no folder still saves, as the sheet sends an empty Folder with every save.
+  assert.equal((await ask(hosted, PORT, { method: 'PATCH', path: `/api/personas/${persona.id}`, body: { folder: '' }, headers })).status, 200);
+});
+
+test('on your own computer an agent and a conversation are still given an existing folder, and told when one isn’t there', async () => {
+  const cookie = (await ask(local, PORT + 1, { path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
+  const there = tempDir('pb-local-there-');
+  const persona = Object.values(local.rt.s.personas)[0];
+  const session = Object.values(local.rt.s.sessions)[0];
+  const patch = (/** @type {string} */ folder) =>
+    ask(local, PORT + 1, { method: 'PATCH', path: `/api/personas/${persona.id}`, body: { folder }, headers: { cookie } });
+  const add = (/** @type {string} */ path) =>
+    ask(local, PORT + 1, { method: 'POST', path: '/api/permissions/folders', body: { sessionId: session.id, path }, headers: { cookie } });
+  assert.equal((await patch(there)).status, 200);
+  assert.equal((await add(there)).status, 200);
+  const missing = await add('/no/such/folder/anywhere');
+  assert.deepEqual([missing.status, missing.json.error], [422, '/no/such/folder/anywhere isn’t a folder on this computer.']);
+});

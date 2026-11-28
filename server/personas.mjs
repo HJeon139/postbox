@@ -34,9 +34,12 @@ function defaultModelFor(placement, backend) {
 export class Personas {
   /**
    * @param {{ store: import('./store.mjs').Store, bus: import('./bus.mjs').Bus, placement: import('./remote/placement.mjs').Placement,
-   *           adapters: import('./adapters/adapter.mjs').AdapterRegistry }} deps
+   *           adapters: import('./adapters/adapter.mjs').AdapterRegistry, hosted?: boolean }} deps  hosted: whether
+   *   Postbox runs on a server for a team (designs/architecture/hosted.md)
    */
-  constructor({ store, bus, placement, adapters }) {
+  constructor({ store, bus, placement, adapters, hosted = false }) {
+    /** On a server for a team: an agent placed on the server is given no folder there (folder-path.mjs). */
+    this.hosted = hosted;
     this.store = store;
     this.bus = bus;
     this.placement = placement;
@@ -128,7 +131,7 @@ export class Personas {
       canPublish,
       mcpOff: serverNames(mcpOff),
       skillsOff: skillNames(skillsOff),
-      folder: placedFolder(folder, placed),
+      folder: placedFolder(folder, placed, this.hosted),
       tools: [...new Set(tools)],
       examples,
       createdBy,
@@ -159,7 +162,7 @@ export class Personas {
     // Where it runs (#120), and whether its backend runs here when that’s here.
     patch = this.placement.placedPatch(id, p, patch);
     // Its folder is checked for where it runs once the change is made (#990).
-    if (patch.folder !== undefined) patch = { ...patch, folder: placedFolder(patch.folder, patch.remote === undefined ? p.remote : patch.remote) };
+    if (patch.folder !== undefined) patch = { ...patch, folder: placedFolder(patch.folder, patch.remote === undefined ? p.remote : patch.remote, this.hosted) };
     // A persona moved from the mock to a real model gets that backend’s default model.
     if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock')
       patch = { ...patch, model: defaultModelFor(this.placement, patch.backend) };
