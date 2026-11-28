@@ -9,8 +9,9 @@ import { foldTerm, TERM_VARIANTS } from './term-key.mjs';
 // It links only in its own case, and not beside & or a dotted letter (#102). A longer term links in any case.
 const SHORT = 2;
 // The letters of the scripts written with spaces between words: Latin with its accents (“Rémi”, Vietnamese “Rạch”),
-// Greek (“Ωmega”, less its two punctuation marks) and Cyrillic. CJK, written without spaces, isn’t among them.
-const LETTERS = 'A-Za-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u024F\\u0370-\\u037D\\u037F-\\u0386\\u0388-\\u03FF\\u0400-\\u04FF\\u1E00-\\u1EFF';
+// Greek with its polytonic forms (“Ωmega”, less its two punctuation marks) and Cyrillic with its supplement. CJK,
+// written without spaces, isn’t among them.
+const LETTERS = 'A-Za-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u024F\\u0370-\\u037D\\u037F-\\u0386\\u0388-\\u03FF\\u0400-\\u052F\\u1E00-\\u1FFF';
 // What continues a word: one of those letters, a digit, a combining accent (a decomposed “café”), or a hyphen or a dash
 // that joins, as in “45–52”. An em dash doesn’t.
 const JOINS = `\\w${LETTERS}\\u0300-\\u036F\\u2010-\\u2013\\u2212-`;
@@ -22,7 +23,7 @@ const WHOLE_WORD_BEFORE = `(?<![${JOINS}]|${ENTITY_START})`;
 const WHOLE_WORD_AFTER = `(?![${JOINS}])`;
 // The text is escaped, so & reads as &amp; and ' as &#39;. Spaced, as in “R & D”, the letters stay words of their own;
 // after a letter and an apostrophe, as in “don’t”, a short term is the end of a word.
-const SHORT_BEFORE = `(?<![${JOINS}]|${ENTITY_START}|&amp;|[${LETTERS}]\\.|[${LETTERS}](?:&#39;|’))`;
+const SHORT_BEFORE = `(?<![${JOINS}]|${ENTITY_START}|&amp;|[${LETTERS}]\\.|[${LETTERS}\\u0300-\\u036F](?:&#39;|’))`;
 const SHORT_AFTER = `(?![${JOINS}]|&amp;|\\.[${LETTERS}])`;
 
 /**

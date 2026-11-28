@@ -113,6 +113,9 @@ test('a term doesn’t link inside a Vietnamese word, a decomposed accent, or a 
   assert.deepEqual(linked('R', 'Rạch Giá'), []);
   assert.deepEqual(linked('cafe', 'the café opened'), []);
   assert.deepEqual(linked('s', 'the café’s menu'), []);
+  assert.deepEqual(linked('s', 'the cafe\u0301’s menu'), []);
+  // Polytonic Greek and the Cyrillic Supplement are letters too.
+  assert.deepEqual(linked('R', 'R\u1F00 and R\u0501'), []);
   // The Greek question mark and ano teleia are punctuation, so a term before one still links.
   assert.deepEqual(linked('R', 'Is it R; or R·'), ['R', 'R']);
 });
