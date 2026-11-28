@@ -5,7 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import { settled } from './postbox.mjs';
-import { regionRoom } from './review-app-region-fixture.mjs';
+import { drag, regionRoom } from './review-app-region-fixture.mjs';
 
 const room = regionRoom('review-app-region-size');
 const { review } = room;
@@ -17,10 +17,8 @@ const GROWS = `<main style="padding:12px;color:var(--text)"><h2 id="title" style
 <button id="grow" class="btn" type="button">Show more</button><div id="more"></div></main>
 <script>document.getElementById('grow').onclick = () => { document.getElementById('more').style.height = '600px'; };</script>`;
 
-/** Drags across the layer over the app, between two points of the page, in CSS px. */
-async function dragPx(page, block, from, to) {
-  const layer = block.locator('.rv-marks.marking');
-  await layer.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+/** Drags across the layer over the app, between two points of the page, in CSS px (caller scrolls into view first). */
+async function dragPx(page, from, to) {
   await page.mouse.move(...from);
   await page.mouse.down();
   await page.mouse.move(...to, { steps: 6 });
@@ -38,9 +36,7 @@ test('#856 a region marked in a 1280 px window isn’t drawn at 375 px: it’s l
   const { block, answer } = await review(page);
   const wide = await block.locator('iframe.app-iframe').evaluate((f) => f.clientWidth);
   await block.getByRole('button', { name: 'Mark a part of the app' }).click();
-  const layer = await block.locator('.rv-marks.marking').boundingBox();
-  if (!layer) throw new Error('The layer over the app has no box.');
-  await dragPx(page, block, [layer.x + layer.width * 0.5, layer.y + 20], [layer.x + layer.width * 0.9, layer.y + 120]);
+  await drag(page, block, [0.5, 0.1], [0.9, 0.4]);
   await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('The legend overlaps.');
   await block.getByRole('button', { name: 'Add draft comment' }).click();
   const drawn = block.locator('.rv-marks .rv-region[data-region="1"]');
@@ -64,7 +60,7 @@ test('#856 a region stays over what was marked when the app grows below it', asy
   await block.getByRole('button', { name: 'Mark a part of the app' }).click();
   await block.locator('.rv-marks.marking').evaluate((el) => el.scrollIntoView({ block: 'center' }));
   const title = await boxIn(block, '#title');
-  await dragPx(page, block, [title.x, title.y], [title.x + title.width * 0.5, title.y + title.height]);
+  await dragPx(page, [title.x, title.y], [title.x + title.width * 0.5, title.y + title.height]);
   await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('Say what the corpus is.');
   await block.getByRole('button', { name: 'Add draft comment' }).click();
   const frame = block.locator('iframe.app-iframe');
