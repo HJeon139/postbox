@@ -90,12 +90,20 @@ export function folder(dir) {
 
 /**
  * Whether a process has gone: no such PID, or a zombie nobody has reaped yet (in a container, PID 1 may not reap
- * orphans).
+ * orphans). One argument only, so it can be handed to `every` and the like.
  * @param {number} pid
  */
-export function gone(pid) {
+export const gone = (pid) => goneVia(pid, process.kill);
+
+/**
+ * `gone`, signaling through `kill`, which tests of its guard pass as a fake (§10.22). A value that can’t be a PID
+ * counts as gone and is never signaled: signal 0 to -1 or 0 reaches every process, or the group (#2028).
+ * @param {number} pid @param {(pid: number, signal: number) => void} kill
+ */
+export function goneVia(pid, kill) {
+  if (!Number.isInteger(pid) || pid <= 0 || pid > 0x7fffffff) return true;
   try {
-    process.kill(pid, 0);
+    kill(pid, 0);
   } catch (e) {
     return e.code === 'ESRCH';
   }

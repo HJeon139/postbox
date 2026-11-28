@@ -12,7 +12,7 @@ import { remoteCommand } from '../../server/remote/ssh.mjs';
 import { hostPaths } from '../../shared/remote-protocol.mjs';
 import { hostSocketBase } from '../socket-base.mjs';
 import { tempDir } from '../temp-dirs.mjs';
-import { FIXTURES, gone, NO_UNIX, sleep } from './host.mjs';
+import { FIXTURES, gone, goneVia, NO_UNIX, sleep } from './host.mjs';
 
 export const VERSION = hostVersion();
 export const HOST = 'host.example.com';
@@ -134,6 +134,10 @@ export const wholeLines = (text) =>
     .filter(Boolean)
     .map((l) => JSON.parse(l));
 
+const MAX_PID = 0x7fffffff;
+/** Whether a value is a valid child PID: never 0, negative, 1 (whose -1 kills every process of this user), or past 32-bit max. */
+const childPid = (pid) => typeof pid === 'number' && Number.isInteger(pid) && pid > 1 && pid <= MAX_PID;
+
 /** The stand-in’s runs so far, oldest first: their events and the lines each wrote. @param {ReturnType<typeof machine>} m */
 export function standins(m) {
   return readdirSync(m.trace)
@@ -144,7 +148,7 @@ export function standins(m) {
       const out = join(m.trace, `${pid}.out.jsonl`);
       return { pid, events, start: events[0], out: existsSync(out) ? readFileSync(out, 'utf8') : '', has: (ev) => events.find((e) => e.ev === ev) };
     })
-    .filter((s) => s.start)
+    .filter((s) => s.start && childPid(s.pid))
     .sort((a, b) => a.start.at - b.start.at);
 }
 
@@ -158,7 +162,7 @@ export const appliedRuns = (m) =>
 export function daemonPid(m) {
   try {
     const { pid } = JSON.parse(readFileSync(join(m.paths.code, 'daemon.pid'), 'utf8'));
-    return Number.isInteger(pid) && pid > 0 ? pid : null;
+    return childPid(pid) ? pid : null;
   } catch {
     return null;
   }
@@ -183,7 +187,7 @@ export function marked(mark) {
   const name = 'POSTBOX_V1_RUN=';
   const found = [];
   for (const pid of readdirSync('/proc')
-    .filter((d) => /^\d+$/.test(d))
+    .filter((d) => /^[1-9]\d*$/.test(d))
     .map(Number)) {
     if (pid === process.pid || zombie(pid)) continue;
     try {
@@ -201,19 +205,24 @@ export function marked(mark) {
 /**
  * Ends what a test left: its Postboxes (turns on the host aren’t stopped by that) and the daemon, with SIGTERM as a
  * person’s `kill` would. Then every PID it saw, and on Linux every marked process, must be gone; anything left is a
- * stray, and is killed so nothing outlives the test. Returns the strays.
+ * stray, and is killed so nothing outlives the test. Returns the strays. `kill` is for the tests of the PID guards
+ * in front of each signal, which pass a fake that records its calls, so a broken guard can never reach a real
+ * process (§10.22, #2028).
  * @param {ReturnType<typeof machine>} m @param {any[]} postboxes
+ * @param {{ kill?: (pid: number, signal: string | number) => void, isGone?: (pid: number) => boolean, waitMs?: number }} [opts]
+ *   isGone: whether a PID has ended, through `kill`; waitMs: how long the test’s processes get to end before what’s
+ *   left is killed
  */
-export async function teardown(m, postboxes) {
+export async function teardown(m, postboxes, { kill = process.kill, isGone = (pid) => goneVia(pid, kill), waitMs = 10_000 } = {}) {
   for (const p of postboxes) await p.done().catch(() => {});
   delete process.env.POSTBOX_CLAUDE_RECORD;
   // A trace that can’t be read (#899) still lets the rest end what the test started; its error comes after.
   let unread = null;
   try {
     for (const s of standins(m)) {
-      m.pids.set(s.pid, 'a stand-in claude');
+      if (childPid(s.pid)) m.pids.set(s.pid, 'a stand-in claude');
       const shim = s.has('shim')?.pid;
-      if (shim) m.pids.set(shim, 'a shim');
+      if (childPid(shim)) m.pids.set(shim, 'a shim');
     }
   } catch (e) {
     unread = e;
@@ -222,21 +231,23 @@ export async function teardown(m, postboxes) {
   if (daemon) {
     m.pids.set(daemon, 'the daemon');
     try {
-      process.kill(daemon, 'SIGTERM');
+      kill(daemon, 'SIGTERM');
     } catch {}
   }
-  const end = Date.now() + 10_000;
-  const left = () => [...m.pids.keys()].filter(alive);
+  const end = Date.now() + waitMs;
+  const left = () => [...m.pids.keys()].filter((pid) => childPid(pid) && !isGone(pid));
   while (left().length && Date.now() < end) await sleep(50);
   /** @type {Map<number, string>} */
   const strays = new Map(left().map((pid) => [pid, `${m.pids.get(pid)} (${pid})`]));
   if (LINUX) for (const pid of marked(m.mark)) if (!strays.has(pid)) strays.set(pid, `a process with the test’s marker (${pid})`);
   // Whatever is left goes now, by group where it leads one.
-  for (const pid of strays.keys())
+  for (const pid of strays.keys()) {
+    if (!childPid(pid)) continue;
     for (const target of [-pid, pid])
       try {
-        process.kill(target, 'SIGKILL');
+        kill(target, 'SIGKILL');
       } catch {}
+  }
   rmSync(m.root, { recursive: true, force: true });
   if (unread) throw unread;
   return [...strays.values()];
