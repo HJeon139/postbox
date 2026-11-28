@@ -33,6 +33,9 @@ test('#120: a remote Isolated turn starts on the host with its agent file in Pos
   const file = JSON.parse(start.agentFile.text);
   assert.deepEqual(file.mcpServers.postbox, { command: '/usr/bin/node', args: [SHIM, start.turn] });
   assert.ok(!start.agentFile.text.includes('127.0.0.1'), 'the laptop’s MCP URL never crosses');
+  // #207: Postbox’s skills, from the copy the host install ships beside the shim.
+  const plugin = SHIM.replace('/server/remote/host/shim.mjs', '/agent-plugin');
+  assert.deepEqual(file.resources, [`skill://${plugin}/skills/visual-explainer/SKILL.md`]);
   // The host folder is the only one named; the project’s folder and the extra ones are the laptop’s.
   assert.deepEqual(file.permissions.rules.find((r) => r.capability === 'fs_read').match, [FOLDER]);
   assert.ok(!start.agentFile.text.includes('/Users/me'));

@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.9.7 (2026-11-28)
+
+### Fixes
+
+- **turn-stop:** a stop refuses by store, which no server code passes
+- **threads:** an agent may post a topic thread's outcome, and the guide says when to open one
+- **turn-stop:** a turn's stop names who stopped it, with no default
+
 ## 5.9.6 (2026-11-28)
 
 ### Fixes

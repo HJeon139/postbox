@@ -148,6 +148,22 @@ test('ustar refuses a name it can’t carry', () => {
   assert.throws(() => ustar([{ path: '../x', data: Buffer.alloc(0), mode: 0o600 }], 0), TypeError);
   assert.throws(() => ustar([{ path: `${'a'.repeat(101)}`, data: Buffer.alloc(0), mode: 0o600 }], 0), TypeError);
   assert.throws(() => ustar([{ path: 'a b', data: Buffer.alloc(0), mode: 0o600 }], 0), TypeError);
+  // #207: the plugin’s manifest is the one dotted path it takes.
+  const empty = { data: Buffer.alloc(0), mode: 0o600 };
+  assert.ok(ustar([{ path: 'agent-plugin/.claude-plugin/plugin.json', ...empty }], 0).length > 0);
+  for (const path of ['.claude-plugin/plugin.json', 'agent-plugin/.claude-plugin/other.json', 'shared/.claude-plugin/plugin.json'])
+    assert.throws(() => ustar([{ path, ...empty }], 0), TypeError, path);
+});
+
+test('#207: the agent plugin ships in the tar, its manifest too, each with its SHA-256 in the manifest', () => {
+  const b = bundle({ version: VERSION, mtime: MTIME });
+  const entries = new Map(untar(b.tar).map((e) => [e.path, e]));
+  for (const path of ['agent-plugin/.claude-plugin/plugin.json', 'agent-plugin/skills/visual-explainer/SKILL.md']) {
+    const data = readFileSync(new URL(`../${path}`, import.meta.url));
+    assert.deepEqual(entries.get(path)?.data, data, path);
+    assert.equal(entries.get(path)?.mode, 0o600, path);
+    assert.ok(b.manifest.includes(`${createHash('sha256').update(data).digest('hex')}  ${path}\n`), path);
+  }
 });
 
 // ── The confirm ─────────────────────────────────────────────────────────────────────

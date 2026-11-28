@@ -9,14 +9,15 @@ import { toolsDown } from './tools-down.mjs';
  * only in memory: nothing is written to ~/.codex or the project. Checked with codex-cli 0.167.0: after
  * skills/extraRoots/set, skills/list named postbox:visual-explainer from agent-plugin/skills, before any thread, and no
  * file in ~/.codex changed. A Codex without the method answers with an error, and the turn goes on without them. A
- * turn on a host gets none: the folder is on this computer. A root is a whole folder, so a persona that turned any of
- * Postbox’s skills off gets none of them (#207). Says whether Codex took them.
+ * turn on a host gets the copy its install ships there (#207). A root is a whole folder, so a persona that turned any
+ * of Postbox’s skills off gets none of them (#207). Says whether Codex took them.
  * @param {(method: string, params?: any) => Promise<any>} request
- * @param {{ remote?: boolean, env?: NodeJS.ProcessEnv, persona?: any }} [turn]
+ * @param {{ remote?: import('./adapter.mjs').RemoteContext | null, env?: NodeJS.ProcessEnv, persona?: any }} [turn]
+ *   remote: ctx.remote, for a turn on a host
  */
-export async function addPostboxSkills(request, { remote = false, env = process.env, persona = null } = {}) {
+export async function addPostboxSkills(request, { remote = null, env = process.env, persona = null } = {}) {
   const allOn = postboxSkillsOn(persona).length === POSTBOX_SKILLS.length;
-  const root = remote || !allOn ? null : agentSkills(env);
+  const root = allOn ? agentSkills(env, remote) : null;
   if (!root) return false;
   return request('skills/extraRoots/set', { extraRoots: [root] }).then(
     () => true,
@@ -24,11 +25,19 @@ export async function addPostboxSkills(request, { remote = false, env = process.
   );
 }
 
+/**
+ * What thread/start, thread/resume and thread/fork carry besides their own ids: the guide, as developerInstructions,
+ * and the MCP approval config when there is one. The guide belongs there: turn/start has no top-level settings field
+ * (#584). The conformance probe opens its threads with this too (#585).
+ * @param {string} guide @param {any} [mcpConfig]
+ */
+export const codexOpenConfig = (guide, mcpConfig) => ({ developerInstructions: guide, ...(mcpConfig ? { config: mcpConfig } : {}) });
+
 // Postbox’s skills go on the app-server first, so the thread it opens has them.
 // #587: Codex can return a thread id before any rollout exists. Only the recorded missing-rollout resume error
 // permits a fresh thread; a failed fork must not silently discard the checkpoint the person requested.
 export async function openCodexThread(ctx, request, { sourceThreadId, fork, cwd, model, openConfig }) {
-  await addPostboxSkills(request, { remote: Boolean(ctx.remote), persona: ctx.persona });
+  await addPostboxSkills(request, { remote: ctx.remote, persona: ctx.persona });
   const start = () => request('thread/start', { cwd, ...(model ? { model } : {}), ...openConfig });
   if (fork?.turnId && sourceThreadId)
     return { opened: await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true, ...openConfig }), fresh: false };
