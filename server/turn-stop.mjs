@@ -69,7 +69,6 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   const keep = jobs === 'keep' && !turn.remote ? runningJobs(rt, sessionId, turn.id) : [];
   turn.keepJobs = new Set(keep.map((j) => j.id));
   turn.stopReason = stopReasonOf({ sendNow, by, kept: keep.length > 0 });
-  turn.stoppedBy = by;
   // Postbox is going: its exit starts nothing, as once it’s closing (turnExited).
   if (by === 'shutdown') turn.shutdown = true;
   const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: turn.stopReason };
@@ -127,13 +126,14 @@ function watchExit(rt, sessionId, turn, se) {
 }
 
 /**
- * The state a stopped turn settles to once it has exited. A stop you didn't make with Stop (a run clock's pause or
- * budget, a hung host turn) leaves the need its card made (card-needs.mjs, stoppedNeed), so the agent needs you from
- * the stop, rather than sitting idle until something unrelated settles its state (#1928). Your Stop settles to idle.
- * @param {any} rt @param {any} turn @param {any} se
+ * The state a stopped turn settles to once it has exited: its need's, as at any turn's end and at a restart. A need left
+ * after the stop waits on the person (your Stop dropped the turn's own, card-needs.mjs stoppedNeed; a run clock's, a hung
+ * or a store outage's stop keeps it), so the agent needs you from the stop, rather than sitting idle until something
+ * unrelated settles its state (#1928).
+ * @param {any} rt @param {any} se
  */
-function settledState(rt, turn, se) {
-  return ['clock', 'pause', 'hung'].includes(turn.stoppedBy) ? rt.turnService.asks.stateFor(se.needs) : 'idle';
+function settledState(rt, se) {
+  return rt.turnService.asks.stateFor(se.needs);
 }
 
 /**
@@ -163,7 +163,7 @@ export function turnExited(rt, turn) {
   forgetWait(rt, se.id);
   if (se.state === 'stopping' || se.currentStep === 'Stopping')
     rt.sessions.update(se.id, {
-      state: se.state === 'stopping' ? settledState(rt, turn, se) : se.state,
+      state: se.state === 'stopping' ? settledState(rt, se) : se.state,
       currentStep: stoppedBy,
       finishedAt: Date.now(),
       sideTurn: null,
