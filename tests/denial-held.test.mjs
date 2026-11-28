@@ -46,7 +46,7 @@ test('#1896 two refusals allowed once behind one held commit each keep their rul
   assert.deepEqual(rt.s.sessions[se.id].allowOnce, ['Bash(npm test)', 'Bash(npm run lint)'], 'both rules kept for the next turn');
   // The turn waits for its stop once its step resolves (Scripted.deliver): stop it, so nothing runs as the store closes.
   end();
-  rt.stop(se.id);
+  rt.stop(se.id, { by: 'you' });
   await until(() => !rt.turns.get(se.id), 'the turn to end');
   await h.store.close();
 });
