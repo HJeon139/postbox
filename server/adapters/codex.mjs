@@ -14,7 +14,7 @@ import { CODEX_MEMORY_OFF } from './codex-memory.mjs';
 import { codexModels, findCodex } from './codex-models.mjs';
 import { CODEX_TOOL_RULES, codexWebSearchArgs, networkOn } from './codex-network.mjs';
 import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
-import { codexRefusal, codexSaid, failOnCutAnswer, openCodexThread, SAID_MAX } from './codex-thread.mjs';
+import { codexOpenConfig, codexRefusal, codexSaid, failOnCutAnswer, openCodexThread, SAID_MAX } from './codex-thread.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { COMPACT } from './no-compaction.mjs';
@@ -153,7 +153,7 @@ async function openAndStart(ctx, request, send, cwd, session, message) {
   const mcpConfig = await codexMcpApprovalConfig(request, ctx.persona?.permissionMode);
   // The guide belongs on thread start/resume/fork; turn/start has no top-level settings field.
   const { guide, message: turnMessage } = turnGuide(message, { ...ctx, session, brief: session?.brief, toolRules: CODEX_TOOL_RULES });
-  const openConfig = { developerInstructions: guide, ...(mcpConfig ? { config: mcpConfig } : {}) };
+  const openConfig = codexOpenConfig(guide, mcpConfig);
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;
   const sourceThreadId = threadOf(ctx.state);
