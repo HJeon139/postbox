@@ -68,6 +68,9 @@ function sizeOf(l) {
   return f?.clientWidth ? { width: f.clientWidth, height: Math.max(1, f.clientHeight) } : null;
 }
 
+/** The width of a layer’s frame in CSS px, normalized to null when unlaid-out so !== matches l.width. @param {any} l */
+const widthOf = (l) => sizeOf(l)?.width ?? null;
+
 /** The layer for a review, made once. @param {string} itemId */
 function layerOf(itemId) {
   let l = layers.get(itemId)?.deref();
@@ -112,7 +115,13 @@ export function attachMarks(itemId, appEl) {
   l.watch?.disconnect();
   const place = () => {
     const body = appEl.querySelector(':scope > .app-body');
-    if (body?.querySelector(':scope > iframe.app-iframe') && body.lastElementChild !== l.el) body.append(l.el);
+    if (body?.querySelector(':scope > iframe.app-iframe') && body.lastElementChild !== l.el) {
+      body.append(l.el);
+      // Moving l.el into a new frame of the same width won’t fire ResizeObserver unless re-observed (#856).
+      l.resize?.unobserve(l.el);
+      l.resize?.observe(l.el);
+      if (l.env && widthOf(l) !== l.width) paintMarks(itemId, l.env);
+    }
     syncButton(itemId, l);
   };
   l.watch = new MutationObserver(place);
@@ -138,8 +147,13 @@ export function paintMarks(itemId, env) {
     el.setAttribute('aria-describedby', helpId(itemId));
   } else for (const a of ['tabindex', 'role', 'aria-label', 'aria-describedby']) el.removeAttribute(a);
   const regions = regionsOf(b, d);
-  const width = sizeOf(l)?.width ?? null;
+  const width = widthOf(l);
   l.width = width;
+  if (width === null) {
+    // Painted while detached (e.g. review -> answered rebuild): re-arm ResizeObserver so the first layout repaints (#856).
+    l.resize?.unobserve(el);
+    l.resize?.observe(el);
+  }
   const drawn = [...regions].filter(([, r]) => r.version === version && width !== null && drawnAt(r, width));
   el.replaceChildren(...drawn.map(([a, r]) => regionBox(r, a.slice('region '.length))), ...(marking ? [regionBox(marking, '', 'marking')] : []));
   // Whether each is drawn is said in the list of comments, which a resize changes without a render.
@@ -282,7 +296,7 @@ function wire(l) {
   el.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => onKey(l, e));
   // A frame of another width draws other regions, and says so in the list (regionNote), with no render.
   l.resize = new ResizeObserver(() => {
-    if (l.env && sizeOf(l)?.width !== l.width) paintMarks(l.env.itemId, l.env);
+    if (l.env && widthOf(l) !== l.width) paintMarks(l.env.itemId, l.env);
   });
   l.resize.observe(el);
 }

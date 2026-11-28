@@ -97,10 +97,12 @@ test('#856 in an answered review of an app taller than the window, a region near
   await expect(drawnEl, 'region still drawn in the answered review').toHaveCount(1);
   await drawnEl.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await settled(page);
+  await expect
+    .poll(async () => (await block.locator('iframe.app-iframe').boundingBox())?.height ?? 0, { message: 'answered review frame stays uncapped' })
+    .toBeGreaterThan(1700);
   const frameBox = await block.locator('iframe.app-iframe').boundingBox();
   const drawn = await drawnEl.boundingBox();
   const now = await boxIn(block, '#bottom');
-  expect(frameBox?.height ?? 0, 'answered review frame stays uncapped').toBeGreaterThan(1700);
   expect(drawn && frameBox && drawn.y + drawn.height <= frameBox.y + frameBox.height + 2, 'region sits inside the frame').toBe(true);
   expect(Math.abs((drawn?.y ?? 0) - now.y), 'region stays over the bottom paragraph').toBeLessThanOrEqual(8);
 });
