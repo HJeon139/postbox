@@ -211,3 +211,22 @@ test('on your own computer an agent and a conversation are still given an existi
   const missing = await add('/no/such/folder/anywhere');
   assert.deepEqual([missing.status, missing.json.error], [422, '/no/such/folder/anywhere isn’t a folder on this computer.']);
 });
+
+test('hosted, an agent on a host keeps its folder there, and a conversation’s added folder can still be removed', async () => {
+  const cookie = (await ask(hosted, PORT, { path: '/', headers: { ...NAVIGATION, ...signed() } })).headers['set-cookie'].split(';')[0];
+  const headers = { cookie, ...signed() };
+  hosted.store.emit('host', { id: 'h-far', name: 'agents', settings: {}, createdAt: 1 });
+  hosted.store.emit('persona', { ...Object.values(hosted.rt.s.personas)[0], id: 'pe-far', handle: 'far', remote: { hostId: 'h-far' }, folder: '' });
+  const kept = await ask(hosted, PORT, { method: 'PATCH', path: '/api/personas/pe-far', body: { folder: '/srv/on-the-host' }, headers });
+  assert.deepEqual([kept.status, kept.json.folder], [200, '/srv/on-the-host']);
+  const session = Object.values(hosted.rt.s.sessions)[0];
+  hosted.rt.sessions.update(session.id, { addDirs: ['/added/before'] });
+  const removed = await ask(hosted, PORT, {
+    method: 'POST',
+    path: '/api/permissions/folders',
+    body: { sessionId: session.id, path: '/added/before', remove: true },
+    headers,
+  });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(hosted.rt.s.sessions[session.id].addDirs, []);
+});
