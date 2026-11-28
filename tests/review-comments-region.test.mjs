@@ -223,12 +223,12 @@ const under = { parts: ['legend'], element: { tag: 'p', id: 'total', class: 'big
 test('#856 what the kit says is under a region is kept on one line, cut to REGION_UNDER, and dropped when it isn’t one', () => {
   const long = 'x'.repeat(500);
   const got = underOf({
-    parts: ['legend', '', 7, ...Array.from({ length: 20 }, (_, i) => `part ${i}`)],
-    element: { tag: 'P', id: long, class: 'big\n  bold', text: `  Twelve\n\nbooks. ${long}`, onclick: 'x' },
+    parts: ['\u202Elegend\u200B', '', 7, ...Array.from({ length: 20 }, (_, i) => `part ${i}`)],
+    element: { tag: 'P', id: long, class: 'big\n  bold', text: `  Twelve\n\n\u202Ebooks. ${long}`, onclick: 'x' },
     extra: 1,
   });
   assert.equal(got.parts.length, REGION_UNDER.parts, 'at most REGION_UNDER.parts parts, strings only');
-  assert.equal(got.parts[0], 'legend');
+  assert.equal(got.parts[0], 'legend', 'bidi and zero-width characters stripped');
   assert.equal(got.element.tag, 'p');
   assert.equal(got.element.id.length, REGION_UNDER.id);
   assert.equal(got.element.class, 'big bold');

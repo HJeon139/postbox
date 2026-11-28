@@ -4,7 +4,7 @@
 
 import { REGION_UNDER as CAP, REGION_PX } from './limits.mjs';
 import { int, list, obj, str } from './schema.mjs';
-import { cutText } from './text-parts.mjs';
+import { cleanSaid } from './text-parts.mjs';
 
 /**
  * What the app had under a region when the person marked it (#856), as the kit in its frame told the page: the named
@@ -115,8 +115,8 @@ export function regionText(r) {
   return `${where}, on v${r.version}, in a ${r.width} × ${r.height} px frame`;
 }
 
-/** One of the app’s strings, on one line and cut to n characters, or '' for anything else. @param {unknown} v @param {number} n */
-const oneLine = (v, n) => (typeof v === 'string' ? cutText(v.replace(/\s+/g, ' ').trim(), n) : '');
+/** One of the app’s strings, cleaned of bidi/invisible characters, on one line and cut to n characters, or '' for anything else. @param {unknown} v @param {number} n */
+const oneLine = (v, n) => (typeof v === 'string' ? cleanSaid(v, n) : '');
 
 /**
  * What the kit said is under a region, as the region keeps it: strings on one line and cut to REGION_UNDER, empty

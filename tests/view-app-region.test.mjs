@@ -58,6 +58,11 @@ test('#856 view_app validates an optional region, passes it to capture, and save
     assert.match(bad.message, /x \+ w is at most width/);
     assert.equal(s.captures.length, 0, 'invalid region never starts a capture');
 
+    const tooWide = await viewApp(s.rt, s.se.id, { appId: s.appId, region: { x: 0, y: 0, w: 100, h: 100, width: 20_000, height: 400 } }, ctx);
+    assert.equal(tooWide.ok, false);
+    assert.match(tooWide.message, /region\.width must be between 1 and 10000/);
+    assert.equal(s.captures.length, 0, 'out-of-bounds region width refused before Chromium starts');
+
     const badShape = await viewApp(s.rt, s.se.id, { appId: s.appId, region: 'nope' }, ctx);
     assert.equal(badShape.ok, false);
     assert.match(badShape.message, /region must be/);
