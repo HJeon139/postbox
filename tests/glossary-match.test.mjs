@@ -92,3 +92,19 @@ test('the replies of a room share one matcher while its glossary stays the same'
   assert.equal(glossaryRegex([{ term: 'R:31', key: 'r-31' }]), matcher);
   assert.notEqual(glossaryRegex([{ term: 'R:32', key: 'r-31' }]), matcher);
 });
+
+test('a term doesn’t link inside an accented word, nor a short one after an apostrophe, and CJK text still links (#102)', () => {
+  assert.deepEqual(linked('R', 'Rémi wrote the Résumé'), []);
+  assert.deepEqual(linked('caf', 'the café'), []);
+  assert.deepEqual(linked('Αθ', 'Αθήνα'), []);
+  assert.deepEqual(linked('Мо', 'Москва'), []);
+  assert.deepEqual(linked('t', "don't and don’t"), []);
+  assert.deepEqual(linked('s', "Bob's and Bob’s"), []);
+  assert.deepEqual(linked('R', "‘R’ and 'R'"), ['R', 'R']);
+  assert.deepEqual(linked('AI', '使用AI工具'), ['AI']);
+});
+
+test('a term doesn’t link inside a range, whichever joining dash it’s written with (#102)', () => {
+  assert.deepEqual(linked('U:45', 'U:45-52, U:45–52, U:45−52 and U:45‑52'), []);
+  assert.deepEqual(linked('U:45', 'U:45—an em dash ends a clause'), ['U:45']);
+});
