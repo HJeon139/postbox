@@ -1,5 +1,7 @@
 // Projects the person adds in Settings: a name and an existing folder, and the repository a push they ask for goes
-// to. Creating one moved out of server/index.mjs.
+// to. Creating one moved out of server/index.mjs. On a hosted Postbox a project is its name alone: agents work on
+// hosts, and where a project’s agents work on each is set there (designs/architecture/hosted.md, “What assumed one
+// computer”, “Project and agent folders”).
 
 import { realpath, stat } from 'node:fs/promises';
 import { cutText } from '../shared/text-parts.mjs';
@@ -12,13 +14,29 @@ import { newId } from './store.mjs';
  * Makes a project at an existing folder, kept by its real path (symbolic links resolved), so a check that a path is
  * inside the project compares it plainly.
  * @param {any} store @param {{ name?: string, folder?: unknown }} body
+ * @param {boolean} [hosted]  on a server for a team: the project has no folder here, and one that names a folder is
+ *   refused rather than kept, since it would name a path on the server, where no agent works
  */
-export async function createProject(store, body) {
+export async function createProject(store, body, hosted = false) {
+  const name = cutText(String(body.name || 'New project'), 80);
+  if (hosted) return onHosts(store, name, body.folder);
   const written = fullPath(body.folder);
   const folder = await realpath(written).catch(() => null);
   const st = folder ? await stat(folder).catch(() => null) : null;
   if (!folder || !st?.isDirectory()) throw httpError(422, 'That folder doesn’t exist. Pick an existing folder for the project.');
-  const p = { id: newId('pr'), name: cutText(String(body.name || 'New project'), 80), folder };
+  const p = { id: newId('pr'), name, folder };
+  store.emit('project', p);
+  return p;
+}
+
+/** A hosted Postbox’s project: its name alone. @param {any} store @param {string} name @param {unknown} folder */
+function onHosts(store, name, folder) {
+  if (folder !== undefined && folder !== null && folder !== '')
+    throw httpError(
+      422,
+      'This Postbox runs on a server, so a project has no folder here. Leave the folder out, then set where its agents work on each host in Settings › Hosts.',
+    );
+  const p = { id: newId('pr'), name };
   store.emit('project', p);
   return p;
 }

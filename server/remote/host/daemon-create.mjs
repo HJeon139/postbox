@@ -66,6 +66,7 @@ export function createDaemon(opts) {
     sweepTimer: null,
     checks: Promise.resolve(),
     checking: new Set(),
+    signIns: new Map(),
     cleanup: /** @type {any} */ (null),
     brk: /** @type {any} */ (null),
     shimSeam: undefined,

@@ -67,3 +67,7 @@ test('#1052 a name with ZWJ, ZWNJ or VS16 shows whole, as a display name does, w
   );
   assert.deepEqual(byName['\u2764\uFE0F\u202E.txt'], ['\u2764\uFE0F\uFFFD.txt', ['U+202E']], 'an override beside VS16 is still marked');
 });
+
+test('a project with no folder, as a hosted Postbox’s is, has nothing to pick from: a 409 that says why', async () => {
+  await assert.rejects(listFolder({ id: 'pr_hosted', name: 'Storefront' }, ''), { status: 409, message: /no folder on this server/ });
+});

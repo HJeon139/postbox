@@ -1,0 +1,9 @@
+{
+  "recorded": "2026-11-27",
+  "version": "kiro-cli 3.6.2",
+  "command": ["kiro-cli", "whoami", "--format", "json"],
+  "config": "HOME set to an empty folder",
+  "exit": 1,
+  "stdout": "{\"account\":null}\n",
+  "stderr": ""
+}

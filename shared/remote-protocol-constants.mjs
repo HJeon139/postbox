@@ -9,6 +9,10 @@ export const PROTOCOL_VERSION = 3;
 
 /** How long the daemon lets the host’s signInCheck run before it kills it and answers that the check failed. */
 export const SIGN_IN_CHECK_MS = 30_000;
+/** How long the daemon lets a harness’s sign-in status command run before it’s stopped and reads as unknown (#1608). */
+export const SIGN_IN_STATUS_MS = 15_000;
+/** How long the daemon keeps a harness’s sign-in, so welcomes close together run each command once (#1608). */
+export const SIGN_IN_KEEP_MS = 60_000;
 
 const KiB = 1024;
 const MiB = 1024 * KiB;
@@ -87,6 +91,16 @@ export const HOST_DEFAULTS = Object.freeze(Object.fromEntries(HOST_ENFORCED.map(
 /** The harnesses a host can run, by the adapter’s `name`. */
 export const HARNESSES = Object.freeze(/** @type {const} */ (['claude-code', 'kiro-cli', 'codex']));
 /** @typedef {typeof HARNESSES[number]} Harness */
+
+/**
+ * What a host’s harness says of its own sign-in (#1608): `signed-in` and `signed-out` only when its status command
+ * says so plainly, `unknown` for anything else (it couldn’t run, ran out of time, or answered in a way not read here).
+ */
+export const SIGN_IN_STATES = Object.freeze(/** @type {const} */ (['signed-in', 'signed-out', 'unknown']));
+/** @typedef {typeof SIGN_IN_STATES[number]} SignInState */
+
+/** What the person runs on the host to sign a harness in (#1608), as each harness’s own CLI names it. */
+export const LOGIN_COMMANDS = Object.freeze({ 'claude-code': 'claude auth login', codex: 'codex login', 'kiro-cli': 'kiro-cli login' });
 
 /** How a turn’s stdin is fed (the design’s “A turn doesn’t depend on anything staying connected”). */
 export const STDIN_KINDS = Object.freeze(/** @type {const} */ (['file', 'none', 'held']));

@@ -27,12 +27,15 @@ function inputBetween(/** @type {number[]} */ times, from, to) {
 const usable = (s) => s.settled === true;
 const where = (s) => (s.where === 'panel' ? 'the side panel' : 'the conversation');
 
+/** When two samples were taken: within one step (an interrupt’s, mid-turn, #805), or between two. */
+const span = (a, b) => (a.step === b.step ? `Within step ${a.step}` : `Between steps ${a.step} and ${b.step}`);
+
 /** One sample: the offset the page published for its anchor isn’t where the anchor is (a stale publish). */
 function stale(s) {
   if (s.mode !== 'reading' || typeof s.actual !== 'number' || typeof s.expected !== 'number') return null;
   if (Math.abs(s.actual - s.expected) <= MOVED_PX) return null;
   return {
-    key: `view-moved:stale:${s.where}:${s.thread}:${s.step}`,
+    key: `view-moved:stale:${s.where}:${s.thread}:${s.step}:${s.at}`,
     title: 'The view’s published place isn’t where its anchor is',
     evidence: `At step ${s.step}, ${where(s)} said ${s.anchorId} was ${px(s.expected)} down the view; it was at ${px(s.actual)}.`,
   };
@@ -45,12 +48,13 @@ function stale(s) {
  * when the earlier anchor isn’t mounted any more, or null.
  */
 function moved(a, b) {
-  const pair = `${b.where}:${b.thread}:${a.step}-${b.step}`;
+  // A step’s samples can be several, an interrupt’s taken mid-turn (#805), so the pair is keyed by when each was taken.
+  const pair = `${b.where}:${b.thread}:${a.step}-${b.step}:${a.at}-${b.at}`;
   if (a.mode !== b.mode)
     return {
       key: `view-moved:mode:${pair}`,
       title: 'The view changed between following and reading without a scroll',
-      evidence: `Between steps ${a.step} and ${b.step}, with no input between, ${where(b)} went from ${a.mode} to ${b.mode}.`,
+      evidence: `${span(a, b)}, with no input between, ${where(b)} went from ${a.mode} to ${b.mode}.`,
     };
   if (b.mode === 'following')
     return b.gap > END_PX
@@ -65,7 +69,7 @@ function moved(a, b) {
   return {
     key: `view-moved:moved:${pair}`,
     title: 'What you were reading moved without a scroll',
-    evidence: `Between steps ${a.step} and ${b.step}, with no input between, ${b.prev.anchorId} in ${where(b)} went from ${px(a.actual)} to ${px(b.prev.actual)} down the view.`,
+    evidence: `${span(a, b)}, with no input between, ${b.prev.anchorId} in ${where(b)} went from ${px(a.actual)} to ${px(b.prev.actual)} down the view.`,
   };
 }
 

@@ -136,3 +136,26 @@ test('a full path to a file, not a folder, is refused', async () => {
   await assert.rejects(() => createProject(store, { folder: join(root, 'file.txt') }), { status: 422, message: MISSING });
   assert.deepEqual(Object.keys(store.state.projects), []);
 });
+
+test('on a hosted Postbox a project is its name alone, and one that names a folder is refused, an existing one too', async () => {
+  const store = new Store(null);
+  const made = await createProject(store, { name: 'Storefront' }, true);
+  assert.deepEqual(Object.keys(made).sort(), ['id', 'name']);
+  assert.deepEqual(store.state.projects[made.id], made);
+  // An empty folder is the form’s untouched field, and is no folder.
+  assert.equal('folder' in (await createProject(store, { name: 'P', folder: '' }, true)), false);
+  for (const folder of [tempDir('pb-hosted-project-'), '/', 'relative', 7])
+    await assert.rejects(createProject(store, { name: 'P', folder }, true), (/** @type {any} */ e) => {
+      assert.equal(e.status, 422);
+      assert.match(e.message, /runs on a server, so a project has no folder here.*Settings › Hosts/);
+      return true;
+    });
+  assert.equal(Object.keys(store.state.projects).length, 2, 'a refused project is not kept');
+});
+
+test('on your own computer a project still needs its folder: one with none is refused as before', async () => {
+  await refused(undefined, EMPTY);
+  const store = new Store(null);
+  await assert.rejects(createProject(store, { name: 'P' }, false), { status: 422, message: EMPTY });
+  assert.deepEqual(Object.keys(store.state.projects), []);
+});
