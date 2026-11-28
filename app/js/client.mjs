@@ -267,6 +267,8 @@ export async function uploadFile(file) {
     body: file,
   });
   const data = await r.json().catch(() => ({}));
+  // Node’s own 408 has no body: an upload past the server’s request time, which a hosted Postbox can reach (#2022).
+  if (r.status === 408) throw new Error('The upload took too long, so Postbox stopped it. Try a smaller file or a faster connection.');
   if (!r.ok) throw new Error(data.error ?? 'The upload failed.');
   return data;
 }
