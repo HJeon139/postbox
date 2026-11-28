@@ -49,7 +49,7 @@ test('a turn the clock’s pause stopped is the pause’s stop, in its reply and
 
 test('the person’s own Stop is still theirs', async () => {
   const { rt, store, se, turn, reply } = await working();
-  rt.stop(se.id);
+  rt.stop(se.id, { by: 'you' });
   turn.exit();
   await settle();
   assert.equal(reply().stopReason, 'stop');

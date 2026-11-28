@@ -13,7 +13,7 @@ async function stopAfter(step, ready, what) {
   const env = await setup(step);
   env.rt.sendMessage(env.t.id, { text: 'go' });
   await until(() => ready(env), what);
-  assert.equal(env.rt.stop(env.se.id), true);
+  assert.equal(env.rt.stop(env.se.id, { by: 'you' }), true);
   await until(() => !env.rt.turns.size, 'the turn to end');
   return replies(env.store, env.t, env.se);
 }

@@ -92,7 +92,7 @@ test('#721 the person’s Stop on a host turn with a card open marks the card, s
   await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === a), 'the card');
   const card = r.store.items(r.t.id).find((i) => i.remote?.prompt === a);
   r.rt.permissionWaits.delete(card.id); // as after a restart: nothing here waits on it, so only the host’s word ends it
-  r.rt.stop(r.se().id); // the person’s Stop
+  r.rt.stop(r.se().id, { by: 'you' }); // the person’s Stop
   r.d.end(turn);
   await settled(r);
   assert.equal(r.store.item(r.t.id, card.id).stoppedBy, 'you');

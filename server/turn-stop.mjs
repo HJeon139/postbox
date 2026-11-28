@@ -17,6 +17,15 @@ import { entriesFirst } from './turns.mjs';
 
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;
+/**
+ * Who can stop a turn: the person, or Postbox as it shuts down, as a host turn hangs, as a run clock pauses or ends, or
+ * as the store closes (server/store-outage.mjs records that stop itself, through stop-record.mjs, with the same by).
+ */
+const STOPPED_BY = new Set(['you', 'shutdown', 'hung', 'clock', 'pause', 'store']);
+/**
+ * @typedef {{ silent?: boolean, jobs?: 'stop' | 'keep', by: 'you' | 'shutdown' | 'hung' | 'clock' | 'pause' | 'store', why?: string,
+ *   sendNow?: boolean }} StopOptions
+ */
 
 /** What a waiting permission is told, by who stopped the turn: the person, or a run clock (server/run-clock.mjs). */
 const STOP_WHY = Object.freeze({
@@ -61,9 +70,13 @@ function stopReasonOf({ sendNow, by, kept }) {
  * A remote turn’s Stop is always a plain stop: the daemon stops the whole turn, so no job is kept (#120).
  * @param {any} rt  the runtime
  * @param {string} sessionId
- * @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' | 'hung' | 'clock' | 'pause', why?: string, sendNow?: boolean }} [opts]
+ * by has no default (#1987): a stop by the person ('you') marks the turn so its cards stay quiet (#1928), so every
+ * caller says who stopped it, and one that doesn’t is refused before anything happens.
+ * @param {StopOptions} opts
  */
-export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you', why, sendNow = false } = {}) {
+export function stop(rt, sessionId, opts) {
+  const { silent = false, jobs = 'stop', by, why, sendNow = false } = opts ?? /** @type {any} */ ({});
+  if (!STOPPED_BY.has(by)) throw new Error(`stop() needs who stopped the turn: one of ${[...STOPPED_BY].join(', ')}, not ${String(by)}.`);
   const turn = rt.turns.get(sessionId);
   if (!turn) return false;
   const keep = jobs === 'keep' && !turn.remote ? runningJobs(rt, sessionId, turn.id) : [];
@@ -217,7 +230,7 @@ export function requestStop(rt, sessionId, { jobs = null, turnId = null, subagen
     rt.sessions.update(sessionId, { stopAsk: { ...ask, at: Date.now() } });
     return { ask };
   }
-  return { stopped: rt.stop(sessionId, { jobs: jobs === 'keep' ? 'keep' : 'stop' }) };
+  return { stopped: rt.stop(sessionId, { jobs: jobs === 'keep' ? 'keep' : 'stop', by: 'you' }) };
 }
 
 /** You chose not to stop after all: the ask goes away, and the agent carries on. */

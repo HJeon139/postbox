@@ -60,7 +60,7 @@ test('#215: a plain Stop says Stop, its jobs stopped or none to keep; a shutdown
     adapter.next.push(turn);
     rt.sendMessage(t.id, { text: 'go' });
     await sleep(5);
-    assert.equal(rt.stop(se.id, opts), true);
+    assert.equal(rt.stop(se.id, { by: 'you', ...opts }), true);
     assert.equal(reply().stopReason, want, JSON.stringify(opts));
     turn.exit();
     await sleep(10);

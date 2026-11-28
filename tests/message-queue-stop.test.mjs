@@ -19,7 +19,7 @@ async function stoppedBeta() {
   f.adapter.next.push(busy.step);
   f.rt.sendMessage(f.t.id, { text: '@beta start' });
   await sleep(5); // the turn reaches its adapter, so its first call is recorded before the Stop
-  f.rt.stop(f.beta.id);
+  f.rt.stop(f.beta.id, { by: 'you' });
   assert.ok(f.rt.exiting.has(f.beta.id), 'the stopped turn is exiting');
   return { ...f, busy };
 }
@@ -59,7 +59,7 @@ test('after a Stop, the person’s message queued before it and a wake queued du
   f.rt.sendMessage(f.t.id, { text: '@beta start' });
   await sleep(5);
   f.rt.sendMessage(f.t.id, { text: '@beta queued before the stop' });
-  f.rt.stop(f.beta.id);
+  f.rt.stop(f.beta.id, { by: 'you' });
   f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
   busy.release();
   await settle(f.rt);
@@ -90,7 +90,7 @@ test('Send now pressed while a plain Stop is still exiting sends only the person
   f.rt.sendMessage(f.t.id, { text: '@beta start' });
   await sleep(5);
   const q = f.rt.sendMessage(f.t.id, { text: '@beta change of plan' });
-  f.rt.stop(f.beta.id); // a plain Stop: the turn leaves turns, so Send now’s own stop finds nothing to stop
+  f.rt.stop(f.beta.id, { by: 'you' }); // a plain Stop: the turn leaves turns, so Send now’s own stop finds nothing to stop
   f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
   f.rt.sendQueuedNow(f.t.id, q.queued[0].id);
   assert.ok(f.rt.exiting.has(f.beta.id), 'the stopped turn is still exiting');
@@ -110,7 +110,7 @@ test('Send now during a plain Stop’s exit leaves the person’s other queued m
   await sleep(5);
   const q = f.rt.sendMessage(f.t.id, { text: '@beta change of plan' });
   f.rt.sendMessage(f.t.id, { text: '@beta and later this' });
-  f.rt.stop(f.beta.id);
+  f.rt.stop(f.beta.id, { by: 'you' });
   f.rt.sendQueuedNow(f.t.id, q.queued[0].id);
   busy.release();
   await settle(f.rt);

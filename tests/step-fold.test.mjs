@@ -71,7 +71,7 @@ test('a turn you stop folds its steps, as one that finishes does', async () => {
     run.seen().activity.steps.some((/** @type {any} */ s) => s.input),
     'the live view’s detail while it runs',
   );
-  run.rt.stop(run.se().id);
+  run.rt.stop(run.se().id, { by: 'you' });
   for (let i = 0; i < 200 && run.rt.turns.size; i++) await new Promise((r) => setTimeout(r, 5));
   assertFolded(run.reply().activity.steps);
 });

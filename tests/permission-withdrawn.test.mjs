@@ -21,7 +21,7 @@ test('#853 Send now ends the turn, and its next turn hears the waiting request w
 test('#853 the person’s Stop: the next turn hears it once, and the turn after doesn’t', async () => {
   const { rt, t, calls, ask, now } = await setup();
   await ask();
-  rt.stop(now().id);
+  rt.stop(now().id, { by: 'you' });
   await settle(rt);
   rt.sendMessage(t.id, { text: 'go on' });
   await settle(rt);

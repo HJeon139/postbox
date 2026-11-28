@@ -59,7 +59,7 @@ test('a turn in a topic opened while a commit is held records its work in the co
   });
   arrange.deliver(env.rt, env.se.id, { kind: 'user', text: 'Go on.' }, { threadId: env.topicId });
   await until(() => ran, 'the turn in the topic');
-  env.rt.stop(env.se.id);
+  env.rt.stop(env.se.id, { by: 'you' });
   await env.release();
   const work = env.store.state.work ?? {};
   assert.equal(work[env.topicId], undefined, 'nothing filed under the topic');

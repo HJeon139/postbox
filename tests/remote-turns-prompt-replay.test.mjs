@@ -150,7 +150,7 @@ test('#353 a prompt waiting for a replay that never catches up is refused once i
   try {
     ({ r, d } = await restartedReplaying(t, NEVER));
     // Stop: the read is over here, so its bound starts, as a laptop prompt’s does when its turn ends.
-    r.rt.stop(r.se().id);
+    r.rt.stop(r.se().id, { by: 'you' });
     await lag();
     t.mock.timers.tick(PROMPT_CALL_WAIT_MS);
     await lagUntil(t, () => d.answers.length === 1, 'the answer');

@@ -24,7 +24,7 @@ export function postUserMessage(rt, threadId, { text, attachments }, to, marks =
  * @param {any} rt @param {string} sessionId
  */
 export function stopForSendNow(rt, sessionId) {
-  rt.stop(sessionId, { silent: true, jobs: 'keep', sendNow: true });
+  rt.stop(sessionId, { silent: true, jobs: 'keep', sendNow: true, by: 'you' });
   const ex = rt.exiting.get(sessionId);
   if (ex) ex.silent = true;
 }

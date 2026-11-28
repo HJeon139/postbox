@@ -42,27 +42,27 @@ test('#120, #382: a remote turn is told it may post to the conversation where th
   rt.sendMessage(t.id, { text: 'go' });
   await until(() => adapter.log.includes('start:far'), 'the conversation’s turn');
   assert.equal(adapter.bring.get('far'), false, 'in the conversation, bring_to_conversation isn’t offered');
-  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id, { by: 'you' });
   await until(() => adapter.log.includes('stopped:far') && rt.turns.size === 0 && rt.exiting.size === 0, 'stopped');
   const topic = rt.createThread({ projectId: 'p1', title: 'Topic', personaIds: [], kind: 'topic', parentId: t.id });
   rt.sendMessage(topic.id, { text: '@far go on here' });
   await until(() => adapter.log.filter((x) => x === 'start:far').length === 2, 'the topic thread’s turn');
   assert.equal(adapter.bring.get('far'), true, 'in a topic thread, at the person’s message, it is (ctx.remote.bring)');
-  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id, { by: 'you' });
   await until(() => adapter.log.filter((x) => x === 'stopped:far').length === 2 && rt.turns.size === 0 && rt.exiting.size === 0, 'stopped again');
   // A turn another agent started there is offered it too (#382).
   adapter.bring.delete('far');
   rt.turnService.run(arrange.sessionsIn(rt, t.id)[0].id, { kind: 'agent', from: '@near', text: 'Review it here.' }, { threadId: topic.id });
   await until(() => adapter.log.filter((x) => x === 'start:far').length === 3, 'the wake’s turn in the topic thread');
   assert.equal(adapter.bring.get('far'), true, 'in a topic thread, at another agent’s wake, it is too');
-  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id, { by: 'you' });
   await until(() => adapter.log.filter((x) => x === 'stopped:far').length === 3 && rt.turns.size === 0 && rt.exiting.size === 0, 'stopped a third time');
   // A Summarize back turn isn’t: its reply is what posts (#382), so the shim leaves the tool out too.
   adapter.bring.delete('far');
   rt.turnService.run(arrange.sessionsIn(rt, t.id)[0].id, { kind: 'notice', text: 'Summarize this thread.' }, { threadId: topic.id, summarizeTo: t.id });
   await until(() => adapter.log.filter((x) => x === 'start:far').length === 4, 'the summary turn in the topic thread');
   assert.equal(adapter.bring.get('far'), false, 'a Summarize back turn isn’t offered bring_to_conversation');
-  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id, { by: 'you' });
 });
 
 test('#120: a remote turn is told whether its backend asks through permission_prompt, as server/mcp.mjs offers it (ctx.remote.asksByPrompt)', async () => {
@@ -80,14 +80,14 @@ test('#120: a remote turn is told whether its backend asks through permission_pr
   rt.sendMessage(t.id, { text: 'go' });
   await until(() => asks.length === 1, 'the first turn');
   assert.equal(asks[0], true, 'the Claude Code CLI asks through it');
-  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id, { by: 'you' });
   await until(() => adapter.log.includes('stopped:far') && rt.turns.size === 0 && rt.exiting.size === 0, 'stopped');
   // A backend that asks another way, or not at all (capabilities.promptTool false: Kiro, Codex).
   adapter.capabilities = { ...adapter.capabilities, promptTool: false };
   rt.sendMessage(t.id, { text: 'again' });
   await until(() => asks.length === 2, 'the second turn');
   assert.equal(asks[1], false);
-  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id, { by: 'you' });
 });
 
 // ── Archive and delete stop a conversation’s turns ─────────────────────────────────

@@ -39,7 +39,7 @@ test('#1136 a message to an agent whose Stop is still exiting waits in its inbox
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start' });
   await sleep(5);
-  rt.stop(beta.id);
+  rt.stop(beta.id, { by: 'you' });
   assert.ok(arrange.exiting(rt, beta.id), 'the stopped turn is exiting');
   rt.sendMessage(t.id, { text: '@beta during the exit' });
   assert.equal(arrange.waitingEntries(rt, beta.id).length, 1, 'the queue’s badge counts it');
@@ -56,7 +56,7 @@ test('#1108 a message sent during a Stop’s exit at shutdown is in the transcri
   f.adapter.next.push(busy.step);
   f.rt.sendMessage(f.t.id, { text: '@beta start' });
   await sleep(5);
-  f.rt.stop(f.beta.id);
+  f.rt.stop(f.beta.id, { by: 'you' });
   f.rt.sendMessage(f.t.id, { text: '@beta held at shutdown' });
   const closing = f.rt.stopTurns({ graceMs: 200 });
   busy.release();
