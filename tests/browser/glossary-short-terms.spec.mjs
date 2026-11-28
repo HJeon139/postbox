@@ -34,3 +34,21 @@ test('#102 a short term links as itself and not inside an abbreviation, and a da
   await expect(reply.locator('.term'), 'the terms linked').toHaveText(['R', 'U', 'U:45-52']);
   await expect(reply.locator('.term').nth(2), 'the hyphen form links the en-dash term').toHaveAttribute('data-term', /u-45-52|U:45–52/i);
 });
+
+test('#102 an earlier reply links a term defined later with a different dash or quote, without a reload', async ({ page }) => {
+  const { rt } = app;
+  const p = rt.createPersona({ handle: 'later' });
+  const t = rt.createThread({ projectId: 'pr_short', title: 'Later terms', personaIds: [p.id] });
+  const se = arrange.agentIn(rt, t.id);
+  const define = rt.toolsFor(se.id).define_term;
+  const text = "Per U:45-52 and Bob's rule.";
+  arrange.post(rt, t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const reply = page.locator(`.transcript[data-thread="${t.id}"] .md`, { hasText: 'Per U:45' });
+  await expect(reply).toBeVisible();
+  // The lint’s flow: the reply comes first, then the agent defines each term, here with an en dash and a curly quote.
+  define({ term: 'U:45–52', definition: 'The user study, lines 45 to 52.' });
+  define({ term: 'Bob’s rule', definition: 'The rule Bob set.' });
+  await expect(reply.locator('.term'), 'both terms, linked in the reply already drawn').toHaveText(['U:45-52', "Bob's rule"]);
+});
