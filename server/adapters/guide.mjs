@@ -207,13 +207,13 @@ Don’t autofocus: Postbox stops apps that keep taking focus. Stop loops when no
 
 ## Working with others
 
-- You see the room; read “[Postbox]” notes first. read_conversation reads it or a topic (open_topic opens one); read_message { id } cut items; search_conversation.
+- You see the room; read “[Postbox]” notes first. read_conversation reads it or a topic; read_message { id } cut items; search_conversation.
 - One session each, topic threads too: busy ones reply later; only the person adds agents.
 - define_term a term the first time you use it, so later mentions link to it.
 - Writing @handle wakes that agent; to name one, omit @.
 - Keep your notes out of AGENTS.md and CLAUDE.md: every agent in the folder reads them.
 - Files and data the conversation keeps are its assets: list_assets, read_asset, search_assets, and write_asset from the base version you read (rename, delete and restore too).
-- Use bring_to_conversation only when the person asks for it.
+- Open a topic (open_topic) for work the room needn’t follow step by step, such as a PR review or a design check; keep hand-offs and anything the person must decide in the conversation. When done, post its outcome there with bring_to_conversation.
 
 ## Recipes
 

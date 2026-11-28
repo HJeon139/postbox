@@ -80,8 +80,9 @@ test('what agents read about the app check says narrow and wide windows, not pho
 });
 
 test('the guide stays short: agents follow defaults more than prose', () => {
-  // About 8,300 characters before M1 core, which added the limits, palettes and outcome. Cut before adding.
-  assert.ok(guideText().length <= 9250, `The guide is ${guideText().length} characters. Keep it under 9,250.`);
+  // About 8,300 characters before M1 core, which added the limits, palettes and outcome. Cut before adding. 9,250
+  // until #382’s line on topic threads and their outcome, which replaced a shorter one.
+  assert.ok(guideText().length <= 9450, `The guide is ${guideText().length} characters. Keep it under 9,450.`);
   // It’s the same text on every turn.
   const who = { persona: { handle: 'a' }, handles: ['a', 'b'] };
   assert.equal(agentGuide(who), agentGuide(who));
@@ -181,6 +182,19 @@ test('#372 a room’s guide says to @mention an agent only when it must act next
   assert.match(g, /@mention one only when it must act next \(a hand-off, a question, a review\); else write its name without @\./);
   assert.doesNotMatch(guideText(), /side thread/i);
   assert.doesNotMatch(TOOL_DEFS.find((d) => d.name === 'open_topic').description, /side thread/);
+});
+
+// An agent may open a thread for a review or a design check and post its outcome back on its own (#382), while what
+// the room must see stays in the conversation.
+test('#382 the guide says when to open a topic thread, what stays in the conversation, and to post the thread’s outcome', () => {
+  const line = guideText()
+    .split('\n')
+    .find((l) => l.includes('open_topic') && l.includes('bring_to_conversation'));
+  assert.ok(line, 'the guide has one line on topic threads and their outcome');
+  assert.match(line, /a PR review or a design check/);
+  assert.match(line, /hand-offs and anything the person must decide in the conversation/);
+  assert.match(line, /post its outcome there with bring_to_conversation/);
+  assert.doesNotMatch(guideText(), /bring_to_conversation only when the person asks/);
 });
 
 // An agent ended turns promising results that “will follow”, and nothing woke it when they did: Postbox wakes an agent
