@@ -228,10 +228,16 @@
       if (by === null && (l > left + 2 || t > top + r.height / 3 || rt < right - 2 || b < bottom - r.height / 3)) by = box && faded(box) ? '' : who;
       clip(l, t, rt, b);
     };
+    let fixed = false;
     for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
       const cs = getComputedStyle(a);
       const x = /hidden|clip/.test(cs.overflowX);
       const y = /hidden|clip/.test(cs.overflowY);
+      // A fixed box below isn’t clipped by the boxes that scroll around it: the window holds it.
+      const sx = !fixed && /auto|scroll/.test(cs.overflowX);
+      const sy = !fixed && /auto|scroll/.test(cs.overflowY);
+      if (cs.position === 'fixed') fixed = true;
+      if (!x && !y && !sx && !sy) continue;
       const b = a.getBoundingClientRect();
       // Its hidden axis cuts first: a box can’t hide and scroll the same axis, and a sidebar that scrolls down and hides
       // its overflow across still cuts a label too wide for it, in view or not (#1985).
@@ -241,9 +247,7 @@
       // inside it stands, even in a row it shows none of, which the checks still read.
       const root = a === document.body && getComputedStyle(document.documentElement);
       const owner = Boolean(root) && root.overflowX === 'visible' && root.overflowY === 'visible';
-      const sx = !owner && /auto|scroll/.test(cs.overflowX);
-      const sy = !owner && /auto|scroll/.test(cs.overflowY);
-      if (sx || sy) {
+      if (!owner && (sx || sy)) {
         // Only when it’s this box that hides the rest of the label: one a box inside cut away whole stays hidden.
         const shown = right > left && bottom > top;
         clip(sx ? b.left : -Infinity, sy ? b.top : -Infinity, sx ? b.right : Infinity, sy ? b.bottom : Infinity);

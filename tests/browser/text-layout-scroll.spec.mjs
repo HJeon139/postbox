@@ -72,6 +72,14 @@ const BODY_SCROLLS = `<!doctype html><style>html { overflow: hidden; height: 100
   font: 16px/1.4 sans-serif }</style>
 <div style="height: 500px"></div><label id="label" style="display: block">Instructions</label><div style="height: 2000px"></div>`;
 
+// A fixed toast inside a scroll box, past the window’s top: the window holds it, not the scroll box, so the page’s edge
+// cuts it.
+const FIXED_IN_SCROLLER = `${STYLE}
+<div style="position: fixed; top: 0; left: 0; width: 200px; height: 200px; overflow: auto">
+  <div style="height: 600px"></div>
+  <div style="position: fixed; top: -12px; left: 20px; white-space: nowrap">A toast past the window’s top</div>
+</div>`;
+
 const cutOff = async (page) => (await textLayout(page)).filter((p) => p.code === 'text-cut-off').map((p) => p.message);
 
 for (const width of [375, 1280]) {
@@ -143,5 +151,11 @@ for (const width of [375, 1280]) {
     });
     expect(top, 'the label sits across the window’s top edge').toBeLessThan(0);
     expect(await cutOff(page)).toEqual([]);
+  });
+
+  test(`#1985 at ${width} px a fixed label inside a scroll box, past the window’s top, is still cut off by the page`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.setContent(FIXED_IN_SCROLLER);
+    expect(await cutOff(page)).toEqual([expect.stringContaining('is cut off by the page’s edge')]);
   });
 }
