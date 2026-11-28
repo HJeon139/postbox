@@ -3,6 +3,7 @@
 
 import { formatBytes } from '/shared/work.mjs';
 import { h, plural } from './dom.mjs';
+import { scrollStop } from './scroll-stop.mjs';
 
 /** @param {any} d  what the diff request returned @param {any} f  the file */
 export function diffView(d, f) {
@@ -16,21 +17,24 @@ export function diffView(d, f) {
       `A binary file: ${d.before.exists ? formatBytes(d.before.size) : 'new'} → ${d.after.exists ? formatBytes(d.after.size) : 'deleted'}.`,
     );
   if (!d.rows.length) return h('p.small.dim', 'No difference.');
-  return h(
-    'div.work-diff-wrap',
-    { tabindex: '0', role: 'region', 'aria-label': `Diff of ${f.rel}` },
+  // A tab stop only while it scrolls (#1968).
+  return scrollStop(
     h(
-      'div.rv-doc.work-diff',
-      d.rows.map((r) =>
-        r.kind === 'gap'
-          ? h('div.work-gap', `⋯ ${plural(r.skipped, 'unchanged line')}`)
-          : h(
-              `div.rv-line.${r.kind}`,
-              h('span.g-ln', { 'aria-label': r.kind === 'add' ? 'added' : r.kind === 'del' ? 'deleted' : null }, String(r.kind === 'del' ? r.o : r.n)),
-              h('span.tx', r.t || ' '),
-            ),
+      'div.work-diff-wrap',
+      { role: 'region', 'aria-label': `Diff of ${f.rel}` },
+      h(
+        'div.rv-doc.work-diff',
+        d.rows.map((r) =>
+          r.kind === 'gap'
+            ? h('div.work-gap', `⋯ ${plural(r.skipped, 'unchanged line')}`)
+            : h(
+                `div.rv-line.${r.kind}`,
+                h('span.g-ln', { 'aria-label': r.kind === 'add' ? 'added' : r.kind === 'del' ? 'deleted' : null }, String(r.kind === 'del' ? r.o : r.n)),
+                h('span.tx', r.t || ' '),
+              ),
+        ),
       ),
+      d.cut ? h('p.small.dim', 'The rest of the diff is too long to show here.') : null,
     ),
-    d.cut ? h('p.small.dim', 'The rest of the diff is too long to show here.') : null,
   );
 }

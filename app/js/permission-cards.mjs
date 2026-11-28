@@ -5,6 +5,7 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { api, client } from './client.mjs';
 import { h, icon, trusted } from './dom.mjs';
 import { focusComposer } from './hop-card.mjs';
+import { scrollStop } from './scroll-stop.mjs';
 import { toast } from './ui.mjs';
 
 export { denialBlock } from './denial-card.mjs';
@@ -207,11 +208,14 @@ export function permissionBlock(it, ctx) {
 
 /** A write outside Postbox’s draft, rendered as it will read (#112). @param {{ field: string, text: string }} draft */
 function draftView(draft) {
-  return h(
-    'div.col.perm-draft',
-    { role: 'group', 'aria-label': 'The draft', tabindex: '0' },
-    h('span.label', `The draft, from ${draft.field}`),
-    h('div.md', { html: trusted(renderMarkdown(draft.text)) }),
+  // A tab stop only while it scrolls (#1968).
+  return scrollStop(
+    h(
+      'div.col.perm-draft',
+      { role: 'group', 'aria-label': 'The draft' },
+      h('span.label', `The draft, from ${draft.field}`),
+      h('div.md', { html: trusted(renderMarkdown(draft.text)) }),
+    ),
   );
 }
 
