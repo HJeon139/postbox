@@ -4,9 +4,13 @@
 // These run the step loop’s own parts in its order (tools/uat-run.mjs: the wait, the waiting list, the hold, the
 // prompt) on a fake clock, with no page and no tester model.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { stepHolds, waitingList } from '../tools/uat/held-steps.mjs';
+import { writeReport } from '../tools/uat/report.mjs';
 import { BLOCK_GRACE_MS, settle } from '../tools/uat/turns.mjs';
+import { tempDir } from './temp-dirs.mjs';
 import { onFakeClock } from './uat-fake-clock.mjs';
 import { ASK, heldRoom, promptFor, SECOND_ASK, THREADS, waitCtx } from './uat-held-room.mjs';
 
@@ -20,7 +24,7 @@ const count = (/** @type {string} */ text, /** @type {string} */ part) => text.s
 function stepLoop(/** @type {() => Promise<any>} */ api) {
   const ctx = waitCtx(api);
   const labels = new Map([[ASK.id, 'I4']]);
-  const holdFor = stepHolds({ goals: { leave: () => null }, log: ctx.log });
+  const holdFor = stepHolds({ goals: { leave: () => null }, log: ctx.log, timeline: [] });
   /** @param {{ lastAction?: any, actionError?: string | null }} [last] */
   const next = async ({ lastAction = null, actionError = null } = {}) => {
     const from = ctx.lines.length;
@@ -47,7 +51,7 @@ test('after a held next_phase, what still waits is in front of the tester at its
   });
   assert.ok(r.first.at < BLOCK_GRACE_MS + 3000, `the ask was handed back once its grace was over (${r.first.at} ms)`);
   assert.equal(r.actionError?.startsWith(`Not yet: this is still waiting on you: [I4] ${WHAT}.`), true, String(r.actionError));
-  assert.ok(r.lines.includes('action held: 1 waiting on the person'), r.lines.join('\n'));
+  assert.ok(r.lines.includes(`action held: 1 waiting on the person: [I4] ${WHAT}`), r.lines.join('\n'));
   // The stall: on the code before the fix the second step came at 600 s, when the turn ended.
   assert.ok(r.second.at - r.first.at < 5000, `the tester got its next step ${r.second.at - r.first.at} ms after the held one`);
   assert.deepEqual(r.second.handed, [`handed back again while @researcher works: ${WHAT}`]);
@@ -139,4 +143,49 @@ test('an ask the tester hasn’t had keeps its grace after a failed action', asy
   });
   assert.ok(r.at >= 20_000 + BLOCK_GRACE_MS && r.at < 20_000 + BLOCK_GRACE_MS + 3000, `handed back at ${r.at} ms`);
   assert.deepEqual(r.handed, ['handed back while @researcher works: @critic’s choice “Which file name should the app use?”']);
+});
+
+// #482: the hostwakes run of 27 October 2026 held four actions, and only run.log said so; its report’s timeline showed
+// none of them, so a reader couldn’t tell a 120-second wait had been held while a card waited.
+test('a held wait shows in the report’s timeline, with when and why it was held', async (t) => {
+  const state = (await heldRoom({ endAt: 0 })()).state;
+  const waiting = waitingList(state, THREADS, { labels: new Map([[ASK.id, 'I4']]), mainThread: 'th_main' });
+  const timeline = [{ step: 7, phase: 'Leave the card', assessment: 'The card waits.', action: { type: 'wait', seconds: 120 } }];
+  const at = Date.UTC(2026, 9, 27, 16, 57, 1);
+  const holdFor = stepHolds({ goals: { leave: () => null }, log: () => {}, timeline, now: () => at });
+  assert.ok(holdFor(timeline[0].action, { waiting, idle: true, phase: 0 }), 'the wait is held');
+  assert.deepEqual(timeline[0].held, { at, why: `1 waiting on the person: [I4] ${WHAT}` });
+  const dir = tempDir('uat-held-report-');
+  t.mock.method(console, 'log', () => {});
+  const facts = { streams: [], kiroStreams: [], agyStreams: [], state: null, probes: {}, samples: [] };
+  await writeReport({ dir, scenario: { title: 'Host wakes' }, issues: [], findings: [], timeline, started: 0, tester: { spent: 0 }, facts, logLines: [] });
+  const clock = new Date(at).toLocaleTimeString('en-US', { hour12: false });
+  const md = readFileSync(join(dir, 'report.md'), 'utf8');
+  assert.ok(
+    md.includes(`7. **Leave the card.** The card waits. Next: \`{"type":"wait","seconds":120}\` **Held at ${clock}:** 1 waiting on the person: [I4] ${WHAT}.`),
+    md,
+  );
+  assert.equal(
+    JSON.parse(readFileSync(join(dir, 'findings.json'), 'utf8')).timeline[0].held.why.startsWith('1 waiting'),
+    true,
+    'and findings.json keeps it, for --recheck',
+  );
+});
+
+test('each kind of hold is kept on its own step, and an action that goes ahead keeps none', () => {
+  const timeline = /** @type {any[]} */ ([]);
+  const leave = (/** @type {number} */ phase) => (phase === 1 ? 'Not yet: this phase’s triggers haven’t happened.' : null);
+  const holdFor = stepHolds({ goals: { leave }, log: () => {}, timeline, now: () => 5 });
+  const step = (/** @type {any} */ action, /** @type {any} */ at) => {
+    timeline.push({ step: timeline.length + 1, phase: 'P', assessment: '', action });
+    holdFor(action, at);
+    return timeline.at(-1).held?.why ?? null;
+  };
+  assert.equal(step({ type: 'send', interrupt: { do: 'stop' } }, { waiting: [], idle: false, phase: 0 }), 'an interrupt while an agent works');
+  assert.equal(step({ type: 'next_phase' }, { waiting: [], idle: true, phase: 1 }), 'the phase’s triggers haven’t happened');
+  assert.equal(step({ type: 'send', text: 'hi' }, { waiting: [], idle: true, phase: 0 }), null);
+});
+
+test('stepHolds won’t start without the run’s timeline, where each hold is recorded (#482)', () => {
+  assert.throws(() => stepHolds({ goals: { leave: () => null }, log: () => {} }), /needs the run’s timeline/);
 });
