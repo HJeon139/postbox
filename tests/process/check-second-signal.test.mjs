@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { PREFIX } from '../../tools/gate-tmp.mjs';
 import { acquire } from '../../tools/heavy-lock.mjs';
 import { tempDir } from '../temp-dirs.mjs';
+import { pidIn, pidWithin } from './pid-file.mjs';
 
 const CHECK = fileURLToPath(new URL('../../tools/check.mjs', import.meta.url));
 const HEAVY_LOCK = new URL('../../tools/heavy-lock.mjs', import.meta.url).href;
@@ -30,15 +31,6 @@ async function goneWithin(/** @type {number} */ pid, /** @type {number} */ ms) {
   };
   for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) if (gone()) return true;
   return gone();
-}
-
-/** The text in file once it’s been written, within ms, looking once more at the deadline. @param {string} file @param {number} ms */
-async function readWithin(file, ms) {
-  for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) {
-    if (existsSync(file)) return readFileSync(file, 'utf8');
-  }
-  if (existsSync(file)) return readFileSync(file, 'utf8');
-  throw new Error(`Nothing was written to ${file} within ${ms} ms.`);
 }
 
 /** The child’s exit code, or 'still running' if it hasn’t exited within ms. @param {import('node:child_process').ChildProcess} child */
@@ -76,14 +68,15 @@ test('#815 a second Ctrl-C kills a stage that ignores the first, frees its heavy
   // Whatever fails, nothing this test started outlives it.
   t.after(() => {
     gate.kill('SIGKILL');
-    if (existsSync(pidFile)) {
+    const pid = pidIn(pidFile); // never 0, which would signal this test’s own process group (#2012)
+    if (pid) {
       try {
-        process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL');
+        process.kill(pid, 'SIGKILL');
       } catch {}
     }
   });
 
-  const pid = Number(await readWithin(pidFile, 15_000));
+  const pid = await pidWithin(pidFile, 15_000);
   gate.kill('SIGINT');
   assert.equal(await goneWithin(pid, 500), false, 'the stage ignores the first Ctrl-C');
   gate.kill('SIGINT');
