@@ -59,7 +59,7 @@ test('#207: the agent plugin ships, its .claude-plugin/plugin.json too, unscanne
   assert.deepEqual(problems, []);
 });
 
-test('#207: the plugin check refuses a symlink, and every dotted path but agent-plugin/.claude-plugin/plugin.json', () => {
+test('#207: the plugin ships its Markdown and JSON and the manifest, leaves other files behind, and refuses a symlink or a huge file', () => {
   const root = mkdtempSync(join(tmpdir(), 'pb-plugin-'));
   try {
     mkdirSync(join(root, 'server', 'remote', 'host'), { recursive: true });
@@ -75,15 +75,15 @@ test('#207: the plugin check refuses a symlink, and every dotted path but agent-
     writeFileSync(join(plugin, 'skills', 's', '.claude-plugin', 'plugin.json'), '{}');
     writeFileSync(join(plugin, 'skills', '.hidden', 'x.md'), '');
     writeFileSync(join(plugin, '.env'), '');
+    writeFileSync(join(plugin, 'skills', '.DS_Store'), ''); // what Finder leaves once the folder is opened
+    writeFileSync(join(plugin, 'skills', 's', 'notes.txt'), '');
+    writeFileSync(join(plugin, 'skills', 's', 'huge.md'), 'x'.repeat(64 * 1024 + 1));
     symlinkSync('/etc/hosts', join(plugin, 'skills', 's', 'link.md'));
     const { files, problems } = hostFiles(root);
-    assert.ok(files.includes('agent-plugin/.claude-plugin/plugin.json') && files.includes('agent-plugin/skills/s/SKILL.md'));
-    assert.ok(!files.includes('agent-plugin/skills/s/link.md'), 'a symlink never ships');
+    const shipped = files.filter((f) => f.startsWith('agent-plugin/'));
+    assert.deepEqual(shipped, ['agent-plugin/.claude-plugin/plugin.json', 'agent-plugin/skills/s/SKILL.md'], 'only the skill and the manifest');
     assert.deepEqual(problems.sort(), [
-      'agent-plugin/.claude-plugin/other.json isn’t a name the install can carry',
-      'agent-plugin/.env isn’t a name the install can carry',
-      'agent-plugin/skills/.hidden/x.md isn’t a name the install can carry',
-      'agent-plugin/skills/s/.claude-plugin/plugin.json isn’t a name the install can carry',
+      'agent-plugin/skills/s/huge.md is past 65536 bytes, more than a skill’s file',
       'agent-plugin/skills/s/link.md isn’t a regular file or a folder',
     ]);
   } finally {

@@ -294,7 +294,7 @@ export function describeInstall(host, { version, dataDir, root = ROOT }) {
   const count = files.length + 1; // and package.json
   const steps = [
     `Connect to ${d} with your ssh, as your user there, without asking for a password or a new host key.`,
-    `Copy ${count} files of Postbox’s host program to ${code}/ on ${d}, readable only by you (folders 0700, files 0600), and check each one’s SHA-256. A copy of ${version} that’s already there is left as it is if its files are these; if they differ, it’s replaced, unless it’s running.`,
+    `Copy ${count} files of Postbox’s host program and its bundled skills to ${code}/ on ${d}, readable only by you (folders 0700, files 0600), and check each one’s SHA-256. A copy of ${version} that’s already there is left as it is if its files are these; if they differ, it’s replaced, unless it’s running.`,
     nodePath
       ? `Write ${code}/node-path on ${d}, naming the Node it runs with: ${nodePath}.`
       : `Find Node 22 or later on ${d}: on PATH, else under ~/.nvm, ~/.local/share/mise, ~/.volta, /usr/local/bin or /usr/bin.`,

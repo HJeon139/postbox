@@ -23,6 +23,13 @@ const SHIP_PATH_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_-][A-Za-z0-9.
  * hidden file or folder can ship.
  */
 const PLUGIN_MANIFEST = 'agent-plugin/.claude-plugin/plugin.json';
+/** The largest skill file that ships; each today is under 10 KB. */
+const PLUGIN_FILE_MAX = 64 * 1024;
+/**
+ * Whether a file under agent-plugin/ is part of a skill: Markdown or JSON, in no hidden folder, or the manifest.
+ * @param {string} path relative to the repository, with /
+ */
+const skillFile = (path) => path === PLUGIN_MANIFEST || (/\.(md|json)$/.test(path) && !path.split('/').some((part) => part.startsWith('.')));
 /** Whether a ustar header and a manifest line can carry the path. @param {string} path */
 const shippable = (path) => (SHIP_PATH_RE.test(path) || path === PLUGIN_MANIFEST) && path.length <= 100;
 
@@ -83,9 +90,12 @@ export function hostFiles(root = ROOT) {
 }
 
 /**
- * Every regular file under agent-plugin/, the skills a turn on a host loads from its copy there (#207,
+ * The skill files under agent-plugin/, which a turn on a host loads from its copy there (#207,
  * server/adapters/agent-plugin.mjs). They’re data an agent reads, never run or imported, so they aren’t scanned for
- * imports; anything there that isn’t a regular file or a folder goes in `problems`, as under server/remote/host/.
+ * imports. The folder is read as it is on disk, so only what a skill is made of ships: Markdown and JSON, never a
+ * hidden file or one in a hidden folder but the plugin’s manifest. Anything else there, such as the .DS_Store Finder
+ * leaves or a person’s notes, stays behind rather than stopping every install. A symlink, or a file past
+ * PLUGIN_FILE_MAX, goes in `problems`, as under server/remote/host/.
  * @param {string} root @param {string[]} problems @returns {string[]} absolute paths
  */
 function pluginFiles(root, problems) {
@@ -100,8 +110,13 @@ function pluginFiles(root, problems) {
   for (const f of readdirSync(plugin, { recursive: true, encoding: 'utf8' })) {
     const path = join(plugin, f);
     const st = lstatSync(path);
-    if (st.isFile()) files.push(path);
-    else if (!st.isDirectory()) problems.push(`${relative(root, path)} isn’t a regular file or a folder`);
+    const name = relative(root, path).split(sep).join('/');
+    if (!st.isFile()) {
+      if (!st.isDirectory()) problems.push(`${name} isn’t a regular file or a folder`);
+    } else if (skillFile(name)) {
+      if (st.size > PLUGIN_FILE_MAX) problems.push(`${name} is past ${PLUGIN_FILE_MAX} bytes, more than a skill’s file`);
+      else files.push(path);
+    }
   }
   return files;
 }
