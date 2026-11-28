@@ -164,7 +164,10 @@ async function sameStart(holder, startOf) {
   return now === null || now === holder.started;
 }
 
-/** Removes stale drafts of a lock or takeover record; a fresh one may belong to a starter mid-publish and is left. */
+/**
+ * Removes stale drafts of a lock or takeover record; a fresh one may belong to a starter mid-publish and is left.
+ * sweepDrafts in server/lock-file.mjs is its sync twin, for postbox.lock: a fix to one is a fix to the other.
+ */
 async function sweepDrafts(io, dir) {
   for (const name of await io.readdir(dir).catch(() => [])) {
     if (!name.startsWith(LOCK) || !name.endsWith('.new')) continue;

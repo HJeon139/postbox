@@ -1,7 +1,7 @@
 // How Postbox’s lock files are written and read, in one place (#2027): server/home.mjs (lockData, postbox.lock, for
 // the command line) and server/store-lock.mjs (lockStore, store.lock, for the store) both publish a lock whole and
-// read a bare pid by the same rule. store-lock’s publish is async over an injected fs/promises, so it keeps its own
-// copy of publishWhole’s steps: a fix to one is a fix to the other.
+// read a bare pid by the same rule. store-lock’s publish and draft sweep are async over an injected fs/promises, so it
+// keeps its own copies of publishWhole’s and sweepDrafts’ steps: a fix to one is a fix to the other.
 
 import { randomBytes } from 'node:crypto';
 import { readdirSync, rmSync, statSync } from 'node:fs';
@@ -62,6 +62,7 @@ export const DRAFT_STALE_MS = 10_000;
 /**
  * Removes stale drafts of a lock (and of its takeover file) from `dir`, once the lock is held; a fresh one may belong
  * to a starter mid-publish and is left. A leftover breaks nothing, but --move-data refuses a home folder with files.
+ * sweepDrafts in server/store-lock.mjs is its async twin, for store.lock: a fix to one is a fix to the other.
  * @param {string} dir @param {string} lockName  the lock file’s name, which every draft of it starts with
  */
 export function sweepDrafts(dir, lockName) {
