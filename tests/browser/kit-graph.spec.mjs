@@ -107,6 +107,10 @@ test('#888 postbox.graph renders 25 nodes in two groups with ≥12 px non-overla
   await expect(page.locator('iframe.app-iframe').first()).toHaveClass(/\blive\b/);
   await tableBtn.click();
   await expect(frame.locator('.pb-graph-tables tbody tr')).toHaveCount(25 + 27);
+  const edgeTable = frame.getByRole('table', { name: 'Edges' });
+  await expect(edgeTable.getByRole('columnheader', { name: 'In a cycle' })).toBeVisible();
+  await expect(edgeTable.getByRole('row', { name: 'core-2 core-1 — No Yes' })).toBeVisible();
+  await expect(edgeTable.getByRole('row', { name: 'ui-1 core-1 imports Yes No' })).toBeVisible();
   await frame.getByRole('radio', { name: 'Graph' }).click();
   await expect(frame.locator('.pb-graph-scroll')).toBeVisible();
 
@@ -156,10 +160,11 @@ postbox.ready.then(async () => {
 });
 </script>`;
 
-test('#888 postbox.graph measures non-Latin labels and grows height when dense labels need more room', async ({ page }) => {
+test('#888 postbox.graph measures non-Latin labels and keeps dense graphs at their requested height', async ({ page }) => {
   const { frame } = await openGraphApp(page, 'Graph CJK and dense test', 'cjk-graph', CJK_AND_DENSE_APP);
   await expect(frame.locator('#cjk [data-node-label]')).toHaveCount(25, { timeout: 15_000 });
-  await expect(frame.locator('#dense [data-node-label]')).toHaveCount(40, { timeout: 15_000 });
+  await expect(frame.locator('#dense [data-node]')).toHaveCount(40, { timeout: 15_000 });
+  await expect(frame.locator('#dense [data-node-label]').first()).toBeVisible();
 
   const cjkMetrics = await labelMetrics(frame.locator('#cjk'));
   expect(cjkMetrics.minFont, 'CJK labels stay ≥12 px').toBeGreaterThanOrEqual(12);
@@ -169,5 +174,28 @@ test('#888 postbox.graph measures non-Latin labels and grows height when dense l
   expect(denseMetrics.minFont, 'dense labels stay ≥12 px').toBeGreaterThanOrEqual(12);
   expect(denseMetrics.overlaps, 'zero overlapping labels in dense 360×260 graph').toEqual([]);
   const denseH = Number(await frame.locator('#dense svg').getAttribute('height'));
-  expect(denseH, 'dense graph grew vertically past 260 px to fit labels').toBeGreaterThan(260);
+  expect(denseH, 'dense graph keeps its requested height').toBe(260);
+});
+
+const WIDE_GRAPH_APP = `<main style="padding:12px">
+<h2>Six linked module groups</h2><div id="g"></div>
+</main>
+<script>
+postbox.ready.then(() => {
+  const nodes = Array.from({ length: 200 }, (_, i) => ({ id: 'module-' + i, group: 'Group ' + (i % 6), value: i + 1 }));
+  const edges = nodes.slice(1).map((node, i) => ({ from: nodes[i].id, to: node.id }));
+  edges.push({ from: 'module-1', to: 'module-0' });
+  return postbox.graph(document.getElementById('g'), { nodes, edges, highlight: 'cycles' });
+});
+</script>`;
+
+test('#888 a 200-node graph passes the pre-display check and keeps its groups in view', async ({ page }) => {
+  const { rt, frame } = await openGraphApp(page, 'Large graph test', 'large-graph', WIDE_GRAPH_APP);
+  const check = () => rt.store.state.apps['large-graph'].check;
+  await expect.poll(() => check().status, { timeout: 20_000 }).not.toBe('pending');
+  expect(check().status, JSON.stringify(check().problems)).toBe('passed');
+  await expect(frame.locator('[data-node]')).toHaveCount(200);
+  await expect(frame.locator('.pb-graph-group-label')).toHaveCount(6);
+  await expect(frame.locator('[data-edge="module-0->module-1"]')).toHaveAttribute('stroke-dasharray', '6 3');
+  expect(Number(await frame.locator('#g svg').getAttribute('height'))).toBe(540);
 });

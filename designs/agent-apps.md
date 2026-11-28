@@ -77,7 +77,7 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](../app/kit/kit.js)) provides:
 | `postbox.on('theme', fn)` | Light and dark tokens update by themselves; redraw canvas or D3 output here |
 | `postbox.load('d3' \| 'katex' \| 'mermaid')` | Loads a bundled library |
 | `postbox.charts.line / scatter / stacked / heatmap / table` | Charts built to the design rules, each with a Chart and Table view |
-| `postbox.graph(el, { nodes, edges, groups, highlight })` | Directed network laid out with `d3-force`, soft group cluster regions, non-overlapping ≥ 12 px labels, cycle/cross-group edge highlights, horizontal scroll in narrow windows, and a Graph/Table toggle (#888) |
+| `postbox.graph(el, { nodes, edges, groups, highlight })` | Directed network laid out with `d3-force`, soft group cluster regions, 12 px labels placed beside marks where they fit, cycle/cross-group edge highlights, horizontal scroll in narrow windows, and a Graph/Table toggle with every node and edge (#888) |
 | `postbox.narration(el, passages, opts)` | A player that reads passages aloud with a local voice, with a transcript that follows along. Needs `narrate.speak`. |
 | `postbox.narrate(text, opts)` | One clip, as `{ url, ms }` |
 

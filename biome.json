@@ -16,6 +16,7 @@
       "app/kit/diagram.js",
       "app/kit/drawn.js",
       "app/kit/frames.js",
+      "app/kit/graph*.js",
       "app/theme.js",
       "server/**",
       "shared/**",
