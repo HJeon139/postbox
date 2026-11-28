@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.9.5 (2026-11-28)
+
+### Fixes
+
+- **claude-code:** start a forked session too large to go on over, and keep no branch point in it
+- **claude-code:** start a session too large to go on over once, as Kiro's is
+
 ## 5.9.4 (2026-11-28)
 
 ### Fixes
