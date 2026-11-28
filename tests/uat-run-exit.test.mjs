@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { RunBudget } from '../tools/uat/budget.mjs';
 import { RunBound } from '../tools/uat/run-bound.mjs';
-import { runExit } from '../tools/uat/run-exit.mjs';
+import { exitWhenSettled, runExit } from '../tools/uat/run-exit.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** A run folder with the run.json a run writes before it exits. @param {Record<string, unknown>} [record] */
@@ -61,4 +61,72 @@ test('a run that ended before writing run.json gets none, and a recheck (no fold
   assert.equal(existsSync(join(dir, 'run.json')), false, 'no run.json was made');
   assert.equal(said.mock.callCount(), 0, 'and nothing went wrong to say');
   assert.equal(runExit(null, { findings: [], exitCode: 0 }), 0);
+});
+
+test('a run.json that can’t be read keeps the exit code, and isn’t overwritten', (t) => {
+  const dir = tempDir('uat-run-exit-');
+  writeFileSync(join(dir, 'run.json'), '{ torn');
+  const said = [];
+  t.mock.method(console, 'error', (/** @type {string} */ line) => said.push(line));
+  assert.equal(runExit(dir, { findings: [], exitCode: 0 }), 0);
+  assert.equal(readFileSync(join(dir, 'run.json'), 'utf8'), '{ torn', 'left as it was');
+  assert.match(said.join('\n'), /Couldn’t record the exit code in run\.json/);
+});
+
+/** What exitWhenSettled set and said, with process.exitCode left alone. */
+const io = () => {
+  const seen = { code: /** @type {number | null} */ (null), exited: /** @type {number | null} */ (null), said: /** @type {string[]} */ ([]) };
+  return {
+    seen,
+    io: {
+      setCode: (c) => {
+        seen.code = c;
+      },
+      exit: (c) => {
+        seen.exited = c;
+      },
+      say: (l) => seen.said.push(l),
+    },
+  };
+};
+
+test('the runner’s exit, once its run ends, is the findings’ code, and run.json in the run’s folder records it', async () => {
+  const saved = process.exitCode;
+  process.exitCode = undefined;
+  try {
+    const dir = runFolder();
+    const { seen, io: o } = io();
+    await exitWhenSettled(Promise.resolve([]), () => dir, o);
+    assert.deepEqual([seen.code, seen.exited, runJson(dir).exit], [0, null, 0]);
+    const failing = runFolder();
+    const out = io();
+    await exitWhenSettled(Promise.resolve([{ check: 'postbox-output', key: 'k' }]), () => failing, out.io);
+    assert.deepEqual([out.seen.code, runJson(failing).exit], [1, 1], 'a finding that fails the run');
+  } finally {
+    process.exitCode = saved;
+  }
+});
+
+test('a run that throws exits 1, says why, and records 1; a recheck, with no folder, records nothing', async () => {
+  const saved = process.exitCode;
+  process.exitCode = undefined;
+  try {
+    const dir = runFolder();
+    const { seen, io: o } = io();
+    await exitWhenSettled(Promise.reject(new Error('the page went away')), () => dir, o);
+    assert.deepEqual([seen.exited, runJson(dir).exit], [1, 1]);
+    assert.match(seen.said.join('\n'), /UAT run failed: .*the page went away/);
+    const none = io();
+    await exitWhenSettled(Promise.resolve([]), () => null, none.io);
+    assert.equal(none.seen.code, 0);
+  } finally {
+    process.exitCode = saved;
+  }
+});
+
+test('the runner settles main() through exitWhenSettled with the folder it planned', () => {
+  const runner = readFileSync(new URL('../tools/uat-run.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /Promise\.resolve\(\)\.then\(\(\) => main\(\(plan = planRun\(\)\)\)\)/, 'a plan that throws fails as a run does');
+  assert.match(runner, /exitWhenSettled\(run, \(\) => plan\?\.dir \?\? null\)/);
+  assert.match(runner, /stepHolds\(\{ goals, log, timeline \}\)/, 'and gives stepHolds the run’s timeline');
 });

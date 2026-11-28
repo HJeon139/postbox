@@ -9,8 +9,10 @@ import { failsRun } from './checks-postbox.mjs';
 import { writeJsonAtomic } from './runs.mjs';
 
 /**
- * The code the runner exits with: one set already (a signal’s 130, tools/uat/stop.mjs) stands; else 1 when the run
- * failed, or its findings fail it (failsRun, #681); else 0. Recorded in the run folder’s run.json, when there is one.
+ * The code the runner exits with: one set already stands; else 1 when the run failed, or its findings fail it
+ * (failsRun, #681); else 0. Recorded in the run folder’s run.json, when there is one. A run a signal stops exits 130
+ * from tools/uat/stop.mjs, usually before it writes run.json, so it records none; it records 130 only when the run’s
+ * own end finishes first.
  * @param {string | null} dir  the run’s folder; null for a recheck, whose run already recorded its own
  * @param {{ findings?: { check?: string, unverified?: any }[] | null, failed?: boolean, exitCode?: unknown }} o
  * @returns {number}
@@ -34,4 +36,27 @@ function recordExit(dir, code) {
     // The exit goes ahead with its code: a run.json that can’t be read or written is said, not thrown over it.
     console.error(`Couldn’t record the exit code in run.json: ${/** @type {Error} */ (e).message}`);
   }
+}
+
+/**
+ * Sets the runner’s exit code once its run settles, and records it in run.json: the findings’ code when it ends, 1 when
+ * it fails. A run stopped by a signal exits 130 from tools/uat/stop.mjs first, whatever it failed with meanwhile.
+ * @param {Promise<any[] | null | undefined>} run  main()’s, or a recheck’s
+ * @param {() => string | null} dirOf  the run’s folder, once it’s planned; null for a recheck, or a plan that threw
+ * @param {{ setCode?: (code: number) => void, exit?: (code: number) => void, say?: (line: string) => void }} [io]
+ */
+export function exitWhenSettled(run, dirOf, io = {}) {
+  const {
+    setCode = (code) => {
+      process.exitCode = code;
+    },
+    exit = (code) => process.exit(code),
+    say = (line) => console.error(line),
+  } = io;
+  return run
+    .then((findings) => setCode(runExit(dirOf(), { findings })))
+    .catch((e) => {
+      say(`UAT run failed: ${e?.stack ?? e?.message ?? e}`);
+      exit(runExit(dirOf(), { failed: true }));
+    });
 }
