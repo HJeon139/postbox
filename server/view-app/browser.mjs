@@ -244,6 +244,7 @@ export class AppBrowser {
         if (!box) throw new Error('The page drew an empty app.');
         const { top, height: clipH } = clipWindow(region, box.height, height);
         png = await page.screenshot({
+          fullPage: true,
           clip: { x: box.x, y: box.y + top, width: box.width, height: clipH },
           timeout: CAPTURE_MS,
           animations: 'disabled',

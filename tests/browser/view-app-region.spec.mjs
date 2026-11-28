@@ -42,24 +42,24 @@ test('#856 view_app with a region captures the app at its review width, uncapped
   app.store.emit('project', { id: 'pvr', name: 'View region', folder });
   const t = rt.createThread({ projectId: 'pvr', title: 'Region view', personaIds: [arrange.persona(rt, 'researcher').id] });
   const se = arrange.agentIn(rt, t.id);
-  // Taller than the 680 px default window: the capture renders uncapped so the mark sits at y 1700, then clips to one window height around it.
+  // Taller than both the 680 px default window and the 4,000 px viewport cap: renders uncapped so the mark sits at y 4500, then clips to one window height around it.
   const shown = rt.toolsFor(se.id).show_app({
     title: 'Tall report',
-    code: '<main style="height:2000px;padding:12px;color:var(--text)"><h2>Top</h2><p style="margin-top:1680px">Bottom note</p></main>',
+    code: '<main style="height:5000px;padding:12px;color:var(--text)"><h2>Top</h2><p style="margin-top:4480px">Bottom note</p></main>',
   });
-  const region = { x: 40, y: 1700, w: 220, h: 80, width: 640, height: 2000, version: 1 };
+  const region = { x: 40, y: 4500, w: 220, h: 80, width: 640, height: 5000, version: 1 };
   const r = await arrange.viewApp(rt, se.id, { appId: shown.appId, region }, { threadId: () => t.id, endSegment() {}, images: true });
   expect(r.ok, r.message).toBe(true);
-  expect(r.message).toMatch(/x 40, y 1700, 220 × 80 px, on v1, in a 640 × 2000 px frame/);
-  expect(r.message).toMatch(/showing y \d+–\d+ of 2000 px/);
+  expect(r.message).toMatch(/x 40, y 4500, 220 × 80 px, on v1, in a 640 × 5000 px frame/);
+  expect(r.message).toMatch(/showing y \d+–\d+ of 5000 px/);
   const png = sizeOf(r.image.data);
   expect(png.png, 'a PNG').toBe(true);
   expect(png.width, 'captured at the region’s review width').toBe(640);
-  expect(png.height, 'clipped to one window height around the mark, not the whole 2000 px').toBe(680);
+  expect(png.height, 'clipped to one window height around the mark, not the whole 5000 px').toBe(680);
 
   // Open the same capture URL in the page to verify the outline sits at the exact px coordinates over the frame.
   const item = rt.store.items(t.id).find((x) => x.block?.id === shown.appId);
-  await page.goto(`${app.origin}/?nocheck&capture=${item.id}&thread=${t.id}&region=40,1700,220,80,640,2000`);
+  await page.goto(`${app.origin}/?nocheck&capture=${item.id}&thread=${t.id}&region=40,4500,220,80,640,5000`);
   await expect(page.locator('[data-capture="ready"]')).toBeAttached({ timeout: 15_000 });
   const box = await page.locator('.rv-marks > .rv-region').evaluate((el) => {
     const r0 = el.getBoundingClientRect();
@@ -68,5 +68,5 @@ test('#856 view_app with a region captures the app at its review width, uncapped
       ? { x: Math.round(r0.left - f.left), y: Math.round(r0.top - f.top), w: Math.round(r0.width), h: Math.round(r0.height), fw: Math.round(f.width) }
       : null;
   });
-  expect(box).toEqual({ x: 40, y: 1700, w: 220, h: 80, fw: 640 });
+  expect(box).toEqual({ x: 40, y: 4500, w: 220, h: 80, fw: 640 });
 });
