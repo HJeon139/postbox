@@ -150,7 +150,7 @@ test('#1171 a turn stopped before its backend emitted anything keeps the note fo
   r.fail.hang = true;
   r.rt.sendMessage(r.t.id, { text: 'Try again.' });
   for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
-  r.rt.stop(r.se.id);
+  r.rt.stop(r.se.id, { by: 'you' });
   for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
   assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, 'ran');
 });
@@ -162,7 +162,7 @@ test('#1171 a turn stopped after it reached the agent doesn’t give the note ba
   r.fail.afterWords = true;
   r.rt.sendMessage(r.t.id, { text: 'Try again.' });
   for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
-  r.rt.stop(r.se.id);
+  r.rt.stop(r.se.id, { by: 'you' });
   for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
   assert.equal(r.store.state.sessions[r.se.id].backendState.postboxToolsDown, null);
 });
@@ -251,7 +251,7 @@ test('#1904 a turn stopped before its backend emitted anything gives back its wa
   r.fail.hang = true;
   r.rt.sendMessage(r.t.id, { text: 'Try again.' });
   for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
-  r.rt.stop(r.se.id);
+  r.rt.stop(r.se.id, { by: 'you' });
   for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
   await r.turn('Once more.');
   assert.ok(carries(r.sent[1]));
@@ -292,7 +292,7 @@ test('#1904 the notices go back ahead of one that came since, in the order they 
   for (let i = 0; i < 200 && r.sent.length < 1; i++) await new Promise((x) => setTimeout(x, 5));
   // Told while the turn that took the first one still runs, then that turn is stopped before any output.
   r.rt.sessions.tell(r.se.id, 'A later notice.');
-  r.rt.stop(r.se.id);
+  r.rt.stop(r.se.id, { by: 'you' });
   for (let i = 0; i < 200 && (arrange.liveTurns(r.rt) || arrange.exitingTurns(r.rt)); i++) await new Promise((x) => setTimeout(x, 5));
   assert.deepEqual(r.store.state.sessions[r.se.id].context, [NOTICE, '[Postbox] A later notice.']);
 });

@@ -82,7 +82,7 @@ test('a Stop during Postbox’s push, with the store open: the push still gets i
   const seen = heldPushes(s, async () => stopped());
   const { sessionId, release } = await turnAsking(s, 'Push it to origin.');
   const turnId = s.rt.turns.get(sessionId).id;
-  stopped = () => s.rt.stop(sessionId);
+  stopped = () => s.rt.stop(sessionId, { by: 'you' });
   const answer = await settledCall(s.rt, sessionId, bash('git push -u origin feat/now'));
   assert.equal(seen.made, 1);
   assert.ok(!s.rt.turns.has(sessionId), 'the Stop ended the turn during the push');

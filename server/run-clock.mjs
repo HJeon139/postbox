@@ -88,7 +88,7 @@ function endClock(rt, se, clock, now) {
   if (clock?.state !== 'running' && clock?.state !== 'paused') throw httpError(409, `@${se.handle} has no running or paused run clock to stop.`);
   const at = now();
   // Stopped first, so the end records the turns on a host that may run on until the host confirms their stop.
-  if (rt.turns.has(se.id)) rt.stop(se.id, { silent: true });
+  if (rt.turns.has(se.id)) rt.stop(se.id, { silent: true, by: 'you' });
   const stopping = unconfirmedStops(rt, se.id);
   const elapsedMs = clockElapsed(clock, at);
   rt.store.emit('clock.ended', { sessionId: se.id, elapsedMs, budgetMs: clock.budgetMs, ...stoppingField(stopping), at });

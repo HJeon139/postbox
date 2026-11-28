@@ -69,7 +69,7 @@ test('the person’s Stop ends what waited for the agent: the mention it hadn’
   await sleep(5);
   rt.sendMessage(t.id, { text: '@alpha anything to add?' });
   await until(() => !arrange.running(rt, alpha.id), 'alpha’s turn to end');
-  rt.stop(beta.id);
+  rt.stop(beta.id, { by: 'you' });
   busy.release();
   await settle(rt);
   assert.equal(turnsWith(adapter, beta.id, '1912 edition'), 0, 'the stopped agent wasn’t started by the mention');

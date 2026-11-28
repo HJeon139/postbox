@@ -389,6 +389,7 @@ export class Runtime {
 
   // ── Stopping a turn: server/turn-stop.mjs ──────────────────────────────────────────
 
+  /** @param {string} sessionId @param {import('./turn-stop.mjs').StopOptions} opts  who stopped it, with no default (#1987) */
   stop(sessionId, opts) {
     return stop(this, sessionId, opts);
   }

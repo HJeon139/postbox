@@ -17,7 +17,7 @@ test('a turn the person stops ends as delivered for what it took: nothing reopen
   f.rt.agentWake(f.alpha.id, 'beta', 'Which editions?');
   await sleep(5);
   assert.ok(arrange.running(f.rt, f.beta.id), 'the mention started beta’s turn');
-  f.rt.stop(f.beta.id);
+  f.rt.stop(f.beta.id, { by: 'you' });
   busy.release();
   await settle(f.rt);
   assert.deepEqual(
@@ -53,7 +53,7 @@ test('a reply the person stops hands its mention over to no one, as a stopped tu
   });
   f.rt.sendMessage(f.t.id, { text: '@alpha hand it to beta' });
   await sleep(5);
-  f.rt.stop(f.alpha.id);
+  f.rt.stop(f.alpha.id, { by: 'you' });
   busy.release();
   await settle(f.rt);
   assert.deepEqual(arrange.waitingEntries(f.rt, f.beta.id), []);

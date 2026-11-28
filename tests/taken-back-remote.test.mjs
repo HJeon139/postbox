@@ -29,7 +29,7 @@ test('#1904 a later turn that never reached its agent gives back its notice, tho
   arrange.setSession(r.rt, r.se().id, { context: ['[Postbox] A later notice.'] });
   r.rt.sendMessage(r.t.id, { text: 'Now, please.', sendNow: true });
   await settled(r);
-  r.rt.stop(r.se().id);
+  r.rt.stop(r.se().id, { by: 'you' });
   await settled(r);
   assert.deepEqual(r.se().context ?? [], ['[Postbox] A later notice.']);
 });

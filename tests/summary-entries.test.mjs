@@ -40,7 +40,7 @@ test('#1425 a Stop that stops a waiting summary request clears the thread’s pe
   rt.sendMessage(t.id, { text: '@alpha keep going' });
   await sleep(5);
   rt.summarizeBack(threadId);
-  rt.stop(alpha.id);
+  rt.stop(alpha.id, { by: 'you' });
   assert.equal(store.state.threads[threadId].summaryPending ?? null, null, 'the panel’s button isn’t left waiting');
   busy.release();
   await settle(rt);

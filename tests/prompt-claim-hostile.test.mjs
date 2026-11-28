@@ -129,7 +129,7 @@ test('#353 a prompt whose request closes while it waits is refused, with no card
       const asked = prompt(s, p);
       await flush();
       // Stop: the turn ends while the prompt waits, and its call’s line comes after.
-      s.rt.stop(arrange.sessionsIn(s.rt, s.t.id)[0].id);
+      s.rt.stop(arrange.sessionsIn(s.rt, s.t.id)[0].id, { by: 'you' });
       feed(c, 0, askedAfter(p.tool_use_id));
       t.mock.timers.tick(PROMPT_CALL_WAIT_MS);
       answers.push(await answerNow(asked, 'the refusal at the bound'));

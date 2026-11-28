@@ -80,7 +80,7 @@ test('#1425 an app’s event starts a failed agent’s turn, as the person’s o
 test('#1425 what an event carries in memory goes when its entry is stopped, removed or its session deleted', async () => {
   const f = await busyWithApp();
   f.rt.appEvent('lab', 'one', { n: 1 });
-  f.rt.stop(f.beta.id);
+  f.rt.stop(f.beta.id, { by: 'you' });
   assert.equal(f.rt.delivery.carried.size, 0, 'a Stop');
   f.busy.release();
   await settle(f.rt);

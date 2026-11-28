@@ -56,7 +56,7 @@ test('#466 Stop ends a running scheduled wake: no schedule, timer or turn comes 
   clearTimeout(f.rt.timers.get(sc.id));
   fireScheduledWake(f.rt, sc);
   await new Promise((r) => setTimeout(r, 5));
-  f.rt.stop(f.alpha.id);
+  f.rt.stop(f.alpha.id, { by: 'you' });
   h.release();
   await settle(f.rt);
   assert.equal(f.store.state.schedules[sc.id], undefined, 'the schedule is settled');
@@ -130,7 +130,7 @@ test('#466 a scheduled wake queued behind a turn you stop is settled, not left r
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check later.' });
   clearTimeout(f.rt.timers.get(sc.id));
   fireScheduledWake(f.rt, sc);
-  f.rt.stop(f.alpha.id);
+  f.rt.stop(f.alpha.id, { by: 'you' });
   h.release();
   await settle(f.rt);
   assert.equal(f.store.state.schedules[sc.id], undefined, 'nothing is left running for a restart to fire');

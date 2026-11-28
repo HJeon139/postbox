@@ -29,7 +29,7 @@ test('#721 a card that expires unanswered tells the agent in its next turn which
 test('#721 Stop expires the card and clears the need; #853 the note says the Stop withdrew it, not that the person refused', async () => {
   const { rt, t, ask, now } = await setup();
   const { card } = await ask();
-  rt.stop(now().id);
+  rt.stop(now().id, { by: 'you' });
   await settle(rt);
   assert.equal(rt.store.item(t.id, card.id).status, 'expired');
   assert.equal(now().needs, null);
