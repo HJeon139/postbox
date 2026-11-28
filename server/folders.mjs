@@ -27,6 +27,8 @@ const hiddenIn = (name) => [...new Set(Array.from(name).filter(hidesName))].map(
  */
 export async function listFolder(project, sub) {
   if (!project) throw httpError(404, 'That project doesn’t exist.');
+  // A project of a hosted Postbox has no folder on the server: its agents’ folders are on their hosts.
+  if (!project.folder) throw httpError(409, 'This project has no folder on this server to pick from. Its agents’ folders are on their hosts.');
   const root = await realpath(project.folder);
   const target = await realpath(resolve(root, sub)).catch(() => null);
   // The picker can’t leave the project’s folder, even through symbolic links.

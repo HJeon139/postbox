@@ -4,6 +4,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { spokenSentences } from '/shared/text.mjs';
 import { $, $$, h, icon, trusted } from './dom.mjs';
+import { fitStop } from './scroll-stop.mjs';
 import { addToast, removeToast } from './toast-stack.mjs';
 import { rememberWork } from './work-memory.mjs';
 
@@ -218,10 +219,7 @@ export function refind(el) {
  * @param {HTMLElement} body @returns {() => void}
  */
 function scrollFocus(body) {
-  const fit = () => {
-    if (body.scrollHeight > body.clientHeight || body.scrollWidth > body.clientWidth) body.setAttribute('tabindex', '0');
-    else body.removeAttribute('tabindex');
-  };
+  const fit = () => fitStop(body);
   fit();
   const watch = new ResizeObserver(fit);
   watch.observe(body);

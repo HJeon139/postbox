@@ -6,6 +6,7 @@ Part of [the architecture](../architecture.md). How the same Postbox that runs o
 
 - **The address:** one public origin, listening on every address, `!` and app links refused, the cookie `Secure` (`server/request-gate.mjs`).
 - **Sign-in:** the token check of “The check, whole” (`server/identity/alb-token.mjs`), the key lookup and its real fetch with a time and size bound (`server/identity/alb-keys.mjs`, `server/identity/alb-key-fetch.mjs`), the provider behind `identify(req)` with the allow list of #1733 (`server/identity/alb.mjs`, `server/identity/sign-in-settings.mjs`), the health check, `/mcp` refused, and a line in the server’s log for each reason a sign-in was refused (`server/identity/refusal-log.mjs`).
+- **A project with no folder on the server:** hosted, the form asks for a name alone, and a project that names a folder is refused (`server/projects.mjs`, `app/js/projects-tab.mjs`). The owner couldn’t make one on the test deployment (27 November 2026).
 - **An agent host on AWS:** one machine the server reaches over `ssh`, where Claude Code calls Amazon Bedrock with the machine’s role (`infra/lib/agent-host.mjs`; “What runs an agent host, weighed”).
 
 Not built, so a hosted Postbox is for a test and not yet for a team:
@@ -14,7 +15,7 @@ Not built, so a hosted Postbox is for a test and not yet for a team:
 - **A page for a navigation that isn’t signed in,** which gets the API’s JSON today. A stream does end at its token’s `exp` (`server/identity/stream-end.mjs`).
 - **Postbox’s own browser.** A request addressed to loopback is refused like any other, so an agent’s view of its app (`view_app`) fails when hosted until “Postbox’s own browser” under “Open questions for the owner” is answered.
 - **The mock agent and the first start.** The mock is still registered and seeded when hosted.
-- **A project on an agent host.** The project form asks for a folder on the server, which has none, so agents work in their own folders on the host (`~/postbox-work/<handle>`) until the form can name a folder there.
+- **A project’s files from the page.** A hosted project is its name, and where its agents work is set on each host (`server/projects.mjs`; Settings › Hosts, “Project folders on this host”). The file picker and attaching from a project’s folder have nothing to list, since the folder isn’t on the server.
 - **Every row of “What assumed one computer”** but the first.
 
 Without `--hosted`, every rule in AGENTS.md and security-boundaries.md is true as it was, and each test file of a hosted behavior starts a local Postbox beside the hosted one and checks it is unchanged. Sign-in and the address landed together, so nothing answers a public origin before it can tell who is asking. The owner set the direction on 26 November 2026 ([the frame and the answers, in the owner’s words](https://github.com/HJeon139/postbox/issues/1733#issuecomment-7207630150), called “the owner’s answers” below), and each slice under “The slices, in order” is its own pull request. “Open questions for the owner” lists what this document does not settle.

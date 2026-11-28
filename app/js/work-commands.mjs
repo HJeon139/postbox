@@ -4,6 +4,7 @@
 import { commandLabel } from '/shared/work-list.mjs';
 import { client } from './client.mjs';
 import { h, timeOf } from './dom.mjs';
+import { scrollStop } from './scroll-stop.mjs';
 import { backgroundNote } from './work-hosts.mjs';
 import { dur, section, who } from './work-sections.mjs';
 
@@ -96,14 +97,19 @@ function commandBody(c, { threadId, load, loaded }) {
         : null,
     c.endedInBackground ? h('p.small.dim', backgroundNote(c)) : null,
     c.output?.cut ? h('p.small.dim', 'Earlier output was cut: this is the last 4 MB.') : null,
-    c.state === 'running'
-      ? h('p.small.dim', 'Its output shows here when it ends.')
-      : !c.output?.sha256
-        ? h('p.small.dim', 'No output.')
-        : out === undefined
-          ? h('p.small.dim', 'Loading the output…')
-          : typeof out === 'object'
-            ? h('p.small.dim', `The output didn’t load: ${out.error}`)
-            : h('pre.md-code.cmd-out', { tabindex: '0', 'aria-label': `Output of ${c.command.split('\n')[0]}` }, h('code', out)),
+    outputView(c, out),
   ];
+}
+
+/**
+ * A command’s output, or why it isn’t shown: still running, none, loading, or failed to load. It takes a tab stop
+ * only while it scrolls (#1964).
+ * @param {any} c @param {any} out  the loaded output, undefined while loading, or { error }
+ */
+function outputView(c, out) {
+  if (c.state === 'running') return h('p.small.dim', 'Its output shows here when it ends.');
+  if (!c.output?.sha256) return h('p.small.dim', 'No output.');
+  if (out === undefined) return h('p.small.dim', 'Loading the output…');
+  if (typeof out === 'object') return h('p.small.dim', `The output didn’t load: ${out.error}`);
+  return scrollStop(h('pre.md-code.cmd-out', { 'aria-label': `Output of ${c.command.split('\n')[0]}` }, h('code', out)));
 }

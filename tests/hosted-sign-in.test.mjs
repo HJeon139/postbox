@@ -35,6 +35,9 @@ test('a signed-in person on the allow list gets the app, and the page is told wh
   const state = await ask(hosted, PORT, { path: '/api/state', headers: signed() });
   assert.equal(state.status, 200);
   assert.deepEqual([state.json.config.me.name, state.json.config.me.username], ['Robin Example', 'robin']);
+  // The page is told it is hosted, so it asks for no folder on the server; a local one is told it isn’t.
+  assert.equal(state.json.config.hosted, true);
+  assert.equal((await ask(local, PORT + 1, { path: '/api/state' })).json.config.hosted, false);
   assert.equal((await ask(hosted, PORT, { path: '/', headers: { ...NAVIGATION, ...signed() } })).status, 200);
 });
 

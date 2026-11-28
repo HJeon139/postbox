@@ -10,6 +10,11 @@ import { toast } from './ui.mjs';
 
 const S = () => client.state;
 
+/** What a project of a hosted Postbox shows where a local one shows its folder: it has none on the server. */
+const ON_HOSTS = 'Folders on its hosts';
+const ON_HOSTS_HELP =
+  'Agents work on hosts. Set where this project’s agents work on each host in Settings › Hosts; until then, each works in a folder of its own there.';
+
 /**
  * @param {() => void} paint  draws the tab again @param {(...actions: any[]) => null} setFoot  pins the tab’s actions
  * @param {Record<string, any>} at  what the tab is editing: a project’s id, 'new', or nothing
@@ -37,7 +42,7 @@ export function projectsTab(paint, setFoot, at) {
       key: p.id,
       name: p.name,
       className: 'project-row',
-      facts: [p.folder, p.pushUrl ? `Pushes you ask for go to ${p.pushUrl}` : 'Pushes you ask for ask you first'],
+      facts: [p.folder ?? ON_HOSTS, p.pushUrl ? `Pushes you ask for go to ${p.pushUrl}` : 'Pushes you ask for ask you first'],
     })),
     open: (r) => open(r.key, `pj-push-${r.key}`),
     controls: (r) => [
@@ -52,9 +57,12 @@ export function projectsTab(paint, setFoot, at) {
 /** @param {(...actions: any[]) => null} setFoot @param {() => void} back */
 function newProject(setFoot, back) {
   const name = h('input.input', { id: 'pj-n', placeholder: 'Project name' });
+  // On a hosted Postbox a project has no folder on the server, so the form asks for none (hosted.md, “What assumed
+  // one computer”).
+  const hosted = client.config?.hosted === true;
   const folder = h('input.input', { id: 'pj-f', placeholder: '/Users/you/Documents/project', 'aria-describedby': 'pj-f-help' });
   const create = () =>
-    api('/api/projects', { name: name.value, folder: folder.value })
+    api('/api/projects', hosted ? { name: name.value } : { name: name.value, folder: folder.value })
       .then(async (made) => {
         toast({ title: `Created ${name.value || 'the project'}` });
         // Once the page has heard of it, so the list shows it, and the only project’s Delete turns on (#119).
@@ -66,12 +74,14 @@ function newProject(setFoot, back) {
   return [
     ...formHead('All projects', back, 'New project'),
     h('div.field', h('label.label', { for: 'pj-n' }, 'Name'), name),
-    h(
-      'div.field',
-      h('label.label', { for: 'pj-f' }, 'Root folder'),
-      folder,
-      h('span.help', { id: 'pj-f-help' }, 'The folder bounds the file picker and is where Claude Code sessions start.'),
-    ),
+    hosted
+      ? h('div.field', h('span.label', 'Folder'), h('span.help', { id: 'pj-f-help' }, ON_HOSTS_HELP))
+      : h(
+          'div.field',
+          h('label.label', { for: 'pj-f' }, 'Root folder'),
+          folder,
+          h('span.help', { id: 'pj-f-help' }, 'The folder bounds the file picker and is where Claude Code sessions start.'),
+        ),
   ];
 }
 
@@ -96,8 +106,8 @@ function editProject(p, setFoot, back) {
     h(
       'div.field',
       h('span.label', 'Root folder'),
-      h('span.mono', { style: { overflowWrap: 'anywhere' } }, p.folder),
-      h('span.help', 'Set when the project was made.'),
+      p.folder ? h('span.mono', { style: { overflowWrap: 'anywhere' } }, p.folder) : h('span', ON_HOSTS),
+      h('span.help', p.folder ? 'Set when the project was made.' : ON_HOSTS_HELP),
     ),
     h(
       'div.field',
