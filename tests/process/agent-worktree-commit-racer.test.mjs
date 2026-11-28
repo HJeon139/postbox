@@ -54,10 +54,13 @@ test('#2008 a racer killed between opening its count file and writing to it stil
       stdio: ['ignore', 'pipe', 'ignore'],
     },
   );
-  // An opener that dies first (say, refused the file) ends the wait too, and fails below rather than hanging.
-  await Promise.race([once(opener.stdout, 'data'), once(opener, 'exit')]);
+  // An opener that dies before it opens the file (say, refused it) ends the wait too, and fails here: it never
+  // reached the gap, so the count it left proves nothing.
+  const exited = once(opener, 'exit');
+  const opened = await Promise.race([once(opener.stdout, 'data').then(() => true), exited.then(() => false)]);
+  assert.ok(opened, 'the opener opened the count file before it was killed');
   opener.kill('SIGKILL');
-  await once(opener, 'exit');
+  await exited;
   assert.equal(staged(count), 3);
 });
 
