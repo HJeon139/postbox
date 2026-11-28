@@ -23,7 +23,8 @@ import { join } from 'node:path';
  * A commit that comes back with land isn’t on its branch yet. Its index goes in first, as git orders it, and only then
  * does land move the branch (#1932). An index that can’t be written or renamed into place leaves the branch and the
  * index as they were, agreeing, rather than the branch on the new commit and the index on the old one, which the
- * agent’s next own commit would undo the turn from.
+ * agent’s next own commit would undo the turn from. A land that fails leaves the index ahead of the branch, with the
+ * turn’s work staged for the next commit, and the reason in the log.
  * @param {string} admin  the worktree’s record @param {string} dir  Postbox’s folder for the copy
  * @param {(index: string) => Promise<Made>} commit
  * @returns {Promise<Outcome>}

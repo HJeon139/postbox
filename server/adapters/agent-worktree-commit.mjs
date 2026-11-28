@@ -191,6 +191,8 @@ async function record(g, handle, branch) {
   const tree = await g(['write-tree']);
   if (tree.code !== 0) return refused(tree);
   const tip = (await g(['rev-parse', '--verify', '--quiet', 'HEAD'])).stdout.trim();
+  // Nothing left to commit, as git commit would refuse: a file the status listed was put back or removed before the add.
+  if (SHA.test(tip) && (await g(['rev-parse', '--verify', '--quiet', `${tip}^{tree}`])).stdout.trim() === tree.stdout.trim()) return { committed: false };
   const parent = SHA.test(tip) ? ['-p', tip] : [];
   const made = await g([...identity, ...author, 'commit-tree', tree.stdout.trim(), ...parent, '-m', message]);
   const sha = made.stdout.trim();

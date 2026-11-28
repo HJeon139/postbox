@@ -19,7 +19,7 @@ const agent = { id: 'pe_a', handle: 'gem' };
 
 /**
  * A turn that wrote a file, and its commit with `broken(index, admin)` run right after git makes the commit object
- * (git’s commit, or commit-tree), before Postbox puts the index in place. @param {string} name
+ * (commit-tree), before Postbox puts the index in place. @param {string} name
  * @param {(index: string, admin: string) => void} broken
  */
 async function turnBrokenAfterCommit(name, broken) {
@@ -32,7 +32,7 @@ async function turnBrokenAfterCommit(name, broken) {
   const logs = [];
   const wrapped = async (/** @type {string} */ cwd, /** @type {string[]} */ args, /** @type {{ index?: string }} */ o = {}) => {
     const out = await runGit(cwd, args, { ...gitTimeoutFor(args), ...o });
-    if (o.index && (args.includes('commit') || args.includes('commit-tree'))) broken(o.index, admin);
+    if (o.index && args.includes('commit-tree')) broken(o.index, admin);
     return out;
   };
   const result = await commitTurn(dir, agent, p, workRoot, { git: wrapped, log: (l) => logs.push(l) }).then(
@@ -86,4 +86,18 @@ test('#1932 a commit the agent makes before Postbox moves its branch is kept: th
   assert.ok(theirs, 'the agent committed');
   assert.equal(git(dir, ['rev-parse', 'HEAD']).trim(), theirs, 'the agent’s commit is the tip, not overwritten');
   assert.match(logs.join('\n'), /didn’t commit @gem’s work.*git refused/);
+});
+
+test('#1932 a file the status listed but that’s gone by the add makes no empty commit, as git commit wouldn’t', async () => {
+  const { project: p, workRoot } = await project('landing-nothing');
+  const dir = await agentWorktree(agent, p, workRoot);
+  await writeFile(join(dir, 'agent.txt'), 'the agent’s work\n');
+  const before = git(dir, ['rev-parse', 'HEAD']).trim();
+  const wrapped = async (/** @type {string} */ cwd, /** @type {string[]} */ args, /** @type {{ index?: string }} */ o = {}) => {
+    // A process the agent left running removes the file between Postbox’s status and its add.
+    if (args.includes('add')) rmSync(join(dir, 'agent.txt'));
+    return runGit(cwd, args, { ...gitTimeoutFor(args), ...o });
+  };
+  assert.equal(await commitTurn(dir, agent, p, workRoot, { git: wrapped, log: () => {} }), false);
+  assert.equal(git(dir, ['rev-parse', 'HEAD']).trim(), before, 'no commit was made');
 });
