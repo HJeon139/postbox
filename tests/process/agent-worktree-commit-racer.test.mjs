@@ -31,10 +31,11 @@ const { execFileSync } = require('node:child_process');
 const { writeFileSync } = require('node:fs');
 const [dir, sha, count, flag] = process.argv.slice(1); // flag: COUNT_FLAG, which the #2008 test holds to
 const git = (args) => { try { execFileSync('git', args, { cwd: dir, stdio: 'ignore' }); return true; } catch { return false; } };
-for (;;) {
+for (let said = false; ; said = true) {
   // Counted whether git took it or found the index locked by Postbox’s own git: either way, the process ran.
   git(['update-index', '--add', '--cacheinfo', '160000,' + sha + ',sub']);
   writeFileSync(count, '+', { flag });
+  if (!said) process.stdout.write('staged'); // the test starts its turns on this, not on a poll
   git(['update-index', '--force-remove', 'sub']);
 }
 `;
@@ -81,13 +82,11 @@ test('#1844 a process left running that keeps staging a nested repository never 
   writeFileSync(join(sub, '.git', 'config'), `${readFileSync(join(sub, '.git', 'config'), 'utf8')}[filter "x"]\n\tclean = "touch ${marker}; cat"\n`);
   writeFileSync(join(sub, 'f'), 'two\n');
   const count = join(home, 'racer', 'staged');
-  const racer = spawn(process.execPath, ['-e', RACER, dir, git(sub, ['rev-parse', 'HEAD']).trim(), count, COUNT_FLAG], { stdio: 'ignore' });
+  const racer = spawn(process.execPath, ['-e', RACER, dir, git(sub, ['rev-parse', 'HEAD']).trim(), count, COUNT_FLAG], { stdio: ['ignore', 'pipe', 'ignore'] });
   t.after(() => racer.kill('SIGKILL'));
   // A process takes a while to start: begin the turns only once it has staged once, or a fast run commits all of them first.
-  for (const end = Date.now() + 10_000; staged(count) === 0; ) {
-    if (Date.now() > end) assert.fail('the process never started staging');
-    await new Promise((r) => setTimeout(r, 10));
-  }
+  const started = await Promise.race([once(racer.stdout, 'data').then(() => true), once(racer, 'exit').then(() => false)]);
+  assert.ok(started, 'the process started staging');
   const before = staged(count);
   let committed = 0;
   for (let i = 0; i < TURNS; i++) {
