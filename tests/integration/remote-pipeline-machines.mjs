@@ -12,7 +12,7 @@ import { remoteCommand } from '../../server/remote/ssh.mjs';
 import { hostPaths } from '../../shared/remote-protocol.mjs';
 import { hostSocketBase } from '../socket-base.mjs';
 import { tempDir } from '../temp-dirs.mjs';
-import { FIXTURES, gone, NO_UNIX, sleep } from './host.mjs';
+import { FIXTURES, gone, goneVia, NO_UNIX, sleep } from './host.mjs';
 
 export const VERSION = hostVersion();
 export const HOST = 'host.example.com';
@@ -205,10 +205,15 @@ export function marked(mark) {
 /**
  * Ends what a test left: its Postboxes (turns on the host aren’t stopped by that) and the daemon, with SIGTERM as a
  * person’s `kill` would. Then every PID it saw, and on Linux every marked process, must be gone; anything left is a
- * stray, and is killed so nothing outlives the test. Returns the strays.
+ * stray, and is killed so nothing outlives the test. Returns the strays. `kill` is for the tests of the PID guards
+ * in front of each signal, which pass a fake that records its calls, so a broken guard can never reach a real
+ * process (§10.22, #2028).
  * @param {ReturnType<typeof machine>} m @param {any[]} postboxes
+ * @param {{ kill?: (pid: number, signal: string | number) => void, isGone?: (pid: number) => boolean, waitMs?: number }} [opts]
+ *   isGone: whether a PID has ended, through `kill`; waitMs: how long the test’s processes get to end before what’s
+ *   left is killed
  */
-export async function teardown(m, postboxes) {
+export async function teardown(m, postboxes, { kill = process.kill, isGone = (pid) => goneVia(pid, kill), waitMs = 10_000 } = {}) {
   for (const p of postboxes) await p.done().catch(() => {});
   delete process.env.POSTBOX_CLAUDE_RECORD;
   // A trace that can’t be read (#899) still lets the rest end what the test started; its error comes after.
@@ -226,11 +231,11 @@ export async function teardown(m, postboxes) {
   if (daemon) {
     m.pids.set(daemon, 'the daemon');
     try {
-      process.kill(daemon, 'SIGTERM');
+      kill(daemon, 'SIGTERM');
     } catch {}
   }
-  const end = Date.now() + 10_000;
-  const left = () => [...m.pids.keys()].filter((pid) => childPid(pid) && alive(pid));
+  const end = Date.now() + waitMs;
+  const left = () => [...m.pids.keys()].filter((pid) => childPid(pid) && !isGone(pid));
   while (left().length && Date.now() < end) await sleep(50);
   /** @type {Map<number, string>} */
   const strays = new Map(left().map((pid) => [pid, `${m.pids.get(pid)} (${pid})`]));
@@ -240,7 +245,7 @@ export async function teardown(m, postboxes) {
     if (!childPid(pid)) continue;
     for (const target of [-pid, pid])
       try {
-        process.kill(target, 'SIGKILL');
+        kill(target, 'SIGKILL');
       } catch {}
   }
   rmSync(m.root, { recursive: true, force: true });
