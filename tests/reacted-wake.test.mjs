@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { reactedOnlyFrom } from '../server/reply-back.mjs';
 import { playsFrom, room, settle } from './bounce-loop-fixture.mjs';
 
 const told = (handle) => `@${handle} reacted to your reply and did no work. If nothing is asked of you, react and end with no words.`;
@@ -45,4 +46,27 @@ test('#1974: a wake from a turn that reacted and did work, or that didn’t reac
   assert.ok(beta[2].text.includes('add the rollback step'), beta[2].text);
   assert.ok(!beta[2].text.includes('reacted to your reply'), 'alpha didn’t react');
   assert.ok(beta[3].text.split('\n')[0].includes(told('alpha')), beta[3].text);
+});
+
+// reactedOnlyFrom reads the entries a turn took and whom each entry’s item’s turn reacted to (`reactedOnly`). A room
+// can’t mark a bounce today, since its turn named no one and markReacted marks only a turn that mentioned, so these
+// call it directly.
+const markedFor = (marked) => (e) => (marked.includes(e.itemId) ? ['beta'] : undefined);
+
+test('#1974: a reply that came back never gets the line, even from a turn that reacted to the reply', () => {
+  const mention = { source: 'mention', from: 'alpha', itemId: 'i1' };
+  // The control: the same entry as a direct @-mention gets it.
+  assert.deepEqual(reactedOnlyFrom([mention], markedFor(['i1']), 'beta'), ['alpha']);
+  // A bounce is told how its exchange ends already (turn-input.mjs, replyGoes).
+  assert.deepEqual(reactedOnlyFrom([{ ...mention, bounce: true }], markedFor(['i1']), 'beta'), []);
+});
+
+test('#1974: a waker that sent a real @-request and a marked closing line in one batch gets no line', () => {
+  const request = { source: 'mention', from: 'alpha', itemId: 'i1' };
+  const closing = { source: 'mention', from: 'alpha', itemId: 'i2' };
+  // The control: the closing line alone gets it.
+  assert.deepEqual(reactedOnlyFrom([closing], markedFor(['i2']), 'beta'), ['alpha']);
+  // With the request beside it, something is asked of beta, so not every entry from alpha is such a mention.
+  assert.deepEqual(reactedOnlyFrom([request, closing], markedFor(['i2']), 'beta'), []);
+  assert.deepEqual(reactedOnlyFrom([closing, request], markedFor(['i2']), 'beta'), []);
 });
