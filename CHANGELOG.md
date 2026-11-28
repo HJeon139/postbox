@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.9.3 (2026-11-28)
+
+### Fixes
+
+- **needs:** every stopped turn settles to the state of the need it leaves
+- **needs:** a clock-stopped or hung turn's agent needs you from the stop
+- **needs:** a run clock's or hung turn's stop leaves its card counting
+- **remote:** a host turn marked interrupted clears the stopped mark
+- **needs:** only the person's stop keeps a turn's cards quiet
+- **needs:** keep a stopped turn's cards quiet after another answer or a restart
+
 ## 5.9.2 (2026-11-28)
 
 ### Fixes
