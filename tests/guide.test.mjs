@@ -193,7 +193,7 @@ test('#382 the guide says when to open a topic thread, what stays in the convers
     .find((l) => l.includes('open_topic') && l.includes('bring_to_conversation'));
   assert.ok(line, 'the guide has one line on topic threads and their outcome');
   assert.match(line, /Review a PR or design in a topic/);
-  assert.match(line, /keep hand-offs and the person’s decisions here/);
+  assert.match(line, /keep hand-offs and the person’s decisions in the conversation/);
   assert.match(line, /post its outcome with bring_to_conversation/);
   assert.doesNotMatch(guideText(), /bring_to_conversation only when the person asks/);
 });
