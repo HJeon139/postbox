@@ -3,7 +3,7 @@
 
 import { factsText, runsWith } from '../../shared/agent-facts.mjs';
 import { LIMITS, limitText, PALETTES, REVIEW_THREADS_OPEN } from '../../shared/limits.mjs';
-import { commentAt } from '../../shared/review-comments.mjs';
+import { commentAt, underLine } from '../../shared/review-comments.mjs';
 import { formatLint } from '../checks.mjs';
 import { formatQueuedMessages } from './queued-messages.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
@@ -331,7 +331,7 @@ function formatBody(message, pathOf) {
         isReview(message.event)
           ? message.event.values.comments
               .filter((c) => c && typeof c === 'object')
-              .map((c) => `- ${commentAt(c)}: ${c.text}`)
+              .map((c) => `- ${commentAt(c)}: ${c.text}${underLine(c)}`)
               .join('\n')
           : '',
         // Another agent’s review (#133): its comments are on the block now; reviewedNote says where the block stands with the person.

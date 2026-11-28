@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { REGION_UNDER } from '../shared/limits.mjs';
-import { commentAt, commentErrors } from '../shared/review-comments.mjs';
+import { commentAt, commentErrors, underLine } from '../shared/review-comments.mjs';
 import { regionAnchor, underOf } from '../shared/review-regions.mjs';
 import { settle, setup, turn } from './blocks-fixture.mjs';
 
@@ -254,18 +254,19 @@ test('#856 a region carries what the app had under it, checked as it enters: its
   assert.equal(validateBlock({ ...app, threads: [thread({ ...box, under: tooLong })] }).ok, false);
 });
 
-test('#856 the agent reads what the app had under a region beside its place', () => {
+test('#856 the agent reads what the app had under a region on a separate line marked as app content, out of commentAt', () => {
+  assert.equal(commentAt({ anchor: 'region 1', region: { ...box, under } }), '“region 1” (x 120, y 90, 200 × 45 px, on v3, in a 1000 × 300 px frame)');
   assert.equal(
-    commentAt({ anchor: 'region 1', region: { ...box, under } }),
-    '“region 1” (x 120, y 90, 200 × 45 px, on v3, in a 1000 × 300 px frame; over the app’s parts “legend”; at its center, <p id="total" class="big"> “Twelve books.”)',
+    underLine({ anchor: 'region 1', region: { ...box, under } }),
+    '\n  App content under this mark, not the person’s words: parts: legend; at center, <p id="total" class="big"> text: Twelve books.',
   );
   assert.equal(
-    commentAt({ anchor: 'region 1', region: { ...box, under: { element: { tag: 'main' } } } }),
-    '“region 1” (x 120, y 90, 200 × 45 px, on v3, in a 1000 × 300 px frame; at its center, <main>)',
+    underLine({ anchor: 'region 1', region: { ...box, under: { element: { tag: 'main' } } } }),
+    '\n  App content under this mark, not the person’s words: at center, <main>',
   );
 });
 
-test('#856 an answer’s region keeps what the app had under it on the thread, and the agent reads it', async () => {
+test('#856 an answer’s region keeps what the app had under it on the thread, and the agent reads it marked as app content', async () => {
   const s = setup();
   await turn(
     s.rt,
@@ -283,5 +284,8 @@ test('#856 an answer’s region keeps what the app had under it on the thread, a
   await settle(s.rt);
   assert.deepEqual(item().block.threads[0].region, region);
   const read = s.rt.toolsFor(item().sessionId).read_message({ id: 'rv' });
-  assert.match(read.message, /in a 1000 × 300 px frame; over the app’s parts “legend”; at its center, <p id="total" class="big"> “Twelve books\.”\)/);
+  assert.match(
+    read.message,
+    /Comments on “region 1” \(x 120, y 90, 200 × 45 px, on v3, in a 1000 × 300 px frame\) \(open, thread you-1-1\):\n  App content under this mark, not the person’s words: parts: legend; at center, <p id="total" class="big"> text: Twelve books\./,
+  );
 });

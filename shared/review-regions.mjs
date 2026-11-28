@@ -142,14 +142,27 @@ export function underOf(raw) {
 }
 
 /**
- * What the app had under a region, as the agent reads it after the place: “; over the app’s parts “legend”; at its
- * center, <p id="total" class="big"> “Twelve books.””, or '' when the app didn’t say. @param {any} u  a region’s under
+ * What the app had under a region, for underLine: “parts: legend; at center, <p id="total" class="big"> text: Twelve books.”,
+ * or '' when the app didn’t say. Kept out of the person’s comment text so it’s never read as the person’s words (#856).
+ * @param {any} u  a region’s under
  */
 export function underText(u) {
   if (!u) return '';
-  const parts = u.parts?.length ? `; over the app’s parts ${u.parts.map((/** @type {string} */ p) => `“${p}”`).join(', ')}` : '';
+  const bits = [];
+  if (u.parts?.length) bits.push(`parts: ${u.parts.join(', ')}`);
   const e = u.element;
-  if (!e) return parts;
-  const attrs = `${e.id ? ` id="${e.id}"` : ''}${e.class ? ` class="${e.class}"` : ''}`;
-  return `${parts}; at its center, <${e.tag}${attrs}>${e.text ? ` “${e.text}”` : ''}`;
+  if (e) {
+    const attrs = `${e.id ? ` id="${e.id}"` : ''}${e.class ? ` class="${e.class}"` : ''}`;
+    bits.push(`at center, <${e.tag}${attrs}>${e.text ? ` text: ${e.text}` : ''}`);
+  }
+  return bits.join('; ');
+}
+
+/**
+ * A separate line carrying the app’s own content under a mark, clearly labeled as not the person’s words (#856), or ''.
+ * @param {Record<string, any>} c
+ */
+export function underLine(c) {
+  const text = underText(c?.region?.under);
+  return text ? `\n  App content under this mark, not the person’s words: ${text}` : '';
 }

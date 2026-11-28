@@ -4,7 +4,7 @@
 import { READING } from '../shared/limits.mjs';
 import { senderName } from '../shared/profile.mjs';
 import { escapeRegExp } from '../shared/regex.mjs';
-import { authorName, commentAt, PERSON } from '../shared/review-comments.mjs';
+import { authorName, commentAt, PERSON, underLine } from '../shared/review-comments.mjs';
 import { cutText } from '../shared/text-parts.mjs';
 import { appCheckText } from './app-check-status.mjs';
 import { closedText } from './block-update.mjs';
@@ -40,7 +40,7 @@ function blockContent(it) {
       // With its id, so the block's agent can resolve a thread its revision fixed (update_block's threads, #791).
       for (const th of b.threads ?? [])
         out.push(
-          `Comments on ${commentAt(th)} (${th.status}, thread ${th.id}):\n${lines(th.comments.map((c) => `${commenter(c.author)}${c.edited ? ' (correcting their earlier comment in this thread)' : ''}: ${c.text}`))}`,
+          `Comments on ${commentAt(th)} (${th.status}, thread ${th.id}):${underLine(th)}\n${lines(th.comments.map((c) => `${commenter(c.author)}${c.edited ? ' (correcting their earlier comment in this thread)' : ''}: ${c.text}`))}`,
         );
       break;
     case 'card':
@@ -148,7 +148,7 @@ function sharedBy(i) {
 }
 
 /** A review’s comments, one `- line 12: …` line each: the block’s own line and an answer line read them alike (#1253). */
-const commentLines = (comments) => lines(comments.map((c) => `${commentAt(c)}: ${c.text}`));
+const commentLines = (comments) => lines(comments.map((c) => `${commentAt(c)}: ${c.text}${underLine(c)}`));
 
 /** The person’s answer to a block, as blockContent gives it. */
 function answerText(b, a) {

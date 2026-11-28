@@ -6,7 +6,8 @@
 // the tests share it.
 
 import { HANDLE, PERSON, REVIEW_THREADS_BYTES, REVIEW_THREADS_MAX, REVIEW_THREADS_OPEN } from './limits.mjs';
-import { REGION, regionError, regionNameError, regionText, underText } from './review-regions.mjs';
+import { REGION, regionError, regionNameError, regionText } from './review-regions.mjs';
+export { underLine } from './review-regions.mjs';
 import { described, id, int, obj, str } from './schema.mjs';
 import { cutText } from './text-parts.mjs';
 
@@ -125,7 +126,7 @@ export function commentAt(c) {
     const where = c.endLine === c.line ? `line ${c.line}, col ${c.col}–${c.endCol}` : `line ${c.line}, col ${c.col} to line ${c.endLine}, col ${c.endCol}`;
     return `${where} “${c.quote}”`;
   }
-  if (c.anchor != null && c.region != null) return `“${c.anchor}” (${regionText(c.region)}${underText(c.region.under)})`;
+  if (c.anchor != null && c.region != null) return `“${c.anchor}” (${regionText(c.region)})`;
   return c.line != null ? `line ${c.line}` : c.anchor != null ? `“${c.anchor}”` : c.threadId != null ? `thread ${c.threadId}` : 'the draft';
 }
 
