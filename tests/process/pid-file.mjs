@@ -9,13 +9,13 @@ import { setTimeout as sleep } from 'node:timers/promises';
  * The pid in `file`, or null while it doesn’t hold a whole positive number: missing, empty, or anything else.
  * @param {string} file @returns {number | null}
  */
-export function pidIn(file) {
-  const text = textIn(file);
-  return text !== null && /^\s*[1-9]\d*\s*$/.test(text) ? Number(text) : null;
-}
+export const pidIn = (file) => pidOf(textIn(file));
+
+/** The pid a file’s text holds, or null. @param {string | null} text */
+const pidOf = (text) => (text !== null && /^\s*[1-9]\d*\s*$/.test(text) ? Number(text) : null);
 
 /** The file’s text, or null when it can’t be read: not written yet. @param {string} file */
-function textIn(file) {
+export function textIn(file) {
   try {
     return readFileSync(file, 'utf8');
   } catch {
@@ -32,8 +32,8 @@ export async function pidWithin(file, ms, every = 50) {
     const pid = pidIn(file);
     if (pid) return pid;
   }
-  const pid = pidIn(file);
+  const last = textIn(file); // read once, so the error says what this last look found
+  const pid = pidOf(last);
   if (pid) return pid;
-  const last = textIn(file);
   throw new Error(`No pid was written to ${file} within ${ms} ms: it ${last === null ? 'doesn’t exist' : `holds ${JSON.stringify(last)}`}.`);
 }
