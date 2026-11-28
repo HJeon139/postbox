@@ -20,7 +20,7 @@ import { join } from 'node:path';
  * add met it. The lock is removed on every other outcome, so only a Postbox killed mid-commit leaves it, as a killed
  * git does (#1844).
  *
- * A commit that comes back with land isn’t on its branch yet. Its index goes in first, as git orders it, and only then
+ * A commit that comes back with land isn’t on its branch yet. Its index goes in first, renamed into place, and only then
  * does land move the branch (#1932). An index that can’t be written or renamed into place leaves the branch and the
  * index as they were, agreeing, rather than the branch on the new commit and the index on the old one, which the
  * agent’s next own commit would undo the turn from. A land that fails leaves the index ahead of the branch, with the

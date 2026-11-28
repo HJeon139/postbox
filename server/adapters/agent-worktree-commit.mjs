@@ -177,7 +177,7 @@ async function stage(g, links, turned) {
 
 /**
  * Makes the commit of what’s staged, as Postbox, for the agent, without moving its branch: land moves it, once the
- * commit’s index is the worktree’s, as git orders a commit (agent-index-copy.mjs, #1932). From the old tip to the new
+ * commit’s index is the worktree’s (agent-index-copy.mjs, #1932). From the old tip to the new
  * one only, so a commit the agent made meanwhile is never overwritten.
  * @param {(args: string[]) => ReturnType<Git>} g  git pinned to the worktree @param {string} handle @param {string} branch
  * @returns {Promise<import('./agent-index-copy.mjs').Made>}
@@ -192,7 +192,8 @@ async function record(g, handle, branch) {
   if (tree.code !== 0) return refused(tree);
   const tip = (await g(['rev-parse', '--verify', '--quiet', 'HEAD'])).stdout.trim();
   // Nothing left to commit, as git commit would refuse: a file the status listed was put back or removed before the add.
-  if (SHA.test(tip) && (await g(['rev-parse', '--verify', '--quiet', `${tip}^{tree}`])).stdout.trim() === tree.stdout.trim()) return { committed: false };
+  const headTree = SHA.test(tip) ? (await g(['rev-parse', '--verify', '--quiet', `${tip}^{tree}`])).stdout.trim() : '';
+  if (headTree && headTree === tree.stdout.trim()) return { committed: false };
   const parent = SHA.test(tip) ? ['-p', tip] : [];
   const made = await g([...identity, ...author, 'commit-tree', tree.stdout.trim(), ...parent, '-m', message]);
   const sha = made.stdout.trim();

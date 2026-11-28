@@ -1,8 +1,8 @@
 // #1932: once Postbox has made the commit at the end of an Antigravity turn (#1709, #1844), its index goes into the
 // worktree’s index.lock and is renamed over the index. If that write or rename failed after the branch had moved, the
 // worktree’s index stayed the old one, and the agent’s own next `git commit` would undo the turn on its branch; a
-// failed write also made the turn’s end reject. Git orders it the other way, its new index before HEAD moves, and so
-// does Postbox now: a failure here leaves the branch and the index agreeing, with the turn’s work still in the folder.
+// failed write also made the turn’s end reject. Postbox now orders it the other way, its new index in place before
+// the branch moves: a failure here leaves the branch and the index agreeing, with the turn’s work still in the folder.
 // Against real git, in the shared temp home, with git’s runner wrapped to break the step right after the commit.
 
 import assert from 'node:assert/strict';
@@ -19,7 +19,7 @@ const agent = { id: 'pe_a', handle: 'gem' };
 
 /**
  * A turn that wrote a file, and its commit with `broken(index, admin)` run right after git makes the commit object
- * (commit-tree), before Postbox puts the index in place. @param {string} name
+ * (commit-tree, or git commit before #1932), before Postbox puts the index in place. @param {string} name
  * @param {(index: string, admin: string) => void} broken
  */
 async function turnBrokenAfterCommit(name, broken) {
@@ -32,7 +32,7 @@ async function turnBrokenAfterCommit(name, broken) {
   const logs = [];
   const wrapped = async (/** @type {string} */ cwd, /** @type {string[]} */ args, /** @type {{ index?: string }} */ o = {}) => {
     const out = await runGit(cwd, args, { ...gitTimeoutFor(args), ...o });
-    if (o.index && args.includes('commit-tree')) broken(o.index, admin);
+    if (o.index && (args.includes('commit-tree') || args.includes('commit'))) broken(o.index, admin);
     return out;
   };
   const result = await commitTurn(dir, agent, p, workRoot, { git: wrapped, log: (l) => logs.push(l) }).then(
