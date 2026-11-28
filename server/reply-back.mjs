@@ -128,7 +128,9 @@ function reactedTo(rt, se, took, handle, since) {
  * since an @-mention always wakes (#1591, the owner’s ruling on PR #1823), and its turn is told the waker only reacted
  * (turn-input.mjs, reactedLine), so it can react and end with no words. Two agents that each reacted ✅ and then named
  * the other in a closing line woke each other up to the chain’s cap in four UAT runs. The turn’s replies keep whom it
- * reacted to (`reactedOnly`), marked as it ends and before the agents its replies mentioned are woken.
+ * reacted to (`reactedOnly`), marked as it ends, before the replies that settled at its end wake anyone. A reply that
+ * settled mid-turn, because a tool call followed its text, woke its agents at once (mention-entries.mjs, `wake: live`),
+ * so their turns don’t get the line: marking it earlier would mean holding that wake, and an @-mention always wakes.
  * @param {any} rt @param {any} turn @param {any} se @param {any[]} took  the entries the turn took
  */
 export function markReacted(rt, turn, se, took) {

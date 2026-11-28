@@ -33,7 +33,9 @@ export function listenInbox(rt) {
     const took = delivery.takenBy(se.id, turn.id);
     // Decided, and marked on the reply, before the agent’s next turn can start and be told where its reply goes (#1591).
     const back = planBack(rt, turn, se, took);
-    // Marked before the agents its replies mentioned are woken, so their turns are told it only reacted (#1974).
+    // Marked before the replies that settled as it ended wake anyone, so the agents they mention are told it only
+    // reacted (#1974). A reply that settled mid-turn, because a tool call followed its text, woke them already
+    // (mention-entries.mjs, `wake: live`), without the line: an @-mention always wakes, so its wake isn’t held for this.
     markReacted(rt, turn, se, took);
     const first = entriesFirst(rt, se, turn);
     if (!first) takePending(rt, se, turn, true);
