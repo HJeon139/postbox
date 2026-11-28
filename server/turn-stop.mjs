@@ -92,18 +92,7 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   const se = rt.store.pending.session(sessionId);
   if (se) rt.checks.stallLeftRunning(turn, se, by === 'shutdown' || by === 'hung' ? by : 'stopped');
   if (turn.remote) rt.remote.stopped(turn, { by, why });
-  // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
-  // Kept in rt.watchdogs, so close() clears it (server/runtime-close.mjs).
-  const watchdog = setTimeout(() => {
-    rt.watchdogs.delete(watchdog);
-    if (rt.exiting.get(sessionId)?.turn !== turn) return;
-    console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
-    // Its CLI may still work: a run clock voids its run (clockStopConfirmed).
-    if (rt.runClock) turn.mayRunOn ??= 'watchdog';
-    turnExited(rt, turn);
-  }, STOP_WATCHDOG_MS);
-  watchdog.unref?.();
-  rt.watchdogs.add(watchdog);
+  watchExit(rt, sessionId, turn, se);
   // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93), in a topic thread too.
   // A message from another agent, waiting behind the turn, goes with it: it hears at its next turn what it said.
   rt.clearSummaryPending(turn.threadId);
@@ -116,6 +105,24 @@ export function stop(rt, sessionId, { silent = false, jobs = 'stop', by = 'you',
   // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).
   if (!silent && se) dropWakes(rt, se);
   return true;
+}
+
+/**
+ * A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
+ * Kept in rt.watchdogs, so close() clears it (server/runtime-close.mjs).
+ * @param {any} rt @param {string} sessionId @param {any} turn  the stopped turn @param {any} se  its session, pending
+ */
+function watchExit(rt, sessionId, turn, se) {
+  const watchdog = setTimeout(() => {
+    rt.watchdogs.delete(watchdog);
+    if (rt.exiting.get(sessionId)?.turn !== turn) return;
+    console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
+    // Its CLI may still work: a run clock voids its run (clockStopConfirmed).
+    if (rt.runClock) turn.mayRunOn ??= 'watchdog';
+    turnExited(rt, turn);
+  }, STOP_WATCHDOG_MS);
+  watchdog.unref?.();
+  rt.watchdogs.add(watchdog);
 }
 
 /**
