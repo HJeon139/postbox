@@ -247,11 +247,16 @@ export async function seed(rt, { dataDir, backend = 'mock', demo = false }) {
 
   const notesDir = join(dataDir, 'notes');
   const researchDir = join(dataDir, 'research');
-  // The notes are the project folder’s files too, as a person’s own would be, for the folder picker and path writes.
-  await cp(DEMO_ASSETS, notesDir, { recursive: true, force: false });
-  await mkdir(researchDir, { recursive: true });
-  const notes = { id: newId('pr'), name: 'Reading notes', folder: notesDir };
-  const research = { id: newId('pr'), name: 'Agent research', folder: researchDir };
+  // Hosted, a project is its name: the server has no folder for one (server/projects.mjs), so the demo’s are seeded
+  // without, and nothing is copied for them. Here the notes are the project folder’s files too, as a person’s own
+  // would be, for the folder picker and path writes.
+  if (!hosted) {
+    await cp(DEMO_ASSETS, notesDir, { recursive: true, force: false });
+    await mkdir(researchDir, { recursive: true });
+  }
+  const at = (/** @type {string} */ folder) => (hosted ? {} : { folder });
+  const notes = { id: newId('pr'), name: 'Reading notes', ...at(notesDir) };
+  const research = { id: newId('pr'), name: 'Agent research', ...at(researchDir) };
   rt.store.emit('project', notes);
   rt.store.emit('project', research);
   const P = (h) => rt.personas.byHandle(h).id;
