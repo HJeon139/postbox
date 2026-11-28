@@ -34,4 +34,6 @@ test('define_term’s description says what to define and how a term links (#102
   for (const what of ['R:31', 'abbreviation', 'coined', 'quotes or summarizes']) assert.ok(said.includes(what), what);
   // How it links: whole words, short terms in their own case, dash and quote variants, topic threads, earlier replies.
   for (const how of ['whole word', 'own case', 'U:45–52 is U:45-52', 'topic thread inherits', 'earlier replies']) assert.ok(said.includes(how), how);
+  // Its key: “#A” and “A” key alike, so one would replace the other without a key of its own.
+  assert.ok(said.includes('pass key for a reference whose letters another term shares'), 'pass key');
 });
