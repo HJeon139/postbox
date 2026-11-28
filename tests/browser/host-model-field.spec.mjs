@@ -188,7 +188,7 @@ test('the model Postbox fills in for a new agent is one that answered where it r
   // it still waits for. Without this wait a late answer made the pick for A, such as the list of the backend the
   // sheet opened on, which only a computer with that CLI asks, and takes seconds there. So the pick at each paint,
   // which is what a person’s move relies on once every list is in, went untested.
-  await expect(model).not.toHaveAttribute('data-models-asking', /./, { timeout: 30_000 });
+  await expect(model).toHaveAttribute('data-models-asking', '0', { timeout: 30_000 });
   // Back on A, whose list was asked already: A’s answered model again, not what B left.
   await sheet.getByLabel('Runs on').selectOption(kept.a.host.id);
   await expect(model).toHaveValue('gpt-5.6-terra');
