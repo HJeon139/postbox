@@ -36,8 +36,9 @@ import { agentFolder } from './folder.mjs';
 import { exists, gitsOwnLock, gitsReason, removeWorktree, stateOf } from './worktree-state.mjs';
 
 /**
- * git as Postbox runs it; index names an index file of Postbox’s own in place of the repository’s (#1844).
- * @typedef {(cwd: string, args: string[], o?: { index?: string }) => Promise<{ code: number, stdout: string, stderr: string }>} Git
+ * git as Postbox runs it; index names an index file of Postbox’s own in place of the repository’s (#1844), and env sets
+ * git’s environment over Postbox’s, such as a commit’s identity (#1932).
+ * @typedef {(cwd: string, args: string[], o?: { index?: string, env?: Record<string, string> }) => Promise<{ code: number, stdout: string, stderr: string }>} Git
  */
 
 /** Where agents’ worktrees go: `worktrees` in Postbox’s data folder, beside the workspaces at workRoot. @param {string} workRoot */
