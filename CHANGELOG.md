@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.9.6 (2026-11-28)
+
+### Fixes
+
+- **permissions:** a gone agent's refusal error says nothing else is needed
+- **permissions:** allowing a refusal whose session is gone says so
+- **permissions:** Allow once on a refusal reads the session as written, held writes included
+
 ## 5.9.5 (2026-11-28)
 
 ### Fixes
