@@ -3,7 +3,7 @@
 // writes is positive: the parent process (the test runner) stands for a live holder, and 2147483646 for one that’s gone.
 
 import assert from 'node:assert/strict';
-import { linkSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { linkSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { lockData } from '../server/home.mjs';
@@ -73,4 +73,31 @@ test('a release leaves a lock another start took over meanwhile: only this run�
   rmSync(lock);
   lockData(dir)();
   assert.deepEqual(readdirSync(dir), [], 'its own lock goes');
+});
+
+test('a draft whose write fails after the open is removed, and the error is raised as is (#2027)', () => {
+  const dir = tempDir('pb-home-lock-');
+  const io = {
+    ...realIo,
+    writeFileSync(path, _data, opts) {
+      writeFileSync(path, '', opts); // the open made the file; the write then fails, as on a full disk
+      throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
+    },
+  };
+  assert.throws(() => lockData(dir, io), { code: 'ENOSPC' });
+  assert.deepEqual(readdirSync(dir), [], 'no draft is left behind');
+});
+
+test('once the lock is held, drafts older than 10 s that a dead start left are swept, and fresh ones are left (#2027)', () => {
+  const dir = tempDir('pb-home-lock-');
+  const old = Date.now() / 1000 - 60;
+  for (const name of ['postbox.lock.4242.0a0b0c0d.new', 'postbox.lock.taking.4242.0a0b0c0d.new']) {
+    writeFileSync(join(dir, name), '4242');
+    utimesSync(join(dir, name), old, old);
+  }
+  writeFileSync(join(dir, 'postbox.lock.4343.0e0f0a0b.new'), '4343'); // a starter mid-publish
+  writeFileSync(join(dir, 'notes.new'), 'not a lock’s'); // not a draft of the lock
+  const release = lockData(dir);
+  assert.deepEqual(readdirSync(dir).sort(), ['notes.new', 'postbox.lock', 'postbox.lock.4343.0e0f0a0b.new']);
+  release();
 });

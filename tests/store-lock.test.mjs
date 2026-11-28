@@ -107,3 +107,16 @@ test('close() flushes what is queued and releases the lock, so the next store on
   assert.ok(b.state.threads.t1, 'what was queued at close() is in the log');
   await b.close();
 });
+
+test('a lock draft whose write fails after the open is removed, and the error is raised as is (#2027)', async () => {
+  const dir = await tmp();
+  const io = {
+    ...fs,
+    async writeFile(path, _data, opts) {
+      await fs.writeFile(path, '', opts); // the open made the file; the write then fails, as on a full disk
+      throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
+    },
+  };
+  await assert.rejects(lockStore(io, dir), { code: 'ENOSPC' });
+  assert.deepEqual(await fs.readdir(dir), [], 'no draft is left behind');
+});

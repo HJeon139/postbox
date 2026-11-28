@@ -18,6 +18,7 @@ import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { sameToken } from './helpers.mjs';
+import { DRAFT_STALE_MS } from './lock-file.mjs';
 
 export const LOCK = 'store.lock';
 
@@ -87,8 +88,8 @@ export function psStart(pid) {
  */
 async function publish(io, path, record) {
   const draft = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.new`;
-  await io.writeFile(draft, JSON.stringify(record), { mode: 0o600 });
   try {
+    await io.writeFile(draft, JSON.stringify(record), { mode: 0o600 }); // inside: a write that fails after the open leaves the file
     await io.link(draft, path);
   } finally {
     await io.rm(draft, { force: true });
@@ -161,8 +162,6 @@ async function sameStart(holder, startOf) {
   const now = await startOf(holder.pid);
   return now === null || now === holder.started;
 }
-
-const DRAFT_STALE_MS = 10_000; // a `*.new` draft older than this was left by a start that died between its write and its link
 
 /** Removes stale drafts of a lock or takeover record; a fresh one may belong to a starter mid-publish and is left. */
 async function sweepDrafts(io, dir) {

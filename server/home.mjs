@@ -12,7 +12,7 @@ import { linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, w
 import { cp, mkdir, readdir, readlink, rename, rm, rmdir, symlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { publishWhole, readPid } from './lock-file.mjs';
+import { publishWhole, readPid, sweepDrafts } from './lock-file.mjs';
 
 /** The person’s Postbox folder: POSTBOX_HOME, else ~/.postbox. */
 export const postboxHome = (env = process.env, home = homedir()) => (env.POSTBOX_HOME ? resolve(env.POSTBOX_HOME) : join(home, '.postbox'));
@@ -80,6 +80,7 @@ export function lockData(dataDir, io = DEFAULT_LOCK_IO) {
   for (let tries = 0; tries < 3; tries++) {
     try {
       publishWhole(io, lock, String(process.pid));
+      sweepDrafts(dataDir, LOCK); // drafts a start that died left beside the lock
       // Only this run’s lock: one another start took over meanwhile is left alone (#2027).
       return () => {
         let held = '';
