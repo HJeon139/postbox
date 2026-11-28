@@ -229,7 +229,7 @@ addEventListener('pageshow', (e) => {
  * the write is tried once more.
  * @param {string} path @param {RequestInit} init
  */
-async function write(path, init) {
+export async function write(path, init) {
   const r = await fetch(path, init);
   if (r.status !== 403 || init.method === 'GET') return r;
   const data = await r
@@ -257,17 +257,6 @@ export async function api(path, body, method = 'POST') {
       code: data.code,
       next: data.next ?? null,
     });
-  return data;
-}
-
-export async function uploadFile(file) {
-  const r = await write('/api/files', {
-    method: 'POST',
-    headers: { 'content-type': file.type || 'application/octet-stream', 'x-filename': encodeURIComponent(file.name || 'pasted') },
-    body: file,
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error ?? 'The upload failed.');
   return data;
 }
 
