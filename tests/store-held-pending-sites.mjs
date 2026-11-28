@@ -86,6 +86,7 @@ export const PENDING = {
   'persona-create.mjs': ['createPersonaFor'], // the conversation a new agent joins, maybe started behind a held commit (#1292)
   'mention-entries.mjs': ['mentionEntries'], // the session whose final reply makes entries, maybe made behind a held commit
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
+  'hosted-saved-folders.mjs': ['dropServerFolders'], // the conversations whose saved server folders a hosted start clears, as written (#1982)
   // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
   // The jobs Stop keeps, the job a report updates, and the jobs a turn's end settles, any maybe recorded behind a held
   // commit (#623).

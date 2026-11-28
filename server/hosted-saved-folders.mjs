@@ -13,11 +13,9 @@
 export function dropServerFolders(rt) {
   if (rt.config?.hosted !== true) return;
   for (const p of Object.values(rt.s.personas ?? {})) if (p.folder && !p.remote?.hostId) rt.store.emit('persona', { ...p, folder: '' });
-  // As the store loads nothing is held behind a commit, so the state read here is every session as written, as for
-  // the other changes made then (server/retired-backends.mjs).
-  for (const se of Object.values(rt.s.sessions ?? {})) {
-    const patch = se.addDirs?.length ? { addDirs: [] } : {};
-    if (Object.keys(patch).length) rt.store.emit('session.patch', { id: se.id, patch });
+  // Read pending, as every session write a read decides is (tests/session-decided-guard.test.mjs).
+  for (const se of Object.values(rt.store.pending.sessions())) {
+    if (se.addDirs?.length) rt.store.emit('session.patch', { id: se.id, patch: { addDirs: [] } });
   }
   for (const { folder, ...project } of Object.values(rt.s.projects ?? {})) if (folder) rt.store.emit('project', project);
 }
