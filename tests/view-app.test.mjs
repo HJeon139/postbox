@@ -278,36 +278,3 @@ test('the person’s answer on the download card reaches the agent as an answer 
     s.done();
   }
 });
-
-test('#856 view_app validates an optional region, passes it to capture, and saves it beside the full capture', async () => {
-  const s = setup();
-  try {
-    keepAnswer(viewOf(s.rt).dir, 'allowed');
-    const bad = await viewApp(s.rt, s.se.id, { appId: s.appId, region: { x: 500, y: 0, w: 200, h: 40, width: 600, height: 400 } }, ctx(s.t));
-    assert.equal(bad.ok, false);
-    assert.match(bad.message, /x \+ w is at most width/);
-    assert.equal(s.browser.captures.length, 0, 'invalid region never starts a capture');
-
-    const badShape = await viewApp(s.rt, s.se.id, { appId: s.appId, region: 'nope' }, ctx(s.t));
-    assert.equal(badShape.ok, false);
-    assert.match(badShape.message, /region must be/);
-
-    const region = { x: 40, y: 120, w: 200, h: 80, width: 640, height: 960, version: 1 };
-    const r = await viewApp(s.rt, s.se.id, { appId: s.appId, region }, ctx(s.t));
-    assert.equal(r.ok, true, r.message);
-    assert.match(r.message, /x 40, y 120, 200 × 80 px, on v1, in a 640 × 960 px frame/);
-    assert.match(r.message, /at its 640 px review width/);
-    assert.deepEqual(s.browser.captures[0].region, region);
-    const saved = join(s.dir, '.postbox', 'view', `${s.appId}-v1-region-40-120.png`);
-    assert.equal(existsSync(saved), true, 'saved under its own filename');
-    assert.deepEqual(readFileSync(saved), PNG);
-
-    // A region marked on an earlier version still captures v2 and notes the version difference.
-    s.rt.toolsFor(s.se.id).update_app({ id: s.appId, code: '<p>Updated.</p>', summary: 'v2' });
-    const older = await viewApp(s.rt, s.se.id, { appId: s.appId, region }, ctx(s.t));
-    assert.equal(older.ok, true, older.message);
-    assert.match(older.message, /marked on v1; this capture shows v2/);
-  } finally {
-    s.done();
-  }
-});

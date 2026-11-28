@@ -86,7 +86,7 @@ function layerOf(itemId) {
 export function releaseMarks() {
   for (const [id, ref] of layers) {
     const l = ref.deref();
-    if (!l || !l.el.isConnected) {
+    if (!l?.el.isConnected) {
       l?.watch?.disconnect();
       l?.resize?.disconnect();
       l?.el.remove();
@@ -194,7 +194,13 @@ export function markControls(itemId, env) {
   };
   const button = h(
     'button.btn.sm',
-    { type: 'button', 'aria-pressed': String(on), 'data-mark-button': itemId, disabled: version === null || !frameOf(layers.get(itemId)?.deref() ?? { el: h('div') }), onclick: toggle },
+    {
+      type: 'button',
+      'aria-pressed': String(on),
+      'data-mark-button': itemId,
+      disabled: version === null || !frameOf(layers.get(itemId)?.deref() ?? { el: h('div') }),
+      onclick: toggle,
+    },
     'Mark a part of the app',
   );
   if (!on) return { button, help: null, status: null };

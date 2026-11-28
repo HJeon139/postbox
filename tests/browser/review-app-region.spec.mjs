@@ -93,16 +93,14 @@ async function marksByKeyboard({ page }) {
   await page.keyboard.insertText('Move this up.');
   await block.getByRole('button', { name: 'Add draft comment' }).click();
   await block.getByRole('button', { name: 'Submit review', exact: true }).click();
-  await expect
-    .poll(answer, { message: 'the agent gets the box the keys marked' })
-    .toEqual([
-      {
-        anchor: 'region 1',
-        region: expect.objectContaining({ x: x + 32, y: y + 16, w: w + 16, h: h - 8, ...size, version: 1 }),
-        text: 'Move this up.',
-        threadId: expect.any(String),
-      },
-    ]);
+  await expect.poll(answer, { message: 'the agent gets the box the keys marked' }).toEqual([
+    {
+      anchor: 'region 1',
+      region: expect.objectContaining({ x: x + 32, y: y + 16, w: w + 16, h: h - 8, ...size, version: 1 }),
+      text: 'Move this up.',
+      threadId: expect.any(String),
+    },
+  ]);
 }
 
 for (const [label, use] of [

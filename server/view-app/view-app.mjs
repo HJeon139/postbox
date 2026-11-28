@@ -66,12 +66,15 @@ export function startViewApp(rt, opts) {
 /**
  * Validates an optional region passed to view_app (#856), defaulting version to the app’s current one when omitted.
  * @param {unknown} raw @param {number} currentVersion
+ * @returns {{ ok: true, region: { x: number, y: number, w: number, h: number, width: number, height: number, version: number } | null } | { ok: false, message: string }}
  */
 function parseRegion(raw, currentVersion) {
   if (raw === undefined || raw === null) return { ok: true, region: null };
-  if (typeof raw !== 'object' || Array.isArray(raw))
-    return { ok: false, message: 'region must be { x, y, w, h, width, height } in px of the review frame.' };
-  const r = { .../** @type {Record<string, any>} */ (raw), version: /** @type {any} */ (raw).version ?? currentVersion };
+  if (typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, message: 'region must be { x, y, w, h, width, height } in px of the review frame.' };
+  const r = /** @type {{ x: number, y: number, w: number, h: number, width: number, height: number, version: number }} */ ({
+    .../** @type {Record<string, any>} */ (raw),
+    version: /** @type {any} */ (raw).version ?? currentVersion,
+  });
   /** @type {string[]} */
   const errs = [];
   REGION(r, 'region', errs);

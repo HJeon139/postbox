@@ -217,8 +217,9 @@ export class AppBrowser {
         return r.method() === 'GET' && new URL(r.url()).origin === own ? route.continue() : route.abort();
       });
       const page = await context.newPage();
-      const regionParam = region ? { region: `${region.x},${region.y},${region.w},${region.h},${region.width},${region.height}` } : {};
-      const q = new URLSearchParams({ capture: itemId, thread: threadId, ...(column && !region ? { column: String(column) } : {}), ...regionParam });
+      const q = new URLSearchParams({ capture: itemId, thread: threadId });
+      if (column && !region) q.set('column', String(column));
+      if (region) q.set('region', `${region.x},${region.y},${region.w},${region.h},${region.width},${region.height}`);
       await page.goto(`${own}/?nocheck&${q}`, { timeout: CAPTURE_MS });
       await page.waitForSelector('[data-capture="ready"], [data-capture="missing"]', { timeout: CAPTURE_MS });
       if (await page.$('[data-capture="missing"]')) throw new Error('The page couldn’t find that app to show.');

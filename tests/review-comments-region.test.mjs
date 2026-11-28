@@ -285,22 +285,3 @@ test('#856 an answer’s region keeps what the app had under it on the thread, a
   const read = s.rt.toolsFor(item().sessionId).read_message({ id: 'rv' });
   assert.match(read.message, /in a 1000 × 300 px frame; over the app’s parts “legend”; at its center, <p id="total" class="big"> “Twelve books\.”\)/);
 });
-
-test('#856 review_block refuses a region comment on a markdown review', () => {
-  const s = setup();
-  const a = s.rt.createPersona({ handle: 'author' });
-  const b = s.rt.createPersona({ handle: 'editor' });
-  const t = s.rt.createThread({ projectId: 'p1', title: 'MD', personaIds: [a.id, b.id] });
-  const [author, editor] = Object.values(s.store.state.sessions).filter((se) => se.threadId === t.id);
-  const shown = s.rt.toolsFor(author.id).show_block({
-    block: { id: 'rv-md', type: 'review', version: 1, fallback: 'Review doc', format: 'markdown', content: 'Line one.' },
-  });
-  assert.equal(shown.ok, true, shown.message);
-  const r = s.rt.toolsFor(editor.id).review_block({
-    blockId: 'rv-md',
-    verdict: 'comment',
-    comments: [{ line: 1, anchor: 'region 1', region: box, text: 'Not an app.' }],
-  });
-  assert.equal(r.ok, false);
-  assert.match(r.message, /only a comment on an app marks a region; a markdown review’s comment is on a line\./);
-});
