@@ -243,3 +243,7 @@ test('#1712 the guide keeps an agent’s notes for itself out of a folder’s AG
   assert.match(guideText(), /^- Keep your notes out of AGENTS\.md and CLAUDE\.md: every agent in the folder reads them\.$/m);
   assert.match(guideText(), /^- Writing @handle wakes that agent; to name one, omit @\.$/m, 'the line it sits beside stays');
 });
+
+test('#102 the guide says to define anything a reader can’t decode on sight, such as a citation, when first used', () => {
+  assert.match(guideText(), /^- define_term anything a reader can’t decode on sight, such as R:31 or an abbreviation, when you first use it\.$/m);
+});

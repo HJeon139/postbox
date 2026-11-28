@@ -1,5 +1,5 @@
 // Each agent’s state in its row in the sidebar (#1403; designs/rooms-at-scale.md, “Live state”): running with its
-// step, waiting on a job, waiting behind another agent, needs you, failed, or idle, read from the room’s records by
+// step, waiting on a job, needs you, failed, or idle, read from the room’s records by
 // shared/agent-state.mjs. The rail doesn’t scroll with the transcript, so the row is in view wherever you’ve scrolled,
 // and a change of state keeps the row’s size, so nothing moves under the pointer.
 // On the demo’s Index planning, whose records are written in the server’s store as Running, the work ledger and
@@ -56,7 +56,7 @@ async function openIdle(page) {
   };
 }
 
-test('an agent’s row says what it runs or waits on, from its session, its jobs and the inboxes', async ({ page }) => {
+test('an agent’s row says what it runs or waits on, from its session and its jobs', async ({ page }) => {
   const row = await openIdle(page);
 
   // Running, with its step: a long one is cut on its one line, and its whole text is the row’s tooltip.
@@ -75,20 +75,16 @@ test('an agent’s row says what it runs or waits on, from its session, its jobs
   await expect(words(page, indexer)).toHaveText(' · waiting on a job: Build the index');
   await row.sizeHolds('waiting on a job');
 
-  // The job ends, and what it posted to @researcher still waits in its inbox behind its turn.
+  // The job ends, and what it posted to @researcher still waits in its inbox behind its turn: a hand-off never shows its
+  // sender as waiting, so its row says idle (#1975).
   arrange.setSession(app.rt, researcher.id, { state: 'tool', currentStep: 'Reading the shelf' });
   arrange.setSession(app.rt, indexer.id, { jobs: [] });
-  const at = Date.now();
-  const entry = { id: 'en-behind', sessionId: researcher.id, threadId: planning.id, from: 'indexer', source: 'mention', state: 'waiting', at };
+  const entry = { id: 'en-posted', sessionId: researcher.id, threadId: planning.id, from: 'indexer', source: 'mention', state: 'waiting', at: Date.now() };
   app.store.emit('entry.add', { sessionId: researcher.id, entry });
-  await expect(words(page, indexer)).toHaveText(` · waiting behind @researcher since ${clockOf(at)}`);
-  await expect(words(page, researcher), 'the agent it waits on says its own state').toHaveText(' · Reading the shelf');
-  await row.sizeHolds('waiting behind');
-
-  // @researcher takes it: nothing is left to wait on.
-  app.store.emit('entry.patch', { sessionId: researcher.id, id: 'en-behind', patch: { state: 'taken' } });
-  arrange.setSession(app.rt, researcher.id, { state: 'idle', currentStep: '' });
+  await synced(page, app);
+  await expect(words(page, researcher), 'the agent it posted to says its own state').toHaveText(' · Reading the shelf');
   await expect(words(page, indexer)).toHaveText(' · idle');
+  await expect(page.locator('.rail'), 'and no row says it waits behind another').not.toContainText('waiting behind');
   await row.sameNode();
 });
 

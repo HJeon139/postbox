@@ -61,7 +61,7 @@ flowchart LR
 - **Postbox keeps what is the conversation:** messages, replies, blocks, asks, deliveries and the Work ledger. Markdown rendering and cards stay as they are.
 - **Progress is live only.** Steps, partial text, thinking and subagents go to the page on a stream that isn’t stored. The server keeps a small buffer per running turn for a page that reconnects, stores each reply’s words and changed steps at commit points so a restart loses little, and writes one record of the turn’s steps when it ends ([architecture/live-progress.md](architecture/live-progress.md)).
 - **Because nothing in it is stored, the live view can show more:** each tool and its input, a tail of its output, the agent’s use of Postbox’s own tools, and how long each step has run.
-- **Each agent’s state is always in view,** wherever you’ve scrolled: running (and its current step), waiting on a job, waiting on another agent, waiting on you, failed, or done. It is derived from records, never from what an agent said in chat.
+- **Each agent’s state is always in view,** wherever you’ve scrolled: running (and its current step), waiting on a job, waiting on you, failed, or done. It is derived from records, never from what an agent said in chat. A post still waiting in another agent’s inbox is no state of its sender’s: agents hand work to each other without waiting, so a sender never shows as waiting behind another agent (#1975).
 - **A turn that dies says so,** with what it held, instead of ending as an empty message.
 - **Status questions needn’t be asked.** “Is the job still running” is answered by the agent’s state and its jobs, always in view. Postbox doesn’t try to tell a status question from work, so a question that mentions an agent still wakes it.
 
@@ -78,7 +78,7 @@ flowchart LR
 
 **Still to do,** after the inbox, as [`architecture/services.md`](architecture/services.md) orders it:
 - **Postbox’s own tool calls are still quiet,** and a running step doesn’t show how long it has run.
-- **An agent’s state shows only as running and its step.** Waiting on a job, on another agent or on you, failed and done come from Running, Turns, Work’s jobs, Delivery’s entries and asks.
+- **An agent’s state shows only as running and its step.** Waiting on a job or on you, failed and done come from Running, Turns, Work’s jobs and asks.
 
 Changes in `intent.md`: the Work rows on the per-turn list, the Layout row on the agent tree, and “The loop”.
 
@@ -105,7 +105,7 @@ Changes in `intent.md`: the topic thread rows in “Agents and sessions”, the 
 - **A message addressed to an agent becomes an entry in its inbox** once the sender’s message is final, not while it streams (#834). A person’s mention, an agent’s mention, an answer to an ask and a scheduled wake all arrive the same way.
 - **An idle agent with entries starts a turn.** Its input is its waiting entries in one thread, with sender and time, each whole up to a ceiling. The rest of the room since its last turn comes after, as a bounded tail with a pointer to `read_conversation` and `search_conversation` (“What a turn is given”, below).
 - **Nothing is held, merged or dropped.** A newer post from the same sender is noted on the waiting entry (“@x posted since”) rather than replacing it. No card holds other messages.
-- **The sender sees each entry’s state:** waiting behind @x’s turn since a given time, taken by a turn, delivered, failed, or stopped (“What an entry is”, below).
+- **Each entry has a state:** waiting for @x’s turn since a given time, taken by a turn, delivered, failed, or stopped (“What an entry is”, below). It’s the entry’s, never a state of the agent that sent it (#1975).
 - **A turn that fails to start leaves its entries waiting.** A network failure after the harness accepted the turn reopens them once, marked as a resend (#466). A failed session doesn’t restart on its own in a loop.
 - **Fewer wakes for nothing.** An acknowledgment wakes no one: agents react instead (#331). An agent waiting on a long job ends its turn and sets a scheduled wake, so it doesn’t hold its queue. While a turn runs, its tool results say how many entries are waiting.
 - **The chain cap stays (principle 6)** as a count, a loop guard. At the cap the chain stops: the wake doesn’t go, the room shows one line with nothing to answer, and the person’s next message starts a new chain (#1623).

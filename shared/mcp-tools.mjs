@@ -127,7 +127,8 @@ export const TOOL_DEFS = [
   },
   {
     name: 'define_term',
-    description: 'Add a term to the glossary of this conversation, or of the topic thread you’re in. Every later mention links to its definition.',
+    description:
+      'Add a term to the glossary of this conversation, or of the topic thread you’re in, the first time you use it. Define what a reader can’t decode on sight: a citation such as R:31, an abbreviation, a name you coined. A citation’s definition quotes or summarizes what it points to, and source names where that is. Each mention of the term links to its definition, earlier replies included: as a whole word, a term of one or two characters only in its own case and a longer one in any case, with a dash or a quote written either way (U:45–52 is U:45-52). Terms key by their plain letters and digits, so #A and A share a key, and the second replaces the first: give such a reference a key of its own, such as ref-a. A topic thread inherits its conversation’s terms.',
     inputSchema: {
       type: 'object',
       properties: { term: { type: 'string' }, definition: { type: 'string' }, key: { type: 'string' }, source: { type: 'string' } },

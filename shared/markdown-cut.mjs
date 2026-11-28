@@ -1,8 +1,9 @@
 // A streaming reply's Markdown, split where nothing after can change what comes before (#850), so the page renders
 // the blocks a reply has closed once, and each frame only what follows (app/js/md-stream.mjs).
 
+import { glossaryRegex } from './glossary-match.mjs';
 import { blocks, renderMarkdown } from './markdown.mjs';
-import { glossaryRegex, mentionRegex } from './markdown-inline.mjs';
+import { mentionRegex } from './markdown-inline.mjs';
 import { LATEX_OPEN } from './math.mjs';
 
 /**
