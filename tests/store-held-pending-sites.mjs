@@ -246,7 +246,10 @@ export const PENDING = {
   'store-outage.mjs': ['neverReached', 'takenBack'],
   'stop-record.mjs': ['recordStopped'], // the stopped turn’s segments still streaming, maybe held behind a commit (#602)
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
-  'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
+  // The live view cards, in a conversation or across Postbox, which decide whether to add another (#95), which card an
+  // agent is noted on, and which the person’s answer settles; who is noted on a card as it settles, and each one’s
+  // session as delivery reads it, which decide who is told (#1927).
+  'view-app/consent.mjs': ['liveCards', 'settle', 'settle'],
   // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637); and who answers in
   // a new topic, read as the conversation was written (#1292); conversationOf’s topics, maybe opened behind a held commit (#623)
   'topic-open.mjs': ['startTopic', 'startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'],
