@@ -11,15 +11,16 @@ const SHORT = 2;
 // What continues a word: a letter or digit of a script written with spaces between words, as in “Rémi” or “Ωmega”, or
 // a hyphen or a dash that joins, as in “45–52”. CJK, written without spaces, doesn’t, and neither does an em dash.
 const JOINS = '\\w\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u024F\\u0370-\\u03FF\\u0400-\\u04FF\\u2010-\\u2013\\u2212-';
-const WHOLE_WORD_BEFORE = `(?<![${JOINS}])`;
+// Each & in the escaped text starts an entity, such as &amp;, &lt; or &#39;. A term such as “AMP”, “lt” or “39” never
+// starts right after one, so the entity stays whole (#102). Further in, the whole-word guards keep it out. It is part of
+// each branch’s one lookbehind, so a long reply is checked once per position, not twice.
+const ENTITY_START = '&|&#';
+const WHOLE_WORD_BEFORE = `(?<![${JOINS}]|${ENTITY_START})`;
 const WHOLE_WORD_AFTER = `(?![${JOINS}])`;
 // The text is escaped, so & reads as &amp; and ' as &#39;. Spaced, as in “R & D”, the letters stay words of their own;
 // after a letter and an apostrophe, as in “don’t”, a short term is the end of a word.
-const SHORT_BEFORE = `(?<![${JOINS}]|&amp;|[A-Za-z]\\.|[A-Za-z](?:&#39;|’))`;
+const SHORT_BEFORE = `(?<![${JOINS}]|${ENTITY_START}|&amp;|[A-Za-z]\\.|[A-Za-z](?:&#39;|’))`;
 const SHORT_AFTER = `(?![${JOINS}]|&amp;|\\.[A-Za-z])`;
-// Each & in the escaped text starts an entity, such as &amp;, &lt; or &#39;. A term such as “AMP”, “lt” or “39” never
-// starts right after one, so the entity stays whole (#102). Further in, the whole-word guards keep it out.
-const NOT_IN_ENTITY = '(?<!&|&#)';
 
 /**
  * The form two spellings of one term share, from text escaped as the reply’s is: its quotes unescaped, then each dash
@@ -68,8 +69,8 @@ function buildMatcher(entries) {
   const exact = new Map(entries.filter(isShort).map((g) => [sameForm(escapeHtml(g.term)), g.key]));
   const anyCase = new Map(entries.filter((g) => !isShort(g)).map((g) => [sameForm(escapeHtml(g.term)).toLowerCase(), g.key]));
   const branches = [];
-  if (anyCase.size) branches.push(`${NOT_IN_ENTITY}${WHOLE_WORD_BEFORE}(?:${alternation(anyCase.keys())})${WHOLE_WORD_AFTER}`);
-  if (exact.size) branches.push(`${NOT_IN_ENTITY}${SHORT_BEFORE}(?:${alternation(exact.keys())})${SHORT_AFTER}`);
+  if (anyCase.size) branches.push(`${WHOLE_WORD_BEFORE}(?:${alternation(anyCase.keys())})${WHOLE_WORD_AFTER}`);
+  if (exact.size) branches.push(`${SHORT_BEFORE}(?:${alternation(exact.keys())})${SHORT_AFTER}`);
   // The pattern is case-insensitive for the longer terms; keyOf holds the short ones to their own case.
   // lint-allow regex: glossary terms, each escaped by escapeRegExp in termPattern.
   const re = new RegExp(branches.join('|'), 'gi');
