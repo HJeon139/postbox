@@ -33,6 +33,8 @@ export function fitStop(box) {
  * @template {HTMLElement} T @param {T} box @param {{ scrolls: string, fits: string }} [labels] @returns {T}
  */
 export function scrollStop(box, labels) {
+  // Marked, so keepFocus (ui.mjs) counts it in place whether or not it has its stop now.
+  box.dataset.scrollStop = '';
   box.setAttribute('tabindex', '0');
   if (labels) {
     labelsOf.set(box, labels);

@@ -81,6 +81,8 @@ test('#1968 a table block takes a tab stop and says it scrolls only while it doe
   await synced(page, scripted.app);
   const fits = page.locator('.tbl-wrap').filter({ hasText: 'A value' });
   const scrolls = page.getByRole('region', { name: 'Wide, scrolls' });
+  // It really scrolls, so its stop isn’t only the one a box starts with before it’s measured.
+  await expect.poll(() => scrolls.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
   await expect(scrolls).toHaveAttribute('tabindex', '0');
   await expect(fits).not.toHaveAttribute('tabindex');
   await expect(fits, 'a table that fits isn’t said to scroll').toHaveAttribute('aria-label', 'Narrow');
@@ -112,3 +114,34 @@ for (const [width, scrolls] of /** @type {const} */ ([
     expect(got.stop, 'a tab stop only while it scrolls').toBe(scrolls ? '0' : null);
   });
 }
+
+// keepFocus finds a control again by its place among the focusable elements when it has no id. A box that fits has no
+// stop before a repaint, and every new box starts with one, so counting stops alone would move focus back one place
+// for each fitting box ahead of it (the pre-review of #1968; the Work view repaints this way on every change).
+test('#1968 a repaint that keeps focus leaves it on the control after a box that fits', async ({ page }) => {
+  const t = scripted.room('Focus after a box', []);
+  await page.goto(`${scripted.app.origin}/#/t/${t.id}`);
+  await synced(page, scripted.app);
+  const after = await page.evaluate(async () => {
+    const { keepFocus } = await import('/app/js/ui.mjs');
+    const { diffView } = await import('/app/js/work-diff.mjs');
+    const { h } = await import('/app/js/dom.mjs');
+    const root = document.createElement('div');
+    document.body.append(root);
+    const paint = () =>
+      root.replaceChildren(
+        h('button', { type: 'button' }, 'A'),
+        diffView({ rows: [{ kind: 'add', n: 1, t: 'one line' }] }, { rel: 'a.txt' }),
+        h('button', { type: 'button' }, 'B'),
+        h('button', { type: 'button' }, 'C'),
+      );
+    paint();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const c = /** @type {HTMLElement} */ ([...root.querySelectorAll('button')].find((b) => b.textContent === 'C'));
+    c.focus();
+    keepFocus(root, paint);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return document.activeElement?.textContent;
+  });
+  expect(after, 'focus came back to C, not the control before it').toBe('C');
+});
