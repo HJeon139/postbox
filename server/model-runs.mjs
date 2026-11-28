@@ -28,23 +28,29 @@ const ownSteps = (/** @type {any} */ turn) => (turn.steps ?? []).filter((/** @ty
 /**
  * Whether a failed turn says something about its model: it failed before the agent took a step or said a word, and
  * not for a reason that is the network’s, the quota’s or a provider’s passing failure, each of which Postbox already
- * names and acts on (server/harness-failure.mjs).
+ * names and acts on (server/harness-failure.mjs), nor the host’s (Sign-in needed, Interrupted: `err.remote`,
+ * server/remote/turns-end.mjs), which says nothing of the model that ran there.
  * @param {any} turn @param {{ lost?: boolean, resends?: boolean }} how
  */
 const failedAtItsModel = (turn, { lost, resends }) =>
-  !lost && !resends && !failureClass(turn.endErr) && ownSteps(turn) === 0 && !String(turn.said ?? '').trim();
+  !lost && !resends && !turn.endErr?.remote && !failureClass(turn.endErr) && ownSteps(turn) === 0 && !String(turn.said ?? '').trim();
 
 export class ModelRuns {
   /**
-   * @param {{ file: string, now?: () => number, hostIds?: () => string[] }} opts  file: where the records are kept;
-   *   hostIds: the hosts Postbox has, so a deleted one’s records are forgotten
+   * @param {{ file: string, now?: () => number, hostIds?: () => string[], reasons?: boolean }} opts  file: where the
+   *   records are kept; hostIds: the hosts Postbox has, so a deleted one’s records are forgotten; reasons: whether
+   *   an answer carries a failure’s words. False on a hosted Postbox: the answer reaches everyone signed in, not
+   *   only a room’s members, and a provider’s error can name the account’s resources
    */
-  constructor({ file, now = Date.now, hostIds }) {
+  constructor({ file, now = Date.now, hostIds, reasons = true }) {
     this.file = file;
     this.now = now;
     this.hostIds = hostIds;
+    this.reasons = reasons;
     /** Whether Postbox has closed, after which nothing is kept, as the lists do (#1530). */
     this.closed = false;
+    /** @type {Record<string, Record<string, ModelRun>> | null} what the file holds, read once and then kept here */
+    this.kept = null;
   }
 
   close() {
@@ -99,7 +105,9 @@ export class ModelRuns {
   of(backend, hostId = null) {
     const kept = this.#kept();
     const key = hostId ? `${backend}@${hostId}` : backend;
-    return Object.hasOwn(kept, key) ? kept[key] : {};
+    const of = Object.hasOwn(kept, key) ? kept[key] : {};
+    if (this.reasons) return of;
+    return Object.fromEntries(Object.entries(of).map(([model, { ended, at }]) => [model, { ended, at }]));
   }
 
   /** Keeping it is for the next sheet and the next start: a write that fails is logged, and the turn goes on. */
@@ -108,6 +116,7 @@ export class ModelRuns {
       // A deleted host’s records go: no agent runs there again.
       const hosts = this.hostIds?.();
       if (hosts) for (const k of Object.keys(kept)) if (k.includes('@') && !hosts.includes(k.slice(k.indexOf('@') + 1))) delete kept[k];
+      this.kept = kept;
       const tmp = `${this.file}.${process.pid}.tmp`;
       writeFileSync(tmp, `${JSON.stringify(kept)}\n`);
       renameSync(tmp, this.file);
@@ -118,13 +127,15 @@ export class ModelRuns {
     }
   }
 
-  /** @returns {Record<string, Record<string, ModelRun>>} */
+  /** Read from the file once, then from here: a turn’s end reads nothing from disk. @returns {Record<string, Record<string, ModelRun>>} */
   #kept() {
+    if (this.kept) return this.kept;
     try {
       const kept = JSON.parse(readFileSync(this.file, 'utf8'));
-      return kept && typeof kept === 'object' && !Array.isArray(kept) ? kept : {};
+      this.kept = kept && typeof kept === 'object' && !Array.isArray(kept) ? kept : {};
     } catch {
-      return {}; // None kept yet, or a file that isn’t ours to read: every model is one nobody has tried.
+      this.kept = {}; // None kept yet, or a file that isn’t ours to read: every model is one nobody has tried.
     }
+    return /** @type {Record<string, Record<string, ModelRun>>} */ (this.kept);
   }
 }

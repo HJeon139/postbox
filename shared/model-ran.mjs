@@ -37,7 +37,8 @@ const sentence = (why) => (/[.!?…]$/.test(why.trim()) ? why.trim() : `${why.tr
  * What the field says of the model in it, or nothing for one no turn has tried. It states what a past turn did, and
  * never that the model works.
  * @param {ModelRun | null | undefined} run @param {{ where: string, when: string }} said  where: “on build-box” or
- *   “here”; when: how long ago, as the page words it
+ *   “here”; when: how long ago, as the page words it. A record with no reason, as a hosted Postbox answers it, says
+ *   that it failed and when
  */
 export function ranWords(run, { where, when }) {
   if (run?.ended === 'answered') return `This model’s last turn ${where} answered, ${when}.`;

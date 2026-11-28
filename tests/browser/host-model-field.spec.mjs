@@ -105,23 +105,41 @@ test('a host without the CLI says it wasn’t found there, not that Postbox ther
 
 // #1977: a harness lists the models it knows, not the ones the sign-in may run. On the owner’s host the first listed
 // was refused, and so was the next they picked. The field orders its suggestions by how each one’s last turn there
-// ended, and says so for the model in it.
-test('suggestions are ordered by how each model’s last turn on the host ended, and the field says so for the model in it', async ({ page }) => {
-  const { host, persona } = hostWith('bedrock.example.com', (harness) => ({ type: 'listed', harness, models: ['gpt-9-new', 'gpt-6.1-sol', 'gpt-5.6-terra'] }));
-  const at = Date.now() - 5 * 60_000;
+// ended, marks them, says so for the model in it, and picks by it.
+/** How long ago the kept turns ended: “5 min ago” on the page. */
+const AT = Date.now() - 5 * 60_000;
+/** The hosts of these specs, each with what Postbox kept of its models’ last turns, written before anything reads it. */
+/** @type {Record<string, ReturnType<typeof hostWith>>} */
+let kept;
+test.beforeAll(() => {
+  const listing = (/** @type {string[]} */ models) => (/** @type {string} */ harness) => ({ type: 'listed', harness, models });
+  kept = {
+    ordered: hostWith('bedrock.example.com', listing(['gpt-9-new', 'gpt-6.1-sol', 'gpt-5.6-terra'])),
+    a: hostWith('host-a.example.com', listing(['gpt-9-new', 'gpt-5.6-terra'])),
+    b: hostWith('host-b.example.com', listing(['gpt-9-new'])),
+  };
+  const refused = { ended: 'failed', at: AT, why: '403 gpt-9-new is not available for this account' };
+  const answered = { ended: 'answered', at: AT };
+  // Postbox reads this once, at its first use, so it is written here, before any sheet opens.
   writeFileSync(
     join(started.app.root, 'data', 'model-runs.json'),
     JSON.stringify({
-      [`codex@${host.id}`]: {
-        'gpt-9-new': { ended: 'failed', at, why: '403 gpt-9-new is not available for this account' },
-        'gpt-5.6-terra': { ended: 'answered', at },
-        'typed-by-hand': { ended: 'answered', at: at - 1000 },
-      },
+      [`codex@${kept.ordered.host.id}`]: { 'gpt-9-new': refused, 'gpt-5.6-terra': answered, 'typed-by-hand': { ended: 'answered', at: AT - 1000 } },
+      [`codex@${kept.a.host.id}`]: { 'gpt-9-new': refused, 'gpt-5.6-terra': answered },
     }),
   );
+});
+
+test('suggestions are ordered and marked by how each model’s last turn on the host ended, and the field says so for the model in it', async ({ page }) => {
+  const { persona } = kept.ordered;
   const sheet = await openPersona(page, persona);
   // Answered first, a typed one among them; then the untried, Codex’s auto with them; the failed one last, not hidden.
   await expect.poll(() => suggested(sheet)).toEqual(['gpt-5.6-terra', 'typed-by-hand', 'gpt-6.1-sol', 'auto', 'gpt-9-new']);
+  // The persona’s own model stays: Postbox picks only a model nobody chose.
+  await expect(sheet.getByLabel('Model')).toHaveValue(persona.model);
+  // Each one a turn tried says so beside its name, so the groups aren’t told apart by their place alone.
+  const labels = await sheet.locator('#pe-models option').evaluateAll((options) => options.map((o) => o.getAttribute('label')));
+  expect.soft(labels).toEqual(['answered 5 min ago', 'answered 5 min ago', null, 'Codex’s default', 'failed 5 min ago']);
 
   const field = sheet.getByLabel('Model');
   const line = sheet.locator('[data-model-ran]');
@@ -133,7 +151,7 @@ test('suggestions are ordered by how each model’s last turn on the host ended,
   await field.fill('gpt-5.6-terra');
   await expect(line).toHaveText('This model’s last turn on bedrock.example.com answered, 5 min ago.');
   await expect(field).toHaveAccessibleDescription(/last turn on bedrock\.example\.com answered/);
-  // A model no turn has tried says nothing, and its line is kept, so typing moves nothing below the field.
+  // A model no turn has tried says nothing, and Save stays where it was.
   await field.fill('gpt-6.1-sol');
   await expect(line).toHaveText('');
   expect.soft((await sheet.getByRole('button', { name: 'Save' }).boundingBox())?.y).toBe(box?.y);
@@ -146,21 +164,27 @@ test('with nothing kept for a host the field is as it was: the harness’s order
   await expect(sheet.locator('[data-model-ran]')).toHaveCount(0);
 });
 
-test('the model Postbox fills in for a new agent on a host is one that answered there, not the first its CLI lists', async ({ page }) => {
-  const { host } = hostWith('picks.example.com', (harness) => ({ type: 'listed', harness, models: ['gpt-9-new', 'gpt-5.6-terra'] }));
-  writeFileSync(
-    join(started.app.root, 'data', 'model-runs.json'),
-    JSON.stringify({
-      [`codex@${host.id}`]: { 'gpt-9-new': { ended: 'failed', at: Date.now(), why: 'refused' }, 'gpt-5.6-terra': { ended: 'answered', at: Date.now() } },
-    }),
-  );
+test('the model Postbox fills in for a new agent is one that answered where it runs now, through a move to another host and back', async ({ page }) => {
   await page.goto(`${started.app.origin}/`);
   await synced(page, started.app);
   await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas')));
   const sheet = page.getByRole('dialog');
   await sheet.getByRole('button', { name: 'New agent' }).click();
   await sheet.getByLabel('Backend').selectOption('codex');
-  await sheet.getByLabel('Runs on').selectOption(host.id);
-  await expect(sheet.getByLabel('Model')).toHaveValue('gpt-5.6-terra');
-  await expect(sheet.locator('[data-model-ran]')).toHaveText(/last turn on picks\.example\.com answered/);
+  const model = sheet.getByLabel('Model');
+  // On A, where its first listed model failed and another answered: the one that answered.
+  await sheet.getByLabel('Runs on').selectOption(kept.a.host.id);
+  await expect(model).toHaveValue('gpt-5.6-terra');
+  await expect(sheet.locator('[data-model-ran]')).toHaveText(/last turn on host-a\.example\.com answered/);
+  // On B nothing is kept, and it doesn’t list A’s model: its own default.
+  await sheet.getByLabel('Runs on').selectOption(kept.b.host.id);
+  await expect(model).toHaveValue('auto');
+  // Back on A, whose list was asked already: A’s answered model again, not what B left.
+  await sheet.getByLabel('Runs on').selectOption(kept.a.host.id);
+  await expect(model).toHaveValue('gpt-5.6-terra');
+  // A model the person typed is theirs from then on, wherever the agent moves.
+  await model.fill('my-own-model');
+  await sheet.getByLabel('Runs on').selectOption(kept.b.host.id);
+  await sheet.getByLabel('Runs on').selectOption(kept.a.host.id);
+  await expect(model).toHaveValue('my-own-model');
 });

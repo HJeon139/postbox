@@ -41,13 +41,7 @@ function askModels(st, paint) {
       st.modelLists[source] = { models, fresh: r?.fresh === true, why: r?.why ?? null, ran: r?.ran ?? null };
       const caps = client.config.backends?.[backend];
       if (!hostId && caps && models.length) caps.models = models;
-      // The model Postbox picks: one that answered there, when one has, since the harness’s first may be one this
-      // sign-in can’t run; else its default among the list.
-      const ranHere = ranDefault(r?.ran);
-      const picks = sourceOf(st) === source && st.modelDefaulted;
-      if (picks && ranHere && r.ran[st.model]?.ended !== 'answered') st.model = ranHere;
-      else if (picks && !ranHere && models.length && !models.includes(st.model)) st.model = modelDefault(backend, client.config, models);
-      if (picks) st.effort = effortNamedBy(backend, st.model) ?? st.effort;
+      pickModel(st);
       paint();
     },
     () => {
@@ -55,6 +49,22 @@ function askModels(st, paint) {
       paint();
     },
   );
+}
+
+/**
+ * The model Postbox picks while the person hasn’t (st.modelDefaulted): one that answered there last, since the
+ * harness’s first may be one this sign-in can’t run (#1977); else its default among the list. Run on each paint, so
+ * moving the agent to another host or backend and back picks for where it is now. Effort follows a model that changed.
+ * @param {any} st
+ */
+function pickModel(st) {
+  const list = st.modelLists?.[sourceOf(st)];
+  if (!st.modelDefaulted || !list) return;
+  const was = st.model;
+  const ranHere = ranDefault(list.ran);
+  if (ranHere && list.ran[st.model]?.ended !== 'answered') st.model = ranHere;
+  else if (!ranHere && list.models.length && !list.models.includes(st.model)) st.model = modelDefault(st.backend, client.config, list.models);
+  if (st.model !== was) st.effort = effortNamedBy(st.backend, st.model) ?? st.effort;
 }
 
 /**
@@ -124,11 +134,22 @@ function withHost(text, host) {
 }
 
 /**
+ * What a suggestion says beside its name: how its last turn there ended and when, for one a turn has tried; else
+ * Codex’s name for its own default; else nothing.
+ * @param {any} st @param {string} m @param {Record<string, { ended: string, at: number }> | null} ran
+ */
+function markOf(st, m, ran) {
+  if (ran?.[m]) return `${ran[m].ended} ${ago(ran[m].at)}`;
+  return codexDefault(st.backend, m) ? modelName(st.backend, m) : null;
+}
+
+/**
  * The field for st.model. idp prefixes element ids.
  * @param {any} st @param {() => void} paint @param {{ idp: string }} opts
  */
 export function modelField(st, paint, { idp }) {
   askModels(st, paint);
+  pickModel(st);
   const help = listHelp(st);
   const real = capsOf(st.backend).local || st.remote;
   const ran = ranOf(st);
@@ -163,7 +184,8 @@ export function modelField(st, paint, { idp }) {
     h(
       'datalist',
       { id: `${idp}-models` },
-      suggested(st).map((m) => h('option', { value: m, label: codexDefault(st.backend, m) ? modelName(st.backend, m) : null })),
+      // Each suggestion a turn has tried says so beside its name, so the groups are told apart by more than their place.
+      suggested(st).map((m) => h('option', { value: m, label: markOf(st, m, ran) })),
     ),
     // Only once a turn there has said something, and then with its line kept whether the model in the field has a
     // record or not, so typing moves nothing below it.

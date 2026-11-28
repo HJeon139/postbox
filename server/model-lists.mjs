@@ -21,12 +21,13 @@ export class ModelLists {
   /**
    * @param {import('./adapters/adapter.mjs').AdapterRegistry} adapters
    * @param {{ file: string, now?: () => number, listOnHost?: (hostId: string, backend: string) => Promise<string[]>,
-   *   hostIds?: () => string[] }} opts  file: where the last lists are kept; listOnHost: what a host’s CLI lists
-   *   (server/remote/hosts-models.mjs); hostIds: the hosts Postbox has, so a deleted one’s lists are forgotten
+   *   hostIds?: () => string[], reasons?: boolean }} opts  file: where the last lists are kept; listOnHost: what a
+   *   host’s CLI lists (server/remote/hosts-models.mjs); hostIds: the hosts Postbox has, so a deleted one’s lists are
+   *   forgotten; reasons: whether an answer carries a failed model’s reason (server/model-runs.mjs), false when hosted
    */
-  constructor(adapters, { file, now = Date.now, listOnHost, hostIds }) {
+  constructor(adapters, { file, now = Date.now, listOnHost, hostIds, reasons }) {
     // How each model’s last turn ended, kept beside the lists and answered with them (server/model-runs.mjs).
-    this.runs = new ModelRuns({ file: join(dirname(file), 'model-runs.json'), now, hostIds });
+    this.runs = new ModelRuns({ file: join(dirname(file), 'model-runs.json'), now, hostIds, reasons });
     this.adapters = adapters;
     this.file = file;
     this.now = now;

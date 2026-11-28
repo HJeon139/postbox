@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -64,6 +64,8 @@ test('a failure that isn’t about the model says nothing of it: a step taken, w
   failed('away', { endErr: withTransient(new Error('overloaded'), 529) });
   failed('away', {}, { lost: true });
   failed('away', {}, { resends: true });
+  // A host’s own failure, Sign-in needed or Interrupted, is about the host and not the model that ran there.
+  failed('away', { endErr: Object.assign(new Error('Sign-in needed on build-box.'), { remote: { state: 'signin', hostId: 'ho_1' } }) });
   assert.deepEqual(runs.of('claude-code', 'ho_1'), {});
   // A thought, narration or a subagent’s step is not the agent’s own first step.
   failed('away', { steps: [{ kind: 'thought' }, { kind: 'said' }, { kind: 'tool', who: 'subagent' }] });
@@ -121,4 +123,29 @@ test('a list of models is answered with what was kept for it, and is as it was w
   lists.close();
   lists.runs.record('kiro-cli', 'm-1', 'answered');
   assert.equal('m-1' in lists.runs.of('kiro-cli'), false, 'closing the lists closes the record');
+});
+
+test('a turn is kept where it ran: the host its turn was on, when that differs from where its agent is placed now', () => {
+  const { runs, ended } = setup({ hosts: ['ho_1', 'ho_2'] });
+  ended('away', { remote: { hostId: 'ho_2' } });
+  assert.deepEqual(Object.keys(runs.of('claude-code', 'ho_2')), ['us.opus-new']);
+  assert.deepEqual(runs.of('claude-code', 'ho_1'), {});
+});
+
+test('what is kept is read from the file once: a turn’s end reads nothing from disk, and a new start reads what was written', () => {
+  const { file, runs, ended } = setup();
+  ended('here');
+  writeFileSync(file, '{"claude-code":{"written-behind-its-back":{"ended":"answered","at":1}}}');
+  assert.deepEqual(Object.keys(runs.of('claude-code')), ['claude-sonnet-4-6'], 'not read again');
+  ended('away');
+  assert.deepEqual(Object.keys(new ModelRuns({ file }).of('claude-code')), ['claude-sonnet-4-6'], 'and the next write is of what it holds');
+  assert.deepEqual(Object.keys(new ModelRuns({ file }).of('claude-code', 'ho_1')), ['us.opus-new']);
+});
+
+test('hosted, an answer carries how a turn ended and when, and never the harness’s words, which stay in the file', () => {
+  const file = join(tempDir('pb-model-runs-hosted-'), 'model-runs.json');
+  const runs = new ModelRuns({ file, now: () => 5, reasons: false });
+  runs.record('claude-code@ho_1', 'us.opus-new', 'failed', 'arn:aws:bedrock:us-west-2:123456789012:inference-profile/us.opus-new is not available');
+  assert.deepEqual(runs.of('claude-code', 'ho_1'), { 'us.opus-new': { ended: 'failed', at: 5 } });
+  assert.match(readFileSync(file, 'utf8'), /inference-profile/);
 });
