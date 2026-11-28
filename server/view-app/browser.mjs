@@ -207,7 +207,7 @@ export class AppBrowser {
    * theme, in a conversation `column` px wide, or beside the rail when that’s null. The context aborts every request
    * that isn’t a GET to `origin`. The whole capture has CAPTURE_MS: past that, the browser is closed, as a hung one
    * would hang every later call too, and the next call starts a new one.
-   * @param {{ origin: string, threadId: string, itemId: string, width: number, height: number, column?: number|null, theme: 'light'|'dark', region?: { x: number, y: number, w: number, h: number, width: number, height: number } | null }} at
+   * @param {{ origin: string, threadId: string, itemId: string, width: number, height: number, column?: number|null, theme: 'light'|'dark', region?: { x: number, y: number, w: number, h: number, width: number, height: number } | null, onSlice?: (s: { top: number, height: number, total: number }) => void }} at
    * @returns {Promise<Buffer>}
    */
   async capture(at) {
@@ -220,7 +220,7 @@ export class AppBrowser {
   }
 
   /** The capture itself. @param {Parameters<AppBrowser['capture']>[0]} at @returns {Promise<Buffer>} */
-  async render({ origin, threadId, itemId, width, height, column = null, theme, region = null }) {
+  async render({ origin, threadId, itemId, width, height, column = null, theme, region = null, onSlice }) {
     const browser = await this.browser();
     const viewW = region ? Math.max(width, region.width + 32) : width;
     const viewH = region ? Math.max(height, Math.min(region.height + 32, 4000)) : height;
@@ -242,10 +242,11 @@ export class AppBrowser {
       if (region) {
         const box = await page.locator('[data-capture-item]').boundingBox();
         if (!box) throw new Error('The page drew an empty app.');
-        const { top, height: clipH } = clipWindow(region, box.height, height);
+        const slice = clipWindow(region, box.height, height);
+        onSlice?.(slice);
         png = await page.screenshot({
           fullPage: true,
-          clip: { x: box.x, y: box.y + top, width: box.width, height: clipH },
+          clip: { x: box.x, y: box.y + slice.top, width: box.width, height: slice.height },
           timeout: CAPTURE_MS,
           animations: 'disabled',
         });

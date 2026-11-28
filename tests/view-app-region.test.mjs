@@ -35,18 +35,31 @@ function setup() {
   const se = arrange.sessionsIn(rt, t.id)[0];
   const shown = rt.toolsFor(se.id).show_app({ title: 'Price and orders', code: '<p>Orders fall as price rises.</p>' });
   const captures = [];
+  let nextSlice = null;
   const browser = {
     status: () => 'ready',
     installing: null,
     capture: async (at) => {
       captures.push(at);
+      if (nextSlice) at.onSlice?.(nextSlice);
       return PNG;
     },
     close: async () => {},
   };
   attachViewApp(rt, new ViewApp({ dataDir: dir, origin: () => 'http://127.0.0.1:1', browser: /** @type {any} */ (browser) }));
   keepAnswer(viewOf(rt).dir, 'allowed');
-  return { dir, rt, t, se, appId: shown.appId, captures, done: () => rmSync(dir, { recursive: true, force: true }) };
+  return {
+    dir,
+    rt,
+    t,
+    se,
+    appId: shown.appId,
+    captures,
+    setSlice: (s) => {
+      nextSlice = s;
+    },
+    done: () => rmSync(dir, { recursive: true, force: true }),
+  };
 }
 
 test('#856 view_app validates an optional region, passes it to capture, and saves it beside the full capture', async () => {
@@ -77,11 +90,13 @@ test('#856 view_app validates an optional region, passes it to capture, and save
     assert.equal(existsSync(saved), true, 'saved under its own filename');
     assert.deepEqual(readFileSync(saved), PNG);
 
-    // A region marked on an earlier version still captures v2 and notes the version difference.
+    // A region marked on an earlier version still captures v2 and notes the version difference, using the actual rendered slice.
     s.rt.toolsFor(s.se.id).update_app({ id: s.appId, code: '<p>Updated.</p>', summary: 'v2' });
+    s.setSlice({ top: 480, height: 680, total: 2400 });
     const older = await viewApp(s.rt, s.se.id, { appId: s.appId, region }, ctx);
     assert.equal(older.ok, true, older.message);
     assert.match(older.message, /marked on v1; this capture shows v2/);
+    assert.match(older.message, /showing y 480–1160 of 2400 px/);
   } finally {
     s.done();
   }

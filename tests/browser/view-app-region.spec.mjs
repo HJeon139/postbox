@@ -69,4 +69,20 @@ test('#856 view_app with a region captures the app at its review width, uncapped
       : null;
   });
   expect(box).toEqual({ x: 40, y: 4500, w: 220, h: 80, fw: 640 });
+
+  // When the app is now taller than region.height (e.g. after an update), the message reports the actual captured slice.
+  rt.toolsFor(se.id).update_app({
+    id: shown.appId,
+    code: '<main style="height:2400px;padding:12px;color:var(--text)"><h2>Top</h2><p style="margin-top:800px">Middle</p></main>',
+    summary: 'grew to 2400 px',
+  });
+  const grown = await arrange.viewApp(
+    rt,
+    se.id,
+    { appId: shown.appId, region: { x: 40, y: 780, w: 220, h: 80, width: 640, height: 960, version: 1 } },
+    { threadId: () => t.id, endSegment() {}, images: true },
+  );
+  expect(grown.ok, grown.message).toBe(true);
+  expect(grown.message, 'reports the actual rendered height (2400 px), not the older region.height (960 px)').toMatch(/showing y 480–1160 of 24\d\d px/);
+  expect(sizeOf(grown.image.data).height).toBe(680);
 });

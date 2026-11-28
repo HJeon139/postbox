@@ -84,6 +84,17 @@ function parseRegion(raw, currentVersion) {
   return { ok: true, region: r };
 }
 
+/** Summarizes a view_app capture for the agent, naming the region and actual clipped y slice when clipped (#856). */
+function captureMessage(id, app, win, region, slice, saved) {
+  const where = saved ? ` Saved as ${saved}.` : '';
+  if (!region)
+    return `${id} v${app.current} as the person first sees it, inline in the conversation, in a ${win.width} × ${win.height} window, ${win.theme} theme.${where}`;
+  const vNote = region.version !== app.current ? ` Note: the region was marked on v${region.version}; this capture shows v${app.current}.` : '';
+  const shown = slice ?? clipWindow(region, region.height, win.height);
+  const part = shown.height < shown.total ? `, showing y ${shown.top}–${shown.top + shown.height} of ${shown.total} px` : '';
+  return `${id} v${app.current}, with the marked region (${regionText(region)}) outlined at its ${region.width} px review width${part}, ${win.theme} theme.${vNote}${where}`;
+}
+
 /**
  * The tool, for the session it acts for. Refuses an app outside the agent’s conversation, asks the person before the
  * first download, and says plainly when it can’t show anything.
@@ -122,23 +133,27 @@ export async function viewApp(rt, sessionId, { appId, region: rawRegion } = {}, 
   if (!item) return { ok: false, message: `${id} isn’t in its thread any more, so there’s nothing to render.` };
   const win = view.windowNow();
   let png;
+  /** @type {{ top: number, height: number, total: number } | null} */
+  let slice = null;
   try {
-    png = await view.browser.capture({ origin: view.origin(), threadId: app.threadId, itemId: item.id, ...win, region });
+    png = await view.browser.capture({
+      origin: view.origin(),
+      threadId: app.threadId,
+      itemId: item.id,
+      ...win,
+      region,
+      onSlice: (s) => {
+        slice = s;
+      },
+    });
   } catch (e) {
     return { ok: false, message: `Postbox couldn’t render ${id}: ${e.message} The pre-display check still stands.` };
   }
   const name = region ? `${id}-v${app.current}-region-${region.x}-${region.y}.png` : `${id}-v${app.current}.png`;
   const saved = await save(rt, sessionId, name, png);
-  const where = saved ? ` Saved as ${saved}.` : '';
-  const vNote = region && region.version !== app.current ? ` Note: the region was marked on v${region.version}; this capture shows v${app.current}.` : '';
-  const slice = region ? clipWindow(region, region.height, win.height) : null;
-  const part = slice && slice.height < slice.total ? `, showing y ${slice.top}–${slice.top + slice.height} of ${slice.total} px` : '';
-  const summary = region
-    ? `${id} v${app.current}, with the marked region (${regionText(region)}) outlined at its ${region.width} px review width${part}, ${win.theme} theme.${vNote}${where}`
-    : `${id} v${app.current} as the person first sees it, inline in the conversation, in a ${win.width} × ${win.height} window, ${win.theme} theme.${where}`;
   return {
     ok: true,
-    message: summary,
+    message: captureMessage(id, app, win, region, slice, saved),
     image: ctx.images ? { data: png.toString('base64'), mimeType: 'image/png' } : null,
   };
 }
