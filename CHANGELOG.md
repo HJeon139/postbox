@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.9.1 (2026-11-28)
+
+### Fixes
+
+- **hosted:** no folder on the server for an agent or a conversation
+
 ## 5.9.0 (2026-11-28)
 
 ### Features
