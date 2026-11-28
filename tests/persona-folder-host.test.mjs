@@ -137,3 +137,71 @@ test('on your own computer a move from a host checks only a folder the change na
   const p = rt.createPersona({ handle: 'alpha', backend: 'claude-code', remote: { hostId: host.id }, folder: 'relative' });
   assert.equal(rt.updatePersona(p.id, { remote: null, backend: 'mock' }).folder, 'relative');
 });
+
+test('hosted, a folder an agent placed on the server was given before is ignored: cleared as Postbox starts, and an agent on a host keeps its own', () => {
+  const store = new Store(null);
+  store.emit('host', { id: 'ho_1', name: 'host.example.com', settings: {}, createdAt: 1 });
+  store.emit('persona', { id: 'pe_a', handle: 'here-before', backend: 'mock', folder: '/srv/saved-before', remote: null, version: 3 });
+  store.emit('persona', { id: 'pe_b', handle: 'on-a-host', backend: 'claude-code', folder: '/srv/on-its-host', remote: { hostId: 'ho_1' }, version: 2 });
+  store.emit('persona', { id: 'pe_c', handle: 'no-folder', backend: 'mock', folder: '', remote: null, version: 1 });
+  const start = (/** @type {boolean} */ hosted) =>
+    new Runtime({
+      store,
+      adapters: new AdapterRegistry().register(new MockAdapter()),
+      config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, hosted },
+      hosts: new FakeHosts(),
+    });
+  // On your own computer nothing is cleared.
+  start(false);
+  assert.equal(store.state.personas.pe_a.folder, '/srv/saved-before');
+  // From here a hosted start writes only the folder it clears: one agent’s once, then nothing.
+  const written = () => store.state.seq;
+  const before = written();
+  start(true);
+  assert.equal(written(), before + 1, 'one write, for the one agent with a folder to clear');
+  start(true);
+  assert.equal(written(), before + 1, 'a later hosted start writes nothing');
+  const { pe_a, pe_b, pe_c } = store.state.personas;
+  assert.deepEqual([pe_a.folder, pe_a.version, pe_a.handle], ['', 3, 'here-before'], 'cleared, and nothing else of the agent changed');
+  assert.equal(pe_b.folder, '/srv/on-its-host');
+  assert.equal(pe_c.folder, '');
+});
+
+/** A store with a project and a conversation whose two agents are one on a host and one on the server. */
+function savedBefore() {
+  const store = new Store(null);
+  store.emit('host', { id: 'ho_1', name: 'host.example.com', settings: {}, createdAt: 1 });
+  store.emit('project', { id: 'pr_a', name: 'Saved with a folder', folder: '/srv/project', pushUrl: 'https://github.com/owner/name.git' });
+  store.emit('project', { id: 'pr_b', name: 'Named only' });
+  store.emit('persona', { id: 'pe_here', handle: 'here', backend: 'mock', folder: '', remote: null, version: 1 });
+  store.emit('persona', { id: 'pe_away', handle: 'away', backend: 'claude-code', folder: '', remote: { hostId: 'ho_1' }, version: 1 });
+  store.emit('thread', { id: 'th_a', title: 'Room', projectId: 'pr_a' });
+  store.emit('session', { id: 'se_here', threadId: 'th_a', personaId: 'pe_here', handle: 'here', addDirs: ['/srv/added', '/etc'], readDirs: [] });
+  store.emit('session', { id: 'se_away', threadId: 'th_a', personaId: 'pe_away', handle: 'away', addDirs: [] });
+  const start = (/** @type {boolean} */ hosted) =>
+    new Runtime({
+      store,
+      adapters: new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: join(tempDir('pb-saved-'), 'w') })).register(new MockAdapter()),
+      config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, hosted },
+      hosts: new FakeHosts(),
+    });
+  return { store, start };
+}
+
+test('hosted, a conversation’s or project’s folder saved before is ignored too: each is cleared once, as Postbox starts', () => {
+  const { store, start } = savedBefore();
+  start(false);
+  assert.deepEqual(
+    [store.state.projects.pr_a.folder, store.state.sessions.se_here.addDirs],
+    ['/srv/project', ['/srv/added', '/etc']],
+    'kept on your own computer',
+  );
+  const before = store.state.seq;
+  start(true);
+  assert.equal(store.state.seq, before + 2, 'two writes: the one project and the one conversation that had any');
+  assert.deepEqual(store.state.projects.pr_a, { id: 'pr_a', name: 'Saved with a folder', pushUrl: 'https://github.com/owner/name.git' });
+  assert.deepEqual(store.state.projects.pr_b, { id: 'pr_b', name: 'Named only' });
+  assert.deepEqual([store.state.sessions.se_here.addDirs, store.state.sessions.se_here.threadId], [[], 'th_a']);
+  start(true);
+  assert.equal(store.state.seq, before + 2, 'a later hosted start writes nothing');
+});

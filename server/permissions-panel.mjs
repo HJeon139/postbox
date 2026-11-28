@@ -13,7 +13,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { asksForWrites } from '../shared/hook-modes.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
-import { NO_SERVER_FOLDER } from './folder-path.mjs';
+import { NO_ADDED_FOLDER, NO_SERVER_FOLDER } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { changeHostRule, hostRuleList } from './host-rules.mjs';
 import { readHooks } from './permission-hooks.mjs';
@@ -200,7 +200,8 @@ export async function changePermissionFolder(rt, { sessionId, path, remove = fal
   // A readable folder (#338) is only ever removed here; Always allow on a read card adds it.
   if (read) return removeReadFolder(rt, se.id, String(path ?? ''));
   // Hosted, no path on the server is added, and the answer is the same whatever is there (folder-path.mjs).
-  if (rt.config?.hosted === true && !remove) throw httpError(422, NO_SERVER_FOLDER);
+  // An agent placed on the server is told to move to a host; one on a host, where its folder is set there.
+  if (rt.config?.hosted === true && !remove) throw httpError(422, rt.s.personas[se.personaId]?.remote?.hostId ? NO_ADDED_FOLDER : NO_SERVER_FOLDER);
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId];
   const raw = String(path ?? '').trim();
   if (!raw || raw.length > 1000) throw httpError(422, 'Pick a folder, or write its full path.');
