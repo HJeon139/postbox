@@ -176,14 +176,7 @@ export function permissionBlock(it, ctx) {
             open ? ' Nothing is created, sent or changed until you allow it.' : '',
           )
         : null,
-      it.draft
-        ? h(
-            'div.col.perm-draft',
-            { role: 'group', 'aria-label': 'The draft', tabindex: '0' },
-            h('span.label', `The draft, from ${it.draft.field}`),
-            h('div.md', { html: trusted(renderMarkdown(it.draft.text)) }),
-          )
-        : null,
+      it.draft ? draftView(it.draft) : null,
       // The whole command, wrapped: you decide on what you can see.
       it.detail ? h('pre.md-code.perm-detail', h('code', it.detail)) : null,
       // What Always allow saves, in words, before you click it.
@@ -209,6 +202,16 @@ export function permissionBlock(it, ctx) {
       !open && it.reason ? h('p.small', h('b', 'Your reason: '), it.reason) : null,
     ),
     open ? foot : dismissFoot(it, act),
+  );
+}
+
+/** A write outside Postbox’s draft, rendered as it will read (#112). @param {{ field: string, text: string }} draft */
+function draftView(draft) {
+  return h(
+    'div.col.perm-draft',
+    { role: 'group', 'aria-label': 'The draft', tabindex: '0' },
+    h('span.label', `The draft, from ${draft.field}`),
+    h('div.md', { html: trusted(renderMarkdown(draft.text)) }),
   );
 }
 
