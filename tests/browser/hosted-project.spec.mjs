@@ -50,4 +50,17 @@ test('hosted, New project asks for a name alone, says where agents work, and mak
     await expect(settings.getByText('Folders on its hosts', { exact: true })).toBeVisible();
     await expect(settings.getByLabel('Repository to push to')).toBeVisible();
   });
+
+  await test.step('its conversations offer no project folder to add a file from', async () => {
+    const t = app.rt.createThread({ projectId: /** @type {any} */ (made).id, title: 'Storefront talk' });
+    await page.keyboard.press('Escape');
+    await expect(settings).toHaveCount(0);
+    // The page hears of the conversation before it goes there, or under lag it falls back to another one.
+    await synced(page, app);
+    await page.goto(`${app.origin}/#/t/${t.id}`);
+    await synced(page, app);
+    await page.getByRole('button', { name: /^Add a file/ }).click();
+    await expect(page.getByRole('menuitem', { name: /^Upload from computer/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /From the project folder/ })).toHaveCount(0);
+  });
 });

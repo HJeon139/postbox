@@ -710,6 +710,17 @@ export function flushOutbox() {
   if (items.length) client.emit({ type: 'outbox' });
 }
 
+/**
+ * The plus menu’s “From the project folder”, for a project with a folder: a hosted one has none on the server to pick
+ * from (designs/architecture/hosted.md, “What assumed one computer”).
+ * @param {any} t  the thread @param {(path: string) => void} add
+ */
+function projectFileItems(t, add) {
+  const folder = S().projects[t?.projectId]?.folder;
+  if (!folder) return [];
+  return [{ label: 'From the project folder', desc: folder, icon: 'folder', run: () => openFolderPicker(t.projectId, add) }];
+}
+
 export function mountComposer(threadId, { side = false } = {}) {
   const topic = S().threads[threadId]?.kind === 'topic';
   // / and ! (#67) live in a conversation’s own composer, not in a thread panel’s.
@@ -833,16 +844,10 @@ export function mountComposer(threadId, { side = false } = {}) {
           icon: 'upload',
           run: () => file.click(),
         },
-        {
-          label: 'From the project folder',
-          desc: S().projects[t?.projectId]?.folder ?? '',
-          icon: 'folder',
-          run: () =>
-            openFolderPicker(t.projectId, (path) => {
-              draft.add({ kind: 'project-file', path });
-              focusComposer();
-            }),
-        },
+        ...projectFileItems(t, (path) => {
+          draft.add({ kind: 'project-file', path });
+          focusComposer();
+        }),
         'hr',
         { heading: 'New agent' },
         { label: 'From a boilerplate', desc: boilerplateDesc(), icon: 'agent', run: () => openNewAgent({ threadId }) },
