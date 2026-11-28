@@ -9,7 +9,7 @@ import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'n
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
-import { kiroMemoryOff } from '../server/adapters/kiro-memory.mjs';
+import { kiroMemoryOff } from '../server/remote/host/kiro-memory.mjs';
 import { fakeCtx, fakeSpawn, fixture } from './kiro-cli-fakes.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
