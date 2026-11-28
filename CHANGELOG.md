@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.10.0 (2026-11-28)
+
+### Features
+
+- **conformance:** run the backend checks with each cli's version
+- **conformance:** check that agy reads postbox's rules within its limit
+- **conformance:** check what codex saved and sent of postbox's guide
+- **uat:** show each held step in the report's timeline, with when and why
+- **uat:** record the runner's exit code in run.json
+- **adapters:** load postbox's skills on a remote host from its installed copy
+- **remote:** ship postbox's agent plugin with the host install
+
+### Fixes
+
+- **conformance:** the codex probe opens with postbox's skills off, not as a host turn
+- **remote:** ship only a skill's files from agent-plugin, leaving strays behind
+
 ## 5.9.7 (2026-11-28)
 
 ### Fixes
