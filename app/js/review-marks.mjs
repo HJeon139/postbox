@@ -143,7 +143,7 @@ export function paintMarks(itemId, env) {
  * A region drawn: an outlined box, or a dot for a point, with its number. The words for it are in the list of
  * comments (regionNote), so a screen reader skips it. @param {any} r @param {string} n @param {string} [cls]
  */
-function regionBox(r, n, cls = '') {
+export function regionBox(r, n, cls = '') {
   const point = r.w === 0 && r.h === 0;
   const px = (/** @type {number} */ n) => `${n}px`;
   const size = point ? {} : { width: px(r.w), height: px(r.h) };

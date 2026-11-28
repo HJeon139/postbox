@@ -192,7 +192,7 @@ export class AppBrowser {
    * theme, in a conversation `column` px wide, or beside the rail when that’s null. The context aborts every request
    * that isn’t a GET to `origin`. The whole capture has CAPTURE_MS: past that, the browser is closed, as a hung one
    * would hang every later call too, and the next call starts a new one.
-   * @param {{ origin: string, threadId: string, itemId: string, width: number, height: number, column?: number|null, theme: 'light'|'dark' }} at
+   * @param {{ origin: string, threadId: string, itemId: string, width: number, height: number, column?: number|null, theme: 'light'|'dark', region?: { x: number, y: number, w: number, h: number, width: number, height: number } | null }} at
    * @returns {Promise<Buffer>}
    */
   async capture(at) {
@@ -205,9 +205,11 @@ export class AppBrowser {
   }
 
   /** The capture itself. @param {Parameters<AppBrowser['capture']>[0]} at @returns {Promise<Buffer>} */
-  async render({ origin, threadId, itemId, width, height, column = null, theme }) {
+  async render({ origin, threadId, itemId, width, height, column = null, theme, region = null }) {
     const browser = await this.browser();
-    const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion: 'reduce', deviceScaleFactor: 1 });
+    const viewW = region ? Math.max(width, region.width + 32) : width;
+    const viewH = region ? Math.max(height, Math.min(region.height + 32, 4000)) : height;
+    const context = await browser.newContext({ viewport: { width: viewW, height: viewH }, colorScheme: theme, reducedMotion: 'reduce', deviceScaleFactor: 1 });
     try {
       const own = new URL(origin).origin;
       await context.route('**/*', (route) => {
@@ -215,7 +217,8 @@ export class AppBrowser {
         return r.method() === 'GET' && new URL(r.url()).origin === own ? route.continue() : route.abort();
       });
       const page = await context.newPage();
-      const q = new URLSearchParams({ capture: itemId, thread: threadId, ...(column ? { column: String(column) } : {}) });
+      const regionParam = region ? { region: `${region.x},${region.y},${region.w},${region.h},${region.width},${region.height}` } : {};
+      const q = new URLSearchParams({ capture: itemId, thread: threadId, ...(column && !region ? { column: String(column) } : {}), ...regionParam });
       await page.goto(`${own}/?nocheck&${q}`, { timeout: CAPTURE_MS });
       await page.waitForSelector('[data-capture="ready"], [data-capture="missing"]', { timeout: CAPTURE_MS });
       if (await page.$('[data-capture="missing"]')) throw new Error('The page couldn’t find that app to show.');

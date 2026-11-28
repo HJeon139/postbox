@@ -105,10 +105,26 @@ export const TOOL_DEFS = [
   {
     name: 'view_app',
     description:
-      'See an app you or another agent showed in this conversation, as the person first sees it: inline in the conversation, at the size of their Postbox window (1000 × 680 when no tab is open), in their theme, at its current version. Returns a picture, and saves it in your folder under .postbox/view. Look before you call an app done: the pre-display check catches what it measures, not a layout that’s simply wrong. The first time, Postbox asks the person whether to download the browser it renders with; end your turn then, and you’ll hear their answer.',
+      'See an app you or another agent showed in this conversation, as the person first sees it: inline in the conversation, at the size of their Postbox window (1000 × 680 when no tab is open), in their theme, at its current version. Pass a review comment’s region to see the app at the review frame’s width, uncapped in height, with that region outlined. Returns a picture, and saves it in your folder under .postbox/view. Look before you call an app done: the pre-display check catches what it measures, not a layout that’s simply wrong. The first time, Postbox asks the person whether to download the browser it renders with; end your turn then, and you’ll hear their answer.',
     inputSchema: {
       type: 'object',
-      properties: { appId: { type: 'string', description: 'The appId show_app or update_app returned.' } },
+      properties: {
+        appId: { type: 'string', description: 'The appId show_app or update_app returned.' },
+        region: {
+          type: 'object',
+          description: 'Optional region from a review comment ({ x, y, w, h, width, height, version? }) to outline at its review width.',
+          properties: {
+            x: { type: 'number' },
+            y: { type: 'number' },
+            w: { type: 'number' },
+            h: { type: 'number' },
+            width: { type: 'number' },
+            height: { type: 'number' },
+            version: { type: 'number' },
+          },
+          required: ['x', 'y', 'w', 'h', 'width', 'height'],
+        },
+      },
       required: ['appId'],
     },
   },

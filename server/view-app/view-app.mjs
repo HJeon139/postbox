@@ -5,6 +5,7 @@
 
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { REGION, regionError, regionText } from '../../shared/review-regions.mjs';
 import { AppBrowser, DEFAULT_WINDOW } from './browser.mjs';
 import { answerIn, askToSee, settleDownloads } from './consent.mjs';
 import { attachViewApp, viewOf } from './view-of.mjs';
@@ -63,18 +64,39 @@ export function startViewApp(rt, opts) {
 }
 
 /**
+ * Validates an optional region passed to view_app (#856), defaulting version to the app’s current one when omitted.
+ * @param {unknown} raw @param {number} currentVersion
+ */
+function parseRegion(raw, currentVersion) {
+  if (raw === undefined || raw === null) return { ok: true, region: null };
+  if (typeof raw !== 'object' || Array.isArray(raw))
+    return { ok: false, message: 'region must be { x, y, w, h, width, height } in px of the review frame.' };
+  const r = { .../** @type {Record<string, any>} */ (raw), version: /** @type {any} */ (raw).version ?? currentVersion };
+  /** @type {string[]} */
+  const errs = [];
+  REGION(r, 'region', errs);
+  if (errs.length) return { ok: false, message: `Invalid region: ${errs.join('; ')}` };
+  const err = regionError({ anchor: 'region 1', region: r });
+  if (err) return { ok: false, message: `Invalid region: ${err}` };
+  return { ok: true, region: r };
+}
+
+/**
  * The tool, for the session it acts for. Refuses an app outside the agent’s conversation, asks the person before the
  * first download, and says plainly when it can’t show anything.
- * @param {any} rt @param {string} sessionId @param {{ appId?: unknown }} args
+ * @param {any} rt @param {string} sessionId @param {{ appId?: unknown, region?: unknown }} args
  * @param {{ threadId: () => string, endSegment: () => void, images: boolean }} ctx
  */
-export async function viewApp(rt, sessionId, { appId } = {}, ctx) {
+export async function viewApp(rt, sessionId, { appId, region: rawRegion } = {}, ctx) {
   const view = viewOf(rt);
   const se = rt.session(sessionId);
   const id = String(appId ?? '').slice(0, 80);
   const app = rt.s.apps[id];
   if (!app || conversationOf(rt, app.threadId) !== conversationOf(rt, se.threadId))
     return { ok: false, message: `There’s no app “${id}” in your conversation. Use the appId show_app returned.` };
+  const parsed = parseRegion(rawRegion, app.current);
+  if (!parsed.ok) return { ok: false, message: parsed.message };
+  const region = parsed.region;
   if (rt.personas.forSession(se)?.remote?.hostId)
     return { ok: false, message: 'view_app can’t show an app to an agent on another computer yet. Ask the person how it looks.' };
   const status = view.browser.status();
@@ -99,15 +121,20 @@ export async function viewApp(rt, sessionId, { appId } = {}, ctx) {
   const win = view.windowNow();
   let png;
   try {
-    png = await view.browser.capture({ origin: view.origin(), threadId: app.threadId, itemId: item.id, ...win });
+    png = await view.browser.capture({ origin: view.origin(), threadId: app.threadId, itemId: item.id, ...win, region });
   } catch (e) {
     return { ok: false, message: `Postbox couldn’t render ${id}: ${e.message} The pre-display check still stands.` };
   }
-  const saved = await save(rt, sessionId, `${id}-v${app.current}.png`, png);
+  const name = region ? `${id}-v${app.current}-region-${region.x}-${region.y}.png` : `${id}-v${app.current}.png`;
+  const saved = await save(rt, sessionId, name, png);
   const where = saved ? ` Saved as ${saved}.` : '';
+  const vNote = region && region.version !== app.current ? ` Note: the region was marked on v${region.version}; this capture shows v${app.current}.` : '';
+  const summary = region
+    ? `${id} v${app.current}, with the marked region (${regionText(region)}) outlined at its ${region.width} px review width, ${win.theme} theme.${vNote}${where}`
+    : `${id} v${app.current} as the person first sees it, inline in the conversation, in a ${win.width} × ${win.height} window, ${win.theme} theme.${where}`;
   return {
     ok: true,
-    message: `${id} v${app.current} as the person first sees it, inline in the conversation, in a ${win.width} × ${win.height} window, ${win.theme} theme.${where}`,
+    message: summary,
     image: ctx.images ? { data: png.toString('base64'), mimeType: 'image/png' } : null,
   };
 }
