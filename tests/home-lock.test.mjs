@@ -62,3 +62,15 @@ test('a dead lock is taken over, and the takeover file goes with it (#2027)', ()
   assert.deepEqual(readdirSync(dir), ['postbox.lock'], 'no takeover file or draft is left');
   release();
 });
+
+test('a release leaves a lock another start took over meanwhile: only this run’s lock goes (#2027)', () => {
+  const dir = tempDir('pb-home-lock-');
+  const lock = join(dir, 'postbox.lock');
+  const release = lockData(dir);
+  writeFileSync(lock, String(process.ppid)); // as a takeover by another start leaves it
+  release();
+  assert.equal(readFileSync(lock, 'utf8'), String(process.ppid), 'not this run’s lock: left alone');
+  rmSync(lock);
+  lockData(dir)();
+  assert.deepEqual(readdirSync(dir), [], 'its own lock goes');
+});

@@ -80,7 +80,16 @@ export function lockData(dataDir, io = DEFAULT_LOCK_IO) {
   for (let tries = 0; tries < 3; tries++) {
     try {
       publishWhole(io, lock, String(process.pid));
-      return () => io.rmSync(lock, { force: true });
+      // Only this run’s lock: one another start took over meanwhile is left alone (#2027).
+      return () => {
+        let held = '';
+        try {
+          held = io.readFileSync(lock, 'utf8');
+        } catch {
+          // already gone
+        }
+        if (held.trim() === String(process.pid)) io.rmSync(lock, { force: true });
+      };
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
       const other = holderOf(io, lock, dataDir);
