@@ -23,6 +23,7 @@ test('#479 daemon: an Isolated persona’s own Kiro home gets memory off before 
     await c.msgs.next('started');
     assert.deepEqual(JSON.parse(readFileSync(cliJson(fresh), 'utf8')), { 'memory.mode': 'disabled', 'memory.reflection': false });
     assert.equal(statSync(cliJson(fresh)).mode & 0o777, 0o600);
+    for (const dir of [`${s.p.root}/kiro-home`, fresh, join(fresh, 'settings')]) assert.equal(statSync(dir).mode & 0o777, 0o700, dir);
     // A home with settings of its own, memory on as Kiro’s default: the other keys stay.
     const used = `${s.p.root}/kiro-home/critic`;
     mkdirSync(join(used, 'settings'), { recursive: true });

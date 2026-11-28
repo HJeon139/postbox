@@ -23,7 +23,8 @@ export async function kiroMemoryOff(home) {
   try {
     const now = await settingsIn(file);
     if (Object.entries(OFF).every(([k, v]) => now[k] === v)) return;
-    await mkdir(join(home, 'settings'), { recursive: true });
+    // Only you can read the folders it makes: on a host it may be the first to make the persona’s home (#479).
+    await mkdir(join(home, 'settings'), { recursive: true, mode: 0o700 });
     const temp = `${file}.${randomUUID()}.tmp`;
     await writeFile(temp, `${JSON.stringify({ ...now, ...OFF }, null, 2)}\n`, { mode: 0o600 });
     await rename(temp, file);
