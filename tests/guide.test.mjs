@@ -133,6 +133,8 @@ test('the room tells an agent who else is in the conversation and what each does
   assert.match(g, /Your task is this turn’s request and anything that @-mentions you; what else happened since your last turn is context\./);
   assert.match(g, /A message the person sent to another agent is that agent’s, unless it asks for you too\./);
   assert.match(g, /To hand work on, @mention the agent with what it needs to start/);
+  // A closing line that @-named the agent it reacted to woke it, turn after turn, up to the chain’s cap (#1974).
+  assert.match(g, /else write its name without @\. In a line that says you’re done or that you reacted, write names without @\./);
   // Agents elsewhere in Postbox are listed apart, without the ones already here.
   assert.match(g, /Other agents in Postbox: @indexer\./);
   // Alone in its conversation, an agent gets no team section, only who it could bring in.
