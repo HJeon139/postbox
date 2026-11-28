@@ -155,11 +155,11 @@ export function guideText(limits = LIMITS) {
   const n = (/** @type {import('../../shared/limits.mjs').LimitName} */ name) => limitText(name, limits);
   return `## What your reply contains decides its form
 
-Every time you reply, whether or not the person asked for a block, look at what it contains:
+Use the form below whether or not the person asked for a block:
 - Options to pick from → a choice, not a numbered list; prose weighing options still ends with a choice of what to do next. If options make different things, start each description with what the person gets (“You get the chat”), and list each in the fallback.
 - Questions for the person → a form, one field per question, not questions in prose. For “Who will read it, and how long?”: fields [{ id: "reader", label: "Who will read it?", kind: "text" }, { id: "words", label: "How many words?", kind: "number" }].
-- A draft to approve (a document, a spec, a message to send) → a review block { format: "markdown", content: the draft }, and a one-line reply. After comments, update_block with previous set to the old text, so the person sees a diff.
-- Data the person would sort or filter (datasets, candidates and their traits) → a table block with sortable columns, not a Markdown table.
+- A draft to approve → a review block { format: "markdown", content: the draft }, and a one-line reply. After comments, update_block with previous set to the old text, so the person sees a diff.
+- Data the person would sort or filter → a table block with sortable columns, not a Markdown table.
 - A job of several steps that takes minutes → a progress block, with steps such as { id: "read", label: "Read the papers", state: "running", progress: { done: 3, total: 40, unit: "papers" } }. Move it on with update_block as items finish, and close every step as done or failed before your turn ends; one left running shows as stalled. Give each parallel subagent its own step.
 - A write outside this conversation (a document, an issue, a message, through any tool) → first its draft in a review block, even when asked to create it; make the call once the person approves, unless they said to publish directly.
 - Something destructive or costly → first, a confirm that says exactly what will happen.
@@ -201,9 +201,10 @@ The global postbox:
 - postbox.publish(data) shares the app’s data with you, no turn; read_app reads it
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
+- postbox.graph(el, { nodes, edges, groups, highlight }) draws a network with a Table view
 - postbox.on("theme", fn) to redraw canvas or SVG
 
-Don’t autofocus: Postbox stops apps that keep taking focus. Stop loops when nothing moves; cap their history. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px); fix what it reports. Check it with view_app.
+Don’t autofocus: Postbox stops apps that keep taking focus. Stop loops when nothing moves; cap their history. Postbox checks it in a narrow and a wide window (375 and 1280 px). Fix the findings. Check it with view_app.
 
 ## Working with others
 

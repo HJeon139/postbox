@@ -164,6 +164,11 @@ export function sandboxPage({ origin, ancestor, app, version, theme, check }) {
 ${css()}
 <script>${inline('kit/drawn.js', '</script')}</script>
 <script data-init="${esc(JSON.stringify(init))}">${inline('kit/kit.js', '</script')}</script>
+<script>${inline('kit/graph-cycles.js', '</script')}</script>
+<script>${inline('kit/graph-labels.js', '</script')}</script>
+<script>${inline('kit/graph-layout.js', '</script')}</script>
+<script>${inline('kit/graph-svg.js', '</script')}</script>
+<script>${inline('kit/graph.js', '</script')}</script>
 <script>${inline('kit/narration.js', '</script')}</script>
 <script>${inline('kit/frames.js', '</script')}</script>
 <script>${inline('kit/links.js', '</script')}</script>

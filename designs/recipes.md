@@ -14,6 +14,7 @@ Use one when:
 | Slidev export | a `slides.md` file in the agent’s folder, plus a code block | (needs a real agent) |
 | Line-by-line review | a review block, then `update_block` with `previous` to show the diff | Search schema spec |
 | Dashboard | an app with `postbox.charts.*`, each chart with a Table view | Asset dashboard |
+| Network | an app with `postbox.graph(el, { nodes, edges, groups, highlight })` for code-structure or dependency networks, with group clusters, directed arrows, and a Table view (#888) | (in the kit) |
 | Long job | a progress block with counts, moved on with `update_block`, every step closed, then a summary | Index the shelf |
 
 ## Narrated walkthrough
