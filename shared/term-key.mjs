@@ -12,9 +12,13 @@ export const TERM_VARIANTS = { '-': '\u2010\u2011\u2012\u2013\u2014\u2212', "'":
 /** Each variant, by the plain character it folds to. */
 const PLAIN_OF = new Map(Object.entries(TERM_VARIANTS).flatMap(([plain, variants]) => [...variants].map((v) => [v, plain])));
 
+/** Any one variant, so a term folds in one pass. */
+// lint-allow regex: every part is a constant, the variants of TERM_VARIANTS above.
+const ANY_VARIANT = new RegExp(`[${Object.values(TERM_VARIANTS).join('')}]`, 'g');
+
 /** A term with each dash and quote folded to its plain one. @param {unknown} term */
 export function foldTerm(term) {
-  return [...String(term)].map((c) => PLAIN_OF.get(c) ?? c).join('');
+  return String(term).replace(ANY_VARIANT, (c) => PLAIN_OF.get(c) ?? c);
 }
 
 /**

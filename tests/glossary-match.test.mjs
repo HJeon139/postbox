@@ -1,6 +1,7 @@
 // Which words of a reply link to a glossary term (shared/glossary-match.mjs, #102).
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { glossaryRegex } from '../shared/glossary-match.mjs';
 import { renderMarkdown } from '../shared/markdown.mjs';
 import { termKey } from '../shared/term-key.mjs';
 
@@ -84,4 +85,10 @@ test('a term doesn’t link inside an HTML entity the escaped text holds (#102)'
 test('a term spelled like an entity’s name still links as a word of its own (#102)', () => {
   assert.deepEqual(linked('AMP', 'the AMP team and R&D'), ['AMP']);
   assert.deepEqual(linked('lt', 'lt is short and a < b'), ['lt']);
+});
+
+test('the replies of a room share one matcher while its glossary stays the same', () => {
+  const matcher = glossaryRegex([{ term: 'R:31', key: 'r-31' }]);
+  assert.equal(glossaryRegex([{ term: 'R:31', key: 'r-31' }]), matcher);
+  assert.notEqual(glossaryRegex([{ term: 'R:32', key: 'r-31' }]), matcher);
 });

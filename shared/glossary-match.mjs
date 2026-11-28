@@ -24,14 +24,12 @@ const NOT_IN_ENTITY = '(?<!&|&#)';
  */
 const sameForm = (escaped) => foldTerm(escaped.replaceAll('&#39;', "'").replaceAll('&quot;', '"'));
 
-/** One character’s pattern: a plain dash or quote matches its variants too, and its escaped form as the reply has it. */
-function charPattern(c) {
-  if (!Object.hasOwn(TERM_VARIANTS, c)) return escapeRegExp(c);
-  return `(?:${escapeRegExp(escapeHtml(c))}|[${TERM_VARIANTS[c]}])`;
-}
-
-/** A term’s pattern, from its same form, one character at a time. */
-const termPattern = (form) => [...form].map(charPattern).join('');
+/**
+ * A term’s pattern, from its same form: each plain dash or quote matches its variants too, and its escaped form as the
+ * reply has it. escapeRegExp leaves the three alone, so one pass over the escaped form places them.
+ * @param {string} form
+ */
+const termPattern = (form) => escapeRegExp(form).replace(/[-'"]/g, (c) => `(?:${escapeHtml(c)}|[${TERM_VARIANTS[c]}])`);
 
 /** The terms’ patterns as one alternation, longest first, so “Phase 1 review” wins over “Phase 1”. */
 function alternation(forms) {
@@ -48,8 +46,20 @@ function alternation(forms) {
  * @returns {{ re: RegExp, keyOf: (match: string) => string | undefined } | null}
  */
 export function glossaryRegex(glossary) {
-  const entries = (glossary ?? []).filter((g) => g?.term && g?.key);
+  const entries = /** @type {{ term: string, key: string }[]} */ ((glossary ?? []).filter((g) => g?.term && g?.key));
   if (!entries.length) return null;
+  const sig = entries.map((g) => `${g.key}\u0000${g.term}`).join('\u0001');
+  if (sig !== last.sig) last = { sig, made: buildMatcher(entries) };
+  return last.made;
+}
+
+// The last glossary’s matcher, by its terms and keys: each reply in a room renders with the same glossary, so it is
+// built once, not once per reply. Sharing its global regex is safe: String.prototype.replace resets lastIndex.
+/** @type {{ sig: string, made: { re: RegExp, keyOf: (match: string) => string | undefined } | null }} */
+let last = { sig: '', made: null };
+
+/** @param {{ term: string, key: string }[]} entries */
+function buildMatcher(entries) {
   const isShort = (g) => [...g.term].length <= SHORT;
   const exact = new Map(entries.filter(isShort).map((g) => [sameForm(escapeHtml(g.term)), g.key]));
   const anyCase = new Map(entries.filter((g) => !isShort(g)).map((g) => [sameForm(escapeHtml(g.term)).toLowerCase(), g.key]));
