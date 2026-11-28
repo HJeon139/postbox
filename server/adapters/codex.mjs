@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { realpath } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
-import { cleanTail } from '../../shared/text-parts.mjs';
+import { cleanSaid, cleanTail } from '../../shared/text-parts.mjs';
 import { withQuota } from '../harness-failure.mjs';
 import { LOCK as DATA_FOLDER_LOCK } from '../home.mjs';
 import { codexApproval } from './codex-approval.mjs';
@@ -14,7 +14,7 @@ import { CODEX_MEMORY_OFF } from './codex-memory.mjs';
 import { codexModels, findCodex } from './codex-models.mjs';
 import { CODEX_TOOL_RULES, codexWebSearchArgs, networkOn } from './codex-network.mjs';
 import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
-import { codexRefusal, failOnCutAnswer, openCodexThread } from './codex-thread.mjs';
+import { codexRefusal, codexSaid, failOnCutAnswer, openCodexThread, SAID_MAX } from './codex-thread.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { COMPACT } from './no-compaction.mjs';
@@ -138,6 +138,15 @@ async function answerRequest(ctx, host, send, msg) {
  * @param {string} cwd @param {any} session @param {any} message
  */
 async function startTurn(ctx, request, send, cwd, session, message) {
+  try {
+    return await openAndStart(ctx, request, send, cwd, session, message);
+  } catch (e) {
+    throw codexSaid(e); // a request Codex refused, as the person reads it
+  }
+}
+
+/** The turn’s requests, from initialize to turn/start or thread/compact/start. Same params as startTurn. */
+async function openAndStart(ctx, request, send, cwd, session, message) {
   await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
   send({ method: 'initialized', params: {} });
   const permissions = codexPermissions(ctx.persona, cwd);
@@ -237,7 +246,7 @@ export class CodexAdapter {
     let activeTurnId = null;
     const pending = new Map();
     let exited = false;
-    /** What Codex last said went wrong in this turn, for the turn’s failure to give as its reason (#61). */
+    /** @type {string | null} What Codex last said went wrong in this turn, for the turn’s failure to give as its reason (#61). */
     let reported = null;
     /** @type {(err?: Error) => void} */
     let finish = () => {};
@@ -247,7 +256,8 @@ export class CodexAdapter {
       finish = (err) => (err ? reject(err) : resolve(undefined));
     });
     ended.catch(() => {});
-    const why = (text) => `${text}${reported ? `: ${reported}` : '.'}`;
+    // What Codex said, cleaned as other harnesses’ errors are before the person reads them (#1905, #1938).
+    const why = (text, said = reported) => `${text}${said ? `: ${cleanSaid(said, SAID_MAX)}` : '.'}`;
     /** @type {(Error & { code?: string }) | null} how a remote turn ended, when that’s why it can’t finish */
     let endError = null;
     const host = remote ? createCodexHost(child, remote, attach) : null;
@@ -288,12 +298,12 @@ export class CodexAdapter {
       if (msg.method === 'turn/started') activeTurnId = msg.params?.turn?.id ?? activeTurnId;
       const result = mapper.push(msg);
       if (result?.completed) {
-        const err = result.status === 'completed' ? undefined : new Error(why(`Codex turn ${result.status ?? 'did not complete'}`));
+        const err = result.status === 'completed' ? undefined : new Error(why(`Codex turn ${result.status ?? 'did not complete'}`, reported ?? result.reason));
         if (err) fail(err);
         finish(err);
       } else if (result?.error) {
         reported = result.error;
-        fail(withQuota(new Error(result.error), result.quota));
+        fail(withQuota(new Error(cleanSaid(result.error, SAID_MAX)), result.quota));
       }
     };
     rl.on('line', (line) => {
