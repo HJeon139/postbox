@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { withQuota, withTransient } from '../server/harness-failure.mjs';
-import { ModelLists } from '../server/model-lists.mjs';
+import { ModelLists, modelListsIn } from '../server/model-lists.mjs';
 import { ModelRuns } from '../server/model-runs.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -148,4 +148,21 @@ test('hosted, an answer carries how a turn ended and when, and never the harness
   runs.record('claude-code@ho_1', 'us.opus-new', 'failed', 'arn:aws:bedrock:us-west-2:123456789012:inference-profile/us.opus-new is not available');
   assert.deepEqual(runs.of('claude-code', 'ho_1'), { 'us.opus-new': { ended: 'failed', at: 5 } });
   assert.match(readFileSync(file, 'utf8'), /inference-profile/);
+});
+
+test('the lists a hosted Postbox starts with answer without a failed model’s reason, and a local one’s answer with it', async () => {
+  const why = 'arn:aws:bedrock:us-west-2:123456789012:inference-profile/m-1 is not available for this account';
+  for (const [reasons, expected] of /** @type {const} */ ([
+    [false, { ended: 'failed' }],
+    [true, { ended: 'failed', why }],
+    [undefined, { ended: 'failed', why }],
+  ])) {
+    const adapter = { name: 'kiro-cli', capabilities: {}, listModels: async () => ['m-1'] };
+    const adapters = new AdapterRegistry().register(adapter, { here: true });
+    const lists = modelListsIn(tempDir('pb-model-runs-start-'), adapters, null, () => ({ s: { hosts: {} } }), reasons);
+    lists.runs.record('kiro-cli', 'm-1', 'failed', why);
+    const { at, ...kept } = (await lists.list('kiro-cli')).ran?.['m-1'] ?? {};
+    assert.deepEqual(kept, expected, `reasons: ${reasons}`);
+    lists.close();
+  }
 });

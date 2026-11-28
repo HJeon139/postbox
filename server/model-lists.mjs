@@ -202,12 +202,15 @@ export class ModelLists {
  * starts, before its runtime, which it reads only once a list is asked for. Moved from server/index.mjs’s start.
  * @param {string} dataDir @param {import('./adapters/adapter.mjs').AdapterRegistry} adapters
  * @param {any} hosts  the hosts’ links (server/remote/serve.mjs) @param {() => any} rt  the runtime, once there is one
+ * @param {boolean} [reasons]  whether an answer carries a failed model’s reason: not on a hosted Postbox, where it
+ *   would reach everyone signed in (server/model-runs.mjs)
  */
-export function modelListsIn(dataDir, adapters, hosts, rt) {
+export function modelListsIn(dataDir, adapters, hosts, rt, reasons = true) {
   const models = new ModelLists(adapters, {
     file: join(dataDir, 'model-lists.json'),
     listOnHost: (hostId, backend) => hostModels(hosts, hostId, backend),
     hostIds: () => Object.keys(rt().s.hosts ?? {}),
+    reasons,
   });
   models.seed();
   return models;

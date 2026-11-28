@@ -139,7 +139,7 @@ export async function start({
   // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
   // Each backend’s models, from its harness here or on a host, each offering the last list it gave (#1302, #1304).
-  const models = modelListsIn(dataDir, adapters, hosts, () => rt);
+  const models = modelListsIn(dataDir, adapters, hosts, () => rt, !signIn);
   const rt = new Runtime({ store, adapters, config, blobs, narrator, spawnShell, hosts });
   models.runs.listen(rt); // how each model’s turns end, for the Model field (#1977)
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture/view-app.md, “Agents see their app”).
