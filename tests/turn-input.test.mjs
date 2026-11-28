@@ -43,6 +43,17 @@ test('#1518, #1523 where the reply goes: back to agents whose mentions alone sta
   assert.match(head([mention, { ...mention, id: 'en_4', source: 'check', from: undefined }]), /Your reply posts there\.$/);
 });
 
+test('#1974: three or more agents are named as a list, and two with “and”', () => {
+  const thread = { id: 'th_1', kind: 'chat' };
+  const head = (/** @type {any} */ input) => turnInput({ thread, read, ...input }).split('\n\n')[0];
+  const from = (/** @type {string} */ h, /** @type {number} */ n) => ({ ...mention, id: `en_${n}`, itemId: `it_${n}`, from: h });
+  const three = [from('alpha', 1), from('beta', 2), from('gamma', 3)];
+  assert.match(head({ entries: three }), /goes back to @alpha, @beta and @gamma\. @-mention another agent/);
+  assert.match(head({ entries: three, reacted: ['alpha', 'beta', 'gamma'] }), / @alpha, @beta and @gamma reacted to your reply and did no work\./);
+  assert.match(head({ entries: three.slice(0, 2), reacted: ['alpha', 'beta'] }), / @alpha and @beta reacted to your reply and did no work\./);
+  assert.match(head({ entries: three.slice(0, 1), reacted: ['alpha'] }), / @alpha reacted to your reply and did no work\./);
+});
+
 test('an entry past the ceiling for one entry is cut, with the id that reads the rest', () => {
   const long = 'x'.repeat(READING.mention + 500);
   const line = entryLine(mention, () => long);
