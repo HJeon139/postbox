@@ -1,7 +1,7 @@
 // The person’s answer about view_app’s browser (designs/architecture/view-app.md, “Agents see their app”): asked on a card, the
 // first time an agent calls view_app. The answer is kept in Postbox’s data folder, so a restart keeps it, and a yes
 // starts the download. “Not now” lasts a week: the next call after that asks again, so the person can change it. The card works like ask_for_tool’s (server/tool-ask.mjs): the person answers in the
-// conversation, and the agent that asked hears the outcome as a notice.
+// conversation, and every agent the card was offered to hears the outcome as a notice (#1927).
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -184,8 +184,8 @@ export function settleDownloads(rt) {
 }
 
 /**
- * The card’s last state, and each agent told to wait for it hears it: the agent that asked, and any other whose call
- * found the card open (#1927). Only the agent that asked had a need to release.
+ * The card’s last state, and each agent it was offered to hears it: the agent that asked, and any other whose call
+ * found the card open or downloading (#1927). Only the agent that asked had a need to release.
  * @param {any} rt @param {string} threadId @param {any} it @param {string} status @param {string|null} notice  null tells no one
  * @param {string|null} [reason]
  */
