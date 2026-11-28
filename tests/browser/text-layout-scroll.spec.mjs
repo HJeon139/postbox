@@ -48,6 +48,30 @@ const PARTLY = `${STYLE}
 const BODY_OWNED = `<style>body { margin: 0; font: 16px/1.4 sans-serif; overflow-x: hidden }</style>
 <label style="position: absolute; top: -12px; left: 16px">Instructions</label>`;
 
+// A sidebar that scrolls down and hides its overflow across, with a label too wide for it below the fold: its hidden
+// axis still cuts the label.
+const SIDEBAR = `${STYLE}
+<div style="position: fixed; top: 100px; left: 16px; width: 120px; height: 60px; overflow-y: auto; overflow-x: hidden">
+  <div style="height: 400px"></div>
+  <div style="white-space: nowrap">A sidebar label far too wide for its box</div>
+</div>`;
+
+// A cell whose label is too wide, inside a short box that hides it whole, inside a scroll box: hidden on purpose, as a
+// collapsed message hides what’s under its fold, so nothing is reported.
+const HIDDEN_WHOLE = `${STYLE}
+<div style="position: fixed; top: 100px; left: 16px; width: 300px; height: 200px; overflow: auto">
+  <div style="height: 40px; overflow: hidden">
+    <div style="height: 60px"></div>
+    <div style="width: 80px; overflow: hidden; white-space: nowrap">A cell label far too long for its cell</div>
+  </div>
+</div>`;
+
+// A body that really scrolls (the root hides its overflow, so the body’s isn’t the window’s), scrolled so a label sits
+// across the window’s top: scrolling reaches it.
+const BODY_SCROLLS = `<!doctype html><style>html { overflow: hidden; height: 100% } body { margin: 0; height: 100%; overflow: auto;
+  font: 16px/1.4 sans-serif }</style>
+<div style="height: 500px"></div><label id="label" style="display: block">Instructions</label><div style="height: 2000px"></div>`;
+
 const cutOff = async (page) => (await textLayout(page)).filter((p) => p.code === 'text-cut-off').map((p) => p.message);
 
 for (const width of [375, 1280]) {
@@ -96,5 +120,28 @@ for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 800 });
     await page.setContent(BODY_OWNED);
     expect(await cutOff(page)).toEqual([expect.stringContaining('is cut off by the page’s edge')]);
+  });
+
+  test(`#1985 at ${width} px a box that scrolls down and hides across still cuts a label too wide for it, below the fold`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.setContent(SIDEBAR);
+    expect(await cutOff(page)).toEqual([expect.stringContaining('A sidebar label far too wide')]);
+  });
+
+  test(`#1985 at ${width} px a cell a box inside a scroll box hides whole isn’t reported`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.setContent(HIDDEN_WHOLE);
+    expect(await cutOff(page)).toEqual([]);
+  });
+
+  test(`#1985 at ${width} px a label a body that really scrolls has scrolled past the window’s top isn’t cut off`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.setContent(BODY_SCROLLS);
+    const top = await page.evaluate(() => {
+      document.body.scrollTop = 510;
+      return /** @type {HTMLElement} */ (document.getElementById('label')).getBoundingClientRect().top;
+    });
+    expect(top, 'the label sits across the window’s top edge').toBeLessThan(0);
+    expect(await cutOff(page)).toEqual([]);
   });
 }

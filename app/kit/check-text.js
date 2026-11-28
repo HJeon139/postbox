@@ -233,10 +233,14 @@
       const x = /hidden|clip/.test(cs.overflowX);
       const y = /hidden|clip/.test(cs.overflowY);
       const b = a.getBoundingClientRect();
+      // Its hidden axis cuts first: a box can’t hide and scroll the same axis, and a sidebar that scrolls down and hides
+      // its overflow across still cuts a label too wide for it, in view or not (#1985).
+      if (x || y) cut(x ? b.left : -Infinity, y ? b.top : -Infinity, x ? b.right : Infinity, y ? b.bottom : Infinity, where(a), a);
       // A box that scrolls on an axis clips there without cutting: what it shows is what the rest is measured from. Not
       // the body when the window owns its overflow (the root’s is visible), as it scrolls nothing then. A cut found
       // inside it stands, even in a row it shows none of, which the checks still read.
-      const owner = a === document.body && getComputedStyle(document.documentElement).overflow === 'visible';
+      const root = a === document.body && getComputedStyle(document.documentElement);
+      const owner = Boolean(root) && root.overflowX === 'visible' && root.overflowY === 'visible';
       const sx = !owner && /auto|scroll/.test(cs.overflowX);
       const sy = !owner && /auto|scroll/.test(cs.overflowY);
       if (sx || sy) {
@@ -245,7 +249,6 @@
         clip(sx ? b.left : -Infinity, sy ? b.top : -Infinity, sx ? b.right : Infinity, sy ? b.bottom : Infinity);
         if (shown && (right <= left || bottom <= top)) return by;
       }
-      if (x || y) cut(x ? b.left : -Infinity, y ? b.top : -Infinity, x ? b.right : Infinity, y ? b.bottom : Infinity, where(a), a);
     }
     cut(-scrollX, -scrollY, Infinity, Infinity, 'the page’s edge');
     return right - left > 0 && bottom - top > 0 ? by : null;
