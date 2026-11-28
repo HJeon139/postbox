@@ -11,6 +11,12 @@ import { POSTBOX_SERVER } from './setup.mjs';
 import { postboxSkillsOn } from './skill-config.mjs';
 
 /**
+ * agy’s limit on the plugin’s rules file, in characters. agyRules (antigravity-cli.mjs) writes within it, and the
+ * tests and the conformance probe (#585) hold it to this one number.
+ */
+export const AGY_RULES_LIMIT = 12_000;
+
+/**
  * The plugin’s files, by path under its folder. Pure, so the tests can check them. `skills`: Postbox’s skills, by path
  * under its skills folder (agentSkillFiles in agent-plugin.mjs), which go in the plugin’s own skills/ folder. Checked
  * with agy 1.5.3: `/skills` listed `postbox:visual-explainer` from there, with the plugin as its source, before the

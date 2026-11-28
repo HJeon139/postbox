@@ -24,6 +24,14 @@ export async function addPostboxSkills(request, { remote = false, env = process.
   );
 }
 
+/**
+ * What thread/start, thread/resume and thread/fork carry besides their own ids: the guide, as developerInstructions,
+ * and the MCP approval config when there is one. The guide belongs there: turn/start has no top-level settings field
+ * (#584). The conformance probe opens its threads with this too (#585).
+ * @param {string} guide @param {any} [mcpConfig]
+ */
+export const codexOpenConfig = (guide, mcpConfig) => ({ developerInstructions: guide, ...(mcpConfig ? { config: mcpConfig } : {}) });
+
 // Postbox’s skills go on the app-server first, so the thread it opens has them.
 // #587: Codex can return a thread id before any rollout exists. Only the recorded missing-rollout resume error
 // permits a fresh thread; a failed fork must not silently discard the checkpoint the person requested.
