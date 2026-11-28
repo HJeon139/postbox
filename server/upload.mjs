@@ -36,7 +36,8 @@ export async function upload(req, { blobs, store, statfs = fsStatfs }) {
   };
   // A refusal must still reach the page: ending the loop destroys the request by default, and the browser, still
   // sending, never read the answer (a 413 on a 30 MB file left “uploading…” showing). So the loop leaves the request
-  // open, and a refused one is read to its end and dropped.
+  // open, and a refused one is read to its end and dropped. readable.iterator() is still marked experimental in
+  // Node’s docs; tests/upload-stream.test.mjs fails if it ever destroys the request again, or stops reading it.
   const body = req.iterator?.({ destroyOnReturn: false }) ?? req;
   const { sha256, size } = await blobs.putStream(body, { check }).catch((e) => {
     req.resume?.();
