@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { AGY_RULES_LIMIT } from '../server/adapters/agy-plugin.mjs';
 import { agyRules } from '../server/adapters/antigravity-cli.mjs';
 import { agentGuide } from '../server/adapters/guide.mjs';
 
@@ -32,7 +33,7 @@ test('without the hook, the rules keep the headless notes; in Run everything the
 test('with the hook, the whole rules file still fits agy’s 12,000 characters', () => {
   const persona = { handle: 'gemini', permissionMode: 'auto', tools: [] };
   const guide = agentGuide({ persona, handles: ['gemini', 'critic'], toolRules: null, setup: false });
-  assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity-cli/mcp/postbox_postbox', hooked: true }).length <= 12000);
+  assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity-cli/mcp/postbox_postbox', hooked: true }).length <= AGY_RULES_LIMIT);
 });
 
 // PR #1515’s review: the rules say a limit is enforced only where the hook refuses it, and keep “Antigravity can’t

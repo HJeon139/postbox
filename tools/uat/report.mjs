@@ -134,7 +134,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
     ...firstPictureSection(facts.firstPicture),
     '## Timeline',
     '',
-    ...timeline.map((t) => `${t.step}. **${t.phase}.** ${t.assessment} Next: \`${JSON.stringify(t.action)}\``),
+    ...timeline.map(timelineLine),
     '',
     'Screenshots are in `shots/`, each agent turn’s raw stream in `streams/`, and the full log in `run.log`.',
     '',
@@ -172,6 +172,17 @@ function harnessSection(findings) {
     ...harness.map((f) => `- **${esc(f.title)}.** ${esc(f.note ?? '')}`),
     '',
   ];
+}
+
+/**
+ * A step of the timeline: its phase, the tester’s assessment and the action it asked for, and when the runner held that
+ * action rather than did it, when and why (tools/uat/held-steps.mjs, #482). The time is run.log’s, so the two read
+ * together. @param {{ step: number, phase: string, assessment: string, action: any, held?: { at: number, why: string } }} t
+ */
+function timelineLine(t) {
+  const line = `${t.step}. **${t.phase}.** ${t.assessment} Next: \`${JSON.stringify(t.action)}\``;
+  if (!t.held) return line;
+  return `${line} **Held at ${new Date(t.held.at).toLocaleTimeString('en-US', { hour12: false })}:** ${t.held.why}.`;
 }
 
 /**

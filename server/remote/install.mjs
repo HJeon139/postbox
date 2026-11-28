@@ -2,7 +2,8 @@
 // from the laptop, over Postbox’s own ssh (ssh.mjs’s options: BatchMode, no shared connection, no agent forwarding).
 //
 // What ships: every file under server/remote/host/ and, transitively, every file they import (only node: modules and
-// shared/, which tests/host-imports.test.mjs checks through install-bundle.mjs’s hostFiles), plus a package.json with
+// shared/, which tests/host-imports.test.mjs checks through install-bundle.mjs’s hostFiles), the Markdown and JSON files of
+// Postbox’s agent plugin (agent-plugin/), as data, so a turn there loads its skills (#207), plus a package.json with
 // this Postbox’s version. They keep the repo’s layout under ~/.postbox-remote/<version>/, so relative imports work
 // unchanged, beside manifest.sha256, each file’s SHA-256 in sha256sum’s format.
 //
@@ -293,7 +294,7 @@ export function describeInstall(host, { version, dataDir, root = ROOT }) {
   const count = files.length + 1; // and package.json
   const steps = [
     `Connect to ${d} with your ssh, as your user there, without asking for a password or a new host key.`,
-    `Copy ${count} files of Postbox’s host program to ${code}/ on ${d}, readable only by you (folders 0700, files 0600), and check each one’s SHA-256. A copy of ${version} that’s already there is left as it is if its files are these; if they differ, it’s replaced, unless it’s running.`,
+    `Copy ${count} files of Postbox’s host program and its bundled skills to ${code}/ on ${d}, readable only by you (folders 0700, files 0600), and check each one’s SHA-256. A copy of ${version} that’s already there is left as it is if its files are these; if they differ, it’s replaced, unless it’s running.`,
     nodePath
       ? `Write ${code}/node-path on ${d}, naming the Node it runs with: ${nodePath}.`
       : `Find Node 22 or later on ${d}: on PATH, else under ~/.nvm, ~/.local/share/mise, ~/.volta, /usr/local/bin or /usr/bin.`,
