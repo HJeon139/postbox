@@ -96,6 +96,16 @@ function place(/** @type {{ id: string, kind?: string, title?: string }} */ thre
 }
 
 /**
+ * Agents named as a list: “@a”, “@a and @b”, and “@a, @b and @c” for three or more (#1974).
+ * @param {string[]} hs  handles, without @
+ */
+function handles(hs) {
+  const named = hs.map((h) => `@${h}`);
+  if (named.length < 3) return named.join(' and ');
+  return `${named.slice(0, -1).join(', ')} and ${named.at(-1)}`;
+}
+
+/**
  * Where the reply goes as well as posting (#1518): back to the agents whose mentions started the turn, unless it
  * @-mentions an agent. Nothing for any other turn. A turn only replies that came back woke is told how its exchange
  * ends, as reply-back.mjs ends it: a reaction to the reply ends it whatever the turn writes without an @-mention
@@ -106,7 +116,7 @@ function place(/** @type {{ id: string, kind?: string, title?: string }} */ thre
 function replyGoes(entries, wroteOnly) {
   const to = backTo(entries);
   if (!to.length) return '.';
-  const goes = ` and goes back to ${to.map((h) => `@${h}`).join(' and ')}. @-mention another agent to hand off to them instead.`;
+  const goes = ` and goes back to ${handles(to)}. @-mention another agent to hand off to them instead.`;
   const asked = entries.filter((e) => e.source !== 'notice');
   if (!asked.every((e) => e.bounce === true)) return goes;
   const react = 'If the exchange is done, react to the reply: then your reply this turn doesn’t go back to its sender. An @-mention still wakes whom it names.';
@@ -114,12 +124,11 @@ function replyGoes(entries, wroteOnly) {
   if (entries.some((e) => Array.isArray(e.woken))) return `${goes} ${react}`;
   const end = `${react} You can also end without writing anything.`;
   // Per exchange: only the agents its last reply in words went to. The others get this one as any reply.
-  const names = (/** @type {string[]} */ hs) => hs.map((h) => `@${h}`).join(' and ');
   const again = to.filter((h) => wroteOnly.includes(h));
   if (!again.length) return `${goes} ${end}`;
   const rest = to.filter((h) => !wroteOnly.includes(h));
-  const first = rest.length ? ` and goes back to ${names(rest)}. @-mention another agent to hand off to them instead.` : '.';
-  const second = `Your last reply to ${names(again)} only wrote, so this one goes back to ${names(again)} only if you do work this turn (more than reading the room and reacting)`;
+  const first = rest.length ? ` and goes back to ${handles(rest)}. @-mention another agent to hand off to them instead.` : '.';
+  const second = `Your last reply to ${handles(again)} only wrote, so this one goes back to ${handles(again)} only if you do work this turn (more than reading the room and reacting)`;
   return `${first} ${second}: a second in a row to the same agent that only writes doesn’t wake it, so @-mention whoever must act on it or answer it. ${end}`;
 }
 
@@ -130,8 +139,7 @@ function replyGoes(entries, wroteOnly) {
  */
 function reactedLine(reacted) {
   if (!reacted.length) return '';
-  const names = reacted.map((h) => `@${h}`).join(' and ');
-  return ` ${names} reacted to your reply and did no work. If nothing is asked of you, react and end with no words.`;
+  return ` ${handles(reacted)} reacted to your reply and did no work. If nothing is asked of you, react and end with no words.`;
 }
 
 /** The first part: the entries, with where the reply posts and goes, who only reacted, and what waits elsewhere. */
