@@ -174,7 +174,7 @@ test('#521 a turn stopped while a question waits tells the agent it stays open, 
   await until(() => s.questions().length === 1, 'the first question');
   s.choose(s.questions()[0], ['Red']);
   await until(() => s.questions().length === 2, 'the second question');
-  s.rt.stop(s.se().id);
+  s.rt.stop(s.se().id, { by: 'you' });
   const answer = await asked;
   assert.equal(answer.behavior, 'deny');
   assert.ok(answer.message.startsWith('You stopped the agent.'), `the agent hears why it ended, as a stopped card’s call does: ${answer.message}`);
@@ -217,7 +217,7 @@ test('#521 a turn stopped at the second of three questions says which were never
   await until(() => s.questions().length === 1, 'the first question');
   s.choose(s.questions()[0], ['Red']);
   await until(() => s.questions().length === 2, 'the second question');
-  s.rt.stop(s.se().id);
+  s.rt.stop(s.se().id, { by: 'you' });
   const answer = await asked;
   assert.ok(answer.message.includes('“Which day?”'), `the question never shown: ${answer.message}`);
   assert.ok(!answer.message.includes('“Which fruits?”: '), `the open one isn’t named as answered: ${answer.message}`);

@@ -206,7 +206,7 @@ export const deliver = (rt, sessionId, message, opts) => rt.turnService.run(sess
 export const wake = (rt, fromSessionId, handle, text, opts) => rt.agentWake(fromSessionId, handle, text, opts);
 
 /** Stops a session’s turn, as the server does. @param {Runtime} rt @param {string} sessionId @param {object} [opts] */
-export const stopTurn = (rt, sessionId, opts) => rt.stop(sessionId, opts);
+export const stopTurn = (rt, sessionId, opts) => rt.stop(sessionId, { by: 'you', ...opts });
 
 /** Schedules a wake for an agent, as its schedule tool does. @param {Runtime} rt @param {string} sessionId @param {object} options */
 export const schedule = (rt, sessionId, options) => rt.schedule(sessionId, options);

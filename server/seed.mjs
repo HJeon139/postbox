@@ -233,7 +233,10 @@ export async function seed(rt, { dataDir, backend = 'mock', demo = false }) {
   }
   checkAgents(personas);
   // The seeded agents run on a real model when one is available here, and on the mock otherwise.
-  for (const p of personas) rt.createPersona({ backend, ...p });
+  // Hosted, an agent placed on the server has no folder there, so a folder agents.json gives it is left out, where a
+  // person naming one is refused (folder-path.mjs): the same file starts a Postbox here and on a server.
+  const hosted = rt.config?.hosted === true;
+  for (const p of personas) rt.createPersona({ backend, ...p, ...(hosted && !p.remote?.hostId ? { folder: '' } : {}) });
   for (const b of BOILERPLATES) rt.store.emit('boilerplate', b);
   if (!demo) {
     for (const pr of fresh.projects) rt.store.emit('project', { id: newId('pr'), ...pr });

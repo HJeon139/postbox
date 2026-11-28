@@ -430,7 +430,7 @@ test('#126: after Stop the session is stopping until the process exits, and a me
   adapter.next.push(first);
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
-  assert.equal(rt.stop(se.id), true);
+  assert.equal(rt.stop(se.id, { by: 'you' }), true);
   assert.equal(store.state.sessions[se.id].state, 'stopping');
   rt.sendMessage(t.id, { text: 'next' });
   await sleep(10);
@@ -473,7 +473,7 @@ test('#126: a stopped turn’s tool calls are refused, and show nothing; the nex
     args = { block: { id: `b${id}`, type: 'confirm', version: 1, fallback: 'x', statement: 'Do it?', confirmLabel: 'Do it' } },
   ) => handleMcp(rt, se.id, { jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, tok);
   assert.equal((await call(token, 1)).result.isError, false, 'the running turn’s own call works');
-  rt.stop(se.id);
+  rt.stop(se.id, { by: 'you' });
   const blocks = () => store.items(t.id).filter((i) => i.kind === 'block').length;
   const before = blocks();
   const refused = await call(token, 2);
@@ -572,7 +572,7 @@ test('#129: a progress step that follows a kept job reads as running on, and sta
     valid: true,
     block: { id: 'hb', type: 'progress', version: 1, title: 'Heartbeat', steps },
   });
-  rt.stop(se.id, { jobs: 'keep' });
+  rt.stop(se.id, { jobs: 'keep', by: 'you' });
   first.exit();
   await sleep(15);
   const context = () => store.state.sessions[se.id].context.join('\n');
@@ -610,7 +610,7 @@ test('#73: a subagent still working in the background when its turn is stopped r
   adapter.next.push(step);
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
-  rt.stop(se.id);
+  rt.stop(se.id, { by: 'you' });
   first.exit();
   await sleep(10);
   const steps = store.items(t.id).find((i) => i.kind === 'agent' && i.activity?.steps?.length).activity.steps;
@@ -633,7 +633,7 @@ test('#129: a kept job whose group is gone has ended; shutting down stops the on
     adapter.next.push(s);
     rt.sendMessage(t.id, { text: id });
     await sleep(5);
-    rt.stop(se.id, { jobs: 'keep' });
+    rt.stop(se.id, { jobs: 'keep', by: 'you' });
     s.exit();
     await sleep(10);
   }
@@ -658,7 +658,7 @@ test('#129: a kept job’s group id taken by another process isn’t signaled', 
   adapter.next.push(s);
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
-  rt.stop(se.id, { jobs: 'keep' });
+  rt.stop(se.id, { jobs: 'keep', by: 'you' });
   s.exit();
   await sleep(10);
   procs.push(shellRow(4242, 'something else entirely'));
@@ -675,7 +675,7 @@ test('#164: a kept job’s groups stay its own while their leaders’ command li
   adapter.next.push(s);
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
-  rt.stop(se.id, { jobs: 'keep' });
+  rt.stop(se.id, { jobs: 'keep', by: 'you' });
   s.exit();
   await sleep(10);
   const [job] = store.state.sessions[se.id].jobs;
@@ -723,7 +723,7 @@ test('#167: two kept jobs Postbox couldn’t tell apart share their processes: s
   });
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
-  rt.stop(se.id, { jobs: 'keep' });
+  rt.stop(se.id, { jobs: 'keep', by: 'you' });
   exit();
   await sleep(10);
   assert.deepEqual(
@@ -787,7 +787,7 @@ test('#164: a job Stop couldn’t keep, with no process left to keep, ends as st
   adapter.next.push(s);
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
-  rt.stop(se.id, { jobs: 'keep' });
+  rt.stop(se.id, { jobs: 'keep', by: 'you' });
   s.exit();
   await sleep(10);
   assert.deepEqual(store.state.sessions[se.id].jobs, []);
@@ -803,7 +803,7 @@ test('#129: deleting a session for good stops the jobs Postbox kept running for 
   adapter.next.push(s);
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
-  rt.stop(se.id, { jobs: 'keep' });
+  rt.stop(se.id, { jobs: 'keep', by: 'you' });
   s.exit();
   await sleep(10);
   procs.push(shellRow(4242, 'job bgD'));
@@ -830,7 +830,7 @@ test('#126: shutting down starts no new turn: a message for a stopped turn waits
   adapter.next.push(first);
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
-  rt.stop(se.id);
+  rt.stop(se.id, { by: 'you' });
   rt.sendMessage(t.id, { text: 'after the restart' });
   const closing = rt.stopTurns({ graceMs: 500 });
   first.exit();

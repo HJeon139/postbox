@@ -185,7 +185,7 @@ test('#228: a wake waiting for a busy agent that’s stopped goes unanswered, an
   rt.sendMessage(t.id, { text: '@beta the long job' });
   await sleep(5);
   rt.agentWake(alpha.id, 'beta', 'One question.');
-  rt.stop(beta.id);
+  rt.stop(beta.id, { by: 'you' });
   h.release();
   await settle(rt);
   assert.equal(

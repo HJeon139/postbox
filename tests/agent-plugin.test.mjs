@@ -1,5 +1,5 @@
 // Postbox’s own plugin (server/adapters/agent-plugin.mjs): every Claude agent on this computer loads its skills, the
-// visual explainer first (#206), Isolated or not. A turn on a host doesn’t, since the folder is here, a persona can
+// visual explainer first (#206), Isolated or not. A turn on a host loads the copy the host install ships (#207), a persona can
 // turn its skills off (skillsOff, from its sheet), and POSTBOX_AGENT_SKILLS=off leaves it out for a UAT baseline. The plugin holds what an agent reads and nothing else:
 // the starter briefs, which hold each test’s intended idea and traps, stay in designs/.
 
@@ -28,11 +28,16 @@ test('a turn here loads Postbox’s plugin in Claude Code, Isolated or not', () 
   }
 });
 
-test('a turn on a host doesn’t load it, and POSTBOX_AGENT_SKILLS=off leaves it out here', () => {
-  const remote = fromContext(ctx({ remote: { hostId: 'h1' } }), '/mem');
-  assert.deepEqual(remote.plugins, []);
-  assert.deepEqual(pluginDirs(claudeArgs({ persona: { model: 'mock' }, sessionId: 's', resume: false, guide: 'g', ...remote })), []);
+test('#207: a turn on a host loads the copy its install ships there, and POSTBOX_AGENT_SKILLS=off leaves it out', () => {
+  const host = { hostId: 'h1', version: '0.99.1', welcome: { home: '/home/user' } };
+  const plugin = '/home/user/.postbox-remote/0.99.1/agent-plugin';
+  const remote = fromContext(ctx({ remote: host }), '/mem');
+  assert.deepEqual(remote.plugins, [plugin]);
+  assert.deepEqual(pluginDirs(claudeArgs({ persona: { model: 'mock' }, sessionId: 's', resume: false, guide: 'g', ...remote })), [plugin]);
+  const off = fromContext(ctx({ remote: host, persona: { id: 'p1', handle: 'coder', model: 'mock', skillsOff: [...POSTBOX_SKILLS] } }), '/mem');
+  assert.deepEqual(off.plugins, [], 'a persona that turned all of them off gets none on a host either');
   assert.deepEqual(agentPlugins({ POSTBOX_AGENT_SKILLS: 'off' }), []);
+  assert.deepEqual(agentPlugins({ POSTBOX_AGENT_SKILLS: 'off' }, host), [], 'off on a host too');
   assert.deepEqual(agentPlugins({}), [AGENT_PLUGIN]);
 });
 

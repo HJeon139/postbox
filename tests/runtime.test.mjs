@@ -114,7 +114,7 @@ test('Stop ends the turn cleanly and marks the reply stopped', async () => {
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(10);
   const se = arrange.sessionsIn(rt, t.id)[0];
-  assert.equal(rt.stop(se.id), true);
+  assert.equal(rt.stop(se.id, { by: 'you' }), true);
   await settle(rt);
   assert.equal(store.items(t.id).find((i) => i.kind === 'agent').status, 'stopped');
   assert.equal(store.state.sessions[se.id].state, 'idle');
@@ -446,7 +446,7 @@ test('Stop expires an open permission card and answers no', async () => {
   rt.sendMessage(t.id, { text: 'write it' });
   await sleep(20);
   const se = arrange.sessionsIn(rt, t.id)[0];
-  rt.stop(se.id);
+  rt.stop(se.id, { by: 'you' });
   await sleep(10);
   assert.equal(answer.allow, false);
   assert.equal(store.items(t.id).find((i) => i.kind === 'permission').status, 'expired');
@@ -579,7 +579,7 @@ test('#93: a stopped summary isn’t pending, and a reply in a summary still bei
   for (let waited = 0; !shown() && waited < 1000; waited += 10) await new Promise((r) => setTimeout(r, 10));
   const part = shown();
   assert.throws(() => rt.shareToConversation(threadId, part.id), { status: 409 });
-  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id, { by: 'you' });
   release();
   await settle(rt);
   assert.equal(store.state.threads[threadId].summaryPending, null);
@@ -1070,7 +1070,7 @@ test('#98: Stop leaves running progress steps stalled, starts no lint turn, and 
   });
   rt.sendMessage(t.id, { text: 'read' });
   await sleep(10);
-  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id, { by: 'you' });
   await settle(rt);
   await sleep(20);
   const it = store.items(t.id).find((i) => i.kind === 'block');
@@ -1373,7 +1373,7 @@ test('#123: an outcome over an answer the agent hasn’t read is refused, and a 
   rt.sendMessage(t.id, { text: 'go' });
   await isWorking;
   rt.act(t.id, item.id, 'cancel', {}, store.item(t.id, item.id).revision ?? 1);
-  rt.stop(se.id);
+  rt.stop(se.id, { by: 'you' });
   await settle(rt);
   assert.equal(store.item(t.id, item.id).answer.read, false);
   const tools = rt.toolsFor(se.id);

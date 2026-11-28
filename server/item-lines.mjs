@@ -140,9 +140,12 @@ function writingNote(i) {
   return ` (${WRITING} what it has said so far, and read_message { id: "${i.id}" } reads all of it once it’s done)`;
 }
 
-/** Who shared an item from another thread: an agent in a turn the person started, an agent, or the person. */
+/**
+ * Who shared an item from another thread: an agent that posted it itself with bring_to_conversation, which any turn
+ * in the thread may since #382, the person sharing an agent’s message, or the person’s own.
+ */
 function sharedBy(i) {
-  if (i.agent) return `, by @${i.handle} in a turn the person started`;
+  if (i.agent) return `, posted by @${i.handle}`;
   if (i.handle) return `, by @${i.handle}`;
   return ', by the person';
 }

@@ -122,7 +122,7 @@ test('#504 failed and stopped topic turns without text keep their prompt marker'
   stopped.adapter.next.push(waiting.step);
   stopped.rt.sendMessage(stopped.topic.id, { text: '@beta check another sentence.' });
   await untilTurns(() => stopped.rt.turns.has(stopped.beta.id), 'beta’s turn under way');
-  assert.equal(stopped.rt.stop(stopped.beta.id), true);
+  assert.equal(stopped.rt.stop(stopped.beta.id, { by: 'you' }), true);
   waiting.release();
   await settle(stopped.rt);
   assert.equal(stopped.store.items(stopped.topic.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'thread-task');

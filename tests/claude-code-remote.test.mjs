@@ -40,6 +40,8 @@ test('#120: a remote turn runs on the host: the stdio shim for Postbox’s serve
   assert.ok(start.argv.includes('--permission-prompt-tool') && !start.argv.includes('--permission-prompts'));
   assert.ok(start.argv.includes('--session-id'));
   assert.equal(start.argv[0], '-p', 'argv has no program: the daemon runs the claude it found');
+  // #207: Postbox’s plugin, from the copy the host install ships beside the shim.
+  assert.equal(argOf(start.argv, '--plugin-dir'), `${HOME}/.postbox-remote/${ctx.remote.version}/agent-plugin`);
   assert.equal(ctx.calls.saved.claudeSessionId, fixtureLines('block').map((l) => JSON.parse(l))[0].session_id);
   assert.deepEqual(f.calls, []);
   assert.equal(existsSync(ctx.persona.folder), false, 'no folder is made on this computer');
@@ -188,7 +190,7 @@ test('#120: the shim’s path is under the Postbox version the runtime passes in
   assert.deepEqual(serverOf(start.argv).args, [`${HOME}/.postbox-remote/0.99.1/server/remote/host/shim.mjs`, start.turn]);
 });
 
-test('#120: a turn the person started in a side or topic thread (ctx.remote.bring) starts the shim with --bring', async () => {
+test('#120, #382: a turn in a side or topic thread (ctx.remote.bring) starts the shim with --bring', async () => {
   // So the shim lists bring_to_conversation where the laptop’s server/mcp.mjs would, and nowhere else.
   const d = createFakeDaemon({ lines: fixtureLines('block') });
   const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-work', ...forbidden() });

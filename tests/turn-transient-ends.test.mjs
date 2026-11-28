@@ -83,7 +83,7 @@ test('#1713 Stop of the retried turn ends the count', async () => {
   f.adapter.next.push(work.step);
   f.waits.shift()();
   await sleep(5);
-  f.rt.stop(f.beta.id);
+  f.rt.stop(f.beta.id, { by: 'you' });
   work.release();
   await settle(f.rt);
   assert.equal(f.se().autoRetry ?? null, null);

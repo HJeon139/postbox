@@ -1,5 +1,5 @@
 // Postbox’s tools on a remote host (#120): a stdio MCP server, which the harness runs as `node shim.mjs <turn>`, plus
-// `--bring` for a turn the person started in a side or topic thread, and `--no-prompt` for a backend that doesn’t ask
+// `--bring` for a turn in a side or topic thread (#382), and `--no-prompt` for a backend that doesn’t ask
 // through permission_prompt. It serves exactly the laptop’s tools (shared/mcp-tools.mjs’s TOOL_DEFS, as server/mcp.mjs
 // offers them: bring_to_conversation only with --bring, and permission_prompt only without --no-prompt, whose call
 // then gets NOT_YOUR_PROMPT at once), reads JSON-RPC from stdin and writes it to stdout, one message per line (MCP

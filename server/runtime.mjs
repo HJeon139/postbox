@@ -20,6 +20,7 @@ import { attachClaudeSession, claudeSessions, mirror, pollMirror, rearmMirrors, 
 import { Delivery } from './delivery.mjs';
 import { cancelEntry, editEntry, sendEntryNow } from './entry-queue.mjs';
 import { httpError } from './helpers.mjs';
+import { dropServerFolders } from './hosted-saved-folders.mjs';
 import { listenInbox } from './inbox-listeners.mjs';
 import { endJob, expireStaleJobs, recordJob } from './job-records.mjs';
 import { keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
@@ -255,6 +256,7 @@ export class Runtime {
     // Ask me and Accept edits are gone: a persona stored with one runs Auto (permission-modes.mjs).
     retireModes(this);
     retireBackends(this); // and one stored on the Agent SDK runs on Claude Code (retired-backends.mjs)
+    dropServerFolders(this); // hosted, a folder on the server saved before is ignored (hosted-saved-folders.mjs)
     // A need from before needsAt gets its item's time, once, so ⌃J orders it without the page holding its items.
     this.sessions.stampNeeds();
   }
@@ -389,6 +391,7 @@ export class Runtime {
 
   // ── Stopping a turn: server/turn-stop.mjs ──────────────────────────────────────────
 
+  /** @param {string} sessionId @param {import('./turn-stop.mjs').StopOptions} opts  who stopped it, with no default (#1987) */
   stop(sessionId, opts) {
     return stop(this, sessionId, opts);
   }
@@ -499,7 +502,7 @@ export class Runtime {
   // Any message in a conversation can start a topic thread, as in Slack. Its agents are the conversation’s own, one
   // session each (#228): an agent answers there from that session, so it remembers the thread, and the conversation’s
   // other agents see the thread’s line, with a short summary, and read it if they choose. Nothing in it is posted in
-  // the conversation unless you send it.
+  // the conversation unless you send it, or an agent posts the thread’s outcome with bring_to_conversation (#382).
 
   startTopic(threadId, itemId) {
     return startTopic(this, threadId, itemId);

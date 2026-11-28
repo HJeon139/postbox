@@ -108,7 +108,7 @@ test('update_block finds a block the same turn showed while a commit is held', a
   go();
   await until(() => 'updated' in results, 'the update');
   assert.equal(results.updated?.ok, true, `update_block found the held block: ${JSON.stringify(results.updated)}`);
-  env.rt.stop(env.se.id);
+  env.rt.stop(env.se.id, { by: 'you' });
   await env.done();
   await env.close();
 });
