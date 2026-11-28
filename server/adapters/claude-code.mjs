@@ -166,7 +166,8 @@ export class ClaudeCodeAdapter {
     }
     // A session Claude Code no longer has (its history was cleared), or one too large to go on (#674), starts over, once.
     if (first.missingSession || first.tooLarge) {
-      ctx.saveState({ claudeSessionId: null });
+      // One too large forgets where it forked from too, or the next turn would fork that conversation again.
+      ctx.saveState({ claudeSessionId: null, ...(first.tooLarge ? { fork: null, forkFrom: null } : {}) });
       const note = `[Postbox] ${first.tooLarge ? SIZE_LIMIT_START_TEXT : FRESH_START_TEXT}\n\n`;
       turn = await hostTurn();
       await this.run({ ctx, cwd, addDirs, prompt: note + promptOn(turn), guide, resume: false, sessionId: null, turn });
@@ -240,14 +241,16 @@ export class ClaudeCodeAdapter {
         if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, stderr())) return resolve({ missingForkPoint: true });
         ctx.saveState({ ...mapper.endState, ...(mapper.sessionId ? { fork: null } : {}) });
         const current = mapper.sessionId ?? ctx.state.claudeSessionId;
-        if (mapper.lastUuid && current) ctx.checkpoint?.({ claudeSessionId: current, uuid: mapper.lastUuid });
-        if (ctx.signal.aborted) return resolve({});
-        // A session to resume or fork that Claude Code no longer has. On a host, the result says it too (remoteSaid).
+        // On a host, the result says what stderr does (remoteSaid). A session too large to go on (#674) keeps no
+        // checkpoint, so no thread branches into it.
         const said = remote ? remoteSaid(stderr(), mapper.result) : stderr();
-        if ((resume || fork) && /No conversation found|session .* not found/i.test(said)) return resolve({ missingSession: true });
-        // One too large to go on (#674): a resumed one starts over (deliver); any other, or a replay, isn’t kept to resume.
         const tooLarge = sessionTooLarge(mapper.result, said);
-        if (tooLarge && resume && !attach) return resolve({ tooLarge: true });
+        if (mapper.lastUuid && current && !tooLarge) ctx.checkpoint?.({ claudeSessionId: current, uuid: mapper.lastUuid });
+        if (ctx.signal.aborted) return resolve({});
+        // A session to resume or fork that Claude Code no longer has.
+        if ((resume || fork) && /No conversation found|session .* not found/i.test(said)) return resolve({ missingSession: true });
+        // One too large to go on: a resumed or forked one starts over (deliver); any other, or a replay, isn’t kept.
+        if (tooLarge && (resume || fork) && !attach) return resolve({ tooLarge: true });
         if (tooLarge) ctx.saveState({ claudeSessionId: null });
         const failure = resultError(mapper.result);
         if (failure) {

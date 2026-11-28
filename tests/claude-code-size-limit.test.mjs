@@ -6,8 +6,8 @@
 // binary (the headless branch of the message it gives a request it classifies as "unrecoverable", the body without its
 // media still over the byte limit). The lines’ shape is the recorded API error of tests/fixtures/claude-code/
 // connection-failed.jsonl (claude 2.1.318): its assistant line marked is_api_error_message, then its result, with
-// is_error true, both carrying the error’s words. Its api_error and api_error_status are cleared, since what Claude Code
-// puts there for this error isn’t known.
+// is_error true, both carrying the error’s words. Its api_error is cleared (its api_error_status is already null), since
+// what Claude Code puts there for this error isn’t known.
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -106,6 +106,25 @@ test('#674: a resumed Claude Code session too large to go on starts over once in
   assert.match(sent, /Hello again/, 'the message itself is sent again');
   assert.equal(ctx.calls.text, 'Tea or coffee? Pick one above.');
   assert.notEqual(ctx.calls.saved.claudeSessionId, 'sess-big', 'the oversized session isn’t resumed again');
+});
+
+test('#674: a thread forked from a session too large to go on starts over once, forgets the fork, and keeps no checkpoint', async () => {
+  // The fork's own session, as the recorded init line names it, so a checkpoint would name the fork.
+  const init = { ...fixture('block')[0], session_id: 'sess-fork' };
+  const { adapter, runs } = playing([
+    { lines: [init, ...tooLarge('sess-fork')], code: 1 },
+    { lines: fixture('block'), code: 0 },
+  ]);
+  const ctx = fakeCtx({ forkFrom: { claudeSessionId: 'sess-big' } });
+  const checkpoints = /** @type {any[]} */ ([]);
+  Object.assign(ctx, { checkpoint: (/** @type {any} */ c) => checkpoints.push(c) });
+  await adapter.deliver({}, { kind: 'user', text: 'Hello again' }, ctx);
+  assert.equal(runs.length, 2, 'one fresh start');
+  assert.equal(argAfter(runs[0].args, '--resume'), 'sess-big');
+  assert.ok(runs[0].args.includes('--fork-session'), 'the first run forked the oversized conversation');
+  assert.ok(!runs[1].args.includes('--resume') && !runs[1].args.includes('--fork-session'), 'the fresh run forks nothing');
+  assert.equal(ctx.calls.saved.forkFrom, null, 'the next turn doesn’t fork it again');
+  assert.ok(!checkpoints.some((c) => c.claudeSessionId === 'sess-fork'), 'no thread can branch into the oversized fork');
 });
 
 test('#674: a fresh Claude Code session still too large fails with Claude Code’s words, and isn’t kept to resume', async () => {
