@@ -140,18 +140,34 @@ test('answering the stopped turn’s form itself works and leaves the other need
   assert.equal(r.needs()?.itemId, wake.id, 'and after the turn the answer started');
 });
 
-// Only the Stop button quiets a turn’s cards: a run clock’s stop, its pause or its budget (server/run-clock.mjs), leaves
-// the need the form made, so the form counts through the stop and after another card is answered, never going quiet
-// and then ringing again (#1928).
-for (const by of ['pause', 'clock']) {
-  test(`a turn a run clock stopped (${by}) keeps its form the need through the stop and another answer`, async () => {
+// Only your Stop quiets a turn’s cards: a run clock’s pause or budget (server/run-clock.mjs), or a hung host turn’s stop,
+// leaves the need the form made, and the agent needs you from the stop, so the form counts and rings through the stop,
+// another answer and another agent’s wake, never going quiet and then ringing again (#1928).
+for (const by of ['pause', 'clock', 'hung']) {
+  test(`a turn a run clock stopped or Postbox found hung (${by}) keeps its form the need through the stop and another answer`, async () => {
     const r = room();
     const wake = r.hop();
     r.offerHop(wake);
     const { card, release } = await turnAsking(r, 'block');
     await stopped(r, release, { by, silent: true });
     assert.equal(r.needs()?.itemId, card.itemId, 'after the clock’s stop, the form is still the need');
+    // And the ring says so from the stop, not first when something unrelated happens.
+    assert.equal(r.rt.s.sessions[r.alpha.id].state, 'needs', 'the agent needs you from the stop');
     r.declineHop(wake);
     assert.equal(r.needs()?.itemId, card.itemId, 'and after the wake request is declined');
+  });
+
+  test(`a turn stopped by ${by} needs you from the stop through another agent’s wake, the same before and after it`, async () => {
+    const r = room();
+    const { card, release } = await turnAsking(r, 'block');
+    await stopped(r, release, { by, silent: true });
+    assert.deepEqual([r.needs()?.itemId, r.rt.s.sessions[r.alpha.id].state], [card.itemId, 'needs'], 'at the stop');
+    const work = held();
+    r.adapter.next.push(work.step);
+    r.rt.turnService.run(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
+    await until(() => r.rt.turns.has(r.alpha.id), 'the woken turn');
+    work.release();
+    await settle(r.rt);
+    assert.deepEqual([r.needs()?.itemId, r.rt.s.sessions[r.alpha.id].state], [card.itemId, 'needs'], 'at the wake’s end');
   });
 }

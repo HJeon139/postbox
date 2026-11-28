@@ -204,8 +204,8 @@ function stoppedNeed(rt, turn, by) {
   const need = se?.needs;
   // A need names its thread only when it's away from the agent's own (awayFrom).
   if (!OFFERED_MID_TURN.has(need?.kind) || rt.store.pending.item(need.threadId ?? se.threadId, need.itemId)?.turnId !== turn.id) return;
-  // What's left is what waited before it: the kept turns' cards and the block the turn kept. Not turnsOf's, whose last
-  // turn is this one unless you stopped it, nor runningKeep's, as the turn has left rt.turns.
+  // What's left is what waited before it: the kept turns' cards and the block the turn kept. turnsOf would give the same,
+  // as only your Stop reaches here and it marked the turn above; not runningKeep's, as the turn has left rt.turns.
   rt.sessions.update(se.id, { needs: nextNeed(rt, se, { turnIds: se.keptTurnIds ?? [], keep: se.keptId ?? null }) });
 }
 
