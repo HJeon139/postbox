@@ -104,8 +104,8 @@ test('#1928 a stopped turn’s form stays quiet when you decline the agent’s w
   // @gamma shows the form mid-turn, then asks to wake @delta, which the conversation doesn't have.
   app.rt.sendMessage(stopThread.id, { text: '@gamma which window should we compare?' });
   await expect(shownForm).toBeVisible();
-  await expect.poll(() => arrange.liveTurns(app.rt), { message: 'the turn is still running' }).toBe(1);
   const gamma = Object.values(app.store.state.sessions).find((x) => x.handle === 'gamma');
+  await expect.poll(() => app.rt.turns.has(gamma.id), { message: 'the turn is still running' }).toBe(true);
   arrange.wake(app.rt, gamma.id, 'delta', 'Check the 30-day numbers.');
   const decline = page.getByRole('button', { name: 'Don’t add delta' });
   await expect(decline, 'the wake request is open').toBeVisible();
@@ -116,7 +116,7 @@ test('#1928 a stopped turn’s form stays quiet when you decline the agent’s w
   // You stop the turn, and its stand-in harness exits, as a stopped CLI does.
   await page.getByRole('button', { name: 'Stop gamma’s reply' }).click();
   release('gamma');
-  await expect.poll(() => arrange.liveTurns(app.rt), { message: 'the turn stopped' }).toBe(0);
+  await expect.poll(() => app.rt.turns.has(gamma.id), { message: 'the turn stopped' }).toBe(false);
   // The form no longer counts: the wake request, which waits until answered, is the need now.
   await expect.poll(() => app.store.state.sessions[gamma.id].needs?.kind, { message: 'the wake request is the need' }).toBe('hop');
   await expect(next, 'the top bar counts the wake request').toBeEnabled();
@@ -126,6 +126,7 @@ test('#1928 a stopped turn’s form stays quiet when you decline the agent’s w
   await decline.click();
   await expect(decline, 'the wake request is answered').toBeHidden();
   await expect(next, 'declined: nothing needs you').toBeDisabled();
+  await expect(ring, 'the agent’s ring is in the rail').toBeVisible();
   await expect(ring, 'the ring doesn’t ask for you').not.toHaveAttribute('state', 'needs');
   await expect(shownForm, 'the form is still there to answer').toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Window' })).toBeEditable();
