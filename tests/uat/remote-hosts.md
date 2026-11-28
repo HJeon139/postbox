@@ -75,9 +75,9 @@ A finished turn’s `out.jsonl`, `in.jsonl` and `err.log` are deleted once Postb
 - **You should see:** the help under Runs on says its turns run on host.example.com over your own ssh, and Postbox and its tools stay here. Once Postbox has connected (section 3.1), a persona whose CLI the host doesn’t have is refused, saying where the daemon looked.
 
 **1.2a A harness that isn’t signed in (#1608)**
-- **Steps:** on the host, move Codex’s sign-in aside: `mv ~/.codex/auth.json ~/.codex/auth.json.uat`. Here, press **Reconnect** on the host’s card in Settings › Hosts, then open the Codex persona.
+- **Steps:** on the host, move Codex’s sign-in aside: `mv ~/.codex/auth.json ~/.codex/auth.json.uat`. Here, send the Claude Code agent a message: its turn there makes Postbox ask the host again about every harness. Then open the host’s card in Settings › Hosts, and the Codex persona.
 - **You should see:** within a few seconds of connecting, the card’s Codex line ends “Not signed in”, with a warning “Codex isn’t signed in on host.example.com” and `codex login` with **Copy**. Claude Code’s and Kiro CLI’s lines end “Signed in”. Under **Runs on**, the persona says Codex isn’t signed in there, with the same command, and the field isn’t marked invalid: you can still save.
-- **Then:** put the sign-in back (`mv ~/.codex/auth.json.uat ~/.codex/auth.json`) and press **Reconnect**: the warnings go.
+- **Then:** put the sign-in back (`mv ~/.codex/auth.json.uat ~/.codex/auth.json`) and send the Claude Code agent another message: once the host answers, the warnings go.
 - **If not:** a line that says nothing of sign-in means the host answered `unknown` (an older CLI or daemon), which warns of nothing by design.
 
 **1.3 Sign-in fails**
