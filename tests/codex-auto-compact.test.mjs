@@ -4,59 +4,22 @@
 // small (tests/fixtures/codex-app-server/auto-compact.jsonl, and its README for how it was made).
 
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
-import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { CODEX_ROOT } from './codex-fixture.mjs';
-
-const RECORDED = readFileSync(new URL('fixtures/codex-app-server/auto-compact.jsonl', import.meta.url), 'utf8')
-  .trim()
-  .split('\n')
-  .map((l) => JSON.parse(l));
-
-/**
- * The notifications of the recording’s turn n (1 to 3): from turn/start’s answer, whose id is n + 2, to that turn’s
- * turn/completed. @param {number} n
- */
-function turnNotes(n) {
-  const from = RECORDED.findIndex((l) => l.id === n + 2);
-  const to = RECORDED.findIndex((l, i) => i > from && l.method === 'turn/completed');
-  return RECORDED.slice(from + 1, to + 1);
-}
+import { answersOf, CODEX_ROOT, playedServers } from './codex-fixture.mjs';
 
 /**
  * App-servers that answer as the recording did, one Postbox turn each, as Postbox starts one per turn: the thread it
- * opened or resumed, and the recording’s next turn.
+ * opened, or the same thread resumed, and the recording’s next turn (request ids 3 to 5).
  */
 function recordedServers() {
-  let turn = 0;
-  return () => {
-    const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
-    child.kill = () => child.emit('close', 0);
-    const write = (/** @type {any} */ m) => child.stdout.write(`${JSON.stringify(m)}\n`);
-    const answer = { initialize: 1, 'thread/start': 2, 'thread/resume': 2 };
-    child.stdin.on('data', (chunk) => {
-      for (const line of chunk.toString().trim().split('\n')) {
-        const req = JSON.parse(line);
-        if (req.id === undefined) continue;
-        if (req.method === 'turn/start') {
-          turn += 1;
-          write({ ...RECORDED.find((l) => l.id === turn + 2), id: req.id });
-          const notes = turnNotes(turn);
-          setImmediate(() => notes.forEach(write));
-          continue;
-        }
-        const recorded = RECORDED.find((l) => l.id === answer[req.method]);
-        write(recorded ? { ...recorded, id: req.id } : { id: req.id, result: { data: [], nextCursor: null } });
-      }
-    });
-    return child;
-  };
+  const a = answersOf('auto-compact.jsonl');
+  return playedServers(
+    [3, 4, 5].map((id) => ({ initialize: a.get(1), 'thread/start': a.get(2), 'thread/resume': a.get(2)?.slice(0, 1), 'turn/start': a.get(id) })),
+  );
 }
 
 /** The room after the recording’s three messages, each sent once the turn before it ended. */

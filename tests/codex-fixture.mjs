@@ -106,7 +106,7 @@ export function answersOf(name) {
  * @param {Record<string, any[] | undefined>[]} plays @param {any[]} seen what Postbox sent @param {any[]} answered what
  *   each request got, beside it
  */
-export function playedServers(plays, seen, answered) {
+export function playedServers(plays, seen = [], answered = []) {
   return () => {
     const play = /** @type {Record<string, any[] | undefined>} */ (plays.shift() ?? {});
     const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
