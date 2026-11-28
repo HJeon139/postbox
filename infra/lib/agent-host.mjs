@@ -4,8 +4,9 @@
 // shell, and a shell beside the server would hold every room’s data.
 //
 // What is the machine’s alone, and why:
-//   - its role may call Anthropic’s models on Amazon Bedrock, and nothing else. An agent can use that role, since
-//     it runs on the machine, so the role holds nothing an agent shouldn’t have;
+//   - its role may call Anthropic’s models on Amazon Bedrock, and have Bedrock turn one on for the account at its
+//     first call, and nothing else. An agent can use that role, since it runs on the machine, so the role holds
+//     nothing an agent shouldn’t have;
 //   - its work disk is a volume of its own, kept when the machine is replaced, with the agents’ folders, the
 //     daemon’s records and the host’s SSH identity on it;
 //   - SSH is admitted from the server’s security group alone (lib/network.mjs), for one key, made here, whose
