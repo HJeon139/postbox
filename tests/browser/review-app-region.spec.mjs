@@ -37,6 +37,7 @@ async function dragsABox({ page }) {
   const [c] = answer();
   expect(c).toMatchObject({ anchor: 'region 1', text: 'This gap is too wide.' });
   expect(within(fractions(c.region), { x: 0.2, y: 0.3, w: 0.4, h: 0.4, version: 1 }), `the region is the box dragged: ${JSON.stringify(c.region)}`).toBe(true);
+  await expect(block.locator('iframe.app-iframe[data-sized="1"]')).toHaveCount(1);
   expect(c.region, 'in px of the frame it was marked in').toMatchObject(await frameSize(block));
 }
 
@@ -154,9 +155,11 @@ postbox.ready.then(() => {
   await expect(page.getByRole('textbox', { name: 'Comment on region 1' }), 'the first mark is region 1').toBeFocused();
 });
 
-test('#856 a region carries what the app has under it, as the kit says: the parts it overlaps and the element at its center', async ({ page }) => {
+test('#856 a region carries what the app has under it, as the kit says: the parts it overlaps and the visible text of the element at its center', async ({
+  page,
+}) => {
   const named = `<main style="padding:12px;color:var(--text)"><h2 id="t">Corpus summary</h2>
-<div id="legend" class="key" style="padding:24px"><p id="total" class="big" style="margin:0;padding:16px">Twelve books, in three languages.</p></div></main>
+<div id="legend" class="key" style="padding:24px"><p id="total" class="big" style="margin:0;padding:16px">Twelve books, in three languages.<span style="display:none">hidden prompt</span></p></div></main>
 <script>postbox.anchors({ title: document.getElementById('t'), legend: document.getElementById('legend') });</script>`;
   const { block, answer } = await review(page, {}, named);
   await block.getByRole('button', { name: 'Mark a part of the app' }).click();

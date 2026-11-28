@@ -271,7 +271,7 @@ function sizeFrame(rec) {
   if (!rec.iframe?.isConnected || rec.check) return;
   const h0 = Math.max(120, rec.height ?? 200);
   // Full screen, CSS sizes the frame to the overlay.
-  rec.iframe.style.height = isFull(rec) ? '100%' : `${rec.review ? h0 : Math.min(h0, cap())}px`;
+  rec.iframe.style.height = isFull(rec) ? '100%' : `${rec.review || rec.fullHeight ? h0 : Math.min(h0, cap())}px`;
   rec.iframe.dataset.sized = '1';
   const body = rec.iframe.closest('.app-body');
   if (body) requestAnimationFrame(() => keyboardScroll(body));
@@ -310,7 +310,11 @@ export function onThemeChange() {
   });
 }
 
-function frame(appId, version, { check = false, width = null, height = null, view = false, review = false, onPin, onAnchors, onCrash, onError } = {}) {
+function frame(
+  appId,
+  version,
+  { check = false, width = null, height = null, view = false, review = false, fullHeight = false, onPin, onAnchors, onCrash, onError } = {},
+) {
   const app = client.state.apps[appId];
   const iframe = h('iframe', {
     class: check ? 'check-frame' : 'app-iframe',
@@ -323,7 +327,7 @@ function frame(appId, version, { check = false, width = null, height = null, vie
     style: check ? { width: `${width}px`, ...(height ? { height: `${height}px` } : {}) } : { height: '200px' },
   });
   // Messages are matched to this record by the frame’s window, so the kit’s first hello is never missed.
-  frames.add({ appId, version, iframe, check, review, onPin, onAnchors, onCrash, onError });
+  frames.add({ appId, version, iframe, check, review, fullHeight, onPin, onAnchors, onCrash, onError });
   madeFrames.add(iframe);
   return iframe;
 }
@@ -426,15 +430,15 @@ export function releaseApps() {
 }
 
 /** A new app body, watched for its size, and for nearness unless it’s a review’s. */
-function appBody(appId, review) {
+function appBody(appId, review, fullHeight = false) {
   const body = h('div.app-body', { dataset: { appId } });
   bodies.add(body);
   bodySizes.observe(body);
+  if (review || fullHeight) body.style.maxHeight = 'none';
   // A review never unloads, so it isn’t watched for nearness: while it’s mounted, its app may be under the pointer.
   if (review) {
     // Its old bodies leave the near set in mayBeUnder(), not here: releaseApps() now would run before the transcript
     // is attached, and let go of apps above it that aren’t on the page yet (the integrator’s read of #993).
-    body.style.maxHeight = 'none';
     nearBodies.add(body);
   }
   return body;
@@ -453,12 +457,12 @@ export const shownVersion = (app, review = false) => viewing.get(app.id) ?? (sta
 /**
  * Renders an app (current or viewed version) into `container`. Used by transcript items and app reviews.
  * @param {HTMLElement} container @param {string} appId
- * @param {{ review?: boolean, onPin?: (anchor: string) => void, onBack?: () => void, onLatest?: () => void, onAnchors?: (names: string[]) => void }} [opts]
+ * @param {{ review?: boolean, fullHeight?: boolean, onPin?: (anchor: string) => void, onBack?: () => void, onLatest?: () => void, onAnchors?: (names: string[]) => void }} [opts]
  *   onAnchors hears the parts the app names for comments, none included, once its page has loaded (#855); onLatest
  *   draws the app’s item again on “Back to” the current version, so its version button and menu say it too
  */
 export function mountApp(container, appId, opts = {}) {
-  const { review = false, onPin, onBack, onLatest, onAnchors } = opts;
+  const { review = false, fullHeight = false, onPin, onBack, onLatest, onAnchors } = opts;
   const app = client.state.apps[appId];
   if (!app) {
     container.replaceChildren(h('p.small.dim', 'This app isn’t available any more.'));
@@ -470,7 +474,7 @@ export function mountApp(container, appId, opts = {}) {
   const key = `${appId}:${v}`;
   const status = old || (reloaded.has(key) && app.check.status === 'crashed') ? 'passed' : app.check.status;
   const owner = client.state.sessions[app.sessionId]?.handle ?? 'the agent';
-  const body = appBody(appId, review);
+  const body = appBody(appId, review, fullHeight);
   const placeholder = (lines, height = 180, extra = null) => h('div.app-placeholder', { style: { height: `${height}px` } }, h('div.inner', lines, extra));
   const crashed = crashes.get(key);
   /** @type {ReturnType<typeof errorStrip> | null} */
@@ -525,7 +529,7 @@ export function mountApp(container, appId, opts = {}) {
   } else {
     const remount = () => mountApp(container, appId, opts);
     strip = errorStrip({ app, owner, reload: remount });
-    const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onAnchors, onCrash: remount, onError: strip.show }));
+    const mount = () => body.replaceChildren(frame(appId, v, { review, fullHeight, onPin, onAnchors, onCrash: remount, onError: strip.show }));
     mountAfterChecks(body, mount, placeholder);
     body._unmount = (reason = 'offscreen') => {
       body.replaceChildren(pausedApp(placeholder, reason, body.firstElementChild?.offsetHeight || 200));

@@ -117,6 +117,8 @@ export function reviewApp(b, { itemId, d, done, rerender, threadBox }) {
   if (!kept)
     mountApp(appEl, b.appId, {
       review: !done,
+      // Answered reviews stay uncapped in height too, so regions marked near the bottom stay over what was marked (#856).
+      fullHeight: true,
       // The app reports the parts it names once its page has loaded, and again each time it names them, after an await
       // say. The hint follows the latest: every one for this review on the page, since a block rebuilt around the app
       // (rerenderAround) has a new hint, and the next build starts from the latest.

@@ -80,3 +80,27 @@ test('#856 a region stays over what was marked when the app grows below it', asy
   const off = Math.max(Math.abs((drawn?.y ?? 0) - now.y), Math.abs((drawn?.x ?? 0) - now.x));
   expect(off, `the region is still over the heading: drawn at ${JSON.stringify(drawn)}, the heading at ${JSON.stringify(now)}`).toBeLessThanOrEqual(3);
 });
+
+test('#856 in an answered review of an app taller than the window, a region near the bottom stays over what was marked', async ({ page }) => {
+  const tall = `<main style="padding:12px;color:var(--text)"><h2>Top</h2><div style="height:1700px"></div><p id="bottom" style="margin:0;padding:12px">Bottom summary.</p></main>`;
+  const { block } = await review(page, {}, tall);
+  await block.getByRole('button', { name: 'Mark a part of the app' }).click();
+  await block.frameLocator('iframe.app-iframe').locator('#bottom').scrollIntoViewIfNeeded();
+  const target = await boxIn(block, '#bottom');
+  await dragPx(page, [target.x + 4, target.y + 4], [target.x + Math.min(200, target.width - 4), target.y + target.height - 4]);
+  await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('Tighten this footer.');
+  await block.getByRole('button', { name: 'Add draft comment' }).click();
+  await block.getByRole('button', { name: 'Submit review', exact: true }).click();
+  await expect(block.getByRole('button', { name: 'Submit review', exact: true }), 'the review is answered').toHaveCount(0);
+  await expect(block.locator('iframe.app-iframe[data-sized="1"]'), 'answered review mounts its frame').toHaveCount(1);
+  const drawnEl = block.locator('.rv-marks .rv-region[data-region="1"]');
+  await expect(drawnEl, 'region still drawn in the answered review').toHaveCount(1);
+  await drawnEl.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await settled(page);
+  const frameBox = await block.locator('iframe.app-iframe').boundingBox();
+  const drawn = await drawnEl.boundingBox();
+  const now = await boxIn(block, '#bottom');
+  expect(frameBox?.height ?? 0, 'answered review frame stays uncapped').toBeGreaterThan(1700);
+  expect(drawn && frameBox && drawn.y + drawn.height <= frameBox.y + frameBox.height + 2, 'region sits inside the frame').toBe(true);
+  expect(Math.abs((drawn?.y ?? 0) - now.y), 'region stays over the bottom paragraph').toBeLessThanOrEqual(8);
+});
