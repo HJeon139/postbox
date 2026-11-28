@@ -25,7 +25,7 @@ export const LOCK = 'store.lock';
 /** @typedef {{ path: string, token: string }} Lock */
 
 /** Whether a process is running: a signal of 0 checks without sending one, and EPERM means it’s there but not ours. */
-function alive(pid) {
+export function alive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
