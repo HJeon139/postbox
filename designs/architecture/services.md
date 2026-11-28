@@ -207,7 +207,7 @@ flowchart LR
     - `waiting(sessionId)`;
     - `take(sessionId, turnId, budget)`, which returns the waiting entries of one thread, that of the oldest waiting entry, up to the budget, and leaves the rest waiting for the next turn;
     - `entriesFrom(itemId)`.
-  - `stateOf(sessionId)`: a sender’s view of each entry. An entry still waiting is never an agent state of its sender’s (#1975).
+  - `stateOf(sessionId)`: each entry’s own state, for its message if delivery status is ever shown there; an entry still waiting is never an agent state of its sender’s (#1975).
   - **Scheduled wakes:**
     - `schedule` and `cancelSchedule` add and remove them.
     - A due wake is an entry with the source “scheduled”, so `noteScheduledTurn` becomes its take, `prepareScheduledRetry` becomes the failed-start rule, and the tools a wake recorded (`recordScheduledTool`, `recordedTools`) are its note.
