@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { alive, onMachines } from './remote-pipeline-machines.mjs';
+import { alive, daemonPid, machine, onMachines, standins } from './remote-pipeline-machines.mjs';
 
 const OWN = 'the test’s own failure';
 
@@ -62,4 +62,51 @@ test('#899 a test that passes, then a teardown that fails, reports teardown’s 
     }),
     { code: 'ENOENT' },
   );
+});
+
+test('#2028 standins, daemonPid and alive reject non-positive, PID 1 and out-of-range PIDs', () => {
+  const m = machine({});
+  try {
+    mkdirSync(m.paths.code, { recursive: true });
+    const line = `${JSON.stringify({ ev: 'start', at: 1 })}\n`;
+    writeFileSync(`${m.trace}/0.jsonl`, line);
+    writeFileSync(`${m.trace}/1.jsonl`, line);
+    writeFileSync(`${m.trace}/012345.jsonl`, line);
+    writeFileSync(`${m.trace}/2147483648.jsonl`, line);
+    writeFileSync(`${m.trace}/12345.jsonl`, line);
+    assert.deepEqual(
+      standins(m).map((s) => s.pid),
+      [12345],
+      'standins ignores 0, 1, leading-zero, and > 32-bit max filenames',
+    );
+
+    for (const bad of [0, 1, -1, 1.5, '123', null, undefined, 0x80000000]) {
+      writeFileSync(`${m.paths.code}/daemon.pid`, JSON.stringify({ pid: bad }));
+      assert.equal(daemonPid(m), null, `daemonPid rejects ${JSON.stringify(bad)}`);
+    }
+    writeFileSync(`${m.paths.code}/daemon.pid`, JSON.stringify({ pid: 43210 }));
+    assert.equal(daemonPid(m), 43210, 'daemonPid returns a valid child PID');
+
+    for (const bad of [0, -1, 1.5, Number.NaN, 0x80000000]) {
+      assert.equal(alive(bad), false, `alive(${bad}) is false`);
+    }
+  } finally {
+    delete process.env.POSTBOX_CLAUDE_RECORD;
+    rmSync(m.root, { recursive: true, force: true });
+  }
+});
+
+test('#2028 teardown ignores invalid stand-in, shim and daemon PIDs without signaling them', async () => {
+  let machineRef;
+  await onMachines({}, async (m) => {
+    machineRef = m;
+    mkdirSync(m.paths.code, { recursive: true });
+    writeFileSync(`${m.trace}/0.jsonl`, `${JSON.stringify({ ev: 'start', at: 1 })}\n`);
+    writeFileSync(`${m.trace}/2147483646.jsonl`, `${JSON.stringify({ ev: 'start', at: 2 })}\n${JSON.stringify({ ev: 'shim', pid: -2 })}\n`);
+    writeFileSync(`${m.paths.code}/daemon.pid`, JSON.stringify({ pid: -3 }));
+    m.pids.set(0, 'bad zero');
+    m.pids.set(0x80000000, 'overflow');
+  });
+  assert.equal(machineRef.pids.has(-2), false, 'teardown did not record a negative shim PID');
+  assert.equal(machineRef.pids.has(-3), false, 'teardown did not record a negative daemon PID');
 });

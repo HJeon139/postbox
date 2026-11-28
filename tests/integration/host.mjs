@@ -94,6 +94,7 @@ export function folder(dir) {
  * @param {number} pid
  */
 export function gone(pid) {
+  if (!Number.isInteger(pid) || pid <= 0 || pid > 0x7fffffff) return true;
   try {
     process.kill(pid, 0);
   } catch (e) {
