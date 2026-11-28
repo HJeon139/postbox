@@ -9,7 +9,7 @@ import { effortOf } from './setup.mjs';
 
 export const codexEffortOf = (persona) => (effortOf(persona) === 'max' ? 'xhigh' : effortOf(persona));
 
-export const errorText = (x) => x?.error?.message ?? x?.message ?? 'Codex app-server failed.';
+export const errorText = (x) => String(x?.error?.message ?? x?.message ?? 'Codex app-server failed.');
 
 /**
  * A turn’s agent messages as they stream: their text, held while only white space has come, and each one open until
@@ -78,7 +78,8 @@ function turnNotice(ctx, emit, method, p) {
       if (p.turn?.model) ctx.reported?.({ model: p.turn.model, effort: p.turn.effort ?? codexEffortOf(ctx.persona) });
       if (p.turn?.id) ctx.checkpoint?.({ turnId: p.turn.id, threadId: ctx.state.codexThreadId });
       emit({ kind: 'turn_end', isError: status === 'failed' });
-      return { completed: true, status };
+      // A failed turn’s TurnError, for its reason when no error notification came before it (#425).
+      return { completed: true, status, reason: typeof p.turn?.error?.message === 'string' ? p.turn.error.message : null };
     }
     case 'account/rateLimits/updated':
       emitQuota(emit, codexQuota(p.rateLimits)); // the quota’s usage, for the composer’s quota line (#442)
