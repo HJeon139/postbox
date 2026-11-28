@@ -254,3 +254,24 @@ test('a folder Claude Code says it ran git in, left over from another repository
     [['Here', ROOT]],
   );
 });
+
+// #1932: a caller’s env (a commit’s identity) reaches git over Postbox’s own environment, but can’t turn off the keys
+// runGit sets to keep git safe: optional locks off, no terminal prompt, Postbox’s private index.
+test('#1932 runGit’s env reaches git, and never overrides its safety keys', async () => {
+  /** @type {any[]} */
+  const envs = [];
+  const exec = (/** @type {string} */ _file, /** @type {string[]} */ _args, /** @type {any} */ opts, /** @type {Function} */ cb) => {
+    envs.push(opts.env);
+    cb(null, '', '');
+  };
+  await runGit(ROOT, ['commit-tree', 'abc'], {
+    exec,
+    index: '/tmp/postbox-index',
+    env: { GIT_AUTHOR_NAME: '@gem', GIT_OPTIONAL_LOCKS: '1', GIT_TERMINAL_PROMPT: '1', GIT_INDEX_FILE: '/elsewhere' },
+  });
+  for (const env of envs) {
+    assert.equal(env.GIT_AUTHOR_NAME, '@gem');
+    assert.deepEqual([env.GIT_OPTIONAL_LOCKS, env.GIT_TERMINAL_PROMPT, env.GIT_INDEX_FILE], ['0', '0', '/tmp/postbox-index']);
+  }
+  assert.ok(envs.length > 0, 'git ran');
+});

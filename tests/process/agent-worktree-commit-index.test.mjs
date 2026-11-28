@@ -189,7 +189,7 @@ test('#1844 the worktree’s index takes the time of the index the commit wrote,
   let written = 0;
   const wrapped = async (/** @type {string} */ cwd, /** @type {string[]} */ args, /** @type {{ index?: string }} */ o = {}) => {
     const out = await runGit(cwd, args, { ...gitTimeoutFor(args), ...o });
-    if (args.includes('commit') && o.index) {
+    if (args.includes('commit-tree') && o.index) {
       written = statSync(o.index).mtimeMs;
       // Past a second’s boundary before Postbox puts that index in place, the case git’s racy check is about: the time
       // is the mechanism here, not a wait for something to happen.
