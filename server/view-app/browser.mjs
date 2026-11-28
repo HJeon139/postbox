@@ -35,6 +35,18 @@ function within(promise, ms, what) {
 /** The window a capture uses when no Postbox tab has reported its own: a 14-inch laptop’s browser (#95’s ruling). */
 export const DEFAULT_WINDOW = Object.freeze({ width: 1000, height: 680 });
 
+/**
+ * Vertical slice of a tall review frame to capture around a region (#856): one window height (or the region plus
+ * context, capped at 4,000 px) centered on the region so a 20,000 px app doesn’t scale the mark to a sliver.
+ * @param {{ y: number, h: number }} region @param {number} totalHeight @param {number} winHeight
+ */
+export function clipWindow(region, totalHeight, winHeight) {
+  const total = Math.max(1, Math.round(totalHeight));
+  const clipH = Math.min(total, Math.max(winHeight, Math.min(region.h + 160, 4000)));
+  const top = Math.max(0, Math.min(total - clipH, Math.round(region.y + region.h / 2 - clipH / 2)));
+  return { top, height: clipH, total };
+}
+
 /** Where playwright-core is installed (an optional dependency), or null. */
 function packageDir() {
   try {
@@ -226,7 +238,19 @@ export class AppBrowser {
       await page.goto(`${own}/?nocheck&${q}`, { timeout: CAPTURE_MS });
       await page.waitForSelector('[data-capture="ready"], [data-capture="missing"]', { timeout: CAPTURE_MS });
       if (await page.$('[data-capture="missing"]')) throw new Error('The page couldn’t find that app to show.');
-      const png = await page.locator('[data-capture-item]').screenshot({ timeout: CAPTURE_MS, animations: 'disabled' });
+      let png;
+      if (region) {
+        const box = await page.locator('[data-capture-item]').boundingBox();
+        if (!box) throw new Error('The page drew an empty app.');
+        const { top, height: clipH } = clipWindow(region, box.height, height);
+        png = await page.screenshot({
+          clip: { x: box.x, y: box.y + top, width: box.width, height: clipH },
+          timeout: CAPTURE_MS,
+          animations: 'disabled',
+        });
+      } else {
+        png = await page.locator('[data-capture-item]').screenshot({ timeout: CAPTURE_MS, animations: 'disabled' });
+      }
       this.touch();
       return png;
     } finally {

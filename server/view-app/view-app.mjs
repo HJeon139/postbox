@@ -6,7 +6,7 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { REGION, regionError, regionText } from '../../shared/review-regions.mjs';
-import { AppBrowser, DEFAULT_WINDOW } from './browser.mjs';
+import { AppBrowser, clipWindow, DEFAULT_WINDOW } from './browser.mjs';
 import { answerIn, askToSee, settleDownloads, waitForDownload } from './consent.mjs';
 import { attachViewApp, viewOf } from './view-of.mjs';
 
@@ -131,8 +131,10 @@ export async function viewApp(rt, sessionId, { appId, region: rawRegion } = {}, 
   const saved = await save(rt, sessionId, name, png);
   const where = saved ? ` Saved as ${saved}.` : '';
   const vNote = region && region.version !== app.current ? ` Note: the region was marked on v${region.version}; this capture shows v${app.current}.` : '';
+  const slice = region ? clipWindow(region, region.height, win.height) : null;
+  const part = slice && slice.height < slice.total ? `, showing y ${slice.top}–${slice.top + slice.height} of ${slice.total} px` : '';
   const summary = region
-    ? `${id} v${app.current}, with the marked region (${regionText(region)}) outlined at its ${region.width} px review width, ${win.theme} theme.${vNote}${where}`
+    ? `${id} v${app.current}, with the marked region (${regionText(region)}) outlined at its ${region.width} px review width${part}, ${win.theme} theme.${vNote}${where}`
     : `${id} v${app.current} as the person first sees it, inline in the conversation, in a ${win.width} × ${win.height} window, ${win.theme} theme.${where}`;
   return {
     ok: true,
