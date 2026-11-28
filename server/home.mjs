@@ -69,7 +69,7 @@ const DEFAULT_LOCK_IO = { writeFileSync, linkSync, readFileSync, rmSync };
 
 /**
  * Claims a data folder for this process, or throws when another running Postbox holds it. A lock left by a run that
- * died is taken over.
+ * died is taken over (takeOver, below).
  * @param {string} dataDir
  * @param {LockIo} [io]
  * @returns {() => void}  releases it
@@ -83,24 +83,57 @@ export function lockData(dataDir, io = DEFAULT_LOCK_IO) {
       return () => io.rmSync(lock, { force: true });
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      let text;
-      try {
-        text = io.readFileSync(lock, 'utf8');
-      } catch (readErr) {
-        if (readErr.code === 'ENOENT') continue; // released between EEXIST and read: try again
-        throw readErr;
-      }
-      const other = readPid(text);
-      if (other === null)
-        throw new Error(
-          `The lock at ${lock} is unreadable, so Postbox can’t tell whether another Postbox holds ${dataDir}. If none is running on it, remove the file and start again.`,
-        );
+      const other = holderOf(io, lock, dataDir);
+      if (other === null) continue; // released between EEXIST and read: try again
       if (alive(other) && other !== process.pid)
         throw new Error(`Another Postbox (process ${other}) is using ${dataDir}. Stop it first, or start this one with --data <another folder>.`);
-      io.rmSync(lock, { force: true });
+      takeOver(io, lock, other);
     }
   }
   throw new Error(`Couldn’t claim ${dataDir}: ${lock} keeps coming back.`);
+}
+
+/**
+ * The pid a lock holds, or null when it’s gone. Throws when it holds anything else: that proves nothing about its
+ * holder, so it’s never taken for a dead one.
+ * @param {LockIo} io @param {string} lock @param {string} dataDir @returns {number | null}
+ */
+function holderOf(io, lock, dataDir) {
+  let text;
+  try {
+    text = io.readFileSync(lock, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+  const pid = readPid(text);
+  if (pid === null)
+    throw new Error(
+      `The lock at ${lock} is unreadable, so Postbox can’t tell whether another Postbox holds ${dataDir}. If none is running on it, remove the file and start again.`,
+    );
+  return pid;
+}
+
+/**
+ * Removes a lock found stale, under a takeover file linked beside it the same way. Two starters can read the same dead
+ * pid: the first to link `.taking` reads the lock again and removes it only while it still holds that pid, and the
+ * other refuses at once, since the lock it read may already be the first one’s live lock (#2027). There’s no wait:
+ * a `.taking` left by a start that died is the person’s to remove, as the message says.
+ * @param {LockIo} io @param {string} lock @param {number} stale
+ */
+function takeOver(io, lock, stale) {
+  const taking = `${lock}.taking`;
+  try {
+    publishWhole(io, taking, String(process.pid));
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+    throw new Error(`Another Postbox start is taking over ${lock}. Try again, or remove ${taking} if none is starting.`);
+  }
+  try {
+    if (holderOf(io, lock, dirname(lock)) === stale) io.rmSync(lock, { force: true });
+  } finally {
+    io.rmSync(taking, { force: true });
+  }
 }
 
 /**

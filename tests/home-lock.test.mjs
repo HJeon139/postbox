@@ -1,0 +1,64 @@
+// The command line’s claim on a data folder under races (server/home.mjs, lockData; #2027): a stale lock taken over
+// under a takeover file, so two starters that read the same dead pid can’t both claim the folder. Every pid a test
+// writes is positive: the parent process (the test runner) stands for a live holder, and 2147483646 for one that’s gone.
+
+import assert from 'node:assert/strict';
+import { linkSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { lockData } from '../server/home.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+const DEAD = '2147483646';
+const realIo = { writeFileSync, linkSync, readFileSync, rmSync };
+
+test('two starters over one dead lock: the second finds the first’s live lock when it takes over, and is refused (#2027)', () => {
+  const dir = tempDir('pb-home-lock-');
+  const lock = join(dir, 'postbox.lock');
+  writeFileSync(lock, DEAD);
+  let firstRan = false;
+  const io = {
+    ...realIo,
+    linkSync(src, dest) {
+      if (dest === `${lock}.taking` && !firstRan) {
+        // The first starter, which read the same dead pid, finishes its takeover here: it removed the dead lock and
+        // linked its own. This starter read the dead pid before that.
+        firstRan = true;
+        rmSync(lock);
+        writeFileSync(lock, String(process.ppid));
+      }
+      return linkSync(src, dest);
+    },
+  };
+  assert.throws(() => lockData(dir, io), new RegExp(`Another Postbox \\(process ${process.ppid}\\) is using`));
+  assert.equal(firstRan, true, 'the interleaving ran');
+  assert.equal(readFileSync(lock, 'utf8'), String(process.ppid), 'the first starter’s lock stays');
+  assert.deepEqual(readdirSync(dir), ['postbox.lock'], 'no takeover file or draft is left');
+});
+
+test('a takeover already under way refuses a second at once, naming the file, and removes nothing (#2027)', () => {
+  const dir = tempDir('pb-home-lock-');
+  const lock = join(dir, 'postbox.lock');
+  writeFileSync(lock, DEAD);
+  writeFileSync(`${lock}.taking`, String(process.ppid));
+  assert.throws(
+    () => lockData(dir),
+    (e) => {
+      assert.match(e.message, /Another Postbox start is taking over/);
+      assert.ok(e.message.includes(`${lock}.taking`), `names the file: ${e.message}`);
+      return true;
+    },
+  );
+  assert.deepEqual(readdirSync(dir).sort(), ['postbox.lock', 'postbox.lock.taking'], 'neither file was removed');
+  assert.equal(readFileSync(lock, 'utf8'), DEAD);
+});
+
+test('a dead lock is taken over, and the takeover file goes with it (#2027)', () => {
+  const dir = tempDir('pb-home-lock-');
+  const lock = join(dir, 'postbox.lock');
+  writeFileSync(lock, DEAD);
+  const release = lockData(dir);
+  assert.equal(readFileSync(lock, 'utf8'), String(process.pid));
+  assert.deepEqual(readdirSync(dir), ['postbox.lock'], 'no takeover file or draft is left');
+  release();
+});
