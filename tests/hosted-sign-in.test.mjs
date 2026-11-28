@@ -3,7 +3,8 @@
 // computer asks nothing. Through the router with fake requests, as tests/profile.test.mjs calls it. Nothing listens.
 
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+import { readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { start } from '../server/index.mjs';
@@ -229,4 +230,26 @@ test('hosted, an agent on a host keeps its folder there, and a conversation’s 
   });
   assert.equal(removed.status, 200);
   assert.deepEqual(hosted.rt.s.sessions[session.id].addDirs, []);
+});
+
+// #1977: the models answer reaches everyone signed in to a hosted Postbox, not only a room’s members, and a
+// provider’s error can name the account’s resources (server/model-runs.mjs). Hosted, a failure is answered without it.
+test('hosted, the models answer says a model failed and when, and never the harness’s words; on your own computer it says them', async () => {
+  const why = 'arn:aws:bedrock:us-west-2:123456789012:inference-profile/m-1 is not available for this account';
+  for (const [port, signIn, headers, expected] of /** @type {const} */ ([
+    [PORT + 2, { settings: SETTINGS, get: async () => publicPem, now: () => NOW }, signed(), { ended: 'failed', at: 1 }],
+    [PORT + 3, undefined, {}, { ended: 'failed', at: 1, why }],
+  ])) {
+    const dir = tempDir('pb-hosted-models-');
+    const app = await start({ port, dataDir: dir, fresh: true, demo: true, quiet: true, claudeHome: dir, listen: false, signIn });
+    try {
+      // Read once, at the first answer, so it is written before one.
+      writeFileSync(join(dir, 'model-runs.json'), JSON.stringify({ mock: { 'm-1': { ended: 'failed', at: 1, why } } }));
+      const cookie = (await ask(app, port, { path: '/', headers: { ...NAVIGATION, ...headers } })).headers['set-cookie'].split(';')[0];
+      const answer = await ask(app, port, { method: 'POST', path: '/api/backends/mock/models', body: {}, headers: { cookie, ...headers } });
+      assert.deepEqual([answer.status, answer.json.ran?.['m-1']], [200, expected], `signed in: ${!!signIn}`);
+    } finally {
+      await app.close();
+    }
+  }
 });
