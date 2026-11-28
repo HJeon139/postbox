@@ -188,7 +188,7 @@ test('#120: the shim’s path is under the Postbox version the runtime passes in
   assert.deepEqual(serverOf(start.argv).args, [`${HOME}/.postbox-remote/0.99.1/server/remote/host/shim.mjs`, start.turn]);
 });
 
-test('#120: a turn the person started in a side or topic thread (ctx.remote.bring) starts the shim with --bring', async () => {
+test('#120, #382: a turn in a side or topic thread (ctx.remote.bring) starts the shim with --bring', async () => {
   // So the shim lists bring_to_conversation where the laptop’s server/mcp.mjs would, and nowhere else.
   const d = createFakeDaemon({ lines: fixtureLines('block') });
   const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-work', ...forbidden() });

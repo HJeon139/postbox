@@ -124,8 +124,8 @@ export function clearSummaryPending(rt, topicId, ended = null) {
 
 /**
  * Posts text from a topic or side thread in its conversation. The conversation’s agents read it at the start of
- * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it with
- * bring_to_conversation, because the person asked it to (#128).
+ * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it itself with
+ * bring_to_conversation, the thread’s outcome or what the person asked for (#128, #382).
  */
 export function shareText(rt, threadId, { fromThreadId, handle, text, summary = false, agent = false, question = undefined }) {
   const from = rt.store.pending.thread(fromThreadId); // its title, as written: a topic held behind a commit counts (#623)

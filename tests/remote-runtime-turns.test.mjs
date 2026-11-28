@@ -34,7 +34,7 @@ test('#120 G6: ! for an agent on a host runs in the project’s folder here, nev
   assert.deepEqual(await arrange.commandFolder(rt, t.id), { folder: '/home/user/app', host: null });
 });
 
-test('#120: a remote turn is told it may post to the conversation only where the laptop’s would: the person’s, in a topic thread', async () => {
+test('#120, #382: a remote turn is told it may post to the conversation where the laptop’s would: any turn in a topic thread', async () => {
   const { rt, adapter } = setup();
   const h = rt.addHost({ name: 'host.example.com' });
   const far = rt.createPersona({ handle: 'far', backend: 'claude-code', remote: { hostId: h.id } });
@@ -48,6 +48,13 @@ test('#120: a remote turn is told it may post to the conversation only where the
   rt.sendMessage(topic.id, { text: '@far go on here' });
   await until(() => adapter.log.filter((x) => x === 'start:far').length === 2, 'the topic thread’s turn');
   assert.equal(adapter.bring.get('far'), true, 'in a topic thread, at the person’s message, it is (ctx.remote.bring)');
+  rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
+  await until(() => adapter.log.filter((x) => x === 'stopped:far').length === 2 && rt.turns.size === 0 && rt.exiting.size === 0, 'stopped again');
+  // A turn another agent started there is offered it too (#382).
+  adapter.bring.delete('far');
+  rt.turnService.run(arrange.sessionsIn(rt, t.id)[0].id, { kind: 'agent', from: '@near', text: 'Review it here.' }, { threadId: topic.id });
+  await until(() => adapter.log.filter((x) => x === 'start:far').length === 3, 'the wake’s turn in the topic thread');
+  assert.equal(adapter.bring.get('far'), true, 'in a topic thread, at another agent’s wake, it is too');
   rt.stop(arrange.sessionsIn(rt, t.id)[0].id);
 });
 

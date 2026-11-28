@@ -108,7 +108,7 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
 }
 
 /**
- * Whether tools/list offers a tool: bring_to_conversation only to the person’s turn in a side or topic thread (#128),
+ * Whether tools/list offers a tool: bring_to_conversation only to a turn in a side or topic thread (#128, #382),
  * permission_prompt only to a backend that asks through it (server/permission-prompt.mjs), and every other tool always.
  */
 function offered(rt, sessionId, turnToken, name) {
