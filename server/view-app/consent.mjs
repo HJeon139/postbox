@@ -5,6 +5,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { conversationRoot } from '../../shared/conversation.mjs';
 import { cutText } from '../../shared/text-parts.mjs';
 import { askAgain } from '../ask-again.mjs';
 import { releaseNeed } from '../card-needs.mjs';
@@ -41,29 +42,25 @@ export function keepAnswer(dir, answer) {
 /** A view card still waiting on its answer or its download, which an agent that calls view_app is told about. */
 const LIVE = new Set(['open', 'downloading']);
 
-/** Each Runtime’s one live view card, kept as it’s shown: `{ threadId, itemId }`. @type {WeakMap<object, { threadId: string, itemId: string }>} */
-const shown = new WeakMap();
-
 /**
- * The one view card that’s open or downloading, in whichever thread it is (#1927): the answer and the download are
- * Postbox’s, not a thread’s, so there’s one at a time. Kept as it’s shown; found by a scan of the threads only when
- * none is kept (after a restart), which is a call that would show a card anyway.
- * @param {any} rt @returns {{ threadId: string, it: any } | null}
+ * The view cards that are open or downloading (#1927): in one conversation, one at most, which an agent there is told
+ * about; or across Postbox, every one, which the person’s answer settles, since the answer and the download are
+ * Postbox’s. A scan of the threads, run on a call that would show a card or on the person’s answer: both rare.
+ * @param {any} rt @param {string | null} [conversation]  a conversation’s root thread; none for every conversation
+ * @returns {{ threadId: string, it: any }[]}
  */
-function liveCard(rt) {
-  const at = shown.get(rt);
-  const kept = at ? rt.store.pending.item(at.threadId, at.itemId) : null;
-  if (at && kept?.kind === 'viewask' && LIVE.has(kept.status)) return { threadId: at.threadId, it: kept };
-  shown.delete(rt);
+function liveCards(rt, conversation = null) {
+  const cards = [];
   for (const threadId of Object.keys(rt.s.threads)) {
+    if (conversation && conversationRoot(rt.s.threads, threadId) !== conversation) continue;
     const it = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && LIVE.has(x.status));
-    if (it) {
-      shown.set(rt, { threadId, itemId: it.id });
-      return { threadId, it };
-    }
+    if (it) cards.push({ threadId, it });
   }
-  return null;
+  return cards;
 }
+
+/** The conversation’s live view card, if it has one. @param {any} rt @param {string} threadId */
+const cardIn = (rt, threadId) => liveCards(rt, conversationRoot(rt.s.threads, threadId) ?? threadId)[0] ?? null;
 
 /**
  * Notes an agent on the card, once, so it hears how the card ends (settle): any agent but the one that asked, which
@@ -75,24 +72,31 @@ function noteWaiting(rt, { threadId, it }, sessionId) {
 }
 
 /**
- * Shows the card, once while it’s open or downloading, wherever the agent’s turn runs. Returns what view_app tells
- * the agent: to carry on without the picture, since the answer reaches it as a message and nothing needs it to stop
- * (#1927; #1975, no agent waits behind another).
+ * A card in the agent’s thread, its need from now, while the turn runs on, as an asking block just shown is (#1868,
+ * card-needs.mjs offerShown); or, while a download the person allowed elsewhere runs, a card that says so here.
+ * @param {any} rt @param {any} se @param {string} threadId @param {'open' | 'downloading'} status
+ */
+function showCard(rt, se, threadId, status) {
+  const it = rt.threads.addItem(threadId, { kind: 'viewask', sessionId: se.id, handle: se.handle, turnId: rt.turns.get(se.id)?.id ?? null, status });
+  if (status === 'open') rt.bus.emit('block.asking', { se, item: it, threadId });
+}
+
+/**
+ * Shows the card, once per conversation while it’s open or downloading, wherever the agent’s turn runs there. Returns
+ * what view_app tells the agent: to carry on without the picture, since the answer reaches it as a message and
+ * nothing needs it to stop (#1927; #1975, no agent waits behind another).
  * @param {any} rt @param {string} sessionId @param {string} threadId @param {() => void} endSegment
  */
 export function askToSee(rt, sessionId, threadId, endSegment) {
   const se = rt.session(sessionId);
-  const card = liveCard(rt);
-  // Offered again only to the agent that asked, while it’s open. Any other agent’s call finds it and gets no need of
-  // its own: the card notes it, and it hears the answer (#1927).
+  const card = cardIn(rt, threadId);
+  // Offered again only to the agent that asked, while it’s open. Any other agent’s call in the conversation finds it
+  // and gets no need of its own: the card notes it, and it hears the answer (#1927).
   if (card?.it.status === 'open' && card.it.sessionId === sessionId) askAgain(rt, se, card.it, card.threadId);
   else if (card) noteWaiting(rt, card, sessionId);
   else {
     endSegment();
-    const it = rt.threads.addItem(threadId, { kind: 'viewask', sessionId, handle: se.handle, turnId: rt.turns.get(sessionId)?.id ?? null, status: 'open' });
-    shown.set(rt, { threadId, itemId: it.id });
-    // It is the agent’s need from now, while the turn runs on, as an asking block just shown is (#1868, card-needs.mjs offerShown).
-    rt.bus.emit('block.asking', { se, item: it, threadId });
+    showCard(rt, se, threadId, 'open');
   }
   return {
     ok: true,
@@ -103,13 +107,15 @@ export function askToSee(rt, sessionId, threadId, endSegment) {
 }
 
 /**
- * An agent that calls view_app while the download the person allowed runs (#1927): the downloading card notes it,
- * wherever it is, so it hears when the browser is ready, and it carries on meanwhile. Returns what view_app tells it.
- * @param {any} rt @param {string} sessionId
+ * An agent that calls view_app while the download the person allowed runs (#1927): the conversation’s card notes it,
+ * or, with none there (the person allowed it in another conversation), a downloading card is shown here, so it hears
+ * when the browser is ready through its own room. It carries on meanwhile. Returns what view_app tells it.
+ * @param {any} rt @param {string} sessionId @param {string} threadId
  */
-export function waitForDownload(rt, sessionId) {
-  const card = liveCard(rt);
+export function waitForDownload(rt, sessionId, threadId) {
+  const card = cardIn(rt, threadId);
   if (card) noteWaiting(rt, card, sessionId);
+  else showCard(rt, rt.session(sessionId), threadId, 'downloading');
   return {
     ok: true,
     waiting: true,
@@ -118,8 +124,17 @@ export function waitForDownload(rt, sessionId) {
 }
 
 /**
- * The person’s answer on the card: download or decline. A download runs in the background; the card says how it went,
- * and the agent hears it either way.
+ * Each live view card settled the same way, by the person’s one answer (#1927).
+ * @param {any} rt @param {string} status @param {string | null} notice @param {string | null} [reason]
+ */
+const settleAll = (rt, status, notice, reason = null) => {
+  for (const { threadId, it } of liveCards(rt)) settle(rt, threadId, it, status, notice, reason);
+};
+
+/**
+ * The person’s answer on the card: download or decline. The answer is Postbox’s, so it settles every conversation’s
+ * live card, each telling its own agents (#1927). A download runs in the background; each card says how it went, and
+ * its agents hear it either way.
  * @param {any} rt @param {string} threadId @param {string} itemId @param {string} action
  */
 export function resolveViewAsk(rt, threadId, itemId, action) {
@@ -129,20 +144,24 @@ export function resolveViewAsk(rt, threadId, itemId, action) {
   const view = viewOf(rt);
   if (action === 'decline') {
     keepAnswer(view.dir, 'declined');
-    return settle(rt, threadId, it, 'declined', 'The person chose not to download the browser, so view_app can’t show you your app. Carry on without it.');
+    settleAll(rt, 'declined', 'The person chose not to download the browser, so view_app can’t show you your app. Carry on without it.');
+    return { ok: true };
   }
   keepAnswer(view.dir, 'allowed');
-  rt.threads.patchItem(threadId, it.id, { status: 'downloading', answeredAt: Date.now() });
-  // The person has answered, so the agent no longer needs them while the download runs (#954); it hears how it ends.
-  const se = rt.s.sessions[it.sessionId];
-  if (se) releaseNeed(rt, se, it.id);
+  for (const card of liveCards(rt)) {
+    if (card.it.status !== 'open') continue;
+    rt.threads.patchItem(card.threadId, card.it.id, { status: 'downloading', answeredAt: Date.now() });
+    // The person has answered, so the agent no longer needs them while the download runs (#954); it hears how it ends.
+    const se = rt.s.sessions[card.it.sessionId];
+    if (se) releaseNeed(rt, se, card.it.id);
+  }
   view.browser
     .install()
     .then((r) => {
-      if (r.ok) settle(rt, threadId, it, 'ready', 'The person allowed the download, and it finished. Call view_app now to see your app.');
+      if (r.ok) settleAll(rt, 'ready', 'The person allowed the download, and it finished. Call view_app now to see your app.');
       // Postbox is stopping: the card says so, and no agent is woken on the way out.
-      else if (r.message === STOPPED) settle(rt, threadId, it, 'failed', null, r.message);
-      else settle(rt, threadId, it, 'failed', `The person allowed the download, but it failed: ${r.message} Carry on without view_app.`, r.message);
+      else if (r.message === STOPPED) settleAll(rt, 'failed', null, r.message);
+      else settleAll(rt, 'failed', `The person allowed the download, but it failed: ${r.message} Carry on without view_app.`, r.message);
     })
     .catch((e) => console.error(`Postbox couldn’t tell the agents waiting on the browser download how it ended: ${e.message}`));
   return { ok: true };
@@ -174,7 +193,7 @@ function settle(rt, threadId, it, status, notice, reason = null) {
   rt.threads.patchItem(threadId, it.id, { status, ...(reason ? { reason: cutText(String(reason), 400) } : {}), settledAt: Date.now() });
   const asker = rt.s.sessions[it.sessionId];
   if (asker) releaseNeed(rt, asker, it.id);
-  // Read now, not as the person answered: an agent can join while the download runs (waitForDownload).
+  // Read pending, as the card stands now: an agent can be noted on it while the download runs (waitForDownload).
   const waiting = rt.store.pending.item(threadId, it.id)?.waiting ?? [];
   for (const id of new Set([it.sessionId, ...waiting])) {
     // Read as delivery reads it, so a session it would refuse (deleted or retired) is skipped, not thrown on.

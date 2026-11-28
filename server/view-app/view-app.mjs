@@ -90,7 +90,7 @@ export async function viewApp(rt, sessionId, { appId } = {}, ctx) {
       message: 'The person chose not to download the browser that renders apps for now, so view_app can’t show you this one. Ask them how it looks.',
     };
   if (answer === 'unasked' || status === 'missing') {
-    if (answer === 'allowed' && view.browser.installing) return waitForDownload(rt, sessionId);
+    if (answer === 'allowed' && view.browser.installing) return waitForDownload(rt, sessionId, ctx.threadId());
     return askToSee(rt, sessionId, ctx.threadId(), ctx.endSegment);
   }
   const item = rt.store.items(app.threadId).find((x) => x.block?.id === id);
