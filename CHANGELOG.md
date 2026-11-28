@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.11.1 (2026-11-28)
+
+### Fixes
+
+- **hosted:** a read outside an agent's folders offers no Always allow on a hosted server
+- **hosted:** the demo's projects are seeded without a folder on the server
+- **hosted:** a conversation's read folders saved before are ignored too
+
 ## 5.11.0 (2026-11-28)
 
 ### Features
