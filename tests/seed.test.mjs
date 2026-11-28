@@ -12,13 +12,13 @@ import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
-async function seeded({ demo = false, agents = null } = {}) {
+async function seeded({ demo = false, agents = null, hosted = false, folders = false } = {}) {
   const store = new Store(null);
   // Seeding only checks that the agents' backend exists.
   const rt = new Runtime({
     store,
     adapters: new AdapterRegistry().register({ name: 'claude-code' }),
-    config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [], hosted },
   });
   const dataDir = tempDir('pb-seed-');
   if (agents) await writeFile(join(dataDir, 'agents.json'), JSON.stringify(agents));
@@ -29,6 +29,7 @@ async function seeded({ demo = false, agents = null } = {}) {
     projects: Object.values(s.projects).map((p) => p.name),
     threads: Object.values(s.threads).length,
     boilerplates: Object.keys(s.boilerplates),
+    ...(folders ? { folders: Object.values(s.personas).map((p) => p.folder) } : {}),
   };
 }
 
@@ -134,6 +135,20 @@ test('agents.json in the data folder replaces the agents in either mode', async 
     threads: 0,
     boilerplates: BOILERPLATES.map((b) => b.id),
   });
+});
+
+test('hosted, agents.json that gives an agent a folder still starts Postbox, with the folder left out; here it is kept', async () => {
+  const there = tempDir('pb-seed-folder-');
+  const agents = [{ handle: 'scout', description: 'Looks around.', folder: there }, { handle: 'second' }];
+  const hosted = await seeded({ agents, hosted: true, folders: true });
+  assert.deepEqual(
+    [hosted.agents, hosted.folders],
+    [
+      ['@scout on claude-code', '@second on claude-code'],
+      ['', ''],
+    ],
+  );
+  assert.deepEqual((await seeded({ agents, folders: true })).folders, [there, '']);
 });
 
 test('the GPT boilerplate uses Codex and supplies general assistant instructions', () => {
