@@ -130,6 +130,9 @@ async function reviewGoesLive(page, width) {
   r.tools.show_block({ block: { id: `rv-${width}`, type: 'review', version: 1, title, fallback: 'Review the app.', format: 'app', appId } });
   await r.lines(6, 'After');
   const f = page.locator('.rv-box iframe.app-iframe');
+  // Scroll the review into view before waiting for data-sized: with 80 items above (.cv-skip), the After lines can
+  // push it above the viewport, where content-visibility: auto skips the iframe’s layout (scrollHeight 0) until in view (#1726).
+  await f.evaluate((n) => n.scrollIntoView({ block: 'center' }));
   await expect(f, 'the review’s app to load').toHaveAttribute('data-sized', '1');
   await expect(page.locator('.app-holder .app-placeholder', { hasText: 'Unloaded while off screen' }), 'the app’s own item unloaded').toHaveCount(1);
   const SHIFT = 120;
