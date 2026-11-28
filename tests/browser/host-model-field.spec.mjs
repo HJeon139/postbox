@@ -172,13 +172,23 @@ test('the model Postbox fills in for a new agent is one that answered where it r
   await sheet.getByRole('button', { name: 'New agent' }).click();
   await sheet.getByLabel('Backend').selectOption('codex');
   const model = sheet.getByLabel('Model');
+  /** The suggestions the field holds now, which are a host’s own only once its list has answered. */
+  const listed = (/** @type {import('@playwright/test').Locator} */ dialog) =>
+    dialog.locator('#na-models option').evaluateAll((options) => options.map((o) => /** @type {HTMLOptionElement} */ (o).value));
   // On A, where its first listed model failed and another answered: the one that answered.
   await sheet.getByLabel('Runs on').selectOption(kept.a.host.id);
   await expect(model).toHaveValue('gpt-5.6-terra');
+  await expect.poll(() => listed(sheet)).toEqual(['gpt-5.6-terra', 'auto', 'gpt-9-new']);
   await expect(sheet.locator('[data-model-ran]')).toHaveText(/last turn on host-a\.example\.com answered/);
   // On B nothing is kept, and it doesn’t list A’s model: its own default.
   await sheet.getByLabel('Runs on').selectOption(kept.b.host.id);
   await expect(model).toHaveValue('auto');
+  await expect.poll(() => listed(sheet)).toEqual(['gpt-9-new', 'auto']);
+  // Every list this sheet asked for has answered before the move back, whatever each held: the field says how many
+  // it still waits for. Without this wait a late answer made the pick for A, such as the list of the backend the
+  // sheet opened on, which only a computer with that CLI asks, and takes seconds there. So the pick at each paint,
+  // which is what a person’s move relies on once every list is in, went untested.
+  await expect(model).not.toHaveAttribute('data-models-asking', /./, { timeout: 30_000 });
   // Back on A, whose list was asked already: A’s answered model again, not what B left.
   await sheet.getByLabel('Runs on').selectOption(kept.a.host.id);
   await expect(model).toHaveValue('gpt-5.6-terra');

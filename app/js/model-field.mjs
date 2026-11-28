@@ -162,6 +162,8 @@ export function modelField(st, paint, { idp }) {
       id: `${idp}-m`,
       value: st.model,
       list: `${idp}-models`,
+      // How many lists this sheet has asked for and not yet heard: none once every answer is in, whatever it held.
+      'data-models-asking': Object.values(st.modelLists ?? {}).filter((l) => l === null).length || null,
       spellcheck: 'false',
       'aria-describedby': [help.shown ? `${idp}-m-help` : null, ran ? `${idp}-m-ran` : null].filter(Boolean).join(' ') || null,
       oninput: (e) => {
