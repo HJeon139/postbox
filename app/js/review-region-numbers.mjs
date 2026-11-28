@@ -1,7 +1,7 @@
 // The numbers of the regions marked on an app in its review (#856): the draft’s, as the answer will give them, the
 // next one to mark, and the region each “region N” names, from the threads, the draft and the open comment box.
 
-import { REGION_ANCHOR, regionAnchor } from '/shared/review-regions.mjs';
+import { nextRegion, regionAnchor } from '/shared/review-regions.mjs';
 
 /**
  * Gives the draft’s regions the numbers the answer will give them: one an agent’s comment numbered first, while the
@@ -32,6 +32,5 @@ export function regionsOf(b, d) {
  */
 export function nextAnchor(b, d) {
   const open = d.composingRegion && d.composingText.trim() ? [{ anchor: d.composing }] : [];
-  const taken = [...(b.threads ?? []), ...d.comments, ...open].map((x) => x.anchor).filter((a) => typeof a === 'string' && REGION_ANCHOR.test(a));
-  return `region ${Math.max(0, ...taken.map((a) => Number(a.slice('region '.length)))) + 1}`;
+  return nextRegion([...(b.threads ?? []), ...d.comments, ...open].map((x) => x.anchor));
 }

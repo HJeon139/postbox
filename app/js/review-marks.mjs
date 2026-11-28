@@ -20,8 +20,9 @@ const STEP = 8;
 const SMALLEST = 8;
 /** How far a frame’s width may be from the one a region was marked in, in px, for the region to be drawn in it. */
 const SAME_WIDTH = 4;
-/** A drag shorter than this, in pixels each way, is a click, so a point. */
+/** A drag shorter than this, in pixels each way, is a click, so a point; touch gets more slop for a finger. */
 const SLOP = 4;
+const TOUCH_SLOP = 8;
 /** What each arrow key does to a box: moves it, or with Shift, moves its right or bottom edge. */
 const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
@@ -95,6 +96,12 @@ export function releaseMarks() {
   }
 }
 
+/** Keeps the review’s mark button enabled only while its app’s frame is mounted (#856). @param {string} itemId @param {any} l */
+function syncButton(itemId, l) {
+  const btn = l.env?.pins?.querySelector(`[data-mark-button="${CSS.escape(itemId)}"]`);
+  if (btn instanceof HTMLButtonElement) btn.disabled = !frameOf(l) || l.env?.version === null;
+}
+
 /**
  * Puts the review’s layer over its app’s frame, last in the frame’s box so it’s on top, and again each time the app is
  * mounted afresh there (a reload after a crash, a pause while another app is checked). @param {string} itemId
@@ -106,6 +113,7 @@ export function attachMarks(itemId, appEl) {
   const place = () => {
     const body = appEl.querySelector(':scope > .app-body');
     if (body?.querySelector(':scope > iframe.app-iframe') && body.lastElementChild !== l.el) body.append(l.el);
+    syncButton(itemId, l);
   };
   l.watch = new MutationObserver(place);
   l.watch.observe(appEl, { childList: true, subtree: true });
@@ -137,6 +145,7 @@ export function paintMarks(itemId, env) {
   // Whether each is drawn is said in the list of comments, which a resize changes without a render.
   for (const note of env.pins?.querySelectorAll('[data-region-note]') ?? [])
     note.textContent = regionNote(regions.get(/** @type {HTMLElement} */ (note).dataset.regionNote), version, width);
+  syncButton(itemId, l);
 }
 
 /**
@@ -185,7 +194,7 @@ export function markControls(itemId, env) {
   };
   const button = h(
     'button.btn.sm',
-    { type: 'button', 'aria-pressed': String(on), 'data-mark-button': itemId, disabled: version === null, onclick: toggle },
+    { type: 'button', 'aria-pressed': String(on), 'data-mark-button': itemId, disabled: version === null || !frameOf(layers.get(itemId)?.deref() ?? { el: h('div') }), onclick: toggle },
     'Mark a part of the app',
   );
   if (!on) return { button, help: null, status: null };
@@ -230,7 +239,8 @@ function dragged(from, e) {
   const { rect, width, height } = from;
   const px = (/** @type {number} */ x) => Math.round(clamp(x - rect.left, 0, width));
   const py = (/** @type {number} */ y) => Math.round(clamp(y - rect.top, 0, height));
-  if (Math.abs(e.clientX - from.x) < SLOP && Math.abs(e.clientY - from.y) < SLOP) return { x: px(from.x), y: py(from.y), w: 0, h: 0, width, height };
+  const slop = e.pointerType === 'touch' ? TOUCH_SLOP : SLOP;
+  if (Math.abs(e.clientX - from.x) < slop && Math.abs(e.clientY - from.y) < slop) return { x: px(from.x), y: py(from.y), w: 0, h: 0, width, height };
   const [x0, x1] = [px(from.x), px(e.clientX)];
   const [y0, y1] = [py(from.y), py(e.clientY)];
   return { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0), width, height };

@@ -96,7 +96,12 @@ async function marksByKeyboard({ page }) {
   await expect
     .poll(answer, { message: 'the agent gets the box the keys marked' })
     .toEqual([
-      { anchor: 'region 1', region: { x: x + 32, y: y + 16, w: w + 16, h: h - 8, ...size, version: 1 }, text: 'Move this up.', threadId: expect.any(String) },
+      {
+        anchor: 'region 1',
+        region: expect.objectContaining({ x: x + 32, y: y + 16, w: w + 16, h: h - 8, ...size, version: 1 }),
+        text: 'Move this up.',
+        threadId: expect.any(String),
+      },
     ]);
 }
 
@@ -171,5 +176,34 @@ test('#856 a region carries what the app has under it, as the kit says: the part
   expect(answer()[0].region.under, 'with the part it overlaps, and the element at its center').toEqual({
     parts: ['legend'],
     element: { tag: 'p', id: 'total', class: 'big', text: 'Twelve books, in three languages.' },
+  });
+});
+
+test('#856 Mark a part of the app stays disabled when the app has no frame mounted', async ({ page }) => {
+  const { block } = await review(page);
+  const btn = block.getByRole('button', { name: 'Mark a part of the app' });
+  await expect(btn, 'enabled once the app’s frame is mounted').toBeEnabled();
+  // Remove the iframe from .app-body (as when an app is paused or pending its check): the observer disables the button.
+  await block.locator('.app-body > iframe.app-iframe').evaluate((el) => el.remove());
+  await expect(btn, 'disabled when no iframe.app-iframe is in .app-body').toBeDisabled();
+});
+
+test.describe('touch', () => {
+  test.use({ viewport: { width: 375, height: 812 }, hasTouch: true });
+
+  test('#856 tapping on a 375 px touch screen marks a point and submits it', async ({ page }) => {
+    const { block, answer } = await review(page);
+    await block.getByRole('button', { name: 'Mark a part of the app' }).tap();
+    const layer = block.locator('.rv-marks.marking');
+    await layer.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    const r = await layer.boundingBox();
+    if (!r) throw new Error('The layer over the app has no box.');
+    await page.touchscreen.tap(r.x + r.width * 0.5, r.y + r.height * 0.4);
+    await page.getByRole('textbox', { name: 'Comment on region 1' }).fill('Tight on a phone.');
+    await block.getByRole('button', { name: 'Add draft comment' }).tap();
+    await block.getByRole('button', { name: 'Submit review', exact: true }).tap();
+    await expect.poll(answer, { message: 'the agent gets the tapped point' }).toHaveLength(1);
+    expect(answer()[0].region).toMatchObject({ w: 0, h: 0, version: 1 });
+    expect(answer()[0].region.width).toBeLessThanOrEqual(375);
   });
 });

@@ -64,6 +64,12 @@ export function regionNameError(c) {
 /** Whether two regions are the same place, marked in the same frame on the same version. @param {any} a @param {any} b */
 export const sameRegion = (a, b) => ['x', 'y', 'w', 'h', 'width', 'height', 'version'].every((k) => a?.[k] === b?.[k]);
 
+/** The next “region N” anchor past every “region N” in `anchors` (#856). @param {unknown[]} anchors */
+export function nextRegion(anchors) {
+  const nums = anchors.filter((a) => typeof a === 'string' && REGION_ANCHOR.test(a)).map((a) => Number(/** @type {string} */ (a).slice('region '.length)));
+  return `region ${Math.max(0, ...nums) + 1}`;
+}
+
 /**
  * The anchor a comment on a region takes beside what the review already holds: its own, unless another thread holds
  * that “region N” for another place, or for a part. An agent’s comment can arrive while the person’s draft, numbered
@@ -77,7 +83,7 @@ export function regionAnchor(c, held) {
   if (!named.some((t) => t.anchor === c.anchor && !sameRegion(t.region, c.region))) return c.anchor;
   const same = named.find((t) => t.region && sameRegion(t.region, c.region));
   if (same) return same.anchor;
-  return `region ${Math.max(0, ...named.map((t) => Number(t.anchor.slice('region '.length)))) + 1}`;
+  return nextRegion(named.map((t) => t.anchor));
 }
 
 /**
