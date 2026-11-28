@@ -174,6 +174,8 @@ pre { max-width: 100%; }
 .i { display: inline-block; width: 16px; height: 16px; flex: none; background: currentColor; vertical-align: -3px;
   -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
 .i-sm { width: 12px; height: 12px; vertical-align: -1px; }
+/* In forced colors a background is the system’s Canvas, which hid every icon: it keeps the text’s forced color. */
+@media (forced-colors: active) { .i { forced-color-adjust: preserve-parent-color; } }
 .i-plus { --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 2v12M2 8h12' stroke='black' stroke-width='1.6' stroke-linecap='round'/></svg>"); }
 .i-minus { --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 8h12' stroke='black' stroke-width='1.6' stroke-linecap='round'/></svg>"); }
 .i-x { --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M3.5 3.5l9 9M12.5 3.5l-9 9' stroke='black' stroke-width='1.6' stroke-linecap='round'/></svg>"); }

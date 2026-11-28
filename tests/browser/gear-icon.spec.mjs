@@ -34,3 +34,13 @@ test('the Manage buttons draw a gear, a toothed outline around a hole, not a cir
     expect(svg).not.toMatch(/M[\d.]+ [\d.]+[vh]-?[\d.]+/);
   }
 });
+
+test('in forced colors the gear keeps the button’s text color, not the Canvas that hid it', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  const room = Object.values(app.rt.s.threads).find((/** @type {any} */ t) => t.title === 'Asset explorer');
+  await page.goto(`${app.origin}/#/t/${/** @type {any} */ (room).id}`);
+  await synced(page, app);
+  const gear = page.locator('#conversation-actions .i');
+  const [paint, text] = await gear.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(/** @type {Element} */ (el.parentElement)).color]);
+  expect(paint).toBe(text);
+});
