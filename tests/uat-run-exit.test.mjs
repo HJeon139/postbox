@@ -129,4 +129,6 @@ test('the runner settles main() through exitWhenSettled with the folder it plann
   assert.match(runner, /Promise\.resolve\(\)\.then\(\(\) => main\(\(plan = planRun\(\)\)\)\)/, 'a plan that throws fails as a run does');
   assert.match(runner, /exitWhenSettled\(run, \(\) => plan\?\.dir \?\? null\)/);
   assert.match(runner, /stepHolds\(\{ goals, log, timeline \}\)/, 'and gives stepHolds the run’s timeline');
+  assert.match(runner, /async function main\(\{[^}]*\bdir \}\)/, 'main() runs in the folder the plan named, where run.json gets its exit');
+  assert.equal(runner.match(/runsRoot\(/g)?.length, 1, 'and the run’s folder is named once, in planRun');
 });
