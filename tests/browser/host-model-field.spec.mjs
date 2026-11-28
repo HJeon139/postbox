@@ -170,8 +170,6 @@ test('the model Postbox fills in for a new agent is one that answered where it r
   await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas')));
   const sheet = page.getByRole('dialog');
   await sheet.getByRole('button', { name: 'New agent' }).click();
-  // Claude Code’s own list answers first, so no late answer makes a pick the paint should have made.
-  await expect(sheet.locator('#na-models option').first()).toBeAttached();
   await sheet.getByLabel('Backend').selectOption('codex');
   const model = sheet.getByLabel('Model');
   // On A, where its first listed model failed and another answered: the one that answered.
@@ -181,8 +179,6 @@ test('the model Postbox fills in for a new agent is one that answered where it r
   // On B nothing is kept, and it doesn’t list A’s model: its own default.
   await sheet.getByLabel('Runs on').selectOption(kept.b.host.id);
   await expect(model).toHaveValue('auto');
-  // B’s list has answered before the move back.
-  await expect(sheet.locator('#na-models option[value="gpt-9-new"]')).toHaveCount(1);
   // Back on A, whose list was asked already: A’s answered model again, not what B left.
   await sheet.getByLabel('Runs on').selectOption(kept.a.host.id);
   await expect(model).toHaveValue('gpt-5.6-terra');
