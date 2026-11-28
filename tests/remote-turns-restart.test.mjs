@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { nextNeed } from '../server/card-needs.mjs';
 import { readOrigin } from '../server/remote/turns-origin.mjs';
 import * as arrange from './arrange.mjs';
 import { FIXTURE_PROMPT } from './fake-daemon.mjs';
@@ -158,6 +159,20 @@ test('#872 after a restart a turn the welcome lists interrupted, its process the
   await sleep(20);
   assert.equal(starts(d).length, 0, 'not resumed beside a process that may still run');
   assert.equal(r.se().remoteTurn.resume?.unkilled, true, 'the person can resume it');
+});
+
+test('#1928 a host turn you stopped, its stop never confirmed and its host gone, keeps its Retry as the need once Interrupted', async () => {
+  const { store, d } = restarted();
+  const r = rig({ store, d });
+  // Your Stop marked the turn (card-needs.mjs stoppedNeed), and the host it ran on was removed before it confirmed.
+  arrange.setSession(r.rt, r.se().id, { lastTurnId: 'turn_old', stoppedTurnId: 'turn_old', remoteTurn: { ...r.se().remoteTurn, hostId: 'host_gone' } });
+  startUp(r);
+  await settled(r);
+  const failed = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
+  assert.match(failed?.error ?? '', /can’t reach that host any more/);
+  assert.equal(failed.turnId, 'turn_old');
+  // What a later release finds: the interrupted turn's Retry, not nothing.
+  assert.equal(nextNeed(r.rt, r.rt.store.pending.session(r.se().id))?.itemId, failed.id);
 });
 
 test('#872 after a restart a turn the welcome lists interrupted, its process gone, resumes on its own', async () => {

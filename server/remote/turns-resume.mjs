@@ -240,8 +240,10 @@ export function interrupted(rts, sessionId, why, { unkilled = false, noBackend =
   rt.sessions.update(sessionId, {
     state: 'failed',
     needs: { kind: 'failed', itemId: it.id, text: message },
-    // The interrupted turn is the last turn (card-needs.mjs turnsOf), when the host named it.
-    ...(se.remoteTurn.rtTurn ? { lastTurnId: se.remoteTurn.rtTurn } : {}),
+    // The interrupted turn is the last turn (card-needs.mjs turnsOf), when the host named it, and its Retry counts even
+    // if you had stopped it there (#1928, stoppedNeed). Defensive: a turn you stop leaves the host's states (stopped()
+    // in turns-end.mjs), so no known path brings it here, but if one does, its Retry isn't kept quiet.
+    ...(se.remoteTurn.rtTurn ? { lastTurnId: se.remoteTurn.rtTurn, stoppedTurnId: null } : {}),
     currentStep: 'Interrupted',
     finishedAt: rts.now(),
   });
