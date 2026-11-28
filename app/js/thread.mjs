@@ -12,7 +12,7 @@ import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, releaseApps, renderAppItem } from './apps.mjs';
 import { attChip, fileSize } from './attachment-chip.mjs';
 import { renderBlock } from './blocks.mjs';
-import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
+import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { placeholderRoom } from './composer-placeholder.mjs';
 import { quotaLine, releaseQuotaLine } from './composer-quota.mjs';
@@ -45,6 +45,7 @@ import { systemLine } from './system-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, markRemote, ranHere } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, openMenu, say, toast } from './ui.mjs';
+import { uploadFile } from './upload-file.mjs';
 import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
 import { welcome } from './welcome.mjs';
@@ -723,6 +724,21 @@ function projectFileItems(t, add) {
   return [{ label: 'From the project folder', desc: folder, icon: 'folder', run: () => openFolderPicker(t.projectId, add) }];
 }
 
+/** Each attachment chip’s note, as last painted, so an upload’s progress changes its text alone (#870). */
+const chipNotes = new WeakMap();
+/** An attachment chip’s note, kept in chipNotes. */
+function chipNote(a) {
+  const note = h('span.dim', attNote(a));
+  chipNotes.set(a, note);
+  return note;
+}
+/** What a composer’s attachment chip says after its name: how much of its upload has gone, where it’s from, or its size. */
+function attNote(a) {
+  if (a.uploading) return a.percent === undefined ? ' · uploading…' : ` · uploading… ${a.percent}%`;
+  if (a.kind === 'project-file') return ' · from the project folder';
+  return a.size ? ` · ${fileSize(a.size)}` : '';
+}
+
 export function mountComposer(threadId, { side = false } = {}) {
   const topic = S().threads[threadId]?.kind === 'topic';
   // / and ! (#67) live in a conversation’s own composer, not in a thread panel’s.
@@ -797,12 +813,19 @@ export function mountComposer(threadId, { side = false } = {}) {
 
   async function addFiles(files) {
     for (const f of files) {
+      /** @type {import('./draft-attachments.mjs').DraftAttachment} */
       const chip = { kind: 'file', name: f.name, size: f.size, type: f.type, uploading: true };
       draft.add(chip);
       try {
         // The name the upload kept (#991): a character that would hide or reorder it is “_” there.
-        const { id, name, size, type } = await uploadFile(f);
-        draft.update(chip, { fileId: id, name, size, type, uploading: false });
+        // How much has gone, as a whole percent, in the chip’s note alone: a repaint of the chips would take focus
+        // from a Remove button at every step (#870).
+        const { id, name, size, type } = await uploadFile(f, (sent, total) => {
+          chip.percent = Math.floor((sent / total) * 100);
+          const note = chipNotes.get(chip);
+          if (note) note.textContent = attNote(chip);
+        });
+        draft.update(chip, { fileId: id, name, size, type, uploading: false, percent: undefined });
       } catch (e) {
         draft.remove(chip);
         toast({ title: `Couldn’t attach ${f.name}`, text: e.message, level: 'blocking' });
@@ -816,7 +839,7 @@ export function mountComposer(threadId, { side = false } = {}) {
           'span.att',
           h('span.thumb', icon(a.kind === 'project-file' ? 'folder' : /^image\//.test(a.type ?? '') ? 'image' : 'file', 'i-sm')),
           a.kind === 'project-file' ? a.path : a.name,
-          h('span.dim', a.uploading ? ' · uploading…' : a.kind === 'project-file' ? ' · from the project folder' : a.size ? ` · ${fileSize(a.size)}` : ''),
+          chipNote(a),
           h(
             'button.btn.icon.sm.ghost',
             {
