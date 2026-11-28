@@ -2,6 +2,8 @@
 // outcome, or what the person asked it to post there. Moved from server/side-threads.mjs; functions take the Runtime
 // first (designs/architecture/code-size.md, “What a move may change”).
 
+import { parseMentions } from '../shared/text.mjs';
+import { copiedLine } from './copied-line.mjs';
 import { tooLongToSend } from './helpers.mjs';
 
 /**
@@ -17,8 +19,9 @@ export function offersBring(rt, turn) {
 
 /**
  * bring_to_conversation { text } (#128, #382): an agent in a side or topic thread posts in the conversation, the
- * thread’s outcome or what the person asked for, marked as posted by that agent from that thread. It wakes no one, so
- * it starts no turn and doesn’t count toward the chain’s cap (designs/intent.md, principle 7).
+ * thread’s outcome or what the person asked for, marked as posted by that agent from that thread. It’s the agent’s own
+ * message, so it wakes the agents it @-mentions there, as open_topic’s first message does (“A @mention always wakes”,
+ * #1591); one that names no one wakes no one, starts no turn and isn’t counted toward the chain’s cap.
  * @param {any} rt @param {string} sessionId @param {any} turn  the turn calling it @param {{ text?: unknown }} [args]
  */
 export function bringToConversation(rt, sessionId, turn, { text } = {}) {
@@ -39,6 +42,11 @@ export function bringToConversation(rt, sessionId, turn, { text } = {}) {
   const main = rt.store.pending.thread(rt.threads.conversationToWrite(t.id));
   if (!main || main.id === t.id) return { ok: false, message: 'This thread’s conversation is gone, so there’s nowhere to post. Reply in the thread.' };
   const se = rt.session(sessionId);
-  rt.shareText(main.id, { fromThreadId: t.id, handle: se.handle, text: body, agent: true });
-  return { ok: true, message: `Posted in “${main.title}”. Its agents read it at their next turn; no one was woken.` };
+  const handles = parseMentions(body, rt.personas.handles(), copiedLine(rt, se)).filter((h) => h.toLowerCase() !== se.handle.toLowerCase());
+  const it = rt.shareText(main.id, { fromThreadId: t.id, handle: se.handle, text: body, agent: true });
+  if (!handles.length) return { ok: true, message: `Posted in “${main.title}”. Its agents read it at their next turn; no one was woken.` };
+  // A post that names agents hands off, so the turn’s reply doesn’t go back to whoever woke it (reply-back.mjs).
+  turn.named = true;
+  const woke = handles.map((h) => rt.agentWake(se.id, h, body, { replyIn: main.id, itemId: it.id, fromTurnId: turn.id, prose: true }).message);
+  return { ok: true, message: `Posted in “${main.title}”. ${woke.join(' ')}` };
 }

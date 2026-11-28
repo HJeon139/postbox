@@ -186,7 +186,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'bring_to_conversation',
-    description: `Post text in the main conversation from the topic thread you’re in, up to ${count(SENDING.message)} characters: the topic thread’s outcome once its work is done (the verdict, the PR, what’s left), or what the person asked you to post there. It shows as posted by you from the topic thread, and wakes no one; the conversation’s agents read it at their next turn.`,
+    description: `Post text in the main conversation from the topic thread you’re in, up to ${count(SENDING.message)} characters: the topic thread’s outcome once its work is done (the verdict, the PR, what’s left), or what the person asked you to post there. It shows as posted by you from the topic thread, and wakes only the agents it @-mentions; the others read it at their next turn.`,
     inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to post, in Markdown.' } }, required: ['text'] },
   },
   {
