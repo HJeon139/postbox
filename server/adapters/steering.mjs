@@ -68,6 +68,16 @@ function isPostbox(dir) {
 }
 
 /**
+ * Whether an agent in `folder` works in Postbox’s data folder while that folder is inside a Postbox checkout (a
+ * clone’s data/), by each path as given or through its links: the one case whose agents are kept from the checkout’s
+ * own steering. A data folder in no repository (~/.postbox), or a folder outside the data folder, isn’t it (#319).
+ * @param {string} folder @param {string} dataDir
+ */
+export function inCheckoutData(folder, dataDir) {
+  return spellings(dataDir).some((data) => checkoutOf(dirname(data)) !== null && spellings(folder).some((f) => within(f, data)));
+}
+
+/**
  * The checkout’s steering files an agent in `folder` mustn’t load, as claudeMdExcludes: those from the repository the
  * data folder is in, a clone, down to the data folder’s parent. None when the folder isn’t in the data folder, or the
  * data folder is in no repository (~/.postbox), each by its path as given or through its links.

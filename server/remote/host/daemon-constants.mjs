@@ -118,8 +118,9 @@ export const READ_CHUNK = 64 * 1024;
  * - problems: problems found since the start, beside programs’ (lingering, rechecked at each hello; the log cap), for
  *   each welcome.
  * - removing: set once `remove` starts: nothing new starts after it.
- * - checks: the sign-in checks’ queue. checking: the signInCheck and model listing processes running, so close() can
- *   end them.
+ * - checks: the sign-in checks’ queue. checking: the signInCheck, model listing and sign-in status processes running,
+ *   so close() can end them. signIns: each harness program’s sign-in status, asked or under way, and when (mono), so
+ *   welcomes close together ask once (daemon-signins.mjs, #1608).
  * - brk: the broker (broker.mjs, or the test’s); shimSeam: what serves a shim’s connection.
  * - relays: this driver’s relays to older versions’ daemons (relay.mjs, #759); relayed: each relayed turn’s relay.
  * @typedef {Required<Omit<DaemonOpts, 'broker' | 'shim'>> & { p: ReturnType<typeof import('../../../shared/remote-protocol.mjs').hostPaths>,
@@ -128,6 +129,7 @@ export const READ_CHUNK = 64 * 1024;
  *   acked: Map<string, number>, dead: Set<string>, silentSince: Map<string, Silence>, looks: number, answeredLook: Map<string, number>, killTimers: Map<string, any>, shells: Map<string, Map<number, import('./proc.mjs').ToolGroup>>,
  *   stoppedFirst: Set<string>, starting: Map<string, Promise<void>>, problems: Map<string, string>, idleTimer: any, lastActive: number,
  *   closed: boolean, removing: boolean, sweepTimer: any, checks: Promise<void>, checking: Set<any>,
+ *   signIns: Map<string, { at: number, answer: Promise<import('./harness-signin.mjs').SignIn> }>,
  *   cleanup: ReturnType<typeof import('./cleanup.mjs').createCleanup>, brk: Broker, shimSeam: ShimSeam | undefined,
  *   relays: Set<import('./relay.mjs').Relay>, relayed: Map<string, import('./relay.mjs').Relay> }} Daemon
  */

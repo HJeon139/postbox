@@ -36,6 +36,7 @@ import { stoppedSaid, stoppedTag } from './reply-stop.mjs';
 import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
 import { adopt, clearBut, keepable, noteDrawn, standIn } from './resync-keep.mjs';
 import { ringFor, stateWordOf } from './ring.mjs';
+import { scrollStop } from './scroll-stop.mjs';
 import { boilerplateDesc, confirmDelete, openAttachSession, openFolderPicker, openNewAgent, openRename, openSettings } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { drawsNothing, namesSpeaker } from './speaker-line.mjs';
@@ -524,7 +525,8 @@ function commandBlock(it, ctx) {
           : [icon('warn', 'i-sm'), `Exit ${it.exitCode ?? it.signal ?? '?'} · ${secs}`];
   const titleId = `cmd-${it.id}`;
   const { where, text } = ranHere(it, running);
-  const out = text ? h('pre.md-code.cmd-out', { tabindex: '0', 'aria-label': `Output of ${it.command}` }, h('code', text)) : null;
+  // A tab stop only while it scrolls (#1964).
+  const out = text ? scrollStop(h('pre.md-code.cmd-out', { 'aria-label': `Output of ${it.command}` }, h('code', text))) : null;
   // While it runs, the newest output is in view: the item is drawn again as output arrives.
   if (out && running) requestAnimationFrame(() => out.scrollTo({ top: out.scrollHeight }));
   return h(
@@ -710,6 +712,17 @@ export function flushOutbox() {
   if (items.length) client.emit({ type: 'outbox' });
 }
 
+/**
+ * The plus menu’s “From the project folder”, for a project with a folder: a hosted one has none on the server to pick
+ * from (designs/architecture/hosted.md, “What assumed one computer”).
+ * @param {any} t  the thread @param {(path: string) => void} add
+ */
+function projectFileItems(t, add) {
+  const folder = S().projects[t?.projectId]?.folder;
+  if (!folder) return [];
+  return [{ label: 'From the project folder', desc: folder, icon: 'folder', run: () => openFolderPicker(t.projectId, add) }];
+}
+
 export function mountComposer(threadId, { side = false } = {}) {
   const topic = S().threads[threadId]?.kind === 'topic';
   // / and ! (#67) live in a conversation’s own composer, not in a thread panel’s.
@@ -833,16 +846,10 @@ export function mountComposer(threadId, { side = false } = {}) {
           icon: 'upload',
           run: () => file.click(),
         },
-        {
-          label: 'From the project folder',
-          desc: S().projects[t?.projectId]?.folder ?? '',
-          icon: 'folder',
-          run: () =>
-            openFolderPicker(t.projectId, (path) => {
-              draft.add({ kind: 'project-file', path });
-              focusComposer();
-            }),
-        },
+        ...projectFileItems(t, (path) => {
+          draft.add({ kind: 'project-file', path });
+          focusComposer();
+        }),
         'hr',
         { heading: 'New agent' },
         { label: 'From a boilerplate', desc: boilerplateDesc(), icon: 'agent', run: () => openNewAgent({ threadId }) },

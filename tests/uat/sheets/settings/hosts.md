@@ -9,7 +9,7 @@ Agents can run on another computer you reach with `ssh`. Its hosts are managed a
 ## Expected functionality
 
 - **The list** has each host by name with its status in a line (“Not heard from yet” until its daemon answers), in the order they were added. The first is picked.
-- A click or the arrow keys move the pick, and focus goes with it. One card shows, the pick’s, with its status, what its daemon found, and Install….
+- A click or the arrow keys move the pick, and focus goes with it. One card shows, the pick’s, with its status, what its daemon found (each harness’s line ends “Signed in” or “Not signed in” once the host has said, #1608, with a warning and its login command to copy for each sign-out), and Install….
 - **The bar**, at the right end of the “Hosts” heading’s row above the list: + (Add a host), − (Remove, which asks first) and Edit, each naming the pick.
 - The bar’s + shows the New host form in the list’s place, with focus in SSH destination, Add host pinned under it, and “All hosts” to go back with the pick kept. The host you add is picked.
 - Edit, Enter or a double click opens the picked host’s settings in its card, with Save and Cancel pinned under the sheet, and the bar away until the edit ends. Cancel returns focus to Edit. Picking another host closes an editor left open, without saving.

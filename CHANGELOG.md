@@ -2,6 +2,71 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.8.0 (2026-11-28)
+
+### Features
+
+- **hosts:** show a host's harness that isn't signed in on its card and under Runs on
+- **lint:** flag citation shorthands
+
+### Fixes
+
+- **glossary:** keep the matchers of the last 8 glossaries, not only the last one
+- **hosts:** Runs on's sign-in warning names the login command in its sentence
+- **glossary:** count polytonic Greek, Cyrillic's supplement and a combining accent as letters
+- **agents:** a hand-off never shows its sender as waiting behind another agent
+- **glossary:** keep a term out of Vietnamese words, decomposed accents and accented possessives
+- **glossary:** check an entity's start in each branch's one lookbehind
+- **glossary:** keep a term out of accented words, contractions and dash-joined ranges
+- **glossary:** redraw an earlier reply when a dash or quote variant is defined
+- **glossary:** build a room's matcher once, in one pass per term
+- **glossary:** the minus sign and the figure dash link like a hyphen
+- **lint:** a dash variant of a defined term isn't flagged
+- **markdown:** a glossary term doesn't link inside an HTML entity
+- **markdown:** dash and quote variants link the same term
+- **markdown:** a short term doesn't link inside another word
+
+## 5.7.2 (2026-11-28)
+
+### Fixes
+
+- **hosted:** a hosted conversation's plus menu offers no project folder to add from
+- **hosted:** a project on a hosted Postbox is its name, with no folder on the server
+- **steps:** an output box starts with its tab stop, until it's laid out and fits
+- **steps:** a step's or a command's output takes a tab stop only while it scrolls
+
+## 5.7.1 (2026-11-28)
+
+### Fixes
+
+- **codex:** a Codex error that isn't text fails its turn instead of hanging it
+- **adapters:** clean and cut a request Codex refuses before the person reads it
+- **adapters:** clean and cut what Codex says of a failed turn before the person reads it
+- **adapters:** give a failed Codex turn's reason from turn/completed
+
+## 5.7.0 (2026-11-27)
+
+### Features
+
+- **uat:** a scroll interrupt pages the conversation while a reply streams
+- **remote:** ask each harness on a host whether it's signed in, at each connect
+
+### Fixes
+
+- **uat:** a scroll move tells the tester only the view its own sample read
+- **codex:** build the local app-server's arguments only for a local turn
+- **codex:** build the project_root_markers marker from the data folder lock's own name
+- **remote:** tell a sign-out again when its notice failed, and word it for after the turn
+- **remote:** type the login command a turn's sign-in notice names
+- **remote:** tell a host's signed-out answer once, and test each harness's login command
+- **remote:** a turn's start asks the host's sign-ins without waiting for the answer
+- **remote:** keep a host's unchanged sign-in answer, and only known method names
+- **uat:** sample the view twice a move, so view-moved compares a pair while the reply streams
+- **uat:** key view-moved's findings by sample, so two moves in one step are both kept
+- **uat:** say whether the agent still worked at each scroll, and back the scroll wait with a timer
+- **adapters:** a Codex agent in the data folder inside a clone stops its AGENTS.md walk there
+- **remote:** a turn's start asks the host now whether its harness is signed in
+
 ## 5.6.0 (2026-11-27)
 
 ### Features

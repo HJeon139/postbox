@@ -29,6 +29,8 @@
 // - signInCheck(hostId): runs the host’s signInCheck there, through the daemon (`check`, answered by `checked`), as an
 //   argument list with no shell. null when the host has none (the default). Sign-in needed resumes on its own only
 //   when it passes (D2); without one, the turn waits for the person.
+// - Sign-ins: after each welcome, the host is asked whether each harness there is signed in (`signins`, answered by
+//   `signed`, #1608), without waiting, and its answer is the status’s signIns (hosts-signins.mjs).
 // - refresh(hostId): the settings the daemon enforces changed, so a connected host gets a fresh hello with them.
 // - removeFromHost(hostId): the design’s “Remove Postbox from host”, through the daemon (`remove`, answered by
 //   `removed`): it stops every turn still running there and deletes ~/.postbox-remote. Only after `removed` may the
@@ -37,12 +39,14 @@
 //
 // This module makes the manager and holds its methods; its parts are beside it, each taking the manager’s state first:
 // hosts-status.mjs (the host, its token and its status), hosts-links.mjs (the links and why each host is needed),
-// hosts-requests.mjs (the sign-in check and Remove, through the daemon) and hosts-update.mjs (installs, one at a time
-// per host, and installing this version by itself where the person said so).
+// hosts-requests.mjs (the sign-in check and Remove, through the daemon), hosts-signins.mjs (each harness’s sign-in)
+// and hosts-update.mjs (installs, one at a time per host, and installing this version by itself where the person
+// said so).
 
 import { EventEmitter } from 'node:events';
 import { connectNow, disconnected, dropLink, dropRenamed, ensureWelcome, isRenamed, linkOf, need, release } from './hosts-links.mjs';
 import { removeFromHost, signInCheck } from './hosts-requests.mjs';
+import { askNow, watchSignIns } from './hosts-signins.mjs';
 import { hostOf, statusOf, tokenOf, update } from './hosts-status.mjs';
 import { installNow, maybeUpdate, setKeepUpdated, supersedeTry, track } from './hosts-update.mjs';
 import { describeInstall, forgetToken } from './install.mjs';
@@ -111,8 +115,10 @@ export function createHostManager({
     installRecords: new Map(),
     recordWrites: new Map(),
     consentAsked: new Map(),
+    signIns: new Map(),
     onFailure: (id, failure) => maybeUpdate(m, id, failure),
   };
+  watchSignIns(m);
   // updating: the install under way per host, for tests and callers that wait on one (hosts-update.mjs); read only.
   return Object.assign(m.events, linkMethods(m), hostMethods(m), { updating: m.updating });
 }
@@ -208,6 +214,8 @@ function hostMethods(m) {
      * @param {string} hostId @returns {Promise<SignInCheck | null>}
      */
     signInCheck: (hostId) => signInCheck(m, hostId),
+    /** Asks the host now whether each harness there is signed in (#1608); null when it isn’t connected. */
+    signInsNow: (hostId) => askNow(m, hostId),
     /**
      * Removes Postbox from the host: connects if need be, sends the daemon `remove` (it stops every turn still running
      * there, deletes ~/.postbox-remote, its code, token, logs and turn records, and exits), and resolves once it says
@@ -244,6 +252,7 @@ async function forget(m, hostId) {
   dropLink(m, hostId);
   m.reasons.delete(hostId);
   m.heard.delete(hostId);
+  m.signIns.delete(hostId);
   m.tokens.set(hostId, null);
   if (m.heardTimers.has(hostId)) m.clearTimer(m.heardTimers.get(hostId));
   m.heardTimers.delete(hostId);

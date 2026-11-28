@@ -126,6 +126,7 @@ export async function start({
   const { real, claude, kiro, agy, codex, usage } = await registerBackends(adapters, { dataDir, demo, probes });
   const config = {
     origin,
+    hosted: Boolean(signIn), // on a server for a team: people sign in, and agents work on hosts (hosted.md)
     // Which build this is, shown under Personas in the sidebar.
     build: buildInfo({ root: ROOT }),
     imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'],
@@ -383,7 +384,7 @@ export async function start({
     const hostsDid = await hostsRoute(rt, path, req.method, body);
     if (hostsDid) return send(res, hostsDid.status, hostsDid.body);
     // Projects: making one, its push repository, its folder and deleting one (server/project-routes.mjs).
-    const projectsDid = await projectsRoute(rt, path, req.method, body, url.searchParams);
+    const projectsDid = await projectsRoute(rt, path, req.method, body, url.searchParams, config.hosted);
     if (projectsDid) return send(res, projectsDid.status, projectsDid.body);
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
     const stored = await storedFileRoute(store, blobs, path, req.method);

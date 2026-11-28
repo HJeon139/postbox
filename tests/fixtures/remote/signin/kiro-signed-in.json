@@ -1,0 +1,9 @@
+{
+  "recorded": "2026-11-27",
+  "version": "kiro-cli 3.6.2",
+  "command": ["kiro-cli", "whoami", "--format", "json"],
+  "config": "signed in as the recording computer was",
+  "exit": 0,
+  "stdout": "{\"accountType\":\"BuilderId\",\"startUrl\":\"https://example.awsapps.com/start\",\"region\":\"us-east-1\",\"email\":\"robin@example.com\"}\n",
+  "stderr": ""
+}

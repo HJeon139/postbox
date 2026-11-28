@@ -2,9 +2,11 @@
 // `codex` installation supplies sign-in, configuration, sandboxing and the model catalog.
 import { spawn } from 'node:child_process';
 import { realpath } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
-import { cleanTail } from '../../shared/text-parts.mjs';
+import { cleanSaid, cleanTail } from '../../shared/text-parts.mjs';
 import { withQuota } from '../harness-failure.mjs';
+import { LOCK as DATA_FOLDER_LOCK } from '../home.mjs';
 import { codexApproval } from './codex-approval.mjs';
 import { codexEffortOf, createCodexMapper, errorText } from './codex-mapper.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
@@ -12,13 +14,14 @@ import { CODEX_MEMORY_OFF } from './codex-memory.mjs';
 import { codexModels, findCodex } from './codex-models.mjs';
 import { CODEX_TOOL_RULES, codexWebSearchArgs, networkOn } from './codex-network.mjs';
 import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
-import { codexRefusal, failOnCutAnswer, openCodexThread } from './codex-thread.mjs';
+import { codexRefusal, codexSaid, failOnCutAnswer, openCodexThread, SAID_MAX } from './codex-thread.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { COMPACT } from './no-compaction.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { AUTO_MODEL, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 import { stderrTail } from './stderr-tail.mjs';
+import { inCheckoutData } from './steering.mjs';
 
 export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
 export { CODEX_CAPABILITIES, codexRemoteConfigArgs, createCodexRebuild } from './codex-remote.mjs';
@@ -73,6 +76,36 @@ export function codexConfigArgs(mcpUrl) {
   ];
 }
 
+/**
+ * The local app-server’s arguments for a turn: Postbox’s server and its approvals, where its walk for AGENTS.md
+ * stops (codexSteeringArgs), and the persona’s web search.
+ * @param {any} ctx @param {string} cwd  the turn’s working folder @param {string} workRoot  the data folder’s workspaces
+ */
+function appServerArgs(ctx, cwd, workRoot) {
+  return [
+    'app-server',
+    '--listen',
+    'stdio://',
+    ...codexConfigArgs(ctx.mcpUrl),
+    ...codexSteeringArgs(cwd, dirname(workRoot)),
+    ...codexWebSearchArgs(ctx.persona),
+  ];
+}
+
+/**
+ * Where an agent in Postbox’s data folder inside a clone stops Codex’s walk for AGENTS.md (#319): at the data folder,
+ * by `postbox.lock`, which Postbox keeps there, as well as at a `.git`. Codex loads AGENTS.md from the nearest folder
+ * holding a root marker down to its working folder (`project_root_markers`, `.git` by default), so it loaded the
+ * checkout’s own, the rules for developing Postbox; now it loads the data folder’s and the agent’s own only, as
+ * Claude Code’s claudeMdExcludes does (steering.mjs). A project whose folder is the checkout, or a data folder in no
+ * repository, is left as it is. Measured with Codex 0.167.0’s thread/start instructionSources, with no model turn.
+ * @param {string} folder  the agent’s working folder @param {string} dataDir  Postbox’s data folder
+ * @returns {string[]}
+ */
+export function codexSteeringArgs(folder, dataDir) {
+  return inCheckoutData(folder, dataDir) ? ['-c', `project_root_markers=${JSON.stringify(['.git', DATA_FOLDER_LOCK])}`] : [];
+}
+
 /** The Codex thread a turn continues: a fork’s source, else the session’s own, or none. @param {any} state */
 const threadOf = (state) => (state.fork ?? state.forkFrom)?.threadId ?? state.codexThreadId;
 
@@ -105,6 +138,15 @@ async function answerRequest(ctx, host, send, msg) {
  * @param {string} cwd @param {any} session @param {any} message
  */
 async function startTurn(ctx, request, send, cwd, session, message) {
+  try {
+    return await openAndStart(ctx, request, send, cwd, session, message);
+  } catch (e) {
+    throw codexSaid(e); // a request Codex refused, as the person reads it
+  }
+}
+
+/** The turn’s requests, from initialize to turn/start or thread/compact/start. Same params as startTurn. */
+async function openAndStart(ctx, request, send, cwd, session, message) {
   await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
   send({ method: 'initialized', params: {} });
   const permissions = codexPermissions(ctx.persona, cwd);
@@ -187,12 +229,11 @@ export class CodexAdapter {
     const remote = ctx.remote ?? null;
     const attach = remote?.attach ?? null;
     const cwd = remote ? remote.folder : await realFolder(await this.folderFor(ctx.persona, ctx.project));
-    const args = ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl), ...codexWebSearchArgs(ctx.persona)];
     // Its own process group, so stopping the turn reaches everything the app-server started (#126); on a host, the daemon’s.
     /** @type {any} */
     const child = remote
       ? spawnRemoteCodex(remote, attach, cwd, this.bin, ctx.persona)
-      : this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
+      : this.spawn(this.bin, appServerArgs(ctx, cwd, this.workRoot), { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
     const exitedP = new Promise((r) => {
       child.once('exit', r);
       child.once('close', r);
@@ -205,7 +246,7 @@ export class CodexAdapter {
     let activeTurnId = null;
     const pending = new Map();
     let exited = false;
-    /** What Codex last said went wrong in this turn, for the turn’s failure to give as its reason (#61). */
+    /** @type {string | null} What Codex last said went wrong in this turn, for the turn’s failure to give as its reason (#61). */
     let reported = null;
     /** @type {(err?: Error) => void} */
     let finish = () => {};
@@ -215,7 +256,8 @@ export class CodexAdapter {
       finish = (err) => (err ? reject(err) : resolve(undefined));
     });
     ended.catch(() => {});
-    const why = (text) => `${text}${reported ? `: ${reported}` : '.'}`;
+    // What Codex said, cleaned as other harnesses’ errors are before the person reads them (#1905, #1938).
+    const why = (text, said = reported) => `${text}${said ? `: ${cleanSaid(said, SAID_MAX)}` : '.'}`;
     /** @type {(Error & { code?: string }) | null} how a remote turn ended, when that’s why it can’t finish */
     let endError = null;
     const host = remote ? createCodexHost(child, remote, attach) : null;
@@ -256,12 +298,12 @@ export class CodexAdapter {
       if (msg.method === 'turn/started') activeTurnId = msg.params?.turn?.id ?? activeTurnId;
       const result = mapper.push(msg);
       if (result?.completed) {
-        const err = result.status === 'completed' ? undefined : new Error(why(`Codex turn ${result.status ?? 'did not complete'}`));
+        const err = result.status === 'completed' ? undefined : new Error(why(`Codex turn ${result.status ?? 'did not complete'}`, reported ?? result.reason));
         if (err) fail(err);
         finish(err);
       } else if (result?.error) {
         reported = result.error;
-        fail(withQuota(new Error(result.error), result.quota));
+        fail(withQuota(new Error(cleanSaid(result.error, SAID_MAX)), result.quota));
       }
     };
     rl.on('line', (line) => {

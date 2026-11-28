@@ -1,5 +1,7 @@
 // MCP tool approval settings that are separate from Codex’s command approval policy (#421).
 
+import { cleanSaid } from '../../shared/text-parts.mjs';
+import { SAID_MAX } from './codex-thread.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 /** Codex CLI overrides that keep Postbox’s own UI tools out of its approval flow. */
@@ -22,7 +24,8 @@ export async function codexMcpApprovalConfig(request, mode) {
     try {
       page = await request('mcpServerStatus/list', { cursor, limit: 100, detail: 'toolsAndAuthOnly' });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      // Codex’s words, cleaned and cut as its other refusals are before the person reads them (#425).
+      const reason = cleanSaid(error instanceof Error ? error.message : String(error), SAID_MAX);
       throw new Error(`Codex couldn’t list its MCP servers, so Postbox can’t apply this permission mode to them: ${reason}`, { cause: error });
     }
     for (const server of page?.data ?? []) {

@@ -166,7 +166,7 @@ The server knows the machine as `agents`: its start command writes that name, th
 
 Its turns run on the machine, in `~/postbox-work/<its handle>` there, and call Claude through Amazon Bedrock with the machine’s role. The account needs access to Anthropic’s models in Bedrock in the deployment’s region, which AWS asks for once ([model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)).
 
-**A project can’t be made on a hosted Postbox yet.** Its form asks for a folder on the server, which has none: until that is built, agents work in their own folders on the host.
+**A project is its name.** Hosted, the form asks for no folder, since the server has none. Where a project’s agents work on the host is set in Settings › Hosts, Edit, “Project folders on this host”; left empty, each agent works in its own folder there.
 
 **The machine is set up once, at its first start,** and says its public key to the deployment then, which is what the server knows it by. It installs nothing after that, its operating system’s updates included: making it again is how it is brought up to date. A change to its size stops and starts it in place. To make it again, with another image or a newer Claude Code: take down the server’s and the host’s stacks, which keeps the work disk, and deploy with `-c hostWorkVolumeId=<the kept volume’s id>`. The new machine finds the agents’ folders, their sessions and its SSH identity on the disk, so it is the same host to Postbox.
 

@@ -1,7 +1,8 @@
 // Each agent’s state, read from the room’s records and never stored, and never from what an agent said in chat
 // (designs/rooms-at-scale.md, “Live state”; designs/architecture/services.md, “Agent state”). The page reads it from
-// public state alone: the session (with its bounded list of background jobs) and the inboxes (Delivery’s entries).
-// Never the conversation’s work list, which grows with the room: a row paints on every session event (#1155’s targets).
+// public state alone: the session, with its bounded list of background jobs. Never the conversation’s work list, which
+// grows with the room: a row paints on every session event (#1155’s targets). A post of the agent’s still waiting in
+// another agent’s inbox is no state of its own: a hand-off never shows its sender as waiting (#1975).
 //
 // One state at a time, the first that holds:
 // - you: it waits on the person. Today that is the session’s needs-you state; Asks makes it its open asks;
@@ -17,10 +18,7 @@
 //   `until` (#1713, server/turn-transient.mjs). Never needs-you: the person could do no more than Retry;
 // - failed: its last turn failed;
 // - job: a background job of its own still runs (`se.jobs`, at most 50, and a kept one stays until it ends);
-// - behind: something it posted still waits in another agent’s inbox, since that entry arrived;
 // - idle.
-
-import { conversationRoot } from './conversation.mjs';
 
 /** Session states of a live turn. */
 const LIVE = new Set(['think', 'gen', 'tool']);
@@ -28,19 +26,17 @@ const LIVE = new Set(['think', 'gen', 'tool']);
 const ON_HOST = new Set(['running', 'waiting', 'lost']);
 
 /**
- * @typedef {{ state: 'you'|'stopping'|'running'|'quota'|'retrying'|'failed'|'job'|'behind'|'idle', detail: string, since?: number, until?: number }} AgentState
- * until is the quota’s reset time, when the harness gave one, or when a retry goes; since is when the oldest entry
- * arrived, for behind.
- * detail is the step for running, the job’s label for job, and the other agent’s handle for behind.
+ * @typedef {{ state: 'you'|'stopping'|'running'|'quota'|'retrying'|'failed'|'job'|'idle', detail: string, until?: number }} AgentState
+ * until is the quota’s reset time, when the harness gave one, or when a retry goes.
+ * detail is the step for running and the job’s label for job.
  */
 
 /**
  * @param {any} se the agent’s session
- * @param {{ threads?: any, sessions?: any, inbox?: any }} s the room’s public state
  * @param {number} [now] the time to compare a quota’s reset time with
  * @returns {AgentState}
  */
-export function agentState(se, s, now = Date.now()) {
+export function agentState(se, now = Date.now()) {
   if (!se) return { state: 'idle', detail: '' };
   if (se.state === 'needs') return { state: 'you', detail: '' };
   if (se.state === 'stopping') return { state: 'stopping', detail: '' };
@@ -53,9 +49,6 @@ export function agentState(se, s, now = Date.now()) {
   if (se.state === 'failed') return { state: 'failed', detail: '' };
   const job = jobOf(se);
   if (job) return { state: 'job', detail: job };
-  const conv = conversationRoot(s.threads, se.threadId);
-  const behind = conv && behindOf(se, conv, s);
-  if (behind) return { state: 'behind', detail: behind.handle, since: behind.at };
   return { state: 'idle', detail: '' };
 }
 
@@ -73,24 +66,4 @@ function jobOf(se) {
   const jobs = Array.isArray(se.jobs) ? se.jobs : [];
   for (let i = jobs.length - 1; i >= 0; i--) if (jobs[i].state === 'running') return jobs[i].label ?? 'Background job';
   return null;
-}
-
-/**
- * The other agent in the conversation whose inbox holds the agent’s oldest post still waiting, with when it arrived.
- * Delivery’s sender view (services.md, `stateOf`): “waiting behind @x since”. It walks the inboxes, which the page holds
- * only the entries of it can act on (shared/inbox-page.mjs), and checks an inbox’s conversation only for a post of the
- * agent’s, not every session in the room.
- */
-function behindOf(se, conv, s) {
-  /** @type {{ handle: string, at: number } | null} */
-  let oldest = null;
-  for (const [id, list] of Object.entries(s.inbox ?? {})) {
-    if (id === se.id) continue;
-    for (const e of list) {
-      if (e.from !== se.handle || e.state !== 'waiting' || (oldest && e.at >= oldest.at)) continue;
-      const other = s.sessions?.[id];
-      if (other && conversationRoot(s.threads, other.threadId) === conv) oldest = { handle: other.handle, at: e.at };
-    }
-  }
-  return oldest;
 }
