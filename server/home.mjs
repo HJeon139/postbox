@@ -8,7 +8,8 @@
 // Every clone, worktree and installed copy now shares one default folder, so a run claims it with a lock: a second
 // Postbox on the same folder would append to the same log, and delete segments the first is still writing.
 
-import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { cp, mkdir, readdir, readlink, rename, rm, rmdir, symlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -63,25 +64,56 @@ function alive(pid) {
   }
 }
 
+/** @typedef {{ writeFileSync: typeof writeFileSync, linkSync: typeof linkSync, readFileSync: typeof readFileSync, rmSync: typeof rmSync }} LockIo */
+const DEFAULT_LOCK_IO = { writeFileSync, linkSync, readFileSync, rmSync };
+
+/**
+ * Publishes a lock file with its PID already written: the PID goes to a unique temp file first, then is linked under
+ * `lock` (atomic, and EEXIST when a lock is already there), so a concurrent starter never sees an empty lock (#2027).
+ * @param {LockIo} io @param {string} lock @param {number} pid
+ */
+function publishLock(io, lock, pid) {
+  const draft = `${lock}.${pid}.${randomBytes(4).toString('hex')}.new`;
+  io.writeFileSync(draft, String(pid), { flag: 'wx', mode: 0o600 });
+  try {
+    io.linkSync(draft, lock);
+  } finally {
+    io.rmSync(draft, { force: true });
+  }
+}
+
 /**
  * Claims a data folder for this process, or throws when another running Postbox holds it. A lock left by a run that
  * died is taken over.
  * @param {string} dataDir
+ * @param {LockIo} [io]
  * @returns {() => void}  releases it
  */
-export function lockData(dataDir) {
+export function lockData(dataDir, io = DEFAULT_LOCK_IO) {
   mkdirSync(dataDir, { recursive: true });
   const lock = join(dataDir, LOCK);
-  for (let tries = 0; tries < 2; tries++) {
+  for (let tries = 0; tries < 3; tries++) {
     try {
-      writeFileSync(lock, String(process.pid), { flag: 'wx' });
-      return () => rmSync(lock, { force: true });
+      publishLock(io, lock, process.pid);
+      return () => io.rmSync(lock, { force: true });
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      const other = Number(readFileSync(lock, 'utf8'));
+      let text;
+      try {
+        text = io.readFileSync(lock, 'utf8');
+      } catch (readErr) {
+        if (readErr.code === 'ENOENT') continue; // released between EEXIST and read: try again
+        throw readErr;
+      }
+      const trimmed = text.trim();
+      const other = Number(trimmed);
+      if (!/^[1-9]\d*$/.test(trimmed) || !Number.isSafeInteger(other))
+        throw new Error(
+          `The lock at ${lock} is unreadable, so Postbox can’t tell whether another Postbox holds ${dataDir}. If none is running on it, remove the file and start again.`,
+        );
       if (alive(other) && other !== process.pid)
         throw new Error(`Another Postbox (process ${other}) is using ${dataDir}. Stop it first, or start this one with --data <another folder>.`);
-      rmSync(lock, { force: true });
+      io.rmSync(lock, { force: true });
     }
   }
   throw new Error(`Couldn’t claim ${dataDir}: ${lock} keeps coming back.`);

@@ -3,7 +3,7 @@
 // media. Everything runs in temp folders, so nothing touches the real home folder or the clone’s data/.
 
 import assert from 'node:assert/strict';
-import { existsSync, lstatSync, readlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, lstatSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -90,6 +90,67 @@ test('one Postbox per data folder: a running one’s lock refuses a second, and 
   await assert.rejects(moveData({ root, env: {}, home }), /Another Postbox/);
   assert.ok(holdsStore(join(root, 'data')));
   assert.equal(existsSync(join(home, '.postbox')), false);
+});
+
+test('lockData publishes the lock atomically via a temp file and link, and never deletes an unreadable lock (#2027)', async () => {
+  const dir = join(tmp, 'lock-atomic');
+  await mkdir(dir, { recursive: true });
+  const lock = join(dir, 'postbox.lock');
+  let linked = false;
+  const io = {
+    writeFileSync(path, data, opts) {
+      assert.notEqual(path, lock, 'postbox.lock is never opened directly for writing');
+      return writeFileSync(path, data, opts);
+    },
+    linkSync(src, dest) {
+      assert.equal(dest, lock);
+      assert.equal(readFileSync(src, 'utf8'), String(process.pid), 'the PID is already on disk before the lock name appears');
+      assert.equal(existsSync(lock), false, 'postbox.lock does not exist until linked into place');
+      linked = true;
+      return linkSync(src, dest);
+    },
+    readFileSync,
+    rmSync,
+  };
+  const release = lockData(dir, io);
+  assert.equal(linked, true, 'lockData linked the draft file into postbox.lock');
+  assert.equal(await readFile(lock, 'utf8'), String(process.pid));
+  assert.deepEqual(readdirSync(dir), ['postbox.lock'], 'no temp draft stays behind');
+  release();
+  assert.deepEqual(readdirSync(dir), []);
+
+  // An empty or non-PID lock file is unreadable, not a dead process: refuse and leave it alone.
+  for (const contents of ['', 'not-a-pid', '0', '99999999999999999999']) {
+    writeFileSync(lock, contents);
+    assert.throws(() => lockData(dir), /unreadable/);
+    assert.equal(await readFile(lock, 'utf8'), contents, `unreadable lock (${JSON.stringify(contents)}) is left intact`);
+    assert.deepEqual(readdirSync(dir), ['postbox.lock'], 'no temp draft stays behind after EEXIST');
+  }
+  rmSync(lock, { force: true });
+});
+
+test('lockData retries cleanly when a lock disappears between EEXIST and read (#2027)', async () => {
+  const dir = join(tmp, 'lock-enoent');
+  await mkdir(dir, { recursive: true });
+  const lock = join(dir, 'postbox.lock');
+  let first = true;
+  const io = {
+    writeFileSync,
+    linkSync(src, dest) {
+      if (first) {
+        first = false;
+        const err = Object.assign(new Error('exists'), { code: 'EEXIST' });
+        throw err;
+      }
+      return linkSync(src, dest);
+    },
+    readFileSync,
+    rmSync,
+  };
+  const release = lockData(dir, io);
+  assert.equal(first, false, 'the simulated EEXIST ran');
+  assert.equal(await readFile(lock, 'utf8'), String(process.pid));
+  release();
 });
 
 test('--move-data moves a clone’s data/ to the home folder and leaves a link, so recorded paths still work', async () => {
