@@ -50,7 +50,7 @@ test('an agent the person asked in a topic thread posts in the conversation with
 });
 
 // #382: an agent opens a topic for a review on its own message, and the agent it asks there posts the review’s outcome
-// to the conversation, though no person asked in the topic. The post wakes no one.
+// to the conversation, though no person asked in the topic. The post names no one, so it wakes no one.
 test('an agent posts a topic’s outcome in the conversation in a turn another agent started (#382)', async ({ page }) => {
   const { rt, store } = app;
   const r = sideRoom(app, 'Reviewed in a topic');
@@ -82,7 +82,7 @@ test('an agent posts a topic’s outcome in the conversation in a turn another a
   await expect.poll(() => store.items(r.room.id).find((x) => x.id === root.id)?.replies, { message: 'the review’s messages in the topic' }).toBe(2);
   await r.idle();
   const topic = store.items(r.room.id).find((x) => x.id === root.id).topicId;
-  // No turn ran in the conversation after the person’s: the post woke no one.
+  // No turn ran in the conversation after the person’s: the post names no one, so it woke no one.
   expect(held.turns.slice(before).map((t) => [t.sessionId, t.thread])).toEqual([
     [r.researcher.id, r.room.id],
     [r.indexer.id, topic],
