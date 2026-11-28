@@ -108,3 +108,11 @@ test('a term doesn’t link inside a range, whichever joining dash it’s writte
   assert.deepEqual(linked('U:45', 'U:45-52, U:45–52, U:45−52 and U:45‑52'), []);
   assert.deepEqual(linked('U:45', 'U:45—an em dash ends a clause'), ['U:45']);
 });
+
+test('a term doesn’t link inside a Vietnamese word, a decomposed accent, or a possessive after an accented letter (#102)', () => {
+  assert.deepEqual(linked('R', 'Rạch Giá'), []);
+  assert.deepEqual(linked('cafe', 'the café opened'), []);
+  assert.deepEqual(linked('s', 'the café’s menu'), []);
+  // The Greek question mark and ano teleia are punctuation, so a term before one still links.
+  assert.deepEqual(linked('R', 'Is it R; or R·'), ['R', 'R']);
+});
