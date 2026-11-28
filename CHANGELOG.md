@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.9.4 (2026-11-28)
+
+### Fixes
+
+- **check:** a fixed label cut by the page is still reported, at no more cost per label
+- **check:** a box's hidden axis cuts before its scroll clip, and spec cases for each rule
+- **check:** text a scroll box scrolled past the window's edge isn't cut off by the page
+
 ## 5.9.3 (2026-11-28)
 
 ### Fixes
