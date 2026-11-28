@@ -37,8 +37,9 @@ async function dragsABox({ page }) {
   const [c] = answer();
   expect(c).toMatchObject({ anchor: 'region 1', text: 'This gap is too wide.' });
   expect(within(fractions(c.region), { x: 0.2, y: 0.3, w: 0.4, h: 0.4, version: 1 }), `the region is the box dragged: ${JSON.stringify(c.region)}`).toBe(true);
-  await expect(block.locator('iframe.app-iframe[data-sized="1"]')).toHaveCount(1);
-  expect(c.region, 'in px of the frame it was marked in').toMatchObject(await frameSize(block));
+  await expect
+    .poll(() => frameSize(block), { message: 'in px of the frame it was marked in' })
+    .toMatchObject({ width: c.region.width, height: c.region.height });
 }
 
 async function drawnOverReloads({ page }) {
