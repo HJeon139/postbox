@@ -12,7 +12,7 @@ Agent-to-agent exchanges from before #372 stay readable, and what came of them c
 
 - Shows the exchange between two agents, read-only: in place of a composer, “This side thread is read-only. Agents talk in the conversation now, where you can reply.” (`app/js/side-panel.mjs`). The server refuses a message sent there too. Its head names the thread and “Side thread from <conversation>”, with Summarize back, Copy link and Close side thread.
 - Under each message, “Send to conversation” posts it in the conversation as a shared card, “From the thread “@a ↔ @b” · b”, and the message then says “Sent to the conversation”. The conversation’s agents read it at their next turn; no one is woken (#128).
-- Nothing else in the side thread reaches the conversation on its own (#128).
+- Nothing else in the side thread reaches the conversation on its own (#128), except an outcome one of its agents posts with `bring_to_conversation`, shown as “posted by” that agent and waking only the agents it @-mentions (#382).
 - Summarize back, in the panel’s head, opens a menu of the thread’s two agents, the one that started it first, “started this thread”. The agent you pick writes a short summary here, and it’s posted in the conversation as “Summary of the thread “@a ↔ @b” · a”; the button reads “Summary requested…” until then, even when the agent was busy and the summary waited for its turn to end, and one at a time. It wakes no one, even when the summary @-mentions the other agent, and doesn’t count as a wake in the chain (#225). While the button waits, focus moves to the panel’s Close button, since the panel has no composer.
 - A failed turn shows its card here, with Retry, which answers the wake again (#151).
 

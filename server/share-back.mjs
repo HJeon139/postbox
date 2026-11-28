@@ -26,7 +26,8 @@ export function shareToConversation(rt, topicId, itemId) {
 
 /**
  * “Summarize back” (#93, #225): an agent of a topic or side thread writes a short summary, which is posted in the
- * conversation, marked as from that thread. The person starts it, and nothing else comes back (intent.md, principle 7).
+ * conversation, marked as from that thread. The person starts it; an agent’s own outcome post is the other way back
+ * (server/bring.mjs, #382), and a summary turn isn’t offered it (intent.md, principle 7).
  * It wakes no one, so it doesn’t count against the wake limit: a summary’s @-mentions wake no one
  * (server/mention-entries.mjs).
  * @param {any} rt @param {string} topicId @param {{ handle?: unknown } | null} [opts]  handle: in a side thread, the agent to write it
@@ -124,8 +125,9 @@ export function clearSummaryPending(rt, topicId, ended = null) {
 
 /**
  * Posts text from a topic or side thread in its conversation. The conversation’s agents read it at the start of
- * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it with
- * bring_to_conversation, because the person asked it to (#128).
+ * their next turn rather than being woken by it, so sharing costs no turn; an agent’s own post wakes the agents it
+ * @-mentions, and server/bring.mjs does that. agent: the agent posted it itself with
+ * bring_to_conversation, the thread’s outcome or what the person asked for (#128, #382).
  */
 export function shareText(rt, threadId, { fromThreadId, handle, text, summary = false, agent = false, question = undefined }) {
   const from = rt.store.pending.thread(fromThreadId); // its title, as written: a topic held behind a commit counts (#623)

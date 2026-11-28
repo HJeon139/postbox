@@ -24,7 +24,7 @@ test('Stop while the reply segment is held behind a commit marks that segment st
   await h.atSync; // the commit is in flight: emits from now on are held behind it
   go();
   await until(() => !!env.rt.turns.get(env.se.id)?.segment, 'the held reply segment');
-  assert.equal(env.rt.stop(env.se.id), true);
+  assert.equal(env.rt.stop(env.se.id, { by: 'you' }), true);
   h.release();
   await commit;
   await h.store.flush();
@@ -130,7 +130,7 @@ test('Stop behind a held commit, with the turn exiting before the release: the s
   h.hold();
   const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
   await h.atSync;
-  assert.equal(env.rt.stop(env.se.id), true);
+  assert.equal(env.rt.stop(env.se.id, { by: 'you' }), true);
   await until(() => !env.rt.exiting.has(env.se.id), 'the stopped turn to exit');
   h.release();
   await commit;

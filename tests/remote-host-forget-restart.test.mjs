@@ -111,7 +111,7 @@ test('#1796 a kept stop that names no turn, as a damaged log line could, isn’t
 test('#1796 a stop asked for its session and kept by its host too lets the record go when the host confirms it', async () => {
   const first = rig({ daemon: { stopExit: null } });
   const turn = await running(first);
-  first.rt.stop(first.se().id);
+  first.rt.stop(first.se().id, { by: 'you' });
   await until(() => first.d.stops.includes(turn), 'the stop at the host');
   // Both at once, as when the session’s removal was refused after its host had recorded the stop.
   first.store.emit('host.forget', { id: first.host.id, stop: { turn, personaId: first.se().personaId, unconfirmed: false, at: 1 } });

@@ -264,7 +264,7 @@ test('a topic’s unread count behind a held commit counts each reply', async ()
 test('your messages re-queued as Postbox shuts down behind a held commit all wait in the queue', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
-  f.rt.stop(f.beta.id);
+  f.rt.stop(f.beta.id, { by: 'you' });
   f.rt.sendMessage(f.t.id, { text: '@beta one' });
   f.rt.sendMessage(f.t.id, { text: '@beta two' });
   const release = await f.hold();

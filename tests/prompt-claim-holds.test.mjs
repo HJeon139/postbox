@@ -94,7 +94,7 @@ test('#665 the cap is a turn’s: prompts an ended turn still holds don’t refu
     flood = Array.from({ length: PROMPT_HOLDS_MAX }, (_, i) => forged(s, `toolu_01Held${i}`));
     await flush();
     assert.equal(waiting(s), PROMPT_HOLDS_MAX, 'the first turn holds the cap');
-    s.rt.stop(se.id);
+    s.rt.stop(se.id, { by: 'you' });
     first.end();
     await flush();
     const second = begin();

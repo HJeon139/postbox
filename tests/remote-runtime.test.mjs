@@ -83,7 +83,7 @@ test('#120: a persona isn’t moved between this computer and a host in the midd
   );
   // The same placement isn’t a move.
   assert.equal(rt.updatePersona(p.id, { remote: null, description: 'x' }).description, 'x');
-  for (const se of arrange.sessionsIn(rt, t.id)) rt.stop(se.id, { silent: true });
+  for (const se of arrange.sessionsIn(rt, t.id)) rt.stop(se.id, { silent: true, by: 'you' });
   await until(() => !rt.exiting.size, 'the stop');
   assert.deepEqual(rt.updatePersona(p.id, { remote: { hostId: h.id } }).remote, { hostId: h.id });
 });
@@ -127,8 +127,11 @@ test('#120 G10: removing a host stops its turns first, then forgets its link and
   hosts.onForget = () => {
     atForget = { log: [...adapter.log], exiting: rt.exiting.size, hostKnown: Boolean(rt.s.hosts[h.id]) };
   };
+  const farSe = arrange.sessionsIn(rt, t.id).find((se) => se.handle === 'far');
+  const farTurnId = rt.turns.get(farSe.id).id;
   const r = await rt.removeHost(h.id);
   assert.deepEqual(r, { ok: true, stopped: 1 });
+  assert.equal(rt.s.sessions[farSe.id].stoppedTurnId, farTurnId, 'removing a host is the person’s stop, so its cards stay quiet (#1987)');
   assert.deepEqual(atForget, { log: [...adapter.log.slice(0, 3), 'stopped:far'], exiting: 0, hostKnown: true }, 'stopped and ended before the forget');
   assert.deepEqual(
     hosts.calls.filter((c) => c[0] === 'forget'),
@@ -141,7 +144,7 @@ test('#120 G10: removing a host stops its turns first, then forgets its link and
     .filter((se) => rt.turns.has(se.id))
     .map((se) => se.handle);
   assert.deepEqual(running.sort(), ['elsewhere', 'near'], 'turns on this computer and other hosts run on');
-  for (const se of arrange.sessionsIn(rt, t.id)) rt.stop(se.id, { silent: true });
+  for (const se of arrange.sessionsIn(rt, t.id)) rt.stop(se.id, { silent: true, by: 'you' });
 });
 
 test('#120 G10: a stopped turn that never ends holds a host’s removal only for its wait', async () => {

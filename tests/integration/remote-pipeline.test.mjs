@@ -205,7 +205,7 @@ test('#120 pipeline: Stop sends SIGINT to the host’s stand-in, which ends its 
     const s = await atGate(m, p);
     const shim = (await heard(m, s.run.pid, 'shim')).pid;
     assert.ok([s.runner, s.run.pid, shim].every(alive));
-    assert.equal(p.rt.stop(p.se().id), true);
+    assert.equal(p.rt.stop(p.se().id, { by: 'you' }), true);
     await heard(m, s.run.pid, 'sigint');
     await settled(p);
     await until(() => [s.runner, s.run.pid, shim].every(gone), 'the runner, the stand-in and the shim to exit', 15_000);

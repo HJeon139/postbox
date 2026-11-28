@@ -50,7 +50,7 @@ test('#1429 a turn the person stops raises turn.stopping, then turn.exited once 
   adapter.next.push(h.step);
   rt.sendMessage(t.id, { text: '@beta go' });
   for (let i = 0; i < 100 && !rt.turns.get(beta.id); i++) await new Promise((r) => setTimeout(r, 5));
-  rt.stop(beta.id);
+  rt.stop(beta.id, { by: 'you' });
   assert.deepEqual(
     heard.map((x) => x.signal),
     ['turn.stopping'],

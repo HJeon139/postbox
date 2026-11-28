@@ -68,7 +68,7 @@ test('#120 G10: a no-turn answer to the stop of a turn whose start went unconfir
   await until(() => held.length === 1, 'the start');
   const turn = held[0].turn;
   r.link.connected = false;
-  r.rt.stop(r.se().id);
+  r.rt.stop(r.se().id, { by: 'you' });
   r.link.send = send;
   await until(() => r.se().remoteTurn.stopping?.length === 1, 'the stop asked');
   assert.deepEqual(
@@ -106,7 +106,7 @@ test('#120 G10: Stop on a turn whose start never reached a connected link is don
   r.rt.sendMessage(r.t.id, { text: 'hi' });
   await until(() => startDropped && r.rt.turns.size === 1, 'the start to find the link down');
   await sleep(5);
-  r.rt.stop(r.se().id);
+  r.rt.stop(r.se().id, { by: 'you' });
   await settled(r);
   assert.equal(starts(r.d).length, 0, 'the start never went');
   assert.deepEqual(r.se().remoteTurn.stopping, [], 'no stop to confirm');

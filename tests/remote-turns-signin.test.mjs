@@ -112,7 +112,7 @@ test('#1608: a turn stopped before the host’s answer comes raises no sign-in n
   r.hosts.signInsNow = answer.signInsNow;
   r.rt.sendMessage(r.t.id, { text: 'hi' });
   await until(() => starts(r.d).length === 1, 'the start before the host’s answer', 250);
-  r.rt.stop(r.se().id);
+  r.rt.stop(r.se().id, { by: 'you' });
   await settled(r);
   answer.resolve(signIns([{ name: 'claude-code', state: 'signed-out' }]));
   await sleep(20);
@@ -204,7 +204,7 @@ test('#1608: a turn stopped during signInCheck asks the host nothing of its sign
   };
   r.rt.sendMessage(r.t.id, { text: 'hi' });
   await until(() => checking, 'the sign-in check');
-  r.rt.stop(r.se().id);
+  r.rt.stop(r.se().id, { by: 'you' });
   answerCheck({ ok: false, code: 1, at: 1 });
   await settled(r);
   await sleep(20);

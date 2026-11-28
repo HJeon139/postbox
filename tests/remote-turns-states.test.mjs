@@ -184,7 +184,7 @@ test('#120 L5: Stop on a remote turn is a plain stop: no keep-jobs ask, no keep 
   assert.equal(r.f.calls.length, 0);
   // A stop with jobs: 'keep' that reaches it anyway keeps nothing.
   const t2 = await running(r, 'again');
-  r.rt.stop(r.se().id, { jobs: 'keep' });
+  r.rt.stop(r.se().id, { jobs: 'keep', by: 'you' });
   await until(() => r.d.stops.includes(t2), 'the second stop');
   await settled(r);
 });

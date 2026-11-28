@@ -41,7 +41,7 @@ test('#693 Stop leaves the card open: the person can still answer it', async () 
   await sleep(5);
   f.rt.agentWake(f.alpha.id, 'gamma', 'Check the numbers.');
   const open = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
-  assert.equal(f.rt.stop(f.alpha.id), true, 'a turn was running, so Stop reached its wakes');
+  assert.equal(f.rt.stop(f.alpha.id, { by: 'you' }), true, 'a turn was running, so Stop reached its wakes');
   work.release();
   await settle(f.rt);
   assert.equal(card(f, open.id).status, 'open');

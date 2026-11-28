@@ -183,6 +183,14 @@ test('#372 a room’s guide says to @mention an agent only when it must act next
   assert.doesNotMatch(TOOL_DEFS.find((d) => d.name === 'open_topic').description, /side thread/);
 });
 
+// An agent may open a thread for a review or a design check (#382), while hand-offs stay in the conversation. When to
+// post the thread’s outcome is bring_to_conversation’s description, which only a turn in a thread is offered.
+test('#382 the guide says when to open a topic thread and that hand-offs stay in the conversation', () => {
+  assert.match(guideText(), /^- Review a PR or design in a topic \(open_topic\); hand-offs stay in the conversation\.$/m);
+  assert.doesNotMatch(guideText(), /bring_to_conversation/);
+  assert.match(TOOL_DEFS.find((d) => d.name === 'bring_to_conversation').description, /the topic thread’s outcome once its work is done/);
+});
+
 // An agent ended turns promising results that “will follow”, and nothing woke it when they did: Postbox wakes an agent
 // only for a message, a mention or a wake it scheduled. Codex agents are told so (the habit was Codex’s); other backends aren’t.
 test('a Codex agent’s guide says its turn ends when it replies, to finish a check first, or to schedule_wake', () => {

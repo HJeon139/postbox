@@ -49,7 +49,7 @@ export function deleteSession(rt, sessionId, { keepConversation = false } = {}) 
   // refused, so a remove that raced another doesn’t erase what its dialog said would stay.
   if (t && keepConversation && !live.length)
     throw httpError(409, `@${se.handle} is the last agent here, so removing it would delete the conversation. To end it, delete the conversation.`);
-  rt.stop(sessionId, { silent: true });
+  rt.stop(sessionId, { silent: true, by: 'you' });
   // A turn of one on a host, waiting to be attached again or to resume, is neither, as deleting a conversation does.
   rt.remote.cancel(sessionId);
   dropWakes(rt, se, 'removed');
@@ -83,7 +83,7 @@ export function deleteThread(rt, threadId) {
   // A turn of one on a host, waiting to be attached again or to resume, is neither (#120).
   for (const x of scope)
     for (const se of rt.sessions.pendingIn(x.id)) {
-      rt.stop(se.id, { silent: true });
+      rt.stop(se.id, { silent: true, by: 'you' });
       rt.remote.cancel(se.id);
     }
   eraseThreads(

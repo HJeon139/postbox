@@ -64,23 +64,42 @@ test('#128: the person sends a message from a side thread from before to the con
   assert.match(readOf(adapter.calls.at(-1)), /Shared from the thread “@alpha ↔ @beta”, by @beta: Status: 3 of 5/);
 });
 
-test('#128, #372: an agent the person asked posts to the conversation from a topic thread, marked as shared by it', async () => {
+test('#128, #372, #382: an agent posts a thread’s outcome to the conversation from a topic thread, whoever started its turn, and it wakes no one', async () => {
   const f = setup();
   const { store, rt, adapter, t, alpha } = f;
   const topic = await withTopic(f);
   let result;
-  // A turn another agent started there can’t: only the person asks for something to go to the conversation.
+  // A turn another agent started there posts the thread’s outcome too (#382): the person needn’t ask.
   adapter.next.push(async (c) => {
-    result = c.tools.bring_to_conversation({ text: 'Unasked.' });
+    result = c.tools.bring_to_conversation({ text: 'Review done: approved, PR #12 is ready, alpha has the docs left.' });
     c.text('Done.');
   });
-  rt.agentWake(alpha.id, 'beta', 'Post these details in the main chat.', { replyIn: topic.id });
+  const calls = adapter.calls.length;
+  rt.agentWake(alpha.id, 'beta', 'Review the PR here, then post the verdict.', { replyIn: topic.id });
   await settle(rt);
   assert.equal(adapter.calls.at(-1).thread, topic.id);
-  assert.equal(result.ok, false);
-  assert.match(result.message, /Only the person can ask for this/);
-  assert.equal(store.items(t.id).filter((x) => x.kind === 'shared').length, 0);
-  // The person asks in the topic thread.
+  assert.equal(result.ok, true, result.message);
+  const shared = store.items(t.id).find((x) => x.kind === 'shared');
+  assert.deepEqual(
+    [shared.fromThreadId, shared.handle, shared.text, shared.agent],
+    [topic.id, 'beta', 'Review done: approved, PR #12 is ready, alpha has the docs left.', true],
+  );
+  // A post that @-mentions no one wakes no one (alpha is named without @): the turns are the wake’s and the reply
+  // going back to @alpha in the thread (#1518), none in the conversation.
+  assert.deepEqual(
+    adapter.calls.slice(calls).map((c) => [c.handle, c.thread, c.parts[0].text]),
+    [
+      ['beta', topic.id, 'Review the PR here, then post the verdict.'],
+      ['alpha', topic.id, 'Done.'],
+    ],
+    'the post woke an agent',
+  );
+  // The conversation’s agents read it as the agent’s own post, not as one the person asked for.
+  assert.equal(
+    arrange.describeItem(rt, shared, store.state.sessions[alpha.id]),
+    `Shared from the thread “${topic.title}”, posted by @beta: Review done: approved, PR #12 is ready, alpha has the docs left.`,
+  );
+  // The person asking in the topic thread works as before.
   adapter.next.push(async (c) => {
     result = c.tools.bring_to_conversation({ text: 'The details, for the main chat.' });
     c.text('Posted it.');
@@ -88,13 +107,12 @@ test('#128, #372: an agent the person asked posts to the conversation from a top
   rt.sendMessage(topic.id, { text: '@beta post these details in the main chat' });
   await settle(rt);
   assert.equal(result.ok, true, result.message);
-  const shared = store.items(t.id).find((x) => x.kind === 'shared');
-  assert.deepEqual([shared.fromThreadId, shared.handle, shared.text, shared.agent], [topic.id, 'beta', 'The details, for the main chat.', true]);
-  // It wakes no one, and isn’t an agent wake; and your message there started the conversation’s wake count again.
-  assert.equal(store.state.threads[t.id].hops, 0);
-  assert.equal(
-    arrange.describeItem(rt, shared, store.state.sessions[alpha.id]),
-    `Shared from the thread “${topic.title}”, by @beta in a turn the person started: The details, for the main chat.`,
+  assert.deepEqual(
+    store
+      .items(t.id)
+      .filter((x) => x.kind === 'shared')
+      .map((x) => x.text),
+    ['Review done: approved, PR #12 is ready, alpha has the docs left.', 'The details, for the main chat.'],
   );
 });
 
@@ -108,6 +126,8 @@ test('#128: a topic thread’s agent can bring something to the conversation too
   rt.sendMessage(t.id, { text: '@beta post it' });
   await settle(rt);
   assert.equal(result.ok, false);
+  // Refused because it’s the conversation, whoever started the turn, not because the thread has nowhere to post.
+  assert.match(result.message, /works only in a side thread or a topic thread\. Here you’re in the conversation/);
   assert.equal(store.items(t.id).filter((x) => x.kind === 'shared').length, 0);
   // A topic thread’s agent can too.
   const root = store.items(t.id).find((x) => x.kind === 'user');
@@ -151,7 +171,7 @@ test('#351: bring_to_conversation text past the limit is refused, and nothing is
   );
 });
 
-test('#128, #372: bring_to_conversation is offered over MCP only to the person’s turn in a topic thread', async () => {
+test('#128, #372, #382: bring_to_conversation is offered over MCP to any turn in a topic thread, and never in the conversation', async () => {
   const f = setup();
   const { rt, adapter, t, alpha, beta } = f;
   const topic = await withTopic(f);
@@ -169,9 +189,10 @@ test('#128, #372: bring_to_conversation is offered over MCP only to the person�
     assert.ok(tools.includes('open_topic'), 'the list is the turn’s tools');
     return tools.includes('bring_to_conversation');
   };
-  // A wake, in the conversation or in a topic thread: another agent started it.
+  // In the conversation, whoever started the turn, it isn’t offered: there’s nowhere to post it from.
   assert.equal(await offered(beta, () => rt.agentWake(alpha.id, 'beta', 'Look at this.')), false);
-  assert.equal(await offered(beta, () => rt.agentWake(alpha.id, 'beta', 'And this.', { replyIn: topic.id })), false);
+  // In a topic thread it is, to a turn another agent started (#382) as to the person’s.
+  assert.equal(await offered(beta, () => rt.agentWake(alpha.id, 'beta', 'And this.', { replyIn: topic.id })), true);
   assert.equal(await offered(beta, () => rt.sendMessage(topic.id, { text: '@beta and post it in the main chat' })), true);
   assert.equal(await offered(alpha, () => rt.sendMessage(t.id, { text: '@alpha hello' })), false);
 });
@@ -211,7 +232,7 @@ test('#151, #1518: a failed wake in a topic thread needs you there, and Retry an
 
 test('#151: Retry sends a failed turn again as it was asked, so an agent’s turn never comes back as the person’s', async () => {
   const f = setup();
-  const { store, rt, adapter, t, beta } = f;
+  const { store, rt, adapter, beta } = f;
   const topic = await withTopic(f);
   // An agent’s message to beta in the topic thread, not your message there, whose turn fails.
   adapter.next.push(async () => {
@@ -220,10 +241,7 @@ test('#151: Retry sends a failed turn again as it was asked, so an agent’s tur
   rt.turnService.run(beta.id, { kind: 'agent', from: '@gamma', text: 'Here are the numbers.' }, { threadId: topic.id });
   await settle(rt);
   const failed = store.items(topic.id).find((x) => x.status === 'failed');
-  let result;
-  adapter.next.push(async (c) => {
-    result = c.tools.bring_to_conversation({ text: 'Unasked post.' });
-  });
+  adapter.next.push(async (c) => c.text('ok'));
   rt.retry(topic.id, failed.id);
   await settle(rt);
   const retried = adapter.calls.at(-1);
@@ -231,9 +249,6 @@ test('#151: Retry sends a failed turn again as it was asked, so an agent’s tur
     [retried.thread, retried.message.kind, retried.message.from, retried.message.text, retried.message.retry],
     [topic.id, 'agent', '@gamma', 'Here are the numbers.', true],
   );
-  // So it isn’t the person’s turn, and can’t post to the conversation.
-  assert.equal(result.ok, false);
-  assert.equal(store.items(t.id).filter((x) => x.kind === 'shared').length, 0);
 });
 
 test('#128, #228, #372: a wake from an agent that answered in a topic thread, made once its turn there is over, runs in the conversation', async () => {

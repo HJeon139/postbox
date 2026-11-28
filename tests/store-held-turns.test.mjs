@@ -31,7 +31,7 @@ async function turnWhileHeld(step) {
   go();
   await until(() => results.done === true, 'the turn’s calls');
   const release = async () => {
-    env.rt.stop(env.se.id);
+    env.rt.stop(env.se.id, { by: 'you' });
     h.release();
     await commit;
     await h.store.flush();
