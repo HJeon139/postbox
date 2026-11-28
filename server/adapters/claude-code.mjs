@@ -28,53 +28,25 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { versionIn } from '../../shared/cli-version.mjs';
 import { cleanTail } from '../../shared/text-parts.mjs';
 import { withNetwork, withQuota, withTransient } from '../harness-failure.mjs';
 import { claudeModels } from '../remote/host/harness-models.mjs';
-import { stopProbe } from '../remote/host/probe-stop.mjs';
-import { claudeArgs, claudeEnv } from './claude-code-args.mjs';
+import { findClaude } from './claude-bin.mjs';
+import { claudeEnv, runArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
+import { SIZE_LIMIT_START_TEXT, sessionTooLarge } from './claude-result.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
-import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
+import { agentFolder, forgetMemory } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceWritten } from './prompt-sent.mjs';
-import { hostMemoryRoot } from './remote-turn.mjs';
-import { effortOf, fromContext, recorderFor } from './setup.mjs';
+import { effortOf, recorderFor } from './setup.mjs';
 import { stderrTail } from './stderr-tail.mjs';
-import { checkoutSteering } from './steering.mjs';
 
+export { claudeVersion, findClaude } from './claude-bin.mjs';
 export { claudeArgs } from './claude-code-args.mjs';
 export { CLAUDE_CODE_CAPABILITIES, remoteClaudeProblem } from './claude-code-remote.mjs';
-
-/** The claude binary: POSTBOX_CLAUDE_BIN, then the native installer’s location, then the PATH. */
-export function findClaude(env = process.env) {
-  if (env.POSTBOX_CLAUDE_BIN) return env.POSTBOX_CLAUDE_BIN;
-  const local = join(homedir(), '.local', 'bin', 'claude');
-  return existsSync(local) ? local : 'claude';
-}
-
-/** The installed version, or null if the CLI can’t be run. */
-export function claudeVersion(bin = findClaude()) {
-  return new Promise((resolve) => {
-    let out = '';
-    const p = spawn(bin, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    const timer = setTimeout(() => stopProbe(p), 8000);
-    p.stdout.on('data', (d) => {
-      out += d;
-    });
-    p.on('error', () => resolve(null));
-    p.on('close', (code) => {
-      clearTimeout(timer);
-      resolve(code === 0 ? (versionIn(out) ?? 'unknown') : null);
-    });
-  });
-}
 
 /**
  * Where a forked session starts: the checkpoint of the message it branched from, or, for a reply from
@@ -192,10 +164,12 @@ export class ClaudeCodeAdapter {
       turn = await hostTurn();
       first = await this.run({ ctx, cwd, addDirs, prompt: note + promptOn(turn), guide, resume: false, sessionId: null, fork: latest, turn });
     }
-    // A session Claude Code no longer has (its history was cleared) starts over, once.
-    if (first.missingSession) {
-      ctx.saveState({ claudeSessionId: null });
-      const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
+    // A session Claude Code no longer has (its history was cleared), or one too large to go on (#674), starts over, once.
+    if (first.missingSession || first.tooLarge) {
+      // One too large forgets where it forked from too, or the next turn would fork that conversation again. New
+      // threads no longer fork (#228), so this guards a thread saved before that.
+      ctx.saveState({ claudeSessionId: null, ...(first.tooLarge ? { fork: null, forkFrom: null } : {}) });
+      const note = `[Postbox] ${first.tooLarge ? SIZE_LIMIT_START_TEXT : FRESH_START_TEXT}\n\n`;
       turn = await hostTurn();
       await this.run({ ctx, cwd, addDirs, prompt: note + promptOn(turn), guide, resume: false, sessionId: null, turn });
     }
@@ -268,11 +242,17 @@ export class ClaudeCodeAdapter {
         if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, stderr())) return resolve({ missingForkPoint: true });
         ctx.saveState({ ...mapper.endState, ...(mapper.sessionId ? { fork: null } : {}) });
         const current = mapper.sessionId ?? ctx.state.claudeSessionId;
-        if (mapper.lastUuid && current) ctx.checkpoint?.({ claudeSessionId: current, uuid: mapper.lastUuid });
-        if (ctx.signal.aborted) return resolve({});
-        // A session to resume or fork that Claude Code no longer has. On a host, the result says it too (remoteSaid).
+        // On a host, the result says what stderr does (remoteSaid). A session too large to go on (#674) keeps no
+        // checkpoint, so no thread branches into it.
         const said = remote ? remoteSaid(stderr(), mapper.result) : stderr();
+        const tooLarge = sessionTooLarge(mapper.result, said);
+        if (mapper.lastUuid && current && !tooLarge) ctx.checkpoint?.({ claudeSessionId: current, uuid: mapper.lastUuid });
+        if (ctx.signal.aborted) return resolve({});
+        // A session to resume or fork that Claude Code no longer has.
         if ((resume || fork) && /No conversation found|session .* not found/i.test(said)) return resolve({ missingSession: true });
+        // One too large to go on: a resumed or forked one starts over (deliver); any other, or a replay, isn’t kept.
+        if (tooLarge && (resume || fork) && !attach) return resolve({ tooLarge: true });
+        if (tooLarge) ctx.saveState({ claudeSessionId: null });
         const failure = resultError(mapper.result);
         if (failure) {
           // Its last three lines, cleaned as a CLI’s words are, and their end, where the newest words are (#1938).
@@ -296,25 +276,4 @@ export class ClaudeCodeAdapter {
       child.stdin.end(prompt, attach ? undefined : recordOnceWritten(ctx, child, { guide, text: prompt }));
     });
   }
-}
-
-/**
- * A run’s command line (server/adapters/claude-code-args.mjs), from its turn’s context: on a host, its memory folder
- * and its shim as Postbox’s server there.
- * A turn here, not on a host, keeps the checkout’s steering from an agent in the data folder (steering.mjs).
- * @param {string} workRoot @param {{ ctx: any, cwd: string, id: string, resume: boolean, guide: string, addDirs: string[], fork: any, remote: any }} o
- */
-function runArgs(workRoot, { ctx, cwd, id, resume, guide, addDirs, fork, remote }) {
-  return claudeArgs({
-    persona: ctx.persona,
-    sessionId: id,
-    resume,
-    mcpUrl: ctx.mcpUrl,
-    guide,
-    addDirs,
-    fork,
-    ...fromContext(ctx, ctx.remote ? hostMemoryRoot(ctx.remote) : memoryRootFor(workRoot)),
-    ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : {}),
-    claudeMdExcludes: ctx.remote ? [] : checkoutSteering(cwd, dirname(workRoot)),
-  });
 }
