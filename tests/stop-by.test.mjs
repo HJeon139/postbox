@@ -9,11 +9,11 @@ import { stop } from '../server/turn-stop.mjs';
 const idle = { turns: new Map() };
 
 test('#1987 a stop that doesn’t say who stopped the turn is refused, whether or not a turn runs', () => {
-  for (const opts of [undefined, {}, { silent: true }, { by: 'someone' }])
+  for (const opts of [undefined, {}, { silent: true }, { by: 'someone' }, { by: 'store' }])
     assert.throws(() => stop(/** @type {any} */ (idle), 'se_1', /** @type {any} */ (opts)), /who stopped the turn/, JSON.stringify(opts));
 });
 
 test('#1987 each kind of stop is taken', () => {
-  for (const by of ['you', 'shutdown', 'hung', 'clock', 'pause', 'store'])
+  for (const by of ['you', 'shutdown', 'hung', 'clock', 'pause'])
     assert.equal(stop(/** @type {any} */ (idle), 'se_1', { by }), false, `${by}: no turn running, so nothing to stop`);
 });

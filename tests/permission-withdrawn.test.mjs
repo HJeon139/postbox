@@ -31,10 +31,7 @@ test('#853 the person’s Stop: the next turn hears it once, and the turn after 
   assert.equal((calls.at(-1).context ?? []).filter((n) => WITHDRAWN_NOTE.test(n)).length, 0);
 });
 
-for (const [by, why] of [
-  ['hung', 'Stopped: no output for 15 min'],
-  ['store', 'Postbox can’t save right now'],
-])
+for (const [by, why] of [['hung', 'Stopped: no output for 15 min']])
   test(`#853 a ${by} stop isn’t the person’s: it keeps #721’s note that the request expired`, async () => {
     const { rt, ask, now } = await setup();
     await ask();

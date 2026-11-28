@@ -18,12 +18,12 @@ import { entriesFirst } from './turns.mjs';
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;
 /**
- * Who can stop a turn: the person, or Postbox as it shuts down, as a host turn hangs, as a run clock pauses or ends, or
- * as the store closes (server/store-outage.mjs records that stop itself, through stop-record.mjs, with the same by).
+ * Who can stop a turn: the person, or Postbox as it shuts down, as a host turn hangs, or as a run clock pauses or ends.
+ * A store outage records its own stop (server/store-outage.mjs), not through stop().
  */
-const STOPPED_BY = new Set(['you', 'shutdown', 'hung', 'clock', 'pause', 'store']);
+const STOPPED_BY = new Set(['you', 'shutdown', 'hung', 'clock', 'pause']);
 /**
- * @typedef {{ silent?: boolean, jobs?: 'stop' | 'keep', by: 'you' | 'shutdown' | 'hung' | 'clock' | 'pause' | 'store', why?: string,
+ * @typedef {{ silent?: boolean, jobs?: 'stop' | 'keep', by: 'you' | 'shutdown' | 'hung' | 'clock' | 'pause', why?: string,
  *   sendNow?: boolean }} StopOptions
  */
 
