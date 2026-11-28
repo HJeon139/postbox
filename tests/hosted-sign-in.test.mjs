@@ -192,8 +192,9 @@ test('hosted, no one names a folder on the server for an agent or a conversation
   }
   assert.equal(hosted.rt.s.personas[persona.id].folder ?? '', persona.folder ?? '', 'nothing was kept for the agent');
   assert.deepEqual(hosted.rt.s.sessions[session.id].addDirs ?? [], [], 'nor for the conversation');
-  // An agent with no folder still saves, as the sheet sends an empty Folder with every save.
-  assert.equal((await ask(hosted, PORT, { method: 'PATCH', path: `/api/personas/${persona.id}`, body: { folder: '' }, headers })).status, 200);
+  // An agent with no folder still saves, as the sheet sends an empty Folder with every save, and null is none too.
+  for (const folder of ['', null])
+    assert.equal((await ask(hosted, PORT, { method: 'PATCH', path: `/api/personas/${persona.id}`, body: { folder }, headers })).status, 200, String(folder));
 });
 
 test('on your own computer an agent and a conversation are still given an existing folder, and told when one isn’t there', async () => {
