@@ -1,5 +1,6 @@
 // What an install ships (install.mjs, whose header is the design): every file under server/remote/host/ and what it
-// imports, transitively, with a package.json, each file’s SHA-256 in the manifest, packed in a minimal ustar.
+// imports, transitively, and every file of Postbox’s agent plugin (agent-plugin/, #207), with a package.json, each
+// file’s SHA-256 in the manifest, packed in a minimal ustar.
 
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -16,6 +17,14 @@ export const MANIFEST = 'manifest.sha256';
 export const NODE_PATH_FILE = 'node-path';
 /** A shipped file’s path: plain ASCII parts, so it fits a ustar name and a manifest line, and no shell splits it. */
 const SHIP_PATH_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/;
+/**
+ * The one shipped path with a part that starts with a dot: Claude Code reads a plugin’s name from
+ * .claude-plugin/plugin.json, and without it the skills aren’t `postbox:<name>` (#207). Exactly this path, so no other
+ * hidden file or folder can ship.
+ */
+const PLUGIN_MANIFEST = 'agent-plugin/.claude-plugin/plugin.json';
+/** Whether a ustar header and a manifest line can carry the path. @param {string} path */
+const shippable = (path) => (SHIP_PATH_RE.test(path) || path === PLUGIN_MANIFEST) && path.length <= 100;
 
 // A static import or re-export at the start of a line: import '…', import … from '…', export * from '…' or
 // export { … } from '…'. The names between may span lines. Comments start with // or *, so one isn’t matched.
@@ -24,8 +33,9 @@ const SPECIFIERS = /^\s*(?:import\s*(?:[\w$*{}\s,]+?\s*from\s*)?|export\s*(?:\*(
 /**
  * The host code’s files: every regular file under server/remote/host/, whatever its name (the `host` launcher has no
  * extension), and everything they import, transitively, starting also from the tool list the shim serves
- * (shared/mcp-tools.mjs) and the protocol (shared/remote-protocol.mjs). Each file is read and scanned for imports;
- * shared/catalog.mjs imports ./urls.mjs, so the first level isn’t enough. `problems` lists anything that mustn’t ship:
+ * (shared/mcp-tools.mjs) and the protocol (shared/remote-protocol.mjs), and the agent plugin’s files (pluginFiles).
+ * Each code file is read and scanned for imports; shared/catalog.mjs imports ./urls.mjs, so the first level isn’t
+ * enough. `problems` lists anything that mustn’t ship:
  * a file outside shared/ or server/remote/host/, a bare package import, something under the folder that isn’t a
  * regular file or a folder (a symlink could lead anywhere), or a name a ustar header or a manifest line can’t carry.
  * @param {string} [root]  the repo’s top folder
@@ -66,12 +76,34 @@ export function hostFiles(root = ROOT) {
       else problems.push(`${rel} imports the package “${spec}”`);
     }
   }
-  const files = [...checked]
-    .filter((f) => allowed.some((dir) => f.startsWith(dir)) && existsSync(f))
-    .map((f) => relative(root, f).split(sep).join('/'))
-    .sort();
-  for (const f of files) if (!SHIP_PATH_RE.test(f) || f.length > 100) problems.push(`${f} isn’t a name the install can carry`);
+  const code = [...checked].filter((f) => allowed.some((dir) => f.startsWith(dir)) && existsSync(f));
+  const files = [...code, ...pluginFiles(root, problems)].map((f) => relative(root, f).split(sep).join('/')).sort();
+  for (const f of files) if (!shippable(f)) problems.push(`${f} isn’t a name the install can carry`);
   return { files, problems };
+}
+
+/**
+ * Every regular file under agent-plugin/, the skills a turn on a host loads from its copy there (#207,
+ * server/adapters/agent-plugin.mjs). They’re data an agent reads, never run or imported, so they aren’t scanned for
+ * imports; anything there that isn’t a regular file or a folder goes in `problems`, as under server/remote/host/.
+ * @param {string} root @param {string[]} problems @returns {string[]} absolute paths
+ */
+function pluginFiles(root, problems) {
+  const plugin = join(root, 'agent-plugin');
+  if (!existsSync(plugin)) return [];
+  if (!lstatSync(plugin).isDirectory()) {
+    problems.push('agent-plugin isn’t a folder');
+    return [];
+  }
+  /** @type {string[]} */
+  const files = [];
+  for (const f of readdirSync(plugin, { recursive: true, encoding: 'utf8' })) {
+    const path = join(plugin, f);
+    const st = lstatSync(path);
+    if (st.isFile()) files.push(path);
+    else if (!st.isDirectory()) problems.push(`${relative(root, path)} isn’t a regular file or a folder`);
+  }
+  return files;
 }
 
 /**
@@ -115,7 +147,7 @@ const sha256 = (data) => createHash('sha256').update(data).digest('hex');
 export function ustar(entries, mtime) {
   const blocks = [];
   for (const e of entries) {
-    if (!SHIP_PATH_RE.test(e.path) || e.path.length > 100) throw new TypeError(`${e.path} can’t be a ustar name.`);
+    if (!shippable(e.path)) throw new TypeError(`${e.path} can’t be a ustar name.`);
     const h = Buffer.alloc(512);
     /** @param {string} s @param {number} at @param {number} len */
     const put = (s, at, len) => h.write(s, at, len, 'ascii');

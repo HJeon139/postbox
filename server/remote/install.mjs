@@ -2,7 +2,8 @@
 // from the laptop, over Postbox’s own ssh (ssh.mjs’s options: BatchMode, no shared connection, no agent forwarding).
 //
 // What ships: every file under server/remote/host/ and, transitively, every file they import (only node: modules and
-// shared/, which tests/host-imports.test.mjs checks through install-bundle.mjs’s hostFiles), plus a package.json with
+// shared/, which tests/host-imports.test.mjs checks through install-bundle.mjs’s hostFiles), every regular file of
+// Postbox’s agent plugin (agent-plugin/), as data, so a turn there loads its skills (#207), plus a package.json with
 // this Postbox’s version. They keep the repo’s layout under ~/.postbox-remote/<version>/, so relative imports work
 // unchanged, beside manifest.sha256, each file’s SHA-256 in sha256sum’s format.
 //
