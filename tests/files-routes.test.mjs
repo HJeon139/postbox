@@ -58,6 +58,8 @@ test('#820 a stored image is served with the exact headers, Cross-Origin-Resourc
       lower(r.headers),
       {
         'content-type': 'image/png',
+        // Streamed since #870, with its length from the file’s record.
+        'content-length': String(image.length),
         'x-content-type-options': 'nosniff',
         'content-security-policy': "sandbox; default-src 'none'",
         'content-disposition': 'inline; filename="a___b.png"',
@@ -79,6 +81,7 @@ test('#820 a stored file that downloads is served with Cross-Origin-Resource-Pol
       lower(r.headers),
       {
         'content-type': 'application/octet-stream',
+        'content-length': String(text.length),
         'x-content-type-options': 'nosniff',
         'content-security-policy': "sandbox; default-src 'none'",
         'content-disposition': 'attachment; filename="pairs.csv"',

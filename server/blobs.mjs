@@ -2,9 +2,11 @@
 // and the event log keeps only its metadata. See designs/architecture/assets.md, “Attachments”.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { linkSync, lstatSync, mkdirSync, statSync, unlinkSync } from 'node:fs';
+import { createReadStream, linkSync, lstatSync, mkdirSync, statSync, unlinkSync } from 'node:fs';
 import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Transform } from 'node:stream';
+import { writeAll } from './store-commit.mjs';
 
 export class Blobs {
   /** @param {string} dir @param {{ open?: typeof open }} [io]  for tests: a seam where a file or folder handle is opened */
@@ -95,7 +97,7 @@ export class Blobs {
         for await (const chunk of source) {
           await check(size + chunk.length);
           hash.update(chunk);
-          await fh.write(chunk);
+          await writeAll(fh, chunk, 'The upload');
           size += chunk.length;
         }
         await fh.sync();
@@ -115,7 +117,7 @@ export class Blobs {
     }
   }
 
-  /** putStream’s rename of a whole, synced draft under its hash; a blob already whole there is kept, and the draft removed. */
+  /** The rename of a whole, synced draft under its hash, for write and putStream alike; a blob already whole there is kept, and the draft removed. */
   async place(sha256, draft, size) {
     await this.dropping.get(sha256);
     const path = this.pathOf(sha256);
@@ -165,15 +167,13 @@ export class Blobs {
       } finally {
         await fh.close();
       }
-      await rename(draft, path);
     } catch (e) {
       // Any failure before the rename leaves no draft: a full disk retries on every turn’s end, and each try would
       // otherwise leave one more.
       await unlink(draft).catch(() => {});
       throw e;
     }
-    await this.syncFolder(folder);
-    return { sha256, size: buffer.length, path, fresh: !have };
+    return this.place(sha256, draft, buffer.length);
   }
 
   /**
@@ -217,6 +217,37 @@ export class Blobs {
     } finally {
       await dh.close();
     }
+  }
+
+  /**
+   * A blob’s bytes as a stream, for a file as large as an upload (#870): read a chunk at a time and checked against its
+   * hash as they pass. The last chunk is held back until the hash is known, so a damaged file ends in an error before
+   * its end goes out, rather than being delivered whole. A blob that isn’t there, or not of its recorded size, refuses
+   * before anything is sent.
+   * @param {string} sha256 @param {number} size  the size its record gives
+   */
+  async stream(sha256, size) {
+    const path = this.pathOf(sha256);
+    if ((await stat(path)).size !== size) throw new Error('This file is damaged: its size no longer matches its record.');
+    const hash = createHash('sha256');
+    /** @type {Buffer | null} */
+    let held = null;
+    const check = new Transform({
+      transform(chunk, _enc, done) {
+        hash.update(chunk);
+        if (held) this.push(held);
+        held = chunk;
+        done();
+      },
+      flush(done) {
+        if (hash.digest('hex') !== sha256) return done(new Error('This file is damaged: its contents no longer match its hash.'));
+        if (held) this.push(held);
+        done();
+      },
+    });
+    const source = createReadStream(path);
+    source.on('error', (e) => check.destroy(e));
+    return source.pipe(check);
   }
 
   /** Reads bytes back and checks they still match their hash. */

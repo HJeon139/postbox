@@ -381,8 +381,7 @@ export async function start({
     const projectsDid = await projectsRoute(rt, path, req.method, body, url.searchParams, config.hosted);
     if (projectsDid) return send(res, projectsDid.status, projectsDid.body);
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req, { blobs, store }));
-    const stored = await storedFileRoute(store, blobs, path, req.method);
-    if (stored) return raw(res, 200, stored.bytes, stored.headers);
+    if (await storedFileRoute(store, blobs, path, req.method, res)) return;
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|note|state|query|open|publish|animating)$/)) && req.method === 'POST') {
       const id = decodePath(m[1]);
       if (m[2] === 'open') {
