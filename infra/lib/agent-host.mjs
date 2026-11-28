@@ -151,8 +151,8 @@ export class PostboxAgentHost extends Construct {
   }
 
   /**
-   * The machine’s role, which an agent on it can use: Anthropic’s models, and nothing else. Nothing of the server’s,
-   * and no parameter.
+   * The machine’s role, which an agent on it can use: Anthropic’s models, and what Bedrock needs to turn one on for
+   * the account at its first call. Nothing of the server’s, and no parameter.
    * @param {PostboxAgentHostProps} props
    */
   allow({ models, sessionManager = false }) {
@@ -169,6 +169,18 @@ export class PostboxAgentHost extends Construct {
       }),
     );
     role.addToPrincipalPolicy(new PolicyStatement({ actions: ['bedrock:ListInferenceProfiles', 'bedrock:ListFoundationModels'], resources: ['*'] }));
+    // Bedrock turns a model on for the account at its first call, by subscribing to it in AWS Marketplace as the
+    // caller, and refuses the model until that has happened: “not authorized to perform the required AWS Marketplace
+    // actions”. Without these the first model a person picks answers for a few minutes and then never again (seen
+    // on the test deployment, 27 November 2026). Only when Bedrock makes the call for the role, so an agent with the
+    // role’s credentials can’t subscribe the account to anything else there.
+    role.addToPrincipalPolicy(
+      new PolicyStatement({
+        actions: ['aws-marketplace:ViewSubscriptions', 'aws-marketplace:Subscribe'],
+        resources: ['*'],
+        conditions: { StringEquals: { 'aws:CalledViaLast': 'bedrock.amazonaws.com' } },
+      }),
+    );
     // A shell for an operator, through Systems Manager, with no port opened. Only what a session needs: the managed
     // policy for this also reads every parameter in the account, which an agent on the machine would then read too.
     if (sessionManager)
