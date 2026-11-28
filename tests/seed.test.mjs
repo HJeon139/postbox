@@ -12,12 +12,13 @@ import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
-async function seeded({ demo = false, agents = null, hosted = false, folders = false } = {}) {
+async function seeded({ demo = false, agents = null, hosted = false, folders = false, host = false } = {}) {
   const store = new Store(null);
+  if (host) store.emit('host', { id: 'ho_1', name: 'host.example.com', settings: {}, createdAt: 1 });
   // Seeding only checks that the agents' backend exists.
   const rt = new Runtime({
     store,
-    adapters: new AdapterRegistry().register({ name: 'claude-code' }),
+    adapters: new AdapterRegistry().register({ name: 'claude-code', ...(host ? { capabilities: { remote: true } } : {}) }),
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], hosted },
   });
   const dataDir = tempDir('pb-seed-');
@@ -149,6 +150,9 @@ test('hosted, agents.json that gives an agent a folder still starts Postbox, wit
     ],
   );
   assert.deepEqual((await seeded({ agents, folders: true })).folders, [there, '']);
+  // An agent agents.json places on a host keeps its folder, a path on that host.
+  const away = [{ handle: 'away', description: 'Works on a host.', folder: '/srv/work', remote: { hostId: 'ho_1' } }];
+  assert.deepEqual((await seeded({ agents: away, hosted: true, folders: true, host: true })).folders, ['/srv/work']);
 });
 
 test('the GPT boilerplate uses Codex and supplies general assistant instructions', () => {
