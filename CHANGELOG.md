@@ -2,6 +2,35 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.11.0 (2026-11-28)
+
+### Features
+
+- **view-app:** capture a marked review region at its review width
+- **review:** tell the agent what the app has under a marked region
+- **review:** mark a point or a box anywhere on an app in its review, and comment on it
+- **review:** a comment on an app can carry a region the person marked
+
+### Fixes
+
+- **review:** re-arm ResizeObserver when marks layer moves or paints detached
+- **view-app:** report the actual captured y slice when the app height changed
+- **view-app:** pass fullPage with clip for regions below 4000 px
+- **view-app:** clip tall region captures to one window height and prove block GC in leak spec
+- **review:** separate app content under a mark from the person’s comment and use innerText
+- **mcp:** restore view_app and review_block guidance and omit region.under from schema
+- **review:** keep answered app reviews full height so bottom regions stay aligned
+- **review:** strip bidi/invisible chars in underOf and test view_app region bounds
+- **review:** share nextRegion, disable mark without frame, add touch and guard tests
+- **review:** release a review’s mark layer when its room leaves the page
+- **review:** keep a marked region in px with its frame's size, drawn only at that width
+- **review:** a region's blank box takes no number from the next mark
+- **review:** number a new mark past the open region box, and check where typed text lands
+- **review:** keep a region's typed text when another box opens, and set drawn regions off the app
+- **review:** number a draft's region past an agent's on the page, and draw regions as marks
+- **review:** keep every review's region layer, renumber a region an agent took first
+- **review:** keep a region's text as a draft on Edit, and keep "region N" for marked regions
+
 ## 5.10.1 (2026-11-28)
 
 ### Fixes
