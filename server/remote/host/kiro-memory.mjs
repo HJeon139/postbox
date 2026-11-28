@@ -1,7 +1,9 @@
 // Kiro keeps memory per Kiro home: memory.mode and memory.reflection are settings in that home’s settings/cli.json, with
-// no flag or variable to set them for one run (kiro-cli 2.34.1). An Isolated persona runs with the Kiro home Postbox
-// owns, which every Isolated persona shares, so Postbox turns memory off there before each turn (#479), keeping the
-// home’s other settings. The person’s own Kiro home is never written: a persona with your setup shares your memory.
+// no flag or variable to set them for one run (kiro-cli 2.34.1). An Isolated persona runs with a Kiro home Postbox
+// owns, so Postbox turns memory off there before each turn (#479), keeping the home’s other settings: on this computer
+// the one every Isolated persona shares (kiro-cli.mjs), and on a host the persona’s own, which the daemon writes
+// (daemon-start.mjs). Here, so the host’s daemon runs the same code (install-bundle.mjs ships only shared/ and
+// server/remote/host/). The person’s own Kiro home is never written: a persona with your setup shares your memory.
 
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
