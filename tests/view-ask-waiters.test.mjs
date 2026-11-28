@@ -4,73 +4,10 @@
 // picture, and each hears how the card ends (#1975: no agent waits behind another).
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { test } from 'node:test';
-import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { Runtime } from '../server/runtime.mjs';
-import { Store } from '../server/store.mjs';
-import { ViewApp, viewApp } from '../server/view-app/view-app.mjs';
-import { attachViewApp } from '../server/view-app/view-of.mjs';
+import { viewApp } from '../server/view-app/view-app.mjs';
 import * as arrange from './arrange.mjs';
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-class ScriptedAdapter {
-  name = 'mock';
-  calls = [];
-  async deliver(session, message, ctx) {
-    this.calls.push({ sessionId: session.id, message });
-    await ctx.text('ok');
-  }
-}
-
-/** A browser not yet downloaded, whose download does what the test says. @param {{ ok: boolean, message?: string }} install */
-const missingBrowser = (install = { ok: true }) => {
-  const b = {
-    state: 'missing',
-    status: () => b.state,
-    install: async () => {
-      if (install.ok) b.state = 'ready';
-      return install;
-    },
-    capture: async () => Buffer.alloc(0),
-    close: async () => {},
-  };
-  return b;
-};
-
-/** Agents in one conversation, each with an app of its own: the first two, or as many as handles names. @param {any} browser */
-function twoAgents(browser, handles = ['researcher', 'critic']) {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-view-ask-'));
-  const store = new Store(null);
-  const adapter = new ScriptedAdapter();
-  const rt = new Runtime({
-    store,
-    adapters: new AdapterRegistry().register(adapter),
-    config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
-  });
-  store.emit('project', { id: 'p1', name: 'P', folder: dir });
-  const personas = handles.map((handle) => rt.createPersona({ handle }));
-  const t = rt.createThread({ projectId: 'p1', title: 'Prices', personaIds: personas.map((x) => x.id) });
-  const all = arrange.sessionsIn(rt, t.id);
-  const [first, second] = all;
-  const appOf = (se) => rt.toolsFor(se.id).show_app({ title: `${se.handle}’s chart`, code: '<p>Orders fall as price rises.</p>' }).appId;
-  const apps = { first: appOf(first), second: appOf(second) };
-  attachViewApp(rt, new ViewApp({ dataDir: dir, origin: () => 'http://127.0.0.1:1', browser }));
-  return { rt, adapter, t, first, second, all, apps, appOf, done: () => rmSync(dir, { recursive: true, force: true }) };
-}
-const ctx = (t) => ({ threadId: () => t.id, endSegment() {}, images: true });
-const card = (s) => s.rt.store.items(s.t.id).find((x) => x.kind === 'viewask');
-const told = (s, se) => s.adapter.calls.filter((c) => c.sessionId === se.id && c.message.kind === 'notice').map((c) => c.message.text);
-
-/** view_app’s reply while the answer is pending: the agent carries on without the picture, and isn’t told to stop. */
-function carriesOn(r) {
-  assert.equal(r.waiting, true);
-  assert.match(r.message, /Carry on without the picture for now/);
-  assert.doesNotMatch(r.message, /end your turn/i, 'nothing needs the agent to stop (#1975)');
-}
+import { card, carriesOn, ctx, heldBrowser, missingBrowser, sleep, told, topicOf, twoAgents } from './view-ask-fixture.mjs';
 
 /** Both agents call view_app before the person answers, then the person answers the one card. */
 async function bothAsk(s, action) {
@@ -130,30 +67,6 @@ test('#1927 declining with another agent waiting still releases the asking agent
   }
 });
 
-/** A browser whose download runs until the test finishes it, saying it’s under way meanwhile, as AppBrowser does. */
-function heldBrowser() {
-  let finish = () => {};
-  const b = {
-    state: 'missing',
-    installing: /** @type {Promise<any> | null} */ (null),
-    status: () => b.state,
-    install: () => {
-      b.installing = new Promise((r) => {
-        finish = () => {
-          b.state = 'ready';
-          b.installing = null;
-          r({ ok: true });
-        };
-      });
-      return b.installing;
-    },
-    capture: async () => Buffer.alloc(0),
-    close: async () => {},
-    finish: () => finish(),
-  };
-  return b;
-}
-
 test('#1927 an agent that calls view_app while the allowed download runs hears when it’s ready', async () => {
   const browser = heldBrowser();
   const s = twoAgents(browser);
@@ -180,9 +93,6 @@ test('#1927 an agent that calls view_app while the allowed download runs hears w
     s.done();
   }
 });
-
-/** A topic thread of the conversation, started from a message there, for an agent’s turn to run in. */
-const topicOf = (s) => ({ id: s.rt.startTopic(s.t.id, arrange.post(s.rt, s.t.id, { kind: 'user', text: 'Look at this.' }).id).threadId });
 
 test('#1927 an agent in a topic thread finds the open card in the conversation, gets none of its own, and hears the answer', async () => {
   const s = twoAgents(missingBrowser());
