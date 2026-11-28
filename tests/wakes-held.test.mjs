@@ -88,7 +88,7 @@ test('#439 stopping the held wake’s target drops it, so allowing the card does
   const f = await cardOpen();
   await f.wake(f.beta, 'gamma', HANDOFF);
   const { gamma, h } = await personAddsGamma(f);
-  f.rt.stop(gamma.id);
+  f.rt.stop(gamma.id, { by: 'you' });
   h.release();
   await settle(f.rt);
   f.rt.resolveHop(f.t.id, f.card.id, true);

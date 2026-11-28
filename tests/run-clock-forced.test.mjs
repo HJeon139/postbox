@@ -107,7 +107,7 @@ test('a local stop a restart finds still listed ends the run as void, since no o
 
 test('a forced stop voids the run whoever stopped the turn: the person’s Stop, with the clock running, too', async () => {
   const { rt, store, se, t, adapter, turnId, clock } = await working();
-  rt.stop(se.id); // the person’s Stop, not the clock’s
+  rt.stop(se.id, { by: 'you' }); // the person’s Stop, not the clock’s
   mock.timers.tick(15_000);
   await settle();
   assert.deepEqual(stoppedOf(store), { sessionId: se.id, turn: `turn:${turnId}`, forced: true, why: 'watchdog', at: T0 + 15_000 });

@@ -24,7 +24,7 @@ test('#167: a job that shares one of its groups with the job stopped, but has an
   });
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(5);
-  rt.stop(se.id, { jobs: 'keep' });
+  rt.stop(se.id, { jobs: 'keep', by: 'you' });
   exit();
   await sleep(10);
   // Each group has a running member and no leader, so each is still the job’s own.

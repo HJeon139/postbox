@@ -205,7 +205,7 @@ test('stopping a turn preserves each agent’s message from a mixed pending batc
   rt.turnService.run(beta.id, { kind: 'agent', from: '@gamma', text: 'Gamma’s request.' });
   first.release();
   await nextStarted;
-  rt.stop(beta.id);
+  rt.stop(beta.id, { by: 'you' });
   second.release();
   await settle(rt);
   const context = store.state.sessions[beta.id].context.join('\n');

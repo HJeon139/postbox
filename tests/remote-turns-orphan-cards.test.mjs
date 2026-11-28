@@ -23,7 +23,7 @@ async function orphaned() {
 }
 
 for (const [by, opts] of [
-  ['you', {}],
+  ['you', { by: 'you' }],
   ['hung', { by: 'hung', why: 'Stopped: no output for 15 min' }],
 ])
   test(`#800 after a ${by} stop, a host card that waits on nothing here expires`, async () => {
@@ -46,7 +46,7 @@ test('#800 a card that still waits here is answered once by the Stop, as before'
   const turn = await running(r);
   r.d.prompt(turn, FIXTURE_PROMPT, 'p-1');
   await until(() => cards(r).some((c) => c.status === 'open'), 'the card');
-  r.rt.stop(r.se().id);
+  r.rt.stop(r.se().id, { by: 'you' });
   r.d.end(turn);
   await settled(r);
   assert.notEqual(cards(r)[0].status, 'open');

@@ -71,7 +71,7 @@ async function stopped({ held, jobs }) {
     commit = store.commit([{ type: 'settings', data: { theme: 'system' } }]);
     await h.atSync;
   }
-  rt.stop(se.id, { jobs });
+  rt.stop(se.id, { jobs, by: 'you' });
   if (h) {
     h.release();
     await commit;

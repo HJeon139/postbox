@@ -84,7 +84,7 @@ test('#521 question-answered-in-turn doesn’t fire when the answer reaches the 
   // The turn is stopped while the question waits, so the call ends unanswered and the turn writes nothing more; the
   // person's pick then reaches the agent as an event, in a turn of its own.
   const r = await asking({ after: () => {} });
-  r.rt.stop(r.alpha.id);
+  r.rt.stop(r.alpha.id, { by: 'you' });
   await r.done;
   await settle(r.rt);
   r.adapter.next.push(async (c) => c.text('You picked Green, so Green it is.'));

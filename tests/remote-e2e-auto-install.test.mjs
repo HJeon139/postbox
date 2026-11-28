@@ -127,7 +127,7 @@ test('#464-b2b e2e: Stop ends a turn that waits for the install at once, and the
     await until(() => p.host.runs.length === 1, 'the automatic install to start', 4000);
     const se = Object.values(p.rt.s.sessions).find((x) => x.threadId === p.threadId);
     await until(() => p.rt.s.sessions[se.id].state !== 'idle', 'the turn to be under way');
-    p.rt.stop(se.id);
+    p.rt.stop(se.id, { by: 'you' });
     await until(() => p.rt.s.sessions[se.id].state === 'idle', 'the turn to end', 1000);
     assert.equal(p.hosts.updating.has(p.hostId), true, 'the install is still running');
     assert.equal(p.d.received.filter((m) => m.type === 'start').length, 0, 'nothing started on the host');

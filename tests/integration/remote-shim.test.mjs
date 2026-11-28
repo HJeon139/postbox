@@ -42,7 +42,7 @@ test('initialize and tools/list match the laptop’s server/mcp.mjs, byte for by
   assert.deepEqual((await shim.call('ping')).result, {});
 });
 
-test('with --bring, a turn the person started in a side or topic thread, tools/list has every tool, as the laptop’s does there', async (t) => {
+test('with --bring, a turn in a side or topic thread, tools/list has every tool, as the laptop’s does there', async (t) => {
   const { shim } = await setup(t, { args: ['--bring'] });
   await shim.call('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
   const list = await shim.call('tools/list');

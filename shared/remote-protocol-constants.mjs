@@ -136,7 +136,7 @@ export const TOOL_ROUTES = Object.freeze({
   wake_agent: 'ask',
   // Its answer carries the topic thread's id, which only Postbox has (#637), so it waits.
   open_topic: 'ask',
-  // Whether it may post depends on the thread and who started the turn, which only Postbox knows, so it waits for the answer.
+  // Whether it may post depends on the thread and the turn, which only Postbox knows, so it waits for the answer.
   bring_to_conversation: 'ask',
   ask_for_tool: 'queue',
   // Asks Postbox when attached, answers from the snapshot when not.

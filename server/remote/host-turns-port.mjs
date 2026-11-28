@@ -7,7 +7,7 @@ export function hostTurnsPort(rt) {
   return {
     busyOn: (hostId) => rt.remote.busyOn(hostId),
     sessionsOn: (hostId) => rt.remote.sessionsOn(hostId),
-    stopOn: (sessionId) => rt.stop(sessionId, { silent: true }),
+    stopOn: (sessionId) => rt.stop(sessionId, { silent: true, by: 'you' }),
     cancel: (sessionId) => rt.remote.cancel(sessionId),
     confirmStops: (hostId, waitMs) => rt.remote.confirmStops(hostId, waitMs),
     stoppingSession: (turnId) => rt.remote.stopping.get(turnId)?.sessionId,
