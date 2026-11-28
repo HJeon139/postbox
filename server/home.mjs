@@ -8,11 +8,11 @@
 // Every clone, worktree and installed copy now shares one default folder, so a run claims it with a lock: a second
 // Postbox on the same folder would append to the same log, and delete segments the first is still writing.
 
-import { randomBytes } from 'node:crypto';
 import { linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { cp, mkdir, readdir, readlink, rename, rm, rmdir, symlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { publishWhole, readPid } from './lock-file.mjs';
 
 /** The person’s Postbox folder: POSTBOX_HOME, else ~/.postbox. */
 export const postboxHome = (env = process.env, home = homedir()) => (env.POSTBOX_HOME ? resolve(env.POSTBOX_HOME) : join(home, '.postbox'));
@@ -68,21 +68,6 @@ function alive(pid) {
 const DEFAULT_LOCK_IO = { writeFileSync, linkSync, readFileSync, rmSync };
 
 /**
- * Publishes a lock file with its PID already written: the PID goes to a unique temp file first, then is linked under
- * `lock` (atomic, and EEXIST when a lock is already there), so a concurrent starter never sees an empty lock (#2027).
- * @param {LockIo} io @param {string} lock @param {number} pid
- */
-function publishLock(io, lock, pid) {
-  const draft = `${lock}.${pid}.${randomBytes(4).toString('hex')}.new`;
-  io.writeFileSync(draft, String(pid), { flag: 'wx', mode: 0o600 });
-  try {
-    io.linkSync(draft, lock);
-  } finally {
-    io.rmSync(draft, { force: true });
-  }
-}
-
-/**
  * Claims a data folder for this process, or throws when another running Postbox holds it. A lock left by a run that
  * died is taken over.
  * @param {string} dataDir
@@ -94,7 +79,7 @@ export function lockData(dataDir, io = DEFAULT_LOCK_IO) {
   const lock = join(dataDir, LOCK);
   for (let tries = 0; tries < 3; tries++) {
     try {
-      publishLock(io, lock, process.pid);
+      publishWhole(io, lock, String(process.pid));
       return () => io.rmSync(lock, { force: true });
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
@@ -105,9 +90,8 @@ export function lockData(dataDir, io = DEFAULT_LOCK_IO) {
         if (readErr.code === 'ENOENT') continue; // released between EEXIST and read: try again
         throw readErr;
       }
-      const trimmed = text.trim();
-      const other = Number(trimmed);
-      if (!/^[1-9]\d*$/.test(trimmed) || !Number.isSafeInteger(other))
+      const other = readPid(text);
+      if (other === null)
         throw new Error(
           `The lock at ${lock} is unreadable, so Postbox can’t tell whether another Postbox holds ${dataDir}. If none is running on it, remove the file and start again.`,
         );
