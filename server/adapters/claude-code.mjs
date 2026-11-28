@@ -28,15 +28,11 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { versionIn } from '../../shared/cli-version.mjs';
 import { cleanTail } from '../../shared/text-parts.mjs';
 import { withNetwork, withQuota, withTransient } from '../harness-failure.mjs';
 import { claudeModels } from '../remote/host/harness-models.mjs';
-import { stopProbe } from '../remote/host/probe-stop.mjs';
+import { findClaude } from './claude-bin.mjs';
 import { claudeEnv, runArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
@@ -47,32 +43,9 @@ import { recordOnceWritten } from './prompt-sent.mjs';
 import { effortOf, recorderFor } from './setup.mjs';
 import { stderrTail } from './stderr-tail.mjs';
 
+export { claudeVersion, findClaude } from './claude-bin.mjs';
 export { claudeArgs } from './claude-code-args.mjs';
 export { CLAUDE_CODE_CAPABILITIES, remoteClaudeProblem } from './claude-code-remote.mjs';
-
-/** The claude binary: POSTBOX_CLAUDE_BIN, then the native installer’s location, then the PATH. */
-export function findClaude(env = process.env) {
-  if (env.POSTBOX_CLAUDE_BIN) return env.POSTBOX_CLAUDE_BIN;
-  const local = join(homedir(), '.local', 'bin', 'claude');
-  return existsSync(local) ? local : 'claude';
-}
-
-/** The installed version, or null if the CLI can’t be run. */
-export function claudeVersion(bin = findClaude()) {
-  return new Promise((resolve) => {
-    let out = '';
-    const p = spawn(bin, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    const timer = setTimeout(() => stopProbe(p), 8000);
-    p.stdout.on('data', (d) => {
-      out += d;
-    });
-    p.on('error', () => resolve(null));
-    p.on('close', (code) => {
-      clearTimeout(timer);
-      resolve(code === 0 ? (versionIn(out) ?? 'unknown') : null);
-    });
-  });
-}
 
 /**
  * Where a forked session starts: the checkpoint of the message it branched from, or, for a reply from
