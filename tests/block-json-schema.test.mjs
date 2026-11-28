@@ -27,6 +27,8 @@ const ACROSS = [
   // edited is the person’s alone (#858): a comment by its author.
   /only the person’s correction is marked edited/,
   /has two items with the /,
+  // A region on an app (#856): its sums, its anchor, and the review’s format.
+  /^threads\[\d+\]: (a region stays inside the app|a comment on a region names it|only an app review’s thread is on a region)/,
 ];
 
 test('#1319 show_block offers one schema per catalog type, keyed by type, and update_block takes an outcome or a withdraw too', () => {

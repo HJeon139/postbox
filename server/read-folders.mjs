@@ -120,6 +120,8 @@ export function addReadFolder(rt, sessionId, dir) {
  * @param {{ tool: unknown, input: any, suggestions: unknown, suppressAlways: boolean, hostId?: string | null }} req
  */
 export function readCardAlways(rt, se, { tool, input, suggestions, suppressAlways, hostId = null }) {
-  if (suppressAlways || (suggestions !== null && suggestions !== undefined)) return null;
+  // Hosted, a folder on the server is never saved for a conversation (designs/architecture/hosted.md, “What assumed one
+  // computer”), as server/hosted-saved-folders.mjs clears one saved before.
+  if (rt.config?.hosted === true || suppressAlways || (suggestions !== null && suggestions !== undefined)) return null;
   return readFolderOffer({ backend: rt.persona(se.personaId)?.backend, tool, input, hostId, home: rt.home });
 }

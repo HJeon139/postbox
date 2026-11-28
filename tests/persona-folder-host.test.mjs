@@ -176,8 +176,10 @@ function savedBefore() {
   store.emit('persona', { id: 'pe_here', handle: 'here', backend: 'mock', folder: '', remote: null, version: 1 });
   store.emit('persona', { id: 'pe_away', handle: 'away', backend: 'claude-code', folder: '', remote: { hostId: 'ho_1' }, version: 1 });
   store.emit('thread', { id: 'th_a', title: 'Room', projectId: 'pr_a' });
-  store.emit('session', { id: 'se_here', threadId: 'th_a', personaId: 'pe_here', handle: 'here', addDirs: ['/srv/added', '/etc'], readDirs: [] });
+  store.emit('session', { id: 'se_here', threadId: 'th_a', personaId: 'pe_here', handle: 'here', addDirs: ['/srv/added', '/etc'], readDirs: ['/srv/both'] });
   store.emit('session', { id: 'se_away', threadId: 'th_a', personaId: 'pe_away', handle: 'away', addDirs: [] });
+  // One with only folders whose reads are answered without a card, saved the same way.
+  store.emit('session', { id: 'se_reads', threadId: 'th_a', personaId: 'pe_here', handle: 'here', addDirs: [], readDirs: ['/srv/read-only', '/etc'] });
   const start = (/** @type {boolean} */ hosted) =>
     new Runtime({
       store,
@@ -198,10 +200,12 @@ test('hosted, a conversation’s or project’s folder saved before is ignored t
   );
   const before = store.state.seq;
   start(true);
-  assert.equal(store.state.seq, before + 2, 'two writes: the one project and the one conversation that had any');
+  assert.equal(store.state.seq, before + 3, 'three writes: the one project, and the two conversations that had any, one each with both');
+  assert.deepEqual([store.state.sessions.se_reads.readDirs, store.state.sessions.se_reads.addDirs], [[], []], 'the folders it may read go too');
+  assert.deepEqual(store.state.sessions.se_away.addDirs, [], 'one with none is left as it was');
   assert.deepEqual(store.state.projects.pr_a, { id: 'pr_a', name: 'Saved with a folder', pushUrl: 'https://github.com/owner/name.git' });
   assert.deepEqual(store.state.projects.pr_b, { id: 'pr_b', name: 'Named only' });
   assert.deepEqual([store.state.sessions.se_here.addDirs, store.state.sessions.se_here.threadId], [[], 'th_a']);
   start(true);
-  assert.equal(store.state.seq, before + 2, 'a later hosted start writes nothing');
+  assert.equal(store.state.seq, before + 3, 'a later hosted start writes nothing');
 });

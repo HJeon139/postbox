@@ -2,11 +2,15 @@
 // agent’s on another agent’s draft. Its anchor is a line, or a selection on lines and columns with the text it quotes,
 // as the W3C Web Annotation model pairs a position with a quote (www.w3.org/TR/annotation-model/#selectors): positions
 // go stale when the text changes, and the quote finds the place again. An app review’s comment names a part of the
-// app, and a reply names its thread. Pure, so the browser, the server and the tests share it.
+// app, or a region the person marked on it (#856), and a reply names its thread. Pure, so the browser, the server and
+// the tests share it.
 
 import { HANDLE, PERSON, REVIEW_THREADS_BYTES, REVIEW_THREADS_MAX, REVIEW_THREADS_OPEN } from './limits.mjs';
+import { REGION, regionError, regionNameError, regionText } from './review-regions.mjs';
 import { described, id, int, obj, str } from './schema.mjs';
 import { cutText } from './text-parts.mjs';
+
+export { underLine } from './review-regions.mjs';
 
 /** The longest quote a comment keeps; a longer selection is cut to it. */
 export const QUOTE_MAX = 2000;
@@ -79,7 +83,8 @@ export const ANCHOR = {
   endCol: int({ min: 1, max: 100000 }),
   quote: str({ min: 1, max: QUOTE_MAX }),
 };
-const COMMENT = { ...ANCHOR, anchor: str({ min: 1, max: 80 }), threadId: id(), text: str({ min: 1, max: COMMENT_MAX }) };
+
+const COMMENT = { ...ANCHOR, anchor: str({ min: 1, max: 80 }), region: REGION, threadId: id(), text: str({ min: 1, max: COMMENT_MAX }) };
 
 /**
  * Why a comment’s or thread’s selection isn’t one, or null: col, endLine, endCol and quote come together, on a line,
@@ -107,12 +112,13 @@ export function commentErrors(c, path) {
   const x = /** @type {Record<string, any>} */ (c);
   if (!x.text.trim()) return [`${path}.text is empty.`];
   if (x.line === undefined && x.anchor === undefined && x.threadId === undefined) return [`${path} needs a line, an anchor or a thread.`];
-  const why = anchorError(x);
+  const why = anchorError(x) ?? regionError(x) ?? regionNameError(x);
   return why ? [`${path}: ${why}`] : [];
 }
 
 /**
- * Where a comment points, as an agent reads it: “line 12, col 5–23 “the quoted text””, a line, a part of an app, or
+ * Where a comment points, as an agent reads it: “line 12, col 5–23 “the quoted text””, a line, a part of an app, a
+ * region of it (“region 1” (x 120, y 90, 200 × 45 px, on v3, in a 1000 × 300 px frame), with what the app had there), or
  * the thread it answers.
  * @param {Record<string, any>} c
  */
@@ -121,6 +127,7 @@ export function commentAt(c) {
     const where = c.endLine === c.line ? `line ${c.line}, col ${c.col}–${c.endCol}` : `line ${c.line}, col ${c.col} to line ${c.endLine}, col ${c.endCol}`;
     return `${where} “${c.quote}”`;
   }
+  if (c.anchor != null && c.region != null) return `“${c.anchor}” (${regionText(c.region)})`;
   return c.line != null ? `line ${c.line}` : c.anchor != null ? `“${c.anchor}”` : c.threadId != null ? `thread ${c.threadId}` : 'the draft';
 }
 
