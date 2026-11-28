@@ -40,7 +40,12 @@ export async function upload(req, { blobs, store, statfs = fsStatfs }) {
   const body = req.iterator?.({ destroyOnReturn: false }) ?? req;
   const { sha256, size } = await blobs.putStream(body, { check }).catch((e) => {
     req.resume?.();
-    throw e?.code === 'ENOSPC' ? NO_ROOM() : e;
+    if (e?.code === 'ENOSPC') throw NO_ROOM();
+    // A browser that stops sending (the tab closed, the upload canceled) isn’t the server’s fault, so it isn’t logged.
+    // A refusal of Postbox’s own (a 507) keeps its status, even if the browser left too.
+    if (!e?.status && (req.aborted || (req.destroyed && !req.readableEnded)))
+      throw httpError(400, 'The upload stopped before the whole file arrived. Attach it again.');
+    throw e;
   });
   const id = newId('fi');
   const f = {

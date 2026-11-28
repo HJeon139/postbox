@@ -172,3 +172,16 @@ test('#870 a refused upload is read to its end and dropped, not destroyed, so th
   await once(req, 'end');
   assert.equal(req.readableEnded, true, 'the rest of the body is read and dropped');
 });
+
+test('#870 an upload the browser stops sending is refused as cut off, not logged as the server’s fault, and leaves nothing', async () => {
+  async function* cut() {
+    yield* chunks(2 * MB);
+    throw Object.assign(new Error('aborted'), { code: 'ECONNRESET' });
+  }
+  const dir = tempDir('pb-upload-cut-');
+  const req = Object.assign(Readable.from(cut()), { headers: { 'x-filename': 'big.mov', 'content-length': String(8 * MB) } });
+  const result = await upload(/** @type {any} */ (req), { blobs: new Blobs(dir), store: { emit: () => {} }, statfs: disk(10 * DISK_RESERVE) }).catch((e) => e);
+  assert.equal(result.status, 400, String(result));
+  assert.match(result.message, /Attach it again/);
+  assert.deepEqual(filesIn(dir), []);
+});
