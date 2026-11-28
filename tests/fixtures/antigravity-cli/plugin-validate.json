@@ -1,0 +1,26 @@
+{
+  "dir": "/work/plugin",
+  "manifest": "plugin.json",
+  "name": "postbox",
+  "agentPluginsSpec": false,
+  "components": {
+    "agents": 0,
+    "hooks": 1,
+    "mcpServers": 1,
+    "rules": 1,
+    "sidecars": 0,
+    "skills": 1
+  },
+  "findings": [
+    {
+      "severity": "warning",
+      "file": "plugin.json",
+      "message": "no version: the plugin marketplace in Antigravity doesn't list a plugin without one. Add a \"version\", such as \"1.0.0\""
+    },
+    {
+      "severity": "note",
+      "file": "plugin.json",
+      "message": "no logo: the plugin shows a generic icon. Add \"logo\": \"assets/logo.svg\" (a .png, .svg, .jpg, .jpeg or .webp file inside the plugin)"
+    }
+  ]
+}

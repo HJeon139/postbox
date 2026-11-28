@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { branchFor, turnFolders, worktreeNote, worktreesRootFor } from '../server/adapters/agent-worktree.mjs';
 import { decideAgyTool } from '../server/adapters/agy-hook.mjs';
+import { AGY_RULES_LIMIT } from '../server/adapters/agy-plugin.mjs';
 import { agyRules } from '../server/adapters/antigravity-cli.mjs';
 import { agentGuide } from '../server/adapters/guide.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -78,7 +79,7 @@ test('#1709 an agent in its own worktree is told its worktree, its branch and th
   const guide = agentGuide({ persona: agent, handles: ['gemini', 'critic'], toolRules: null, setup: false });
   const rules = agyRules({ persona: agent, guide, place: long, schemas: '/Users/someone/.gemini/antigravity-cli/mcp/postbox_postbox', hooked: true });
   assert.ok(rules.indexOf(long) > rules.indexOf(guide.slice(0, 40)));
-  assert.ok(rules.length <= 12000, String(rules.length));
+  assert.ok(rules.length <= AGY_RULES_LIMIT, String(rules.length));
   // In the project’s shared folder there’s nothing to say.
   assert.equal(worktreeNote(join(workRoot, 'pr_x'), persona, project, workRoot), '');
 });
