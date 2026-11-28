@@ -125,8 +125,7 @@ export function clearSummaryPending(rt, topicId, ended = null) {
 
 /**
  * Posts text from a topic or side thread in its conversation. The conversation’s agents read it at the start of
- * their next turn rather than being woken by it, so sharing costs no turn; an agent’s own post wakes the agents it
- * @-mentions, and server/bring.mjs does that. agent: the agent posted it itself with
+ * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it itself with
  * bring_to_conversation, the thread’s outcome or what the person asked for (#128, #382).
  */
 export function shareText(rt, threadId, { fromThreadId, handle, text, summary = false, agent = false, question = undefined }) {
