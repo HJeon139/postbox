@@ -30,24 +30,22 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { versionIn } from '../../shared/cli-version.mjs';
 import { cleanTail } from '../../shared/text-parts.mjs';
 import { withNetwork, withQuota, withTransient } from '../harness-failure.mjs';
 import { claudeModels } from '../remote/host/harness-models.mjs';
 import { stopProbe } from '../remote/host/probe-stop.mjs';
-import { claudeArgs, claudeEnv } from './claude-code-args.mjs';
+import { claudeEnv, runArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
-import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
+import { agentFolder, forgetMemory } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-group.mjs';
 import { recordOnceWritten } from './prompt-sent.mjs';
-import { hostMemoryRoot } from './remote-turn.mjs';
-import { effortOf, fromContext, recorderFor } from './setup.mjs';
+import { effortOf, recorderFor } from './setup.mjs';
 import { stderrTail } from './stderr-tail.mjs';
-import { checkoutSteering } from './steering.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
 export { CLAUDE_CODE_CAPABILITIES, remoteClaudeProblem } from './claude-code-remote.mjs';
@@ -296,25 +294,4 @@ export class ClaudeCodeAdapter {
       child.stdin.end(prompt, attach ? undefined : recordOnceWritten(ctx, child, { guide, text: prompt }));
     });
   }
-}
-
-/**
- * A run’s command line (server/adapters/claude-code-args.mjs), from its turn’s context: on a host, its memory folder
- * and its shim as Postbox’s server there.
- * A turn here, not on a host, keeps the checkout’s steering from an agent in the data folder (steering.mjs).
- * @param {string} workRoot @param {{ ctx: any, cwd: string, id: string, resume: boolean, guide: string, addDirs: string[], fork: any, remote: any }} o
- */
-function runArgs(workRoot, { ctx, cwd, id, resume, guide, addDirs, fork, remote }) {
-  return claudeArgs({
-    persona: ctx.persona,
-    sessionId: id,
-    resume,
-    mcpUrl: ctx.mcpUrl,
-    guide,
-    addDirs,
-    fork,
-    ...fromContext(ctx, ctx.remote ? hostMemoryRoot(ctx.remote) : memoryRootFor(workRoot)),
-    ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : {}),
-    claudeMdExcludes: ctx.remote ? [] : checkoutSteering(cwd, dirname(workRoot)),
-  });
 }
