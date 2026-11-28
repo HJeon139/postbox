@@ -53,3 +53,29 @@ test('#362: a summary one character past the limit isn’t posted, and the threa
   assert.doesNotMatch(String(arrange.describeItem(rt, why) ?? ''), /^You:/, 'no agent hears it as the person');
   assert.equal(store.state.threads[threadId].summaryPending, null, 'Summarize back works again');
 });
+
+// A summary turn posts its reply as the thread’s summary, so it isn’t also offered bring_to_conversation (#382): with
+// both, an agent asked to summarize back could post the outcome and then the summary, two cards for one request.
+test('#382: a Summarize back turn can’t also post with bring_to_conversation, so one summary posts once', async () => {
+  const { store, rt, adapter, t } = setup();
+  adapter.next.push(async (c) => c.text('Hi.'));
+  rt.sendMessage(t.id, { text: '@alpha start' });
+  await settle(rt);
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((x) => x.kind === 'user').id);
+  let result;
+  adapter.next.push(async (c) => {
+    result = c.tools.bring_to_conversation({ text: 'The outcome.' });
+    c.text('The summary.');
+  });
+  rt.summarizeBack(threadId);
+  await settle(rt);
+  assert.equal(result.ok, false, 'the summary turn was offered bring_to_conversation');
+  assert.match(result.message, /Your reply here is the summary/);
+  assert.deepEqual(
+    store
+      .items(t.id)
+      .filter((x) => x.kind === 'shared')
+      .map((x) => x.text),
+    ['The summary.'],
+  );
+});

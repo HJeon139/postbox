@@ -7,11 +7,12 @@ import { tooLongToSend } from './helpers.mjs';
 /**
  * Whether a turn may use bring_to_conversation: any turn with a message in a side or topic thread, whoever started it.
  * An agent posts a thread’s outcome without the person asking (#382, which reverses #128’s “only the person’s turn”);
- * in the conversation itself there’s nowhere to post from.
+ * in the conversation itself there’s nowhere to post from. A Summarize back turn isn’t offered it: its reply is what
+ * posts, so the tool would post the same request twice.
  * @param {any} rt @param {any} turn
  */
 export function offersBring(rt, turn) {
-  return ['side', 'topic'].includes(rt.store.pending.thread(turn?.threadId)?.kind);
+  return !turn?.summarizeTo && ['side', 'topic'].includes(rt.store.pending.thread(turn?.threadId)?.kind);
 }
 
 /**
@@ -23,7 +24,12 @@ export function offersBring(rt, turn) {
 export function bringToConversation(rt, sessionId, turn, { text } = {}) {
   const t = rt.store.pending.thread(turn?.threadId);
   if (!offersBring(rt, turn))
-    return { ok: false, message: 'bring_to_conversation works only in a side thread or a topic thread. Here you’re in the conversation: just reply.' };
+    return {
+      ok: false,
+      message: turn?.summarizeTo
+        ? 'Your reply here is the summary, and Postbox posts it in the conversation: just reply.'
+        : 'bring_to_conversation works only in a side thread or a topic thread. Here you’re in the conversation: just reply.',
+    };
   const body = String(text ?? '').trim();
   if (!body) return { ok: false, message: 'Give the text to post in the conversation.' };
   const over = tooLongToSend('A post to the conversation', body);
