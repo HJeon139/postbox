@@ -127,8 +127,11 @@ test('#120 G10: removing a host stops its turns first, then forgets its link and
   hosts.onForget = () => {
     atForget = { log: [...adapter.log], exiting: rt.exiting.size, hostKnown: Boolean(rt.s.hosts[h.id]) };
   };
+  const farSe = arrange.sessionsIn(rt, t.id).find((se) => se.handle === 'far');
+  const farTurnId = rt.turns.get(farSe.id).id;
   const r = await rt.removeHost(h.id);
   assert.deepEqual(r, { ok: true, stopped: 1 });
+  assert.equal(rt.s.sessions[farSe.id].stoppedTurnId, farTurnId, 'removing a host is the person’s stop, so its cards stay quiet (#1987)');
   assert.deepEqual(atForget, { log: [...adapter.log.slice(0, 3), 'stopped:far'], exiting: 0, hostKnown: true }, 'stopped and ended before the forget');
   assert.deepEqual(
     hosts.calls.filter((c) => c[0] === 'forget'),
