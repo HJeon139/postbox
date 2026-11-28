@@ -724,6 +724,13 @@ function projectFileItems(t, add) {
   return [{ label: 'From the project folder', desc: folder, icon: 'folder', run: () => openFolderPicker(t.projectId, add) }];
 }
 
+/** What a composer’s attachment chip says after its name: how much of its upload has gone, where it’s from, or its size. */
+function attNote(a) {
+  if (a.uploading) return a.percent === undefined ? ' · uploading…' : ` · uploading… ${a.percent}%`;
+  if (a.kind === 'project-file') return ' · from the project folder';
+  return a.size ? ` · ${fileSize(a.size)}` : '';
+}
+
 export function mountComposer(threadId, { side = false } = {}) {
   const topic = S().threads[threadId]?.kind === 'topic';
   // / and ! (#67) live in a conversation’s own composer, not in a thread panel’s.
@@ -798,12 +805,17 @@ export function mountComposer(threadId, { side = false } = {}) {
 
   async function addFiles(files) {
     for (const f of files) {
+      /** @type {import('./draft-attachments.mjs').DraftAttachment} */
       const chip = { kind: 'file', name: f.name, size: f.size, type: f.type, uploading: true };
       draft.add(chip);
       try {
         // The name the upload kept (#991): a character that would hide or reorder it is “_” there.
-        const { id, name, size, type } = await uploadFile(f);
-        draft.update(chip, { fileId: id, name, size, type, uploading: false });
+        // How much has gone, as a whole percent, so the chip repaints at most a hundred times (#870).
+        const { id, name, size, type } = await uploadFile(f, (sent, total) => {
+          const percent = Math.floor((sent / total) * 100);
+          if (percent !== chip.percent) draft.update(chip, { percent });
+        });
+        draft.update(chip, { fileId: id, name, size, type, uploading: false, percent: undefined });
       } catch (e) {
         draft.remove(chip);
         toast({ title: `Couldn’t attach ${f.name}`, text: e.message, level: 'blocking' });
@@ -817,7 +829,7 @@ export function mountComposer(threadId, { side = false } = {}) {
           'span.att',
           h('span.thumb', icon(a.kind === 'project-file' ? 'folder' : /^image\//.test(a.type ?? '') ? 'image' : 'file', 'i-sm')),
           a.kind === 'project-file' ? a.path : a.name,
-          h('span.dim', a.uploading ? ' · uploading…' : a.kind === 'project-file' ? ' · from the project folder' : a.size ? ` · ${fileSize(a.size)}` : ''),
+          h('span.dim', attNote(a)),
           h(
             'button.btn.icon.sm.ghost',
             {

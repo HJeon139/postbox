@@ -229,7 +229,7 @@ addEventListener('pageshow', (e) => {
  * the write is tried once more.
  * @param {string} path @param {RequestInit} init
  */
-export async function write(path, init) {
+async function write(path, init) {
   const r = await fetch(path, init);
   if (r.status !== 403 || init.method === 'GET') return r;
   const data = await r

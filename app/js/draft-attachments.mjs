@@ -6,7 +6,7 @@
 // Only what the composer already holds is kept: a file’s id, name, size and type, or a project file’s path.
 
 /**
- * @typedef {{ kind: 'file', name: string, size?: number, type?: string, fileId?: string, uploading?: boolean }
+ * @typedef {{ kind: 'file', name: string, size?: number, type?: string, fileId?: string, uploading?: boolean, percent?: number }
  *   | { kind: 'project-file', path: string }} DraftAttachment
  */
 
