@@ -58,7 +58,9 @@ async function openPersona(page, persona) {
   await page.evaluate((id) => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', id)), persona.id);
   return page.getByRole('dialog');
 }
-const suggested = (sheet) => sheet.locator('#pe-models option').evaluateAll((options) => options.map((o) => /** @type {HTMLOptionElement} */ (o).value));
+/** The suggestions the field holds now: a host’s own only once its list has answered. idp: the sheet’s id prefix. */
+const suggested = (sheet, idp = 'pe') =>
+  sheet.locator(`#${idp}-models option`).evaluateAll((options) => options.map((o) => /** @type {HTMLOptionElement} */ (o).value));
 
 test('an agent on a host suggests what the host’s CLI lists, with Codex’s auto beside it', async ({ page }) => {
   const { persona, asked } = hostWith('gpu.example.com', (harness) => ({ type: 'listed', harness, models: ['gpt-6.1-sol', 'gpt-5.6-terra'] }));
@@ -175,10 +177,17 @@ test('the model Postbox fills in for a new agent is one that answered where it r
   // On A, where its first listed model failed and another answered: the one that answered.
   await sheet.getByLabel('Runs on').selectOption(kept.a.host.id);
   await expect(model).toHaveValue('gpt-5.6-terra');
+  await expect.poll(() => suggested(sheet, 'na')).toEqual(['gpt-5.6-terra', 'auto', 'gpt-9-new']);
   await expect(sheet.locator('[data-model-ran]')).toHaveText(/last turn on host-a\.example\.com answered/);
   // On B nothing is kept, and it doesn’t list A’s model: its own default.
   await sheet.getByLabel('Runs on').selectOption(kept.b.host.id);
   await expect(model).toHaveValue('auto');
+  await expect.poll(() => suggested(sheet, 'na')).toEqual(['gpt-9-new', 'auto']);
+  // Every list this sheet asked for has answered before the move back, whatever each held: the field says how many
+  // it still waits for. Without this wait a late answer made the pick for A, such as the list of the backend the
+  // sheet opened on, which only a computer with that CLI asks, and takes seconds there. So the pick at each paint,
+  // which is what a person’s move relies on once every list is in, went untested.
+  await expect(model).toHaveAttribute('data-models-asking', '0', { timeout: 30_000 });
   // Back on A, whose list was asked already: A’s answered model again, not what B left.
   await sheet.getByLabel('Runs on').selectOption(kept.a.host.id);
   await expect(model).toHaveValue('gpt-5.6-terra');
