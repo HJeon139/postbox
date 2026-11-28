@@ -105,7 +105,7 @@ Every real adapter shares a system prompt that teaches the catalog, the kit and 
 - `propose_agent`
 - `schedule_wake`, and `cancel_wake`, which cancels a wake the agent scheduled, once its work is done (#458)
 - `open_topic`, which opens the topic thread of a message in the agent’s conversation, or finds the one it has, and can post a first message there that wakes each agent it @-mentions; its answer says whether that message was posted, by its id (#637)
-- `bring_to_conversation`, which posts in the main conversation from a topic or side thread, only when you ask for it there (#128)
+- `bring_to_conversation`, which posts in the main conversation from a topic or side thread: the thread’s outcome, or what you asked for there. Any turn there may use it, and the post wakes no one (#128, #382)
 - `ask_for_tool`, which asks you on a card to turn on a tool that’s turned off for the agent
 - `read_conversation`, the conversation’s history (each turn already starts with what happened since the agent’s last one). A block comes with what it holds: a review, card or code block’s content, a choice or form’s prompt, options or fields and your answer, an app’s title. Both cut an item at 2,000 characters, saying how much they kept and giving its id.
 - `read_message`, one item in full by that id or a block’s id, 40,000 characters at a time
