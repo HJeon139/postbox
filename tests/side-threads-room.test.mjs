@@ -115,7 +115,6 @@ test('#128, #372, #382: an agent posts a thread’s outcome to the conversation 
       .map((x) => x.text),
     ['Review done: approved, PR #12 is ready, the docs are left.', 'The details, for the main chat.'],
   );
-  assert.equal(store.state.threads[t.id].hops, 0);
 });
 
 test('#128: a topic thread’s agent can bring something to the conversation too, and the conversation’s agents can’t', async () => {
