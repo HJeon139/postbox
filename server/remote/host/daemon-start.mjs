@@ -1,6 +1,6 @@
 // A turn’s start (daemon.mjs’s header, #120): the checks, the turn folder and its files and attachments, a Kiro agent
-// file where the runner’s Kiro reads agents, start.json, and the runner’s launch, answered `started` once the runner
-// is up.
+// file where the runner’s Kiro reads agents (with memory off in an Isolated persona’s own Kiro home, #479), start.json,
+// and the runner’s launch, answered `started` once the runner is up.
 
 import { randomBytes } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
@@ -12,6 +12,7 @@ import { RUNNER_START_POLL_MS } from './daemon-constants.mjs';
 import { exists, runnerAlive, writeAtomic } from './daemon-files.mjs';
 import { reprobe, turnEnv } from './daemon-login.mjs';
 import { fail, send } from './daemon-reply.mjs';
+import { kiroMemoryOff } from './kiro-memory.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
 /** @typedef {(code: string, text: string) => undefined} FailStart */
@@ -40,8 +41,10 @@ async function inside(top, path) {
 
 /**
  * The agents folder of the Kiro home a turn’s runner will use, as Kiro finds it: start.env’s KIRO_HOME (an Isolated
- * persona’s, which must be under ~/.postbox-remote), else the daemon’s own (the runner inherits it), else ~/.kiro.
- * @param {Daemon} d @param {Record<string, string>} startEnv @returns {Promise<{ dir: string } | { error: string }>}
+ * persona’s, which must be under ~/.postbox-remote, and is named as `isolated`), else the daemon’s own (the runner
+ * inherits it), else ~/.kiro.
+ * @param {Daemon} d @param {Record<string, string>} startEnv
+ * @returns {Promise<{ dir: string, isolated?: string } | { error: string }>}
  */
 async function kiroAgents(d, startEnv) {
   const plain = (x) => x.startsWith('/') && x === posix.normalize(x) && (x === '/' || !x.endsWith('/'));
@@ -49,7 +52,7 @@ async function kiroAgents(d, startEnv) {
     const kiro = startEnv.KIRO_HOME;
     if (!plain(kiro) || !(await inside(d.p.root, kiro)))
       return { error: `The turn’s KIRO_HOME ${kiro} isn’t under ${d.p.root}, so Postbox won’t write a Kiro agent file there.` };
-    return { dir: `${kiro}/agents` };
+    return { dir: `${kiro}/agents`, isolated: kiro };
   }
   const own = d.env.KIRO_HOME;
   if (own) {
@@ -182,7 +185,8 @@ async function writeAttachments(dir, list = []) {
 /**
  * Writes the turn’s files, its attachments, its agent file and start.json, and launches its runner. Whether it launched; if not,
  * nothing ran, so the folder goes, and the same turn can be started again.
- * @param {Daemon} d @param {any} m @param {{ node: string, dir: string, agents: { dir: string } | null, record: object }} ready
+ * @param {Daemon} d @param {any} m
+ * @param {{ node: string, dir: string, agents: { dir: string, isolated?: string } | null, record: object }} ready
  * @param {FailStart} failStart
  */
 async function launch(d, m, { node, dir, agents, record }, failStart) {
@@ -192,6 +196,9 @@ async function launch(d, m, { node, dir, agents, record }, failStart) {
     // The turn’s own token for its shims, so one turn’s shim can’t speak for another’s (broker-shim.mjs’s hello).
     await fsp.writeFile(`${dir}/${TURN_FILES.shimToken}`, randomBytes(32).toString('hex'), { mode: FILE_MODE, flag: 'wx' });
     await d.brk.starting?.(m.turn);
+    // An Isolated persona’s own Kiro home keeps no memory, as the one Postbox owns on the laptop (#479). Postbox
+    // leaves the host account’s Kiro settings alone.
+    if (agents?.isolated) await kiroMemoryOff(agents.isolated, { refuseLinks: true });
     // Outside the turn folder (a Kiro home’s agents folder), recorded in it, so it goes when the turn ends.
     if (m.agentFile && agents && 'dir' in agents) await d.cleanup.writeAgentFile(m.turn, { dir: agents.dir, name: m.agentFile.name, text: m.agentFile.text });
     await writeAtomic(d, `${dir}/${TURN_FILES.start}`, JSON.stringify(record));

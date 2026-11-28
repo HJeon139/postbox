@@ -196,6 +196,11 @@ Use the Claude Code persona in **Ask me**, placed on the host. Remove is the las
 - **You should see:** each approval arrives as a permission card. Allowed, the file exists on the host; refused, it doesn’t, and the agent says so. Stop ends the turn, and `pgrep -a -g $pid` prints nothing.
 - **If not:** the turn’s `out.jsonl` (the approval request) and `in.jsonl` (the answer Postbox wrote to the held stdin).
 
+**4.3 Kiro CLI: memory off in each Isolated persona’s home**
+- **Steps:** after sign-in and before the first turn, record the hash, mode and modification time of the host account’s Kiro settings. On the same host, send “Reply with just OK” once to each of two Isolated Kiro personas.
+- **You should see:** both turns reply OK. Each persona has its own Kiro home under `~/.postbox-remote/kiro-home`, with `memory.mode` set to `disabled` and `memory.reflection` set to `false` in `settings/cli.json`. The settings file is mode 600. The shared parent, persona homes and settings directories are mode 700. The host account’s settings hash, mode and modification time match the baseline.
+- **Record:** the PR head, installed daemon version, Kiro CLI version and each result. Keep host names, account names and machine-specific paths out of the report.
+
 ## 5. Still to confirm
 
 Each row of designs/architecture/remote-hosts.md’s “Still to confirm” that a live run settles. These take hours or days, so start them early and let them run alongside the rest. Record each result on #120 (no host names, user names or sign-in details: the repo and its issues are public), with the harness’s version.

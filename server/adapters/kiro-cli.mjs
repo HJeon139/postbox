@@ -46,6 +46,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { HarnessEvents } from '../harness-events.mjs';
 import { clip } from '../harness-tools.mjs';
+import { kiroMemoryOff } from '../remote/host/kiro-memory.mjs';
 import { checkRemoteContext } from './adapter.mjs';
 import { tooLongForArg } from './arg-prompt.mjs';
 import { agentFolder } from './folder.mjs';
@@ -56,7 +57,6 @@ import { findKiro, kiroModel, kiroModels, postboxModel } from './kiro-cli-models
 import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn, remoteKiroHome } from './kiro-cli-remote.mjs';
 import { failOverLimit, kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
 import { kiroHomeFor } from './kiro-home.mjs';
-import { kiroMemoryOff } from './kiro-memory.mjs';
 import { kiroResult, REFUSED } from './kiro-result.mjs';
 import { sessionInfo } from './kiro-session-info.mjs';
 import { toolCall } from './kiro-tools.mjs';
