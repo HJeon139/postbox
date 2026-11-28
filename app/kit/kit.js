@@ -145,6 +145,7 @@
     const el = hit?.closest('.pb-anchor-tag')?.parentElement ?? hit;
     // Without the class the kit itself gives a part in review mode; innerText skips hidden text the person can’t see (#856).
     const cls = el ? [...el.classList].filter((c) => c !== 'anchor').join(' ') : '';
+    // biome-ignore lint/performance/useDomNodeTextContent: innerText skips hidden text the person can’t see (#856).
     const text = el instanceof HTMLElement ? el.innerText : '';
     const element = el && { tag: el.tagName, id: el.id, class: cls, text: (text || '').slice(0, 400) };
     post({ type: 'probed', id: m.id, parts, element });

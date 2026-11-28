@@ -286,6 +286,6 @@ test('#856 an answer’s region keeps what the app had under it on the thread, a
   const read = s.rt.toolsFor(item().sessionId).read_message({ id: 'rv' });
   assert.match(
     read.message,
-    /Comments on “region 1” \(x 120, y 90, 200 × 45 px, on v3, in a 1000 × 300 px frame\) \(open, thread you-1-1\):\n  App content under this mark, not the person’s words: parts: legend; at center, <p id="total" class="big"> text: Twelve books\./,
+    /Comments on “region 1” \(x 120, y 90, 200 × 45 px, on v3, in a 1000 × 300 px frame\) \(open, thread you-1-1\):\n {2}App content under this mark, not the person’s words: parts: legend; at center, <p id="total" class="big"> text: Twelve books\./,
   );
 });

@@ -7,9 +7,10 @@
 
 import { HANDLE, PERSON, REVIEW_THREADS_BYTES, REVIEW_THREADS_MAX, REVIEW_THREADS_OPEN } from './limits.mjs';
 import { REGION, regionError, regionNameError, regionText } from './review-regions.mjs';
-export { underLine } from './review-regions.mjs';
 import { described, id, int, obj, str } from './schema.mjs';
 import { cutText } from './text-parts.mjs';
+
+export { underLine } from './review-regions.mjs';
 
 /** The longest quote a comment keeps; a longer selection is cut to it. */
 export const QUOTE_MAX = 2000;
