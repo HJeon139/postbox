@@ -26,7 +26,8 @@ export function shareToConversation(rt, topicId, itemId) {
 
 /**
  * “Summarize back” (#93, #225): an agent of a topic or side thread writes a short summary, which is posted in the
- * conversation, marked as from that thread. The person starts it, and nothing else comes back (intent.md, principle 7).
+ * conversation, marked as from that thread. The person starts it; an agent’s own outcome post is the other way back
+ * (server/bring.mjs, #382), and a summary turn isn’t offered that too (intent.md, principle 7).
  * It wakes no one, so it doesn’t count against the wake limit: a summary’s @-mentions wake no one
  * (server/mention-entries.mjs).
  * @param {any} rt @param {string} topicId @param {{ handle?: unknown } | null} [opts]  handle: in a side thread, the agent to write it
