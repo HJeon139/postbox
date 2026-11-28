@@ -123,3 +123,30 @@ test('a disk without hard links refuses the start with what to do: --data on ano
     assert.deepEqual(readdirSync(dir), [], `no draft or lock is left (${code})`);
   }
 });
+
+test('an empty lock is refused and left alone, never taken for a dead holder’s (#2027)', () => {
+  const dir = tempDir('pb-home-lock-');
+  const lock = join(dir, 'postbox.lock');
+  writeFileSync(lock, ''); // as a starter that made the file and hadn’t written its pid yet left it
+  assert.throws(() => lockData(dir), /is unreadable/);
+  assert.equal(readFileSync(lock, 'utf8'), '', 'the lock is left as it was');
+});
+
+test('a takeover, then a lock that comes and goes before the read, still claims the folder on the third try (#2027)', () => {
+  const dir = tempDir('pb-home-lock-');
+  const lock = join(dir, 'postbox.lock');
+  writeFileSync(lock, DEAD);
+  let links = 0;
+  const io = {
+    ...realIo,
+    linkSync(src, dest) {
+      // The second try meets a lock another start made and released before this one read it.
+      if (dest === lock && ++links === 2) throw Object.assign(new Error('file already exists'), { code: 'EEXIST' });
+      return linkSync(src, dest);
+    },
+  };
+  const release = lockData(dir, io);
+  assert.equal(links, 3, 'the first try took the dead lock over, the second found it gone, the third linked');
+  assert.equal(readFileSync(lock, 'utf8'), String(process.pid));
+  release();
+});
