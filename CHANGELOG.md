@@ -2,6 +2,30 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.8.0 (2026-11-28)
+
+### Features
+
+- **hosts:** show a host's harness that isn't signed in on its card and under Runs on
+- **lint:** flag citation shorthands
+
+### Fixes
+
+- **glossary:** keep the matchers of the last 8 glossaries, not only the last one
+- **hosts:** Runs on's sign-in warning names the login command in its sentence
+- **glossary:** count polytonic Greek, Cyrillic's supplement and a combining accent as letters
+- **agents:** a hand-off never shows its sender as waiting behind another agent
+- **glossary:** keep a term out of Vietnamese words, decomposed accents and accented possessives
+- **glossary:** check an entity's start in each branch's one lookbehind
+- **glossary:** keep a term out of accented words, contractions and dash-joined ranges
+- **glossary:** redraw an earlier reply when a dash or quote variant is defined
+- **glossary:** build a room's matcher once, in one pass per term
+- **glossary:** the minus sign and the figure dash link like a hyphen
+- **lint:** a dash variant of a defined term isn't flagged
+- **markdown:** a glossary term doesn't link inside an HTML entity
+- **markdown:** dash and quote variants link the same term
+- **markdown:** a short term doesn't link inside another word
+
 ## 5.7.2 (2026-11-28)
 
 ### Fixes
