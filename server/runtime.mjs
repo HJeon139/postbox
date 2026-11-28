@@ -499,7 +499,7 @@ export class Runtime {
   // Any message in a conversation can start a topic thread, as in Slack. Its agents are the conversation’s own, one
   // session each (#228): an agent answers there from that session, so it remembers the thread, and the conversation’s
   // other agents see the thread’s line, with a short summary, and read it if they choose. Nothing in it is posted in
-  // the conversation unless you send it.
+  // the conversation unless you send it, or an agent posts the thread’s outcome with bring_to_conversation (#382).
 
   startTopic(threadId, itemId) {
     return startTopic(this, threadId, itemId);

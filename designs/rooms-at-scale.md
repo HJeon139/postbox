@@ -229,7 +229,7 @@ A turn takes the waiting entries of one thread, the thread of its oldest waiting
 
 - **It holds by construction.** A session that resumes keeps the guide it started with ([#515](https://github.com/HJeon139/postbox/issues/515)), so a default that a guide line carries would not reach running sessions. Here the agent chooses nothing, and the input needs no line on where an answer to each entry goes.
 - **It costs few turns.** In the measured room 92 of 1,240 turns took several waiting messages at once ([`room-context.md`](room-context.md), “What works today, and is kept”). At most those 7% could have held more than one thread, and each would have been two turns. That room used threads less than this design intends, so the build reports the count.
-- **The other rule was considered:** one turn with every thread’s entries, the reply in the newest entry’s thread. An agent would answer an entry in a topic thread with `open_topic`, but nothing posts in the conversation from a topic thread except `bring_to_conversation`, which is for when the person asks.
+- **The other rule was considered:** one turn with every thread’s entries, the reply in the newest entry’s thread. An agent would answer an entry in a topic thread with `open_topic`, but nothing posts in the conversation from a topic thread except `bring_to_conversation`, which is for a thread’s outcome or what the person asked for ([#382](https://github.com/HJeon139/postbox/issues/382)), not for each answer.
 
 ### After `wake_agent` goes
 

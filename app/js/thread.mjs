@@ -411,7 +411,7 @@ function renderItem(it, prev, ctx) {
         it.quote ? h('span.app-says', 'The app’s summary: ', h('q', it.quote)) : null,
       );
     case 'shared': {
-      // A reply or a summary sent back from a topic or side thread, by you or by an agent you asked (#128). Its agents
+      // A reply or a summary sent back from a topic or side thread, by you or by an agent itself (#128, #382). Its agents
       // read it at the start of their next turn. It’s drawn as an agent’s reply is (#99), with the glossary of the
       // thread it was written in while that thread is there, and its terms look their cards up there too.
       const from = S().threads[it.fromThreadId] ? it.fromThreadId : ctx.threadId;
@@ -426,7 +426,7 @@ function renderItem(it, prev, ctx) {
               'span.grow',
               it.summary ? 'Summary of the thread ' : 'From the thread ',
               h('b', `“${it.fromTitle}”`),
-              ` · ${it.agent ? `shared by ${it.handle} in a turn you started` : it.handle || 'you'}`,
+              ` · ${it.agent ? `posted by ${it.handle}` : it.handle || 'you'}`,
             ),
             S().threads[it.fromThreadId] ? h('a.small', { href: hrefOf(it.fromThreadId) }, 'Open thread') : null,
           ),

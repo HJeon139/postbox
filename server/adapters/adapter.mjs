@@ -125,7 +125,7 @@
 
 /**
  * The host’s shim’s arguments for host turn `turn`: its path, the turn, --bring when the runtime says the turn may
- * post to the conversation (ctx.remote.bring: one the person started in a side or topic thread), so the shim lists
+ * post to the conversation (ctx.remote.bring: any turn in a side or topic thread, #382), so the shim lists
  * bring_to_conversation as the laptop’s server would, and --no-prompt for a backend that doesn’t ask through
  * permission_prompt, which the shim then doesn’t list either (server/remote/host/shim.mjs).
  * @param {RemoteContext} remote @param {string} shim @param {string} turn
