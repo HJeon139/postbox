@@ -189,14 +189,16 @@ function offerShown(rt, caller, it, threadId) {
 }
 
 /**
- * A stopped turn (turn-stop.mjs): a need its own asking block, tool request or view request made mid-turn goes (#1748,
- * #1868), as a stopped turn's form waited quietly before #1748. Your Stop (`by` 'you', Send now's too) also records the
- * turn, so its cards stay quiet after another answer and a restart (#1928, lastCounted); one Postbox made (a run clock,
- * a hung host turn) doesn't, so they count again at the next release, as on main. A shutdown raises no turn.stopping.
+ * A stopped turn (turn-stop.mjs): when you stop it (`by` 'you', Send now's too), a need its own asking block, tool
+ * request or view request made mid-turn goes (#1748, #1868), and the turn is recorded, so its cards stay quiet after
+ * another answer and a restart (#1928, lastCounted). Any other stop (a run clock's pause or budget, a hung host turn)
+ * leaves the need its card made, so the card counts throughout rather than going quiet at the stop and ringing again
+ * on an unrelated click. A shutdown raises no turn.stopping.
  * @param {any} rt @param {any} turn @param {string} by  who stopped it, as stop's `by`
  */
 function stoppedNeed(rt, turn, by) {
-  if (by === 'you') rt.sessions.update(turn.sessionId, { stoppedTurnId: turn.id });
+  if (by !== 'you') return;
+  rt.sessions.update(turn.sessionId, { stoppedTurnId: turn.id });
   // The session as written, as the stop's own write may be held behind a commit (#623).
   const se = rt.store.pending.session(turn.sessionId);
   const need = se?.needs;

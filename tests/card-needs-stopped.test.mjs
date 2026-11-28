@@ -110,7 +110,7 @@ test('a stopped turn’s form stays quiet through another agent’s wake, which 
   assert.equal(se.needs ?? null, null, 'the stopped turn’s form isn’t the need at the wake’s end');
 });
 
-test('you write again after Stop: the stopped turn’s form stays quiet and your turn’s own form is the need, as on main', async () => {
+test('you write again after Stop: the stopped turn’s form stays quiet and your turn’s own form is the need, as before #1928', async () => {
   const r = room();
   const first = await turnAsking(r, 'block');
   await stopped(r, first.release);
@@ -140,17 +140,18 @@ test('answering the stopped turn’s form itself works and leaves the other need
   assert.equal(r.needs()?.itemId, wake.id, 'and after the turn the answer started');
 });
 
-// Only the person’s Stop marks the turn: a stop Postbox makes itself, as a run clock’s pause or budget does
-// (server/run-clock.mjs), drops the need the form made, as on main, and the form counts again at the next release.
+// Only the Stop button quiets a turn’s cards: a run clock’s stop, its pause or its budget (server/run-clock.mjs), leaves
+// the need the form made, so the form counts through the stop and after another card is answered, never going quiet
+// and then ringing again (#1928).
 for (const by of ['pause', 'clock']) {
-  test(`a turn a run clock stopped (${by}) leaves its form counting once another card is answered, as on main`, async () => {
+  test(`a turn a run clock stopped (${by}) keeps its form the need through the stop and another answer`, async () => {
     const r = room();
     const wake = r.hop();
     r.offerHop(wake);
     const { card, release } = await turnAsking(r, 'block');
     await stopped(r, release, { by, silent: true });
-    assert.equal(r.needs()?.itemId, wake.id, 'after the clock’s stop, the wake request is the need');
+    assert.equal(r.needs()?.itemId, card.itemId, 'after the clock’s stop, the form is still the need');
     r.declineHop(wake);
-    assert.equal(r.needs()?.itemId, card.itemId, 'the form is the need again');
+    assert.equal(r.needs()?.itemId, card.itemId, 'and after the wake request is declined');
   });
 }
