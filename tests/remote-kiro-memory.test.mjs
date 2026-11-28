@@ -1,7 +1,7 @@
 // #479 on a remote host: Kiro keeps memory per Kiro home, in that home’s settings/cli.json, with no per-run flag or
 // variable for it. An Isolated persona on a host runs with its own Kiro home under ~/.postbox-remote (start.env’s
 // KIRO_HOME), so the daemon turns memory off there before each Kiro start, as kiro-cli.mjs does locally for the home
-// Postbox owns. The host’s own Kiro home, used with your setup, is never written. Through the daemon in-process, with
+// Postbox owns. Postbox leaves the host account’s Kiro settings alone. These tests run the daemon in-process with
 // fake runners (tests/remote-cleanup-setup.mjs).
 
 import assert from 'node:assert/strict';

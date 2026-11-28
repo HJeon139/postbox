@@ -2,7 +2,7 @@
 // no per-run flag or variable for them (kiro-cli 2.34.1: `kiro-cli settings --help`, `settings list --all`). An
 // Isolated persona runs with the Kiro home Postbox owns, which every Isolated persona shares, so Postbox turns memory
 // off there before each turn. The file’s shape is the one kiro-cli 2.34.1 wrote for `KIRO_HOME=<temp> kiro-cli settings
-// memory.mode disabled`: one flat key per setting. The person’s own Kiro home is never written.
+// memory.mode disabled`: one flat key per setting. Postbox leaves the person’s own Kiro settings alone.
 
 import assert from 'node:assert/strict';
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
