@@ -51,7 +51,9 @@ const THREAD_READS = {
   'threads.mjs': ['get', 'bringForward', 'conversationThreads'],
   'turn-context.mjs': ['whatTheTurnIs'], // a prompt: the turn’s thread for its guide
   'turn-run.mjs': ['deliver'], // the project folder the turn’s process runs in, set when the conversation is made
-  'view-app/consent.mjs': ['settleDownloads'], // at startup, before any write is held
+  // settleDownloads: at startup, before any write is held. liveCard: the threads to scan for a view card when none is
+  // kept, as after a restart; each thread’s items are read pending (#1927).
+  'view-app/consent.mjs': ['liveCard', 'settleDownloads'],
   'view-app/view-app.mjs': ['conversationOf', 'conversationOf'], // the picture of an app: it leaves the process
   'wake-cards.mjs': ['closeOrphanCards'], // at startup, before any write is held
   // gather’s threads, as the store-held guard places gather: the pass picks from published, and the commit gathers

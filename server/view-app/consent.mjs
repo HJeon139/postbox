@@ -38,20 +38,59 @@ export function keepAnswer(dir, answer) {
   renameSync(tmp, file);
 }
 
+/** A view card still waiting on its answer or its download, which an agent that calls view_app is told about. */
+const LIVE = new Set(['open', 'downloading']);
+
+/** Each Runtime’s one live view card, kept as it’s shown: `{ threadId, itemId }`. @type {WeakMap<object, { threadId: string, itemId: string }>} */
+const shown = new WeakMap();
+
 /**
- * Shows the card, once per conversation while it’s open. Returns what view_app tells the agent.
+ * The one view card that’s open or downloading, in whichever thread it is (#1927): the answer and the download are
+ * Postbox’s, not a thread’s, so there’s one at a time. Kept as it’s shown; found by a scan of the threads only when
+ * none is kept (after a restart), which is a call that would show a card anyway.
+ * @param {any} rt @returns {{ threadId: string, it: any } | null}
+ */
+function liveCard(rt) {
+  const at = shown.get(rt);
+  const kept = at ? rt.store.pending.item(at.threadId, at.itemId) : null;
+  if (at && kept?.kind === 'viewask' && LIVE.has(kept.status)) return { threadId: at.threadId, it: kept };
+  shown.delete(rt);
+  for (const threadId of Object.keys(rt.s.threads)) {
+    const it = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && LIVE.has(x.status));
+    if (it) {
+      shown.set(rt, { threadId, itemId: it.id });
+      return { threadId, it };
+    }
+  }
+  return null;
+}
+
+/**
+ * Notes an agent on the card, once, so it hears how the card ends (settle): any agent but the one that asked, which
+ * hears it anyway. @param {any} rt @param {{ threadId: string, it: any }} card @param {string} sessionId
+ */
+function noteWaiting(rt, { threadId, it }, sessionId) {
+  if (it.sessionId === sessionId || (it.waiting ?? []).includes(sessionId)) return;
+  rt.threads.patchItem(threadId, it.id, { waiting: [...(it.waiting ?? []), sessionId] });
+}
+
+/**
+ * Shows the card, once while it’s open or downloading, wherever the agent’s turn runs. Returns what view_app tells
+ * the agent: to carry on without the picture, since the answer reaches it as a message and nothing needs it to stop
+ * (#1927; #1975, no agent waits behind another).
  * @param {any} rt @param {string} sessionId @param {string} threadId @param {() => void} endSegment
  */
 export function askToSee(rt, sessionId, threadId, endSegment) {
   const se = rt.session(sessionId);
-  const open = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && x.status === 'open');
-  // One card per conversation, offered again only to the agent that asked. Another agent’s call finds it and gets no
-  // need of its own, but it’s told to wait for the answer too, so the card notes it, and it hears the answer (#1927).
-  if (open?.sessionId === sessionId) askAgain(rt, se, open, threadId);
-  else if (open && !(open.waiting ?? []).includes(sessionId)) rt.threads.patchItem(threadId, open.id, { waiting: [...(open.waiting ?? []), sessionId] });
-  if (!open) {
+  const card = liveCard(rt);
+  // Offered again only to the agent that asked, while it’s open. Any other agent’s call finds it and gets no need of
+  // its own: the card notes it, and it hears the answer (#1927).
+  if (card?.it.status === 'open' && card.it.sessionId === sessionId) askAgain(rt, se, card.it, card.threadId);
+  else if (card) noteWaiting(rt, card, sessionId);
+  else {
     endSegment();
     const it = rt.threads.addItem(threadId, { kind: 'viewask', sessionId, handle: se.handle, turnId: rt.turns.get(sessionId)?.id ?? null, status: 'open' });
+    shown.set(rt, { threadId, itemId: it.id });
     // It is the agent’s need from now, while the turn runs on, as an asking block just shown is (#1868, card-needs.mjs offerShown).
     rt.bus.emit('block.asking', { se, item: it, threadId });
   }
@@ -59,23 +98,23 @@ export function askToSee(rt, sessionId, threadId, endSegment) {
     ok: true,
     waiting: true,
     message:
-      'Postbox asked the person whether to download the browser that renders your app. End your turn: their answer arrives as a message, and if they allow it, call view_app again then.',
+      'Postbox asked the person whether to download the browser that renders your app. Carry on without the picture for now: their answer arrives as a message, and if they allow it, call view_app again then.',
   };
 }
 
 /**
- * An agent that calls view_app while the download the person allowed runs (#1927): it’s told to end its turn and hear
- * when the browser is ready, so the downloading card in its thread notes it, as an open card notes an agent that finds
- * it. Without such a card in its thread (the download was allowed in another thread), it’s told to call again instead.
- * Returns what view_app tells the agent.
- * @param {any} rt @param {string} sessionId @param {string} threadId
+ * An agent that calls view_app while the download the person allowed runs (#1927): the downloading card notes it,
+ * wherever it is, so it hears when the browser is ready, and it carries on meanwhile. Returns what view_app tells it.
+ * @param {any} rt @param {string} sessionId
  */
-export function waitForDownload(rt, sessionId, threadId) {
-  const card = rt.store.pending.items(threadId).find((x) => x.kind === 'viewask' && x.status === 'downloading');
-  if (!card) return { ok: true, waiting: false, message: 'The browser is still downloading. Carry on, and call view_app again in a minute or two.' };
-  if (card.sessionId !== sessionId && !(card.waiting ?? []).includes(sessionId))
-    rt.threads.patchItem(threadId, card.id, { waiting: [...(card.waiting ?? []), sessionId] });
-  return { ok: true, waiting: true, message: 'The browser is still downloading. End your turn; you’ll hear when it’s ready.' };
+export function waitForDownload(rt, sessionId) {
+  const card = liveCard(rt);
+  if (card) noteWaiting(rt, card, sessionId);
+  return {
+    ok: true,
+    waiting: true,
+    message: 'The browser is still downloading. Carry on without the picture for now; you’ll hear when it’s ready, and can call view_app then.',
+  };
 }
 
 /**
@@ -138,7 +177,7 @@ function settle(rt, threadId, it, status, notice, reason = null) {
   // Read now, not as the person answered: an agent can join while the download runs (waitForDownload).
   const waiting = rt.store.pending.item(threadId, it.id)?.waiting ?? [];
   for (const id of new Set([it.sessionId, ...waiting])) {
-    // As delivery reads it, so a session deleted or retired behind a held commit is skipped, not thrown on.
+    // Read as delivery reads it, so a session it would refuse (deleted or retired) is skipped, not thrown on.
     const se = rt.store.pending.session(id);
     // The person’s answer, or how the download it allowed ended, is an entry pointing at the card (designs/rooms-at-scale.md,
     // “What an entry is”), with the words its turn is given until Turns builds input from entries.

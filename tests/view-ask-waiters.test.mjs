@@ -1,6 +1,7 @@
-// #1927: a view request is one card per conversation. A second agent whose view_app call finds another agent’s open
-// card was told to end its turn and wait for the answer, but only the agent that asked heard it. Each agent that was
-// told to wait now hears how the card ends.
+// #1927: a view request is one card at a time, wherever the agent’s turn runs, since the answer and the download are
+// Postbox’s. A second agent whose view_app call found another agent’s open card was told to end its turn and wait for the
+// answer, but only the agent that asked heard it. Now every agent the card was offered to carries on without the
+// picture, and each hears how the card ends (#1975: no agent waits behind another).
 
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -64,12 +65,17 @@ const ctx = (t) => ({ threadId: () => t.id, endSegment() {}, images: true });
 const card = (s) => s.rt.store.items(s.t.id).find((x) => x.kind === 'viewask');
 const told = (s, se) => s.adapter.calls.filter((c) => c.sessionId === se.id && c.message.kind === 'notice').map((c) => c.message.text);
 
+/** view_app’s reply while the answer is pending: the agent carries on without the picture, and isn’t told to stop. */
+function carriesOn(r) {
+  assert.equal(r.waiting, true);
+  assert.match(r.message, /Carry on without the picture for now/);
+  assert.doesNotMatch(r.message, /end your turn/i, 'nothing needs the agent to stop (#1975)');
+}
+
 /** Both agents call view_app before the person answers, then the person answers the one card. */
 async function bothAsk(s, action) {
-  const r1 = await viewApp(s.rt, s.first.id, { appId: s.apps.first }, ctx(s.t));
-  const r2 = await viewApp(s.rt, s.second.id, { appId: s.apps.second }, ctx(s.t));
-  assert.equal(r1.waiting, true);
-  assert.equal(r2.waiting, true, 'the second agent is told to wait for the answer too');
+  carriesOn(await viewApp(s.rt, s.first.id, { appId: s.apps.first }, ctx(s.t)));
+  carriesOn(await viewApp(s.rt, s.second.id, { appId: s.apps.second }, ctx(s.t)));
   // Asked again before the answer, it’s noted once.
   await viewApp(s.rt, s.second.id, { appId: s.apps.second }, ctx(s.t));
   assert.deepEqual(card(s).waiting, [s.second.id], 'the card notes the second agent, once');
@@ -156,8 +162,12 @@ test('#1927 an agent that calls view_app while the allowed download runs hears w
     s.rt.act(s.t.id, card(s).id, 'download');
     assert.equal(card(s).status, 'downloading');
     const r = await viewApp(s.rt, s.second.id, { appId: s.apps.second }, ctx(s.t));
-    assert.equal(r.waiting, true);
-    assert.match(r.message, /still downloading\. End your turn; you’ll hear when it’s ready/);
+    carriesOn(r);
+    assert.match(r.message, /still downloading\. Carry on without the picture for now; you’ll hear when it’s ready/);
+    // Asked again during the download, it’s noted once; the agent that asked isn’t noted, since it hears anyway.
+    await viewApp(s.rt, s.second.id, { appId: s.apps.second }, ctx(s.t));
+    await viewApp(s.rt, s.first.id, { appId: s.apps.first }, ctx(s.t));
+    assert.deepEqual(card(s).waiting, [s.second.id]);
     browser.finish();
     for (let i = 0; i < 50 && card(s).status === 'downloading'; i++) await sleep(5);
     assert.equal(card(s).status, 'ready');
@@ -171,20 +181,40 @@ test('#1927 an agent that calls view_app while the allowed download runs hears w
   }
 });
 
-test('#1927 with the download allowed in another conversation, an agent is told to call again, not to wait', async () => {
+/** A topic thread of the conversation, started from a message there, for an agent’s turn to run in. */
+const topicOf = (s) => ({ id: s.rt.startTopic(s.t.id, arrange.post(s.rt, s.t.id, { kind: 'user', text: 'Look at this.' }).id).threadId });
+
+test('#1927 an agent in a topic thread finds the open card in the conversation, gets none of its own, and hears the answer', async () => {
+  const s = twoAgents(missingBrowser());
+  try {
+    carriesOn(await viewApp(s.rt, s.first.id, { appId: s.apps.first }, ctx(s.t)));
+    const topic = topicOf(s);
+    carriesOn(await viewApp(s.rt, s.second.id, { appId: s.apps.second }, ctx(topic)));
+    assert.equal(s.rt.store.items(topic.id).filter((x) => x.kind === 'viewask').length, 0, 'no second card in the topic thread');
+    assert.deepEqual(card(s).waiting, [s.second.id]);
+    s.rt.act(s.t.id, card(s).id, 'decline');
+    for (let i = 0; i < 50 && told(s, s.second).length === 0; i++) await sleep(5);
+    assert.equal(told(s, s.second).filter((x) => /chose not to download/.test(x)).length, 1, told(s, s.second).join(' | '));
+  } finally {
+    s.done();
+  }
+});
+
+test('#1927 with the download allowed in another thread, an agent is noted on it and hears when it’s ready', async () => {
   const browser = heldBrowser();
   const s = twoAgents(browser);
   try {
     await viewApp(s.rt, s.first.id, { appId: s.apps.first }, ctx(s.t));
     s.rt.act(s.t.id, card(s).id, 'download');
-    // Another conversation, with no card of its own.
-    const other = s.rt.createThread({ projectId: 'p1', title: 'Elsewhere', personaIds: [s.second.personaId] });
-    const there = arrange.sessionsIn(s.rt, other.id)[0];
-    const appId = s.rt.toolsFor(there.id).show_app({ title: 'Elsewhere', code: '<p>x</p>' }).appId;
-    const r = await viewApp(s.rt, there.id, { appId }, ctx(other));
-    assert.equal(r.waiting, false, 'no card here would tell it');
-    assert.match(r.message, /call view_app again in a minute or two/);
+    const r = await viewApp(s.rt, s.second.id, { appId: s.apps.second }, ctx(topicOf(s)));
+    carriesOn(r);
+    assert.deepEqual(card(s).waiting, [s.second.id], 'the downloading card, in the main thread, notes it');
     browser.finish();
+    for (let i = 0; i < 50 && told(s, s.second).length === 0; i++) await sleep(5);
+    assert.ok(
+      told(s, s.second).some((x) => /it finished\. Call view_app now/.test(x)),
+      told(s, s.second).join(' | '),
+    );
   } finally {
     s.done();
   }
@@ -207,5 +237,19 @@ test('#1927 a waiting agent retired or deleted before the answer is skipped, and
     } finally {
       s.done();
     }
+  }
+});
+
+test('#1927 a card still open from before a restart is the one a call finds: no second card, and the agent is noted on it', async () => {
+  const s = twoAgents(missingBrowser());
+  try {
+    // As a restart leaves it: open in the store, never shown by this run of Postbox.
+    s.rt.threads.addItem(s.t.id, { kind: 'viewask', sessionId: s.first.id, handle: s.first.handle, turnId: null, status: 'open' });
+    carriesOn(await viewApp(s.rt, s.second.id, { appId: s.apps.second }, ctx(topicOf(s))));
+    const cards = Object.keys(s.rt.s.threads).flatMap((id) => s.rt.store.items(id).filter((x) => x.kind === 'viewask'));
+    assert.equal(cards.length, 1, 'no second card');
+    assert.deepEqual(card(s).waiting, [s.second.id]);
+  } finally {
+    s.done();
   }
 });
