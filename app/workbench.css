@@ -1564,5 +1564,4 @@ a.room-ref { text-decoration: underline; text-underline-offset: 2px; }
 .backdrop.anchored { display: block; background: none; padding: 0; }
 .backdrop.anchored .dialog { position: fixed; max-width: 480px; max-height: calc(100vh - 16px); }
 .dialog.quick { max-width: 380px; }
-  border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; cursor: pointer; }
 
