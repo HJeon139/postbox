@@ -18,6 +18,13 @@ import { openMenu, toast } from './ui.mjs';
 
 export { enhanceMarkdown } from './md-enhance.mjs';
 
+/** Listeners run when a view leaves the page (releaseApps), so review layers can disconnect their observers without a cycle. */
+const onRelease = new Set();
+/** @param {() => void} fn */
+export function onReleaseApps(fn) {
+  onRelease.add(fn);
+}
+
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash, onError }
 const madeFrames = new WeakSet(); // every iframe frame() made, for isAppFrame
 const bodies = new Set(); // every .app-body mountApp made, until releaseApps finds it gone from the page
@@ -412,6 +419,10 @@ export function releaseApps() {
     bodySizes.unobserve(body);
     nearBodies.delete(body);
   }
+  if (lastFocus && !lastFocus.isConnected) lastFocus = null;
+  if (owner && !owner.isConnected) owner = null;
+  if (tabbing && !tabbing.frame.isConnected) tabbing = null;
+  for (const fn of onRelease) fn();
 }
 
 /** A new app body, watched for its size, and for nearness unless it’s a review’s. */

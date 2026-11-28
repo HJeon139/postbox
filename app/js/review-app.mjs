@@ -14,7 +14,8 @@ export const WHOLE_APP = 'the whole app';
 
 /** The review being rebuilt around its live app (rerenderAround): its item, and which app and mode that app shows. */
 let keeping = null;
-/** An item’s block on the page, when a rerender kept the one that was there: a newer render’s handlers find it here. */
+/** An item’s block on the page, when a rerender kept the one that was there: a newer render’s handlers find it here.
+ * Held weakly so leaving a room lets its detached block and layer go. @type {Map<string, WeakRef<HTMLElement>>} */
 const onPage = new Map();
 /**
  * Each review’s latest hint, by its item, so a block rebuilt around the app shows it: a kept app doesn’t report its parts
@@ -31,8 +32,9 @@ const hints = new Map();
  */
 export function rerenderAround(itemId, node, build) {
   // A block the page let go of (a server update re-rendered it, or the conversation changed) is let go of here too.
-  for (const [id, el] of onPage) if (!el.isConnected) onPage.delete(id);
-  const cur = node.isConnected ? node : (onPage.get(itemId) ?? node);
+  for (const [id, ref] of onPage) if (!ref.deref()?.isConnected) onPage.delete(id);
+  const keptEl = onPage.get(itemId)?.deref();
+  const cur = node.isConnected ? node : (keptEl ?? node);
   // Only a mounted app is kept: one that said it isn’t available mounts afresh, in case it is now.
   const app = cur.querySelector('.app-review-wrap > .rv-app:has(> .app-body)');
   keeping = app ? { itemId, key: app.dataset.app } : null;
@@ -49,7 +51,7 @@ export function rerenderAround(itemId, node, build) {
     return n;
   }
   graft(cur, n, app, slot);
-  onPage.set(itemId, cur);
+  onPage.set(itemId, new WeakRef(cur));
   return cur;
 }
 

@@ -8,7 +8,7 @@
 // review block).
 
 import { regionText } from '/shared/review-regions.mjs';
-import { shownVersion } from './apps.mjs';
+import { onReleaseApps, shownVersion } from './apps.mjs';
 import { client } from './client.mjs';
 import { h } from './dom.mjs';
 import { startComment } from './review-draft.mjs';
@@ -27,10 +27,13 @@ const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], Arrow
 
 /**
  * Each review’s layer over its app’s frame, by its item, with the latest render’s view of the review (env): kept
- * across renders, as the frame is (review-app.mjs, rerenderAround), so a repaint never takes focus from it.
- * @type {Map<string, { el: HTMLElement, watch: MutationObserver | null, env: any }>}
+ * across renders, as the frame is (review-app.mjs, rerenderAround), so a repaint never takes focus from it. Held
+ * weakly: the layer’s own listeners keep it while its element is on the page or in a render being built, and a review
+ * the page let go of, as when the person leaves its room, takes its layer, and the render it saw, with it.
+ * @type {Map<string, WeakRef<{ el: HTMLElement, watch: MutationObserver | null, env: any, width: number | null }>>}
  */
 const layers = new Map();
+onReleaseApps(releaseMarks);
 
 const clamp = (/** @type {number} */ v, /** @type {number} */ lo, /** @type {number} */ hi) => Math.min(hi, Math.max(lo, v));
 
@@ -66,13 +69,30 @@ function sizeOf(l) {
 
 /** The layer for a review, made once. @param {string} itemId */
 function layerOf(itemId) {
-  let l = layers.get(itemId);
+  let l = layers.get(itemId)?.deref();
   if (!l) {
-    l = { el: h('div.rv-marks', { 'data-marks': itemId }), watch: null, env: null, width: null };
-    layers.set(itemId, l);
+    l = { el: h('div.rv-marks', { 'data-marks': itemId }), watch: null, env: null, width: null, resize: null };
+    layers.set(itemId, new WeakRef(l));
     wire(l);
   }
   return l;
+}
+
+/**
+ * Releases layers whose element is no longer on the page, disconnecting their observers so nothing keeps a detached
+ * room’s DOM or render closure alive (#856). Called from releaseApps() when a conversation view leaves the page.
+ */
+export function releaseMarks() {
+  for (const [id, ref] of layers) {
+    const l = ref.deref();
+    if (!l || !l.el.isConnected) {
+      l?.watch?.disconnect();
+      l?.resize?.disconnect();
+      l?.el.remove();
+      if (l) l.env = null;
+      layers.delete(id);
+    }
+  }
 }
 
 /**
@@ -156,12 +176,12 @@ export function markControls(itemId, env) {
   const on = !!d.marking;
   const toggle = () => {
     if (d.marking) return stopMarking(itemId, d, rerender);
-    const l = layers.get(itemId);
+    const l = layers.get(itemId)?.deref();
     const size = l && sizeOf(l);
     if (!size) return;
     d.marking = startBox(size);
     rerender();
-    layers.get(itemId)?.el.focus();
+    layers.get(itemId)?.deref()?.el.focus();
   };
   const button = h(
     'button.btn.sm',
@@ -245,9 +265,10 @@ function wire(l) {
   });
   el.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => onKey(l, e));
   // A frame of another width draws other regions, and says so in the list (regionNote), with no render.
-  new ResizeObserver(() => {
+  l.resize = new ResizeObserver(() => {
     if (l.env && sizeOf(l)?.width !== l.width) paintMarks(l.env.itemId, l.env);
-  }).observe(el);
+  });
+  l.resize.observe(el);
 }
 
 /**

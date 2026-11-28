@@ -47,9 +47,11 @@ export function regionRoom(name) {
     const blockId = `rv-region-${n}`;
     const shown = tools.show_block({ block: { id: blockId, type: 'review', version: 1, fallback: 'Review the app', format: 'app', appId: id, ...extra } });
     if (!shown.ok) throw new Error(shown.message);
+    if (page.url().startsWith(app.origin)) await synced(page, app);
     await page.goto(`${app.origin}/#/t/${thread.id}`);
     await synced(page, app);
     await expect.poll(() => rt.store.state.apps[id].check.status, { message: 'the app passes its check', timeout: 15_000 }).toBe('passed');
+    await synced(page, app);
     const item = store.items(thread.id).find((i) => i.kind === 'block' && i.block.id === blockId);
     const block = page.locator(`#main [data-key="${item.id}"]`);
     await expect(block.locator('iframe.app-iframe'), 'the review draws the app').toHaveCount(1);
