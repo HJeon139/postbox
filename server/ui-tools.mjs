@@ -3,6 +3,7 @@
 // delegate to the module that owns their block, app, wake or read. Moved out of server/runtime.mjs; Runtime keeps
 // toolsFor, which delegates here.
 
+import { termKey } from '../shared/term-key.mjs';
 import { cutText } from '../shared/text-parts.mjs';
 import { readApp } from './app-publish.mjs';
 import { bringToConversation } from './bring.mjs';
@@ -80,12 +81,7 @@ export function toolsFor(rt, sessionId, turn = null) {
  */
 function defineTerm(rt, { turn, se, threadId }, { term, definition, key, source }) {
   if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };
-  const k =
-    String(key ?? term)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 64) || 'term';
+  const k = termKey(key ?? term);
   if (turn) (turn.defined ??= []).push(cutText(String(term), 80));
   rt.store.emit('glossary', {
     threadId: threadId(),

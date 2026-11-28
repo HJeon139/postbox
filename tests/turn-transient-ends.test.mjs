@@ -29,7 +29,7 @@ async function overloadedOnce(f) {
   f.adapter.next.push(overloaded());
   f.rt.sendMessage(f.t.id, { text: '@beta go' });
   await settle(f.rt);
-  assert.equal(agentState(f.se(), f.store.state).state, 'retrying');
+  assert.equal(agentState(f.se()).state, 'retrying');
 }
 
 test('#1713 a retry that fails for another reason needs the person, and its row says failed, not retrying', async () => {
@@ -41,7 +41,7 @@ test('#1713 a retry that fails for another reason needs the person, and its row 
   f.waits.shift()();
   await settle(f.rt);
   assert.equal(f.se().autoRetry ?? null, null);
-  assert.equal(agentState(f.se(), f.store.state).state, 'failed');
+  assert.equal(agentState(f.se()).state, 'failed');
   assert.equal(needsYouNow(f.se()), true);
 });
 
@@ -142,7 +142,7 @@ test('#1713 a retry Postbox couldn’t start ends the wait and needs the person,
   }
   assert.equal(f.se().autoRetry ?? null, null);
   assert.equal(f.se().currentStep, 'Failed');
-  assert.equal(agentState(f.se(), f.store.state).state, 'failed');
+  assert.equal(agentState(f.se()).state, 'failed');
   assert.equal(needsYouNow(f.se()), true, 'nothing else starts it again, so it needs the person');
   const reply = f.store.item(f.t.id, failed.id);
   assert.equal(reply.status, 'failed');
@@ -158,7 +158,7 @@ test('#1713 a retry its backend refused for quota ends the wait, and waits for t
   f.waits.shift()();
   await settle(f.rt);
   assert.equal(f.se().autoRetry ?? null, null);
-  assert.notEqual(agentState(f.se(), f.store.state).state, 'retrying');
+  assert.notEqual(agentState(f.se()).state, 'retrying');
 });
 
 test('#1713 a tool-started turn whose retry was refused leaves no line to check what ran for a later turn', async () => {

@@ -12,7 +12,6 @@
 
 import { chipEffort, chipModel } from '/shared/agent-facts.mjs';
 import { agentState } from '/shared/agent-state.mjs';
-import { conversationRoot } from '/shared/conversation.mjs';
 import { factsOf, mockMarker } from './agent-facts.mjs';
 import { everyMinute, hostBadge } from './agent-host.mjs';
 import { agentQueueButton } from './agent-queue.mjs';
@@ -56,19 +55,9 @@ export function agentsSection(threadId) {
   paint();
   const off = client.on((ch) => {
     if (ch.type === 'session' && ch.data.threadId !== threadId && S().threads[ch.data.threadId]?.parentId !== threadId) return;
-    if (['session', 'thread', 'persona', 'load', 'remove', 'host', 'host.status'].includes(ch.type) || movesState(ch, threadId)) paint();
+    if (['session', 'thread', 'persona', 'load', 'remove', 'host', 'host.status'].includes(ch.type)) paint();
   });
   return { el, destroy: everyMinute(el, paint, off) };
-}
-
-/**
- * Whether an inbox event can change the state of an agent in this conversation (shared/agent-state.mjs): an entry’s
- * arrival or take in one of its agents’ inboxes. Its jobs are on its session, so a session event says those.
- */
-function movesState(ch, threadId) {
-  if (ch.type !== 'entry.add' && ch.type !== 'entry.patch' && ch.type !== 'entry.put') return false;
-  const se = S().sessions[ch.data.sessionId];
-  return Boolean(se) && conversationRoot(S().threads, se.threadId) === threadId;
 }
 
 /** An agent’s state in words, after its name: what it’s doing, or what it waits on. */
@@ -79,7 +68,6 @@ export function stateWords(st) {
   if (st.state === 'quota') return st.until ? `out of quota until ${timeOf(st.until)}` : 'out of quota';
   // Its provider failed it for a while (#1713): Postbox tries it again on its own then, so nothing waits on the person.
   if (st.state === 'retrying') return `retrying at ${timeOf(st.until)}`;
-  if (st.state === 'behind') return `waiting behind @${st.detail}${st.since ? ` since ${timeOf(st.since)}` : ''}`;
   return { you: 'needs you', failed: 'failed' }[st.state] ?? 'idle';
 }
 
@@ -142,7 +130,7 @@ function paintRow(n, se, fresh = false) {
   const where = [hostLine(se), hostOf(se)?.short];
   const there = turnLine(se);
   // What it needs of another person isn’t “you” to the one looking (#1742); every other state reads as it is.
-  const words = stateWords(agentState(se, S()));
+  const words = stateWords(agentState(se));
   const state = words === 'needs you' && needsAnother(se) ? 'waits on another person' : words;
   const sig = JSON.stringify([se.handle, f.mock, state, runs, joined, where, there]);
   paintTree(n, se, fresh);
