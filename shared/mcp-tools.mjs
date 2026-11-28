@@ -21,7 +21,7 @@ const REVIEW_FILES = { type: 'array', items: FILE_SCHEMA };
 const REVIEW_BLOCK_DEF = {
   name: 'review_block',
   // lint-allow thread: a review block’s comment threads, not a topic or side thread.
-  description: `Comment on another agent’s review block in this conversation, as its reviewer. Each comment opens a thread with your handle where the person sees it and the block’s agent hears about it; it doesn’t answer the block (an answered review takes comments too). blockId: the review’s id, or its item id. comments (1–${MAX_COMMENTS}, each up to ${COMMENT_MAX.toLocaleString('en-US')} chars): { line, text }; { line, col, endLine, endCol, quote, text } (1-based columns, exact quote up to ${QUOTE_MAX.toLocaleString('en-US')} chars); { anchor, text } on an app part; { anchor: “region 1”, region: { x, y, w, h, width, height, version }, text } (CSS px of a width × height review frame; w = h = 0 for a point); or { threadId, text } to reply. verdict?: “comment”, “approve” or “request_changes”.`,
+  description: `Comment on another agent’s review block in this conversation, as its reviewer. Each comment becomes an open comment thread on the draft, with your handle, where the person sees it, and the block’s agent hears about it, so it can revise and resolve it. It doesn’t answer the block: that stays the person’s to approve. An answered review takes comments too, without reopening it. blockId: the review’s id, or its item id if two agents use the same one. comments (1–${MAX_COMMENTS}, each up to ${COMMENT_MAX.toLocaleString('en-US')} characters): { line, text } on a line; { line, col, endLine, endCol, quote, text } on a selection, with columns from 1, endCol the column of its last character, and quote the exact text there (up to ${QUOTE_MAX.toLocaleString('en-US')} characters); { anchor, text } on an app’s part; { anchor: “region 1”, region: { x, y, w, h, width, height, version }, text } on a box (w = h = 0 for a point) in CSS px of a width × height review frame; or { threadId, text } to reply in its comment thread. verdict?: “comment”, “approve” or “request_changes”, shown on a waiting block.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -105,7 +105,7 @@ export const TOOL_DEFS = [
   {
     name: 'view_app',
     description:
-      'See an app in this conversation as the person sees it: inline at their window size (1000 × 680 if none open), theme, and current version. Pass a review region to render at its review width, uncapped in height, with the region outlined. Returns a picture and saves it under .postbox/view. First use asks to download the browser; carry on meanwhile, and you’ll hear their answer.',
+      'See an app you or another agent showed in this conversation, as the person first sees it: inline in the conversation, at the size of their Postbox window (1000 × 680 when no tab is open), in their theme, at its current version. Pass a review comment’s region to render at its review width with the region outlined. Returns a picture, and saves it in your folder under .postbox/view. Look before you call an app done: the pre-display check catches what it measures, not a layout that’s simply wrong. The first time, Postbox asks the person whether to download the browser it renders with; carry on meanwhile, and you’ll hear their answer.',
     inputSchema: {
       type: 'object',
       properties: {
