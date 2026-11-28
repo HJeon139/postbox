@@ -32,7 +32,8 @@ const PUBLISHED = {
   'diagram-check.mjs': ['diagramCheck'], // the page’s report on a diagram the person sees
   'item-lines.mjs': ['topicRootLine', 'answerLine'], // a read tool and a prompt
   'catch-up.mjs': ['catchUp', 'turnTail'], // the prompt for a later turn
-  'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
+  'denial-answer.mjs': ['resolveDenial'], // the person’s answer to a card they see
+  'permission-cards.mjs': ['resolvePermission'], // the person’s answer to a card they see
   'permission-expiry.mjs': ['dismissPermission'], // the person’s Dismiss on a card they see (#721)
   'reactions.mjs': ['toggleReaction', 'reactTool'], // a reaction aimed at an item the person or the agent sees
   'read-message.mjs': ['readMessage', 'readMessage', 'readConversation'], // read tools (T-31)

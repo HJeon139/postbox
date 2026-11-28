@@ -31,7 +31,8 @@ const THREAD_READS = {
   'items-routes.mjs': ['itemsRoute'], // an HTTP answer
   'message-attachments.mjs': ['attachmentPath'], // a project file attached to the person’s message, read for the turn
   'newer-waiting.mjs': ['waitingFor'], // a prompt for a later turn: the title of the thread a message waits in
-  'permission-cards.mjs': ['allowAlways', 'resolveDenial'], // the person’s action on an item they see
+  'denial-answer.mjs': ['resolveDenial'], // the person’s action on an item they see
+  'permission-cards.mjs': ['allowAlways'], // the person’s action on an item they see
   'permissions-panel.mjs': ['panelTarget', 'latestProject', 'changePermissionFolder'], // an HTTP answer, and the person’s action in it
   // A host turn’s record and its continuation, checked against the threads at a resume: what reaches the host
   'remote/turns-origin.mjs': ['readOrigin', 'readWoke', 'continuing'],
