@@ -130,7 +130,7 @@ export function claudeArgs({
 }
 
 /**
- * A run’s command line (claudeArgs, below), from its turn’s context: on a host, its memory folder
+ * A run’s command line (claudeArgs, above), from its turn’s context: on a host, its memory folder
  * and its shim as Postbox’s server there.
  * A turn here, not on a host, keeps the checkout’s steering from an agent in the data folder (steering.mjs).
  * @param {string} workRoot @param {{ ctx: any, cwd: string, id: string, resume: boolean, guide: string, addDirs: string[], fork: any, remote: any }} o

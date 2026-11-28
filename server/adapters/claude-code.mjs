@@ -166,7 +166,8 @@ export class ClaudeCodeAdapter {
     }
     // A session Claude Code no longer has (its history was cleared), or one too large to go on (#674), starts over, once.
     if (first.missingSession || first.tooLarge) {
-      // One too large forgets where it forked from too, or the next turn would fork that conversation again.
+      // One too large forgets where it forked from too, or the next turn would fork that conversation again. New
+      // threads no longer fork (#228), so this guards a thread saved before that.
       ctx.saveState({ claudeSessionId: null, ...(first.tooLarge ? { fork: null, forkFrom: null } : {}) });
       const note = `[Postbox] ${first.tooLarge ? SIZE_LIMIT_START_TEXT : FRESH_START_TEXT}\n\n`;
       turn = await hostTurn();
