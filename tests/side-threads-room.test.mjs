@@ -128,6 +128,8 @@ test('#128: a topic thread’s agent can bring something to the conversation too
   rt.sendMessage(t.id, { text: '@beta post it' });
   await settle(rt);
   assert.equal(result.ok, false);
+  // Refused because it’s the conversation, whoever started the turn, not because the thread has nowhere to post.
+  assert.match(result.message, /works only in a side thread or a topic thread\. Here you’re in the conversation/);
   assert.equal(store.items(t.id).filter((x) => x.kind === 'shared').length, 0);
   // A topic thread’s agent can too.
   const root = store.items(t.id).find((x) => x.kind === 'user');
