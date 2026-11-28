@@ -82,13 +82,20 @@ export const agentFolderPath = (folder) => (folder === undefined || folder === n
  * as fullPath refuses it: the sheet re-sends Folder with every save, and one stored before #990 would refuse them all.
  * It’s checked again when the agent moves back here, and read here as none while the check refuses it (storedFolder).
  * @param {unknown} folder @param {{ hostId?: string } | null | undefined} remote  where the agent runs, after the change
+ * @param {boolean} [hosted]  on a server for a team (designs/architecture/hosted.md): an agent placed on the server
+ *   has no folder there, so one that names any is refused, the same for a path that exists and one that doesn’t
  * @returns {string}
  */
-export function placedFolder(folder, remote) {
+export function placedFolder(folder, remote, hosted = false) {
+  if (hosted && !remote?.hostId && folder !== undefined && folder !== null && folder !== '') throw httpError(422, NO_SERVER_FOLDER);
   if (!remote?.hostId || folder === undefined || folder === null) return agentFolderPath(folder);
   if (typeof folder === 'string' && folder.length <= MAX_FOLDER) return folder;
   return fullPath(folder, 'An agent’s');
 }
+
+/** What a hosted Postbox says of a folder named on the server, whatever is at that path. */
+export const NO_SERVER_FOLDER =
+  'This Postbox runs on a server, so nothing is given a folder here. Put the agent on a host under Runs on, and name a folder there.';
 
 // The longest a folder is shown in a message, before it’s cut: a refused one can be any length.
 const SHOWN = 200;
@@ -127,16 +134,18 @@ export function sessionFolder(cwd) {
  * files it names and the work ledger. One stored before it was checked (#990), a relative one say, is refused with a
  * 409 rather than used: it would be resolved against the folder Postbox was started from. A 409, not a 422: the
  * request that reads it is fine, the agent’s stored folder isn’t, and the person changes it in the agent’s sheet.
- * An agent on a host keeps its folder unchecked (placedFolder), and never works in it here: one the check refuses is
- * read here as none of its own, and checked again once the agent moves back.
+ * An agent on a host keeps its folder unchecked (placedFolder), and never works in it here: it is read here as none
+ * of its own, whatever it names, and checked again once the agent moves back.
  * @param {{ handle: string, folder?: unknown, remote?: { hostId?: string } | null } | null | undefined} persona @returns {string}
  */
 export function storedFolder(persona) {
+  // An agent on a host never works in its folder here: that folder is a path on its host, kept unchecked, and this
+  // computer has nothing at it to open, make or read.
+  if (persona?.remote?.hostId) return '';
   const folder = persona?.folder;
   try {
     agentFolderPath(folder);
   } catch (e) {
-    if (persona?.remote?.hostId) return '';
     const handle = persona?.handle;
     const why = `Postbox couldn’t open the folder ${shownFolder(folder)} for @${handle}: ${e.message} Change it in @${handle}’s sheet, under Folder, or leave it empty to work in the project’s root folder.`;
     throw Object.assign(httpError(409, why), { cause: e });
