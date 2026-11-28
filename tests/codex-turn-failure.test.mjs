@@ -91,3 +91,30 @@ test('#425 a request Codex refuses reaches the person cleaned and cut, with its 
   assert.equal(err.code, -32603, 'its JSON-RPC code, for how the failure is classed');
   assert.equal(err.cause?.message, message, 'Codex’s own words kept as the cause');
 });
+
+test('#425 an error with no JSON-RPC code passes the turn’s edge as it was, so Postbox’s own marks on it stay', async () => {
+  const { codexSaid } = await import('../server/adapters/codex-thread.mjs');
+  const own = Object.assign(new Error('Postbox’s tools didn’t load.'), { notReached: true });
+  assert.equal(codexSaid(own), own);
+});
+
+test('#425 a failed Codex turn whose reason isn’t text still ends, with no reason made up', async () => {
+  const notice = { method: 'error', params: { error: { message: { text: 'structured' } }, willRetry: false } };
+  for (const end of [failsWith({ message: { text: 'structured' } }), failsWith(null, [notice])]) {
+    const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => fakeAppServer([], { hold: true, beforeStarted: end }) });
+    await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi' }, context()), { message: /^Codex turn failed/ });
+  }
+});
+
+test('#425 Codex’s words when it can’t list its MCP servers reach the person cleaned and cut', async () => {
+  const { codexMcpApprovalConfig } = await import('../server/adapters/codex-mcp-policy.mjs');
+  const request = async () => {
+    throw new Error(`Bad‮gnp.exe\nsecond line ${'x'.repeat(600)}`);
+  };
+  await assert.rejects(codexMcpApprovalConfig(request, 'ask'), (/** @type {any} */ error) => {
+    assert.match(error.message, /to them: Bad/);
+    assert.doesNotMatch(error.message, /[‮\n]/, 'no bidi override or line break');
+    assert.ok(error.message.length <= 'Codex couldn’t list its MCP servers, so Postbox can’t apply this permission mode to them: '.length + 400);
+    return true;
+  });
+});

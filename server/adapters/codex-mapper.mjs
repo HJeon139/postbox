@@ -9,7 +9,7 @@ import { effortOf } from './setup.mjs';
 
 export const codexEffortOf = (persona) => (effortOf(persona) === 'max' ? 'xhigh' : effortOf(persona));
 
-export const errorText = (x) => x?.error?.message ?? x?.message ?? 'Codex app-server failed.';
+export const errorText = (x) => String(x?.error?.message ?? x?.message ?? 'Codex app-server failed.');
 
 /**
  * A turn’s agent messages as they stream: their text, held while only white space has come, and each one open until

@@ -246,7 +246,7 @@ export class CodexAdapter {
     let activeTurnId = null;
     const pending = new Map();
     let exited = false;
-    /** What Codex last said went wrong in this turn, for the turn’s failure to give as its reason (#61). */
+    /** @type {string | null} What Codex last said went wrong in this turn, for the turn’s failure to give as its reason (#61). */
     let reported = null;
     /** @type {(err?: Error) => void} */
     let finish = () => {};
