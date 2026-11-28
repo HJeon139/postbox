@@ -5,10 +5,13 @@
 // names) reads one the check refuses as no folder of its own. Moved back to this computer, its folder is checked again.
 
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
+import { MockAdapter } from '../server/adapters/mock.mjs';
+import { NO_SERVER_FOLDER, storedFolder } from '../server/folder-path.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import * as arrange from './arrange.mjs';
@@ -19,16 +22,16 @@ const RELATIVE = 'Write the folder’s full path, starting with /. Postbox doesn
 const NOT_TEXT = 'An agent’s folder is its full path, as text. Write the folder’s full path.';
 const TOO_LONG = 'A folder’s path is at most 4096 characters. Pick a folder with a shorter path.';
 
-function setup() {
+function setup({ hosted = false } = {}) {
   const data = tempDir('pb-persona-folder-host-');
   const store = new Store(null);
-  const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: join(data, 'workspaces') }));
-  const config = { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 };
+  const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: join(data, 'workspaces') })).register(new MockAdapter());
+  const config = { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, hosted };
   const rt = new Runtime({ store, adapters, config, hosts: new FakeHosts() });
   const project = join(data, 'project');
   store.emit('project', { id: 'p1', name: 'P', folder: project });
   const host = rt.addHost({ name: 'host.example.com' });
-  return { store, rt, host, project };
+  return { store, rt, host, project, data };
 }
 
 /** A 422 with exactly this message. */
@@ -98,4 +101,39 @@ test('the permissions panel and the files of an agent on a host read a folder th
     () => rt.panelTarget({ personaId: here.id, projectId: 'p1' }),
     (e) => e.status === 409,
   );
+});
+
+test('an agent on a host has no folder of its own here, whatever its folder names: nothing here is made at that path or read from it', async () => {
+  const { rt, host, data } = setup();
+  const named = join(data, 'named-on-the-host');
+  const p = rt.createPersona({ handle: 'alpha', backend: 'claude-code', remote: { hostId: host.id }, folder: named });
+  assert.equal(p.folder, named, 'kept for its host, as written');
+  assert.equal(storedFolder(p), '');
+  assert.equal(storedFolder({ ...p, folder: 'relative' }), '');
+  // What reads an agent’s folder on this computer, the permissions panel, makes the folder it reads.
+  const view = await rt.permissionsView({ personaId: p.id });
+  assert.equal(existsSync(named), false, 'the named path isn’t made here');
+  assert.notEqual(view.folder, named);
+  // On this computer the same folder is the agent’s own, as before.
+  assert.equal(storedFolder({ handle: 'beta', folder: named, remote: null }), named);
+});
+
+test('hosted, an agent moved from its host to the server is refused while it has a folder, and keeps it', () => {
+  const { store, rt, host } = setup({ hosted: true });
+  const p = rt.createPersona({ handle: 'alpha', backend: 'claude-code', remote: { hostId: host.id }, folder: '/srv/work' });
+  assert.throws(
+    () => rt.updatePersona(p.id, { remote: null, backend: 'mock' }),
+    (/** @type {any} */ e) => e.status === 422 && e.message === NO_SERVER_FOLDER,
+  );
+  assert.deepEqual([store.state.personas[p.id].folder, store.state.personas[p.id].remote], ['/srv/work', { hostId: host.id }]);
+  // With its folder cleared in the same change, or none to begin with, it moves.
+  assert.equal(rt.updatePersona(p.id, { remote: null, backend: 'mock', folder: '' }).folder, '');
+  const q = rt.createPersona({ handle: 'beta', backend: 'claude-code', remote: { hostId: host.id } });
+  assert.equal(rt.updatePersona(q.id, { remote: null, backend: 'mock' }).remote, null);
+});
+
+test('on your own computer a move from a host checks only a folder the change names, as before', () => {
+  const { rt, host } = setup();
+  const p = rt.createPersona({ handle: 'alpha', backend: 'claude-code', remote: { hostId: host.id }, folder: 'relative' });
+  assert.equal(rt.updatePersona(p.id, { remote: null, backend: 'mock' }).folder, 'relative');
 });

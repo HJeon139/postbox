@@ -162,7 +162,12 @@ export class Personas {
     // Where it runs (#120), and whether its backend runs here when that’s here.
     patch = this.placement.placedPatch(id, p, patch);
     // Its folder is checked for where it runs once the change is made (#990).
-    if (patch.folder !== undefined) patch = { ...patch, folder: placedFolder(patch.folder, patch.remote === undefined ? p.remote : patch.remote, this.hosted) };
+    // Hosted, a move checks the folder it already has too: one kept for a host is a path here once it comes back.
+    if (patch.folder !== undefined || (this.hosted && patch.remote !== undefined))
+      patch = {
+        ...patch,
+        folder: placedFolder(patch.folder === undefined ? p.folder : patch.folder, patch.remote === undefined ? p.remote : patch.remote, this.hosted),
+      };
     // A persona moved from the mock to a real model gets that backend’s default model.
     if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock')
       patch = { ...patch, model: defaultModelFor(this.placement, patch.backend) };
