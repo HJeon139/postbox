@@ -3,6 +3,7 @@
 
 import { highlight } from '/shared/highlight.mjs';
 import { h, icon, plural } from './dom.mjs';
+import { scrollStop } from './scroll-stop.mjs';
 
 // The design’s syntax classes (app/workbench.css, “Syntax highlighting”), by token kind.
 const SYNTAX = { kw: 'kw', str: 'str', num: 'num-t', fn: 'fn', com: 'com' };
@@ -57,10 +58,13 @@ export function codeBox(b) {
     });
   return h(
     'div.code',
-    h(
-      'pre.mono',
-      { tabindex: '0', 'aria-label': `${b.filename ?? 'Code'}, ${plural(lines.length, 'line')}` },
-      lines.map((l, i) => [h('span.ln', { 'aria-hidden': 'true' }, String(i + 1)), l, i < lines.length - 1 ? '\n' : '']),
+    // A tab stop only while it scrolls (#1968).
+    scrollStop(
+      h(
+        'pre.mono',
+        { 'aria-label': `${b.filename ?? 'Code'}, ${plural(lines.length, 'line')}` },
+        lines.map((l, i) => [h('span.ln', { 'aria-hidden': 'true' }, String(i + 1)), l, i < lines.length - 1 ? '\n' : '']),
+      ),
     ),
   );
 }

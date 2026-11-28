@@ -18,6 +18,7 @@ import { startProgressClock, tickProgress } from './progress-clock.mjs';
 import { renderReview } from './review.mjs';
 import { markSent, unmarkSent } from './review-draft.mjs';
 import { forgetReviewDraft } from './review-draft-store.mjs';
+import { scrollStop } from './scroll-stop.mjs';
 import { fmtCell } from './table-cells.mjs';
 import { scrollFrame } from './table-scroll.mjs';
 import { sortedRows } from './table-sort.mjs';
@@ -377,11 +378,12 @@ const RENDER = {
       h('thead', h('tr', b.columns.map(th), b.rowAction ? h('th', h('span.sr-only', 'Action')) : null)),
       h('tbody', rows.map(tr)),
     );
-    const wrap = h(
-      'div.tbl-wrap',
-      { tabindex: '0', role: 'region', 'aria-label': `${b.title ?? 'Table'}, scrolls`, style: d.expanded ? { maxHeight: 'none' } : {} },
-      table,
-    );
+    // A tab stop, and “scrolls” in its name, only while it scrolls (#1968).
+    const title = b.title ?? 'Table';
+    const wrap = scrollStop(h('div.tbl-wrap', { role: 'region', style: d.expanded ? { maxHeight: 'none' } : {} }, table), {
+      scrolls: `${title}, scrolls`,
+      fits: title,
+    });
     const node = h('div', { 'aria-labelledby': titleId }, hd, scrollFrame(wrap, d), status);
     return node;
   },
