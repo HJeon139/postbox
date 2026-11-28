@@ -58,14 +58,21 @@ export function glossaryRegex(glossary) {
   const entries = /** @type {{ term: string, key: string }[]} */ ((glossary ?? []).filter((g) => g?.term && g?.key));
   if (!entries.length) return null;
   const sig = entries.map((g) => `${g.key}\u0000${g.term}`).join('\u0001');
-  if (sig !== last.sig) last = { sig, made: buildMatcher(entries) };
-  return last.made;
+  let made = matchers.get(sig);
+  if (!made) {
+    made = buildMatcher(entries);
+    matchers.set(sig, made);
+    if (matchers.size > KEPT) matchers.delete(/** @type {string} */ (matchers.keys().next().value));
+  }
+  return made;
 }
 
-// The last glossary’s matcher, by its terms and keys: each reply in a room renders with the same glossary, so it is
-// built once, not once per reply. Sharing its global regex is safe: String.prototype.replace resets lastIndex.
-/** @type {{ sig: string, made: { re: RegExp, keyOf: (match: string) => string | undefined } | null }} */
-let last = { sig: '', made: null };
+// The matchers of the glossaries last used, by their terms and keys: each reply in a thread renders with the same
+// glossary, so it is built once, not once per reply, and threads whose replies render in turn each keep theirs.
+// Sharing a matcher’s global regex is safe: String.prototype.replace resets lastIndex.
+const KEPT = 8;
+/** @type {Map<string, { re: RegExp, keyOf: (match: string) => string | undefined }>} */
+const matchers = new Map();
 
 /** @param {{ term: string, key: string }[]} entries */
 function buildMatcher(entries) {

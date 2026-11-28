@@ -123,3 +123,11 @@ test('a term doesn’t link inside a Vietnamese word, a decomposed accent, or a 
 test('a short term doesn’t link beside an accented or Cyrillic dotted letter (#102)', () => {
   assert.deepEqual(linked('R', 'É.R, R.É and Ж.R'), []);
 });
+
+test('two threads whose replies render in turn each keep their matcher (#102)', () => {
+  const one = [{ term: 'R:31', key: 'r-31' }];
+  const two = [{ term: 'U:13', key: 'u-13' }];
+  const first = glossaryRegex(one);
+  glossaryRegex(two);
+  assert.equal(glossaryRegex(one), first);
+});
