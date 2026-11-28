@@ -47,11 +47,10 @@ import { seed } from './seed.mjs';
 import { decodePath, file, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { setupRoute } from './setup-routes.mjs';
-import { newId } from './store.mjs';
 import { storedFileRoute } from './stored-files.mjs';
 import { searchOf } from './thread-search.mjs';
 import { promptsFileFor } from './turn-prompt.mjs';
-import { uploadName } from './upload-name.mjs';
+import { upload } from './upload.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
 
@@ -381,7 +380,7 @@ export async function start({
     // Projects: making one, its push repository, its folder and deleting one (server/project-routes.mjs).
     const projectsDid = await projectsRoute(rt, path, req.method, body, url.searchParams, config.hosted);
     if (projectsDid) return send(res, projectsDid.status, projectsDid.body);
-    if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
+    if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req, { blobs, store }));
     const stored = await storedFileRoute(store, blobs, path, req.method);
     if (stored) return raw(res, 200, stored.bytes, stored.headers);
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|note|state|query|open|publish|animating)$/)) && req.method === 'POST') {
@@ -425,32 +424,6 @@ export async function start({
       return send(res, 200, { ok: true });
     }
     throw httpError(404, `There’s nothing at ${path}.`);
-  }
-
-  async function upload(req) {
-    const name = uploadName(decodePath(String(req.headers['x-filename'] ?? 'file')));
-    const chunks = [];
-    let size = 0;
-    for await (const c of req) {
-      size += c.length;
-      if (size > 25 * 1024 * 1024) throw httpError(413, 'Files are limited to 25 MB.');
-      chunks.push(c);
-    }
-    const id = newId('fi');
-    const { sha256 } = await blobs.put(Buffer.concat(chunks));
-    const f = {
-      id,
-      name,
-      size,
-      type: String(req.headers['content-type'] ?? 'application/octet-stream')
-        .split(';')[0]
-        .trim()
-        .slice(0, 100),
-      sha256,
-      at: Date.now(),
-    };
-    store.emit('file', f);
-    return { id, name, size, type: f.type, sha256 };
   }
 
   async function close() {
