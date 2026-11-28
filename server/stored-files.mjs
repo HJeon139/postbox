@@ -33,6 +33,19 @@ export async function storedFileRoute(store, blobs, path, method, res) {
   return true;
 }
 
+/** Waits until the page has read what was sent, or has gone, leaving no listener behind. @param {import('node:http').ServerResponse} res */
+function drained(res) {
+  return new Promise((go) => {
+    const done = () => {
+      res.off('drain', done);
+      res.off('close', done);
+      go(undefined);
+    };
+    res.on('drain', done);
+    res.on('close', done);
+  });
+}
+
 /**
  * Writes a stream to the answer, waiting while the page is behind. A page that goes away stops the reading; a damaged
  * file, found at its end, cuts the answer short of its length, so the page never takes it as whole, and is logged.
@@ -40,13 +53,10 @@ export async function storedFileRoute(store, blobs, path, method, res) {
  */
 async function sendAll(res, bytes, id) {
   try {
+    // Leaving the loop early destroys the stream, which closes the file (Blobs.stream).
     for await (const chunk of bytes) {
-      if (res.write(chunk) === false)
-        await new Promise((go) => {
-          res.once('drain', go);
-          res.once('close', go);
-        });
-      if (res.destroyed) return bytes.destroy();
+      if (res.destroyed) return;
+      if (res.write(chunk) === false && !res.destroyed) await drained(res);
     }
     res.end();
   } catch (e) {

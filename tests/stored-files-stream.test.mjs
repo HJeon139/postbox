@@ -4,7 +4,7 @@
 // file is cut off before its end, never delivered whole.
 
 import assert from 'node:assert/strict';
-import { appendFileSync, rmSync } from 'node:fs';
+import { appendFileSync, readdirSync, rmSync } from 'node:fs';
 import { Writable } from 'node:stream';
 import { test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
@@ -94,4 +94,45 @@ test('#870 a stored file whose blob is gone, or of another size, refuses before 
   rmSync(blobs.pathOf(sha256));
   await assert.rejects(storedFileRoute(store, blobs, '/api/files/fi_big', 'GET', /** @type {any} */ (res)), /ENOENT/);
   assert.equal(res.status, 0, 'no status written');
+});
+
+/** How many file descriptors this process holds. */
+const openFds = () => readdirSync('/dev/fd').length;
+
+test('#870 a page that goes away mid-file, or at the first chunk, ends the answer and closes the file, every time', async () => {
+  const size = 8 * MB;
+  const { blobs, store } = await storedFile(size);
+  const before = openFds();
+  for (let i = 0; i < 10; i++) {
+    // A page that takes 1 MB and goes; on even turns, one that goes at the first chunk.
+    const res = counting();
+    const leave = i % 2 ? MB : 0;
+    res.on('error', () => {});
+    const original = res._write.bind(res);
+    res._write = (chunk, enc, done) => (res.received >= leave ? res.destroy() : original(chunk, enc, done));
+    await storedFileRoute(store, blobs, '/api/files/fi_big', 'GET', /** @type {any} */ (res));
+    assert.ok(res.received < size, `turn ${i}: cut off`);
+  }
+  await new Promise((done) => setImmediate(done));
+  assert.ok(openFds() - before <= 1, `${openFds() - before} file descriptors left open after 10 pages went away`);
+});
+
+test('#870 a page already gone when the file is opened stops the reading at once, not after the whole file', async () => {
+  const size = 32 * MB;
+  const { blobs, store } = await storedFile(size);
+  let read = 0;
+  const stream = blobs.stream.bind(blobs);
+  blobs.stream = async (sha, n) => {
+    const bytes = await stream(sha, n);
+    bytes.on('data', (c) => {
+      read += c.length;
+    });
+    return bytes;
+  };
+  const res = counting();
+  res.on('error', () => {});
+  res.destroy();
+  await storedFileRoute(store, blobs, '/api/files/fi_big', 'GET', /** @type {any} */ (res));
+  assert.equal(res.received, 0);
+  assert.ok(read < 4 * MB, `${(read / MB).toFixed(1)} MB read from disk for a page that had gone`);
 });

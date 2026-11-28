@@ -5,7 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream, linkSync, lstatSync, mkdirSync, statSync, unlinkSync } from 'node:fs';
 import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { Transform } from 'node:stream';
+import { pipeline, Transform } from 'node:stream';
 import { writeAll } from './store-commit.mjs';
 
 export class Blobs {
@@ -245,9 +245,9 @@ export class Blobs {
         done();
       },
     });
-    const source = createReadStream(path);
-    source.on('error', (e) => check.destroy(e));
-    return source.pipe(check);
+    // Joined by pipeline, so a page that goes away, which destroys the check, closes the file too, and a read error
+    // reaches the reader of the check.
+    return pipeline(createReadStream(path), check, () => {});
   }
 
   /** Reads bytes back and checks they still match their hash. */

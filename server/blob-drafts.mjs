@@ -2,8 +2,8 @@
 // `<hash path>.<pid>.<hex>.draft` beside its blob, and a streamed upload `stream.<pid>.<hex>.draft` at the store’s
 // root, before renaming it into place. Since #870 an upload has no fixed size, so one left behind can be as large as a
 // screen recording, and it counts against the disk space uploads keep free. At start, under the data folder’s lock,
-// each draft whose process is no longer running is removed; one of another process still running is kept; one with this process’s own pid is a
-// dead Postbox’s, since this one has written none yet.
+// each draft whose process is no longer running is removed; one of another process still running is kept; one with
+// this process’s own pid is a dead Postbox’s, since this one has written none yet.
 
 import { readdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -24,7 +24,8 @@ export async function sweepDrafts(dir, { alive = running } = {}) {
     const names = folder ? await readdir(join(dir, folder)).catch(() => []) : top.map((e) => e.name);
     for (const name of names) {
       const pid = Number(name.match(DRAFT)?.[1]);
-      // Under the lock, before this process writes, a draft with its own pid is a dead Postbox’s (in a container, node is pid 1 each start).
+      // Under the lock, before this process writes, a draft with its own pid is a dead Postbox’s (in a container, node is
+      // pid 1 each start).
       if (!pid || (pid !== process.pid && alive(pid))) continue;
       await unlink(join(dir, folder, name)).catch(() => {});
       removed++;

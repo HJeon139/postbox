@@ -2,8 +2,9 @@
 //
 // No fixed size limit beyond free disk space (#870, the person’s choice of 6 November 2026): the body streams into
 // the blob store (Blobs.putStream), so memory stays at a chunk whatever the size. Only the page can upload, with its
-// token, so the disk used is the person’s own files, or their team’s on a hosted Postbox. An upload that would leave less than DISK_RESERVE free is refused
-// with that reason, before it’s written when the browser says its size, or as soon as the disk fills while it streams.
+// token, so the disk used is the person’s own files, or their team’s on a hosted Postbox. An upload that would leave
+// less than DISK_RESERVE free is refused with that reason, before it’s written when the browser says its size, or as
+// soon as the disk fills while it streams.
 
 import { statfs as fsStatfs } from 'node:fs/promises';
 import { httpError } from './helpers.mjs';
