@@ -10,13 +10,17 @@ import { setTimeout as sleep } from 'node:timers/promises';
  * @param {string} file @returns {number | null}
  */
 export function pidIn(file) {
-  let text;
+  const text = textIn(file);
+  return text !== null && /^\s*[1-9]\d*\s*$/.test(text) ? Number(text) : null;
+}
+
+/** The file’s text, or null when it can’t be read: not written yet. @param {string} file */
+function textIn(file) {
   try {
-    text = readFileSync(file, 'utf8');
+    return readFileSync(file, 'utf8');
   } catch {
-    return null; // not written yet
+    return null;
   }
-  return /^\s*[1-9]\d*\s*$/.test(text) ? Number(text) : null;
 }
 
 /**
@@ -30,5 +34,6 @@ export async function pidWithin(file, ms, every = 50) {
   }
   const pid = pidIn(file);
   if (pid) return pid;
-  throw new Error(`No pid was written to ${file} within ${ms} ms.`);
+  const last = textIn(file);
+  throw new Error(`No pid was written to ${file} within ${ms} ms: it ${last === null ? 'doesn’t exist' : `holds ${JSON.stringify(last)}`}.`);
 }

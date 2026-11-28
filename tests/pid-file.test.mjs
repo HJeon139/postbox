@@ -33,8 +33,11 @@ test('the wait goes on past an empty file until the pid is written', async () =>
   await written;
 });
 
-test('a pid never written fails the wait, saying where it looked', async () => {
+test('a pid never written fails the wait, saying where it looked and what it found', async () => {
   const file = join(tempDir('pid-file-'), 'pid');
   writeFileSync(file, '');
-  await assert.rejects(pidWithin(file, 100, 10), /No pid was written to .*pid within 100 ms/);
+  await assert.rejects(pidWithin(file, 100, 10), /No pid was written to .*pid within 100 ms: it holds ""\./);
+  writeFileSync(file, '0');
+  await assert.rejects(pidWithin(file, 50, 10), /it holds "0"\./);
+  await assert.rejects(pidWithin(join(file, '..', 'missing'), 50, 10), /missing within 50 ms: it doesn’t exist\./);
 });

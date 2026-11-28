@@ -3,7 +3,7 @@
 // sleeps past the time limit with a child of its own, which the kill of its process group must take too.
 
 import assert from 'node:assert/strict';
-import { chmodSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { pathMarkers, probeLoginPath } from '../../server/remote/host/login-path.mjs';
@@ -61,7 +61,10 @@ test('#672: a shell past the time limit fails, and its whole process group is ki
   assert.ok(!r.ok && r.why.length > 0);
   assert.ok(took < limit + 1500, `took ${took} ms`);
   const child = pidIn(pidFile); // never 0, which after() would SIGKILL as this test’s own process group (#2012)
-  assert.ok(child, 'the shell started its child and wrote its pid');
+  assert.ok(
+    child,
+    `the shell started its child and wrote its pid: ${pidFile} holds ${JSON.stringify(existsSync(pidFile) ? readFileSync(pidFile, 'utf8') : null)}`,
+  );
   started.push(child);
   const end = Date.now() + 3000;
   while (alive(child) && Date.now() < end) await sleep(20);
