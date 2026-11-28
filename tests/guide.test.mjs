@@ -80,10 +80,8 @@ test('what agents read about the app check says narrow and wide windows, not pho
 });
 
 test('the guide stays short: agents follow defaults more than prose', () => {
-  // About 8,300 characters before M1 core, which added the limits, palettes and outcome. Cut before adding. 9,250
-  // until #382’s line on topic threads and their outcome, which replaced a 62-character line and an aside: the guide
-  // was at 9,248, and nothing else in it was safe to cut.
-  assert.ok(guideText().length <= 9325, `The guide is ${guideText().length} characters. Keep it under 9,325.`);
+  // About 8,300 characters before M1 core, which added the limits, palettes and outcome. Cut before adding.
+  assert.ok(guideText().length <= 9250, `The guide is ${guideText().length} characters. Keep it under 9,250.`);
   // It’s the same text on every turn.
   const who = { persona: { handle: 'a' }, handles: ['a', 'b'] };
   assert.equal(agentGuide(who), agentGuide(who));
@@ -185,17 +183,12 @@ test('#372 a room’s guide says to @mention an agent only when it must act next
   assert.doesNotMatch(TOOL_DEFS.find((d) => d.name === 'open_topic').description, /side thread/);
 });
 
-// An agent may open a thread for a review or a design check and post its outcome back on its own (#382), while what
-// the room must see stays in the conversation.
-test('#382 the guide says when to open a topic thread, what stays in the conversation, and to post the thread’s outcome', () => {
-  const line = guideText()
-    .split('\n')
-    .find((l) => l.includes('open_topic') && l.includes('bring_to_conversation'));
-  assert.ok(line, 'the guide has one line on topic threads and their outcome');
-  assert.match(line, /Review a PR or design in a topic/);
-  assert.match(line, /keep hand-offs and the person’s decisions in the conversation/);
-  assert.match(line, /post its outcome with bring_to_conversation/);
-  assert.doesNotMatch(guideText(), /bring_to_conversation only when the person asks/);
+// An agent may open a thread for a review or a design check (#382), while hand-offs stay in the conversation. When to
+// post the thread’s outcome is bring_to_conversation’s description, which only a turn in a thread is offered.
+test('#382 the guide says when to open a topic thread and that hand-offs stay in the conversation', () => {
+  assert.match(guideText(), /^- Review a PR or design in a topic \(open_topic\); hand-offs stay in the conversation\.$/m);
+  assert.doesNotMatch(guideText(), /bring_to_conversation/);
+  assert.match(TOOL_DEFS.find((d) => d.name === 'bring_to_conversation').description, /the topic thread’s outcome once its work is done/);
 });
 
 // An agent ended turns promising results that “will follow”, and nothing woke it when they did: Postbox wakes an agent
