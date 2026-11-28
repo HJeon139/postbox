@@ -196,6 +196,33 @@ test('#888 a 200-node graph passes the pre-display check and keeps its groups in
   expect(check().status, JSON.stringify(check().problems)).toBe('passed');
   await expect(frame.locator('[data-node]')).toHaveCount(200);
   await expect(frame.locator('.pb-graph-group-label')).toHaveCount(6);
-  await expect(frame.locator('[data-edge="module-0->module-1"]')).toHaveAttribute('stroke-dasharray', '6 3');
+  await expect(frame.locator(`[data-edge='["module-0","module-1"]']`)).toHaveAttribute('stroke-dasharray', '6 3');
   expect(Number(await frame.locator('#g svg').getAttribute('height'))).toBe(540);
+});
+
+const ARROW_IDS_APP = `<main><div id="g"></div></main>
+<script>
+postbox.ready.then(() => postbox.graph(document.getElementById('g'), {
+  nodes: ['a->b', 'c', 'a', 'b->c'].map(id => ({ id })),
+  edges: [{ from: 'c', to: 'a->b' }, { from: 'a', to: 'b->c' }],
+  highlight: [{ from: 'a->b', to: 'c' }],
+}));
+</script>`;
+
+test('#888 arrow-shaped IDs do not add a highlight or a reverse-edge bend', async ({ page }) => {
+  const { frame } = await openGraphApp(page, 'Arrow IDs test', 'arrow-ids', ARROW_IDS_APP);
+  const edges = frame.locator('.pb-graph-edges path');
+  await expect(edges).toHaveCount(2);
+  // The quadratic control point is offset from the midpoint by the edge’s bend.
+  const bends = await edges.evaluateAll((paths) =>
+    paths.map((path) => {
+      const [sx, sy, mx, my, tx, ty] = path
+        .getAttribute('d')
+        .match(/-?[\d.]+/g)
+        .map(Number);
+      return Math.hypot(mx - (sx + tx) / 2, my - (sy + ty) / 2);
+    }),
+  );
+  expect.soft(bends[0]).toBeCloseTo(8, 0);
+  await expect.soft(frame.locator('[data-highlight]')).toHaveCount(0);
 });

@@ -154,7 +154,7 @@
     const { drawSvg, measureLabels } = window.__pbGraphSvg;
     const d3 = window.d3 || (await window.postbox.load('d3'));
     const state = layout.normalizeSpec(spec);
-    window.__pbGraphHighlights(state, spec?.highlight);
+    window.__pbGraphEdges.markHighlights(state, spec?.highlight);
     layout.runForceLayout(d3, state);
     const regions = layout.groupRegions(d3, state.groups, state.nodes);
     el.classList.add('pb-graph');

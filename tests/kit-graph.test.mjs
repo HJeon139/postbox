@@ -67,21 +67,21 @@ test('#888 markHighlights detects cycles (Tarjan SCC + self-loops), cross-group 
     });
 
   const sCyc = base();
-  fakeWindow.__pbGraphHighlights(sCyc, 'cycles');
+  fakeWindow.__pbGraphEdges.markHighlights(sCyc, 'cycles');
   assert.deepEqual(
     sCyc.edges.filter((e) => e.highlight).map((e) => `${e.from}->${e.to}`),
     ['a->b', 'b->a', 'd->d'],
   );
 
   const sCross = base();
-  fakeWindow.__pbGraphHighlights(sCross, 'cross-group');
+  fakeWindow.__pbGraphEdges.markHighlights(sCross, 'cross-group');
   assert.deepEqual(
     sCross.edges.filter((e) => e.highlight).map((e) => `${e.from}->${e.to}`),
     ['b->c'],
   );
 
   const sExplicit = base();
-  fakeWindow.__pbGraphHighlights(sExplicit, [{ from: 'c', to: 'd' }]);
+  fakeWindow.__pbGraphEdges.markHighlights(sExplicit, [{ from: 'c', to: 'd' }]);
   assert.deepEqual(
     sExplicit.edges.filter((e) => e.highlight).map((e) => `${e.from}->${e.to}`),
     ['c->d'],
@@ -110,7 +110,7 @@ test('#888 marks cycles at the end of a 10,000-node dependency chain', () => {
   const edges = nodes.slice(1).map((node, i) => ({ from: i, to: node.id }));
   edges.push({ from: 9999, to: 9998 });
   const state = layout.normalizeSpec({ nodes, edges });
-  fakeWindow.__pbGraphHighlights(state, 'cycles');
+  fakeWindow.__pbGraphEdges.markHighlights(state, 'cycles');
   assert.deepEqual(
     state.edges.filter((edge) => edge.inCycle).map(({ from, to }) => [from, to]),
     [
@@ -118,4 +118,48 @@ test('#888 marks cycles at the end of a 10,000-node dependency chain', () => {
       ['9999', '9998'],
     ],
   );
+});
+
+test('#888 highlights only the requested edge when IDs contain arrows', () => {
+  const state = layout.normalizeSpec({
+    nodes: ['a->b', 'c', 'a', 'b->c'].map((id) => ({ id })),
+    edges: [
+      { from: 'a->b', to: 'c' },
+      { from: 'a', to: 'b->c' },
+    ],
+  });
+  fakeWindow.__pbGraphEdges.markHighlights(state, [{ from: 'a->b', to: 'c' }]);
+  assert.deepEqual(
+    state.edges.map(({ highlight }) => highlight),
+    [true, false],
+  );
+});
+
+test('#888 draws the reverse-edge bend only for an actual reverse edge', () => {
+  class SvgElement {
+    attributes = new Map();
+    children = [];
+    setAttribute(name, value) {
+      this.attributes.set(name, value);
+    }
+    append(...children) {
+      this.children.push(...children);
+    }
+  }
+  const document = { createElementNS: () => new SvgElement() };
+  const svgCode = readFileSync(join(import.meta.dirname, '..', 'app', 'kit', 'graph-svg.js'), 'utf8');
+  new Function('window', 'document', svgCode)(fakeWindow, document);
+
+  const source = { id: 'c', x: 0, y: 0, r: 9 };
+  const target = { id: 'a->b', x: 100, y: 0, r: 9 };
+  const edge = (source, target) => ({ source, target, from: source.id, to: target.id, sameGroup: true });
+  const straight = edge(source, target);
+  const lookalike = edge({ ...source, id: 'a' }, { ...target, id: 'b->c' });
+  const reverse = edge(target, source);
+  const pathFor = (other) => {
+    const drawing = fakeWindow.__pbGraphSvg.drawSvg({ width: 360, height: 260, nodes: [source, target], edges: [straight, other] }, [], [], 'test');
+    return drawing.children[2].children[0].attributes.get('d');
+  };
+  assert.match(pathFor(lookalike), /Q49\.0,8\.0 /);
+  assert.match(pathFor(reverse), /Q49\.0,24\.0 /);
 });

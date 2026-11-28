@@ -1,5 +1,7 @@
-// Cycle detection and edge highlighting for postbox.graph (#888).
+// Edge identity, cycle detection and highlighting for postbox.graph (#888).
 {
+  const edgeKey = (from, to) => JSON.stringify([from, to]);
+
   /** Finds every directed edge that belongs to a cycle (Tarjan SCCs with size > 1, plus self-loops). */
   const findCycleEdges = (nodes, edges) => {
     const adj = new Map(nodes.map((n) => [n.id, []]));
@@ -61,13 +63,13 @@
     for (const e of cycles) e.inCycle = true;
     const mode = typeof highlight === 'string' ? highlight : highlight?.mode || null;
     const explicit = Array.isArray(highlight) ? highlight : highlight?.edges;
-    const pairs = new Set((Array.isArray(explicit) ? explicit : []).map((x) => `${x?.from ?? x?.source ?? ''}->${x?.to ?? x?.target ?? ''}`));
+    const pairs = new Set((Array.isArray(explicit) ? explicit : []).map((x) => edgeKey(String(x?.from ?? x?.source ?? ''), String(x?.to ?? x?.target ?? ''))));
     for (const e of state.edges) {
       if (mode === 'cross-group' && !e.sameGroup) e.highlight = true;
       if (mode === 'cycles' && e.inCycle) e.highlight = true;
-      if (pairs.has(`${e.from}->${e.to}`)) e.highlight = true;
+      if (pairs.has(edgeKey(e.from, e.to))) e.highlight = true;
     }
   };
 
-  window.__pbGraphHighlights = markHighlights;
+  window.__pbGraphEdges = { edgeKey, markHighlights };
 }

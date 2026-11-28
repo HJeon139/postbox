@@ -1,5 +1,6 @@
 // SVG marks and text measurement for postbox.graph (#888).
 {
+  const { edgeKey } = window.__pbGraphEdges;
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const svgEl = (tag, attrs = {}, text = null) => {
     const n = document.createElementNS(SVG_NS, tag);
@@ -38,7 +39,7 @@
     const sy = s.y + uy * (s.r + 2);
     const tx = t.x - ux * (t.r + 4);
     const ty = t.y - uy * (t.r + 4);
-    const hasReverse = pairSet.has(`${t.id}->${s.id}`);
+    const hasReverse = pairSet.has(edgeKey(t.id, s.id));
     let bend = e.sameGroup ? 8 : 16;
     if (e.inCycle) bend = 20;
     if (hasReverse) bend = 24;
@@ -48,7 +49,7 @@
   };
 
   const drawEdges = (state, uid) => {
-    const pairSet = new Set(state.edges.map((e) => `${e.source.id}->${e.target.id}`));
+    const pairSet = new Set(state.edges.map(({ from, to }) => edgeKey(from, to)));
     const edgeG = svgEl('g', { class: 'pb-graph-edges' });
     for (const e of state.edges) {
       const cycleHi = e.inCycle && e.highlight;
@@ -64,7 +65,7 @@
           'stroke-dasharray': cycleHi ? '6 3' : null,
           'stroke-width': e.highlight ? '2.2' : '1.3',
           'marker-end': `url(#${uid}-${style.marker})`,
-          'data-edge': `${e.from}->${e.to}`,
+          'data-edge': edgeKey(e.from, e.to),
           ...(e.highlight ? { 'data-highlight': '1' } : {}),
         }),
       );
