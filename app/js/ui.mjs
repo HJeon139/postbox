@@ -179,7 +179,9 @@ export function keepFocus(root, paint) {
   const was = document.activeElement;
   if (!root || !was || !root.contains(was)) return paint();
   // A control that comes back disabled can’t hold focus, so it goes to the next one that can (#105: Stop, once stopped).
-  const enabled = () => $$(FOCUSABLE, root).filter((x) => !(/** @type {any} */ (x).disabled));
+  // A box that has a stop only while it scrolls (scroll-stop.mjs) counts in its place either way: one that fits has none
+  // now, and the one drawn in its place starts with one, so counting stops alone would move focus back a place (#1968).
+  const enabled = () => $$(`${FOCUSABLE}, [data-scroll-stop]`, root).filter((x) => !(/** @type {any} */ (x).disabled));
   const at = enabled().indexOf(was);
   const result = paint();
   if (!was.isConnected) {

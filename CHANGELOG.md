@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.9.1 (2026-11-28)
+
+### Fixes
+
+- **hosted:** no folder on the server for an agent or a conversation
+
+## 5.9.0 (2026-11-28)
+
+### Features
+
+- **models:** the Model field orders, marks and picks by how each model's last turn ended
+
+### Fixes
+
+- **deploy:** the agent host's role may have Bedrock turn a model on at its first call
+
 ## 5.8.0 (2026-11-28)
 
 ### Features

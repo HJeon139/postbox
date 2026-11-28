@@ -105,7 +105,7 @@ export const TOOL_DEFS = [
   {
     name: 'view_app',
     description:
-      'See an app in this conversation as the person sees it: inline at their window size (1000 × 680 if none open), theme, and current version. Pass a review region to render at its review width, uncapped in height, with the region outlined. Returns a picture and saves it under .postbox/view. First use asks to download the browser; end your turn to wait.',
+      'See an app in this conversation as the person sees it: inline at their window size (1000 × 680 if none open), theme, and current version. Pass a review region to render at its review width, uncapped in height, with the region outlined. Returns a picture and saves it under .postbox/view. First use asks to download the browser; carry on meanwhile, and you’ll hear their answer.',
     inputSchema: {
       type: 'object',
       properties: {
