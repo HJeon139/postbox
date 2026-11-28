@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.11.2 (2026-11-28)
+
+### Fixes
+
+- **adapters:** move an agent's branch only once the commit's index is in place
+
 ## 5.11.1 (2026-11-28)
 
 ### Fixes
