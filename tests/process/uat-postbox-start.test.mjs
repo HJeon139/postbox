@@ -5,12 +5,12 @@
 
 import assert from 'node:assert/strict';
 import { randomInt } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { portFree, startPostbox } from '../../tools/uat/postbox.mjs';
 import { tempDir } from '../temp-dirs.mjs';
+import { pidIn, pidWithin } from './pid-file.mjs';
 
 /** A free port above 47000, away from the ports the other process tests pick. */
 async function freeHighPort() {
@@ -21,23 +21,15 @@ async function freeHighPort() {
   throw new Error('No free port between 47001 and 60000 after 100 tries.');
 }
 
-/** The pid the stand-in wrote, once it has, within ms, looking once more at the deadline. @param {string} file @param {number} ms */
-async function pidIn(file, ms) {
-  for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) {
-    if (existsSync(file)) return Number(readFileSync(file, 'utf8'));
-  }
-  if (existsSync(file)) return Number(readFileSync(file, 'utf8'));
-  throw new Error(`The stand-in server wrote no pid to ${file} within ${ms} ms.`);
-}
-
 test('#782 a Postbox that never answers is stopped before startPostbox rejects, and its port is free', { timeout: 60_000 }, async (t) => {
   const root = tempDir('pb-start-');
   const pidFile = join(root, 'pid');
   // A stand-in left running would hold this test’s process open and outlive it.
   t.after(() => {
-    if (existsSync(pidFile)) {
+    const pid = pidIn(pidFile); // never 0, which would signal this test’s own process group (#2012)
+    if (pid) {
       try {
-        process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL');
+        process.kill(pid, 'SIGKILL');
       } catch {}
     }
   });
@@ -49,7 +41,7 @@ test('#782 a Postbox that never answers is stopped before startPostbox rejects, 
   const port = await freeHighPort();
   const lines = [];
   await assert.rejects(startPostbox({ root, port, data: join(root, 'data'), env: {}, log: (l) => lines.push(l), tries: 4 }), /Postbox didn’t start/);
-  const pid = await pidIn(pidFile, 5_000);
+  const pid = await pidWithin(pidFile, 5_000);
   assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, `the server it started is still running:\n${lines.join('\n')}`);
   assert.equal(await portFree(port), true, 'its port is free');
 });

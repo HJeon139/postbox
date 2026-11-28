@@ -2,6 +2,75 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 5.11.2 (2026-11-28)
+
+### Fixes
+
+- **adapters:** move an agent's branch only once the commit's index is in place
+
+## 5.11.1 (2026-11-28)
+
+### Fixes
+
+- **hosted:** a read outside an agent's folders offers no Always allow on a hosted server
+- **hosted:** the demo's projects are seeded without a folder on the server
+- **hosted:** a conversation's read folders saved before are ignored too
+
+## 5.11.0 (2026-11-28)
+
+### Features
+
+- **view-app:** capture a marked review region at its review width
+- **review:** tell the agent what the app has under a marked region
+- **review:** mark a point or a box anywhere on an app in its review, and comment on it
+- **review:** a comment on an app can carry a region the person marked
+
+### Fixes
+
+- **review:** re-arm ResizeObserver when marks layer moves or paints detached
+- **view-app:** report the actual captured y slice when the app height changed
+- **view-app:** pass fullPage with clip for regions below 4000 px
+- **view-app:** clip tall region captures to one window height and prove block GC in leak spec
+- **review:** separate app content under a mark from the person’s comment and use innerText
+- **mcp:** restore view_app and review_block guidance and omit region.under from schema
+- **review:** keep answered app reviews full height so bottom regions stay aligned
+- **review:** strip bidi/invisible chars in underOf and test view_app region bounds
+- **review:** share nextRegion, disable mark without frame, add touch and guard tests
+- **review:** release a review’s mark layer when its room leaves the page
+- **review:** keep a marked region in px with its frame's size, drawn only at that width
+- **review:** a region's blank box takes no number from the next mark
+- **review:** number a new mark past the open region box, and check where typed text lands
+- **review:** keep a region's typed text when another box opens, and set drawn regions off the app
+- **review:** number a draft's region past an agent's on the page, and draw regions as marks
+- **review:** keep every review's region layer, renumber a region an agent took first
+- **review:** keep a region's text as a draft on Edit, and keep "region N" for marked regions
+
+## 5.10.1 (2026-11-28)
+
+### Fixes
+
+- **hosted:** clear saved conversation folders by reading pending sessions
+- **hosted:** a folder on the server saved before is ignored, for agents, conversations and projects
+- **hosted:** a conversation's folder refusal says what is so for where its agent runs
+- **hosted:** agents.json that gives an agent a folder starts a hosted Postbox
+
+## 5.10.0 (2026-11-28)
+
+### Features
+
+- **conformance:** run the backend checks with each cli's version
+- **conformance:** check that agy reads postbox's rules within its limit
+- **conformance:** check what codex saved and sent of postbox's guide
+- **uat:** show each held step in the report's timeline, with when and why
+- **uat:** record the runner's exit code in run.json
+- **adapters:** load postbox's skills on a remote host from its installed copy
+- **remote:** ship postbox's agent plugin with the host install
+
+### Fixes
+
+- **conformance:** the codex probe opens with postbox's skills off, not as a host turn
+- **remote:** ship only a skill's files from agent-plugin, leaving strays behind
+
 ## 5.9.7 (2026-11-28)
 
 ### Fixes

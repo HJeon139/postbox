@@ -144,7 +144,7 @@ function composer(key, { b, d, closeComposer }) {
   const add = (/** @type {string} */ value) => {
     const text = value.trim();
     if (!text) return;
-    d.comments.push(commentAt(key, text, b.format === 'app'));
+    d.comments.push(commentAt(key, text, b.format === 'app', d.composingRegion));
     closeComposer(key);
   };
   return commentBox(d, {

@@ -5,6 +5,7 @@
 
 import { validateBlock } from '../shared/catalog.mjs';
 import { PERSON, personNext, threadsError } from '../shared/review-comments.mjs';
+import { regionAnchor } from '../shared/review-regions.mjs';
 import { httpError } from './helpers.mjs';
 import { ownedAuthors } from './review-authors.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
@@ -22,7 +23,8 @@ export function personReview(it, values, revision) {
   const ids = new Set(threads.map((t) => t.id));
   const made = new Set();
   let n = 0;
-  const comments = given.map(({ text, threadId, ...anchor }) => {
+  const comments = given.map(({ text, threadId, ...given1 }) => {
+    const anchor = given1.region ? { ...given1, anchor: regionAnchor(given1, threads) } : given1;
     const k = threadId === undefined ? -1 : threads.findIndex((t) => t.id === threadId);
     if (k > -1) {
       threads[k] = { ...threads[k], comments: [...threads[k].comments, { author: PERSON, text }] };

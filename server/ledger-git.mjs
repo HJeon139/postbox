@@ -55,12 +55,16 @@ function gitOnce(exec, cwd, args, env, timeoutMs) {
  * repository’s config could have git run is set off (NO_COMMANDS), through git’s environment config, which wins over
  * the repository’s and takes any key as it is; that includes each content filter the repository names, so a read
  * that hashes a file doesn’t run one. index, when given, is the index file git reads and writes (GIT_INDEX_FILE), in
- * place of the repository’s own (#1844).
- * @param {string} cwd @param {string[]} args @param {{ timeoutMs?: number, exec?: typeof execFile, index?: string }} [opts]
+ * place of the repository’s own (#1844). env sets git’s environment over Postbox’s own, such as the identity of a commit
+ * Postbox makes, which nothing in the repository’s config or Postbox’s environment then outranks (#1932); it can’t
+ * override the keys set here.
+ * @param {string} cwd @param {string[]} args
+ * @param {{ timeoutMs?: number, exec?: typeof execFile, index?: string, env?: Record<string, string> }} [opts]
  * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
  */
-export async function runGit(cwd, args, { timeoutMs = 10000, exec = execFile, index } = {}) {
-  const base = { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...(index ? { GIT_INDEX_FILE: index } : {}) };
+export async function runGit(cwd, args, { timeoutMs = 10000, exec = execFile, index, env = {} } = {}) {
+  // env over Postbox’s own environment, but under the keys that keep git safe, which no caller turns off.
+  const base = { ...process.env, ...env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...(index ? { GIT_INDEX_FILE: index } : {}) };
   const withConfig = (pairs) => ({
     ...base,
     GIT_CONFIG_COUNT: String(pairs.length),
