@@ -35,17 +35,17 @@ function storeWith(dir, pids, { blob = true } = {}) {
 const present = (drafts) => Object.fromEntries(Object.entries(drafts).map(([k, p]) => [k, existsSync(p)]));
 
 // pid 1 runs as root, so signal 0 from this user is refused with EPERM: running, but not this user’s to signal.
-test('#870 a dead process’s drafts are removed; a running process’s, this one’s and another user’s included, and the blobs are kept', async () => {
+test('#870 a dead process’s drafts are removed; a running process’s, another user’s included; this process’s own pid’s are a dead Postbox’s, and the blobs are kept', async () => {
   const dir = tempDir('pb-blob-drafts-');
   const drafts = storeWith(dir, { dead: DEAD, running: process.ppid, self: process.pid, root: 1 });
-  assert.equal(await sweepDrafts(dir), 2);
+  assert.equal(await sweepDrafts(dir), 4);
   assert.deepEqual(present(drafts), {
     'dead at the root': false,
     'dead beside a blob': false,
     'running at the root': true,
     'running beside a blob': true,
-    'self at the root': true,
-    'self beside a blob': true,
+    'self at the root': false,
+    'self beside a blob': false,
     'root at the root': true,
     'root beside a blob': true,
   });
